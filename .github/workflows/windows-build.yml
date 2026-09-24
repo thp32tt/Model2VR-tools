@@ -1,0 +1,48 @@
+name: Windows x86 probe build
+
+on:
+  push:
+    paths:
+      - 'CMakeLists.txt'
+      - 'src/**'
+      - 'config/**'
+      - '.github/workflows/windows-build.yml'
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'src/**'
+      - 'config/**'
+      - '.github/workflows/windows-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-win32:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Win32
+        shell: pwsh
+        run: cmake -S . -B build -A Win32 -DCMAKE_INSTALL_PREFIX="$env:GITHUB_WORKSPACE/stage"
+
+      - name: Build Release
+        run: cmake --build build --config Release --parallel
+
+      - name: Install package
+        run: cmake --install build --config Release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Copy-Item config/model2vr_probe.example.ini stage/model2vr_probe.ini -Force
+          Compress-Archive -Path stage/* -DestinationPath Model2VR-Probe-Win32.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Model2VR-Probe-Win32
+          path: Model2VR-Probe-Win32.zip
+          retention-days: 7
