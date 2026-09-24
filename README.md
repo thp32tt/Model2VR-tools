@@ -13,3 +13,6 @@ Emulator executables/DLLs, ROMs, proprietary assets, private Ghidra databases, r
 Private reverse-analysis evidence is isolated in `thp32tt/Model2VR-analysis-private`. See `SECURITY.md` and `docs/ARCHITECTURE.md`.
 
 Public CI runs on every push and pull request using GitHub-hosted `ubuntu-latest`.
+## Development
+
+Milestone 01 is a read-only Windows x86 runtime probe. See `docs/DEVELOPMENT_STATUS.md` and `docs/PROBE_MILESTONE_01.md`.
