@@ -1,0 +1,15 @@
+build/
+dist/
+private/
+inputs/
+__pycache__/
+*.pyc
+*.exe
+*.dll
+*.zip
+*.7z
+*.rar
+*.gpr
+*.rep/
+*.bin
+*.rom
