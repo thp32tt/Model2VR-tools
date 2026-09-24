@@ -1,5 +1,7 @@
 #include "signature.h"
 
+#include <Windows.h>
+
 #include <cstring>
 
 namespace m2vr {
