@@ -30,3 +30,16 @@ Before any rendering or FFB modification:
 Only after that evidence is recorded:
 - enable fixed-eye stereo for confirmed world geometry;
 - compare Arcade Native FFB with Plugin Compatibility output.
+
+
+## Source review gate
+
+Review: `docs/reviews/M01_SOURCE_REVIEW_2026-09-25.md`  
+Tracking issue: `#1 [M01 Review] Runtime probe source findings — CHANGES_REQUIRED`
+
+M01 remains buildable, but the current artifact is a prototype only. Resolve the blocking findings before using Daytona telemetry as the trusted development baseline:
+
+- M01-REV-001 probe-ready race / asynchronous bootstrap
+- M01-REV-002 injection timeout false-success/lifetime bug
+- M01-REV-004 insufficient render classification context
+- M01-REV-005 cross-run log/session mixing
