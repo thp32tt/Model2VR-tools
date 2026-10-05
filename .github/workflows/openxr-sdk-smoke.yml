@@ -1,0 +1,42 @@
+name: OpenXR SDK pinned smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/openxr-sdk-smoke.yml'
+      - 'docs/EXTERNAL_TOOLING.md'
+      - 'docs/GITHUB_REUSE_SURVEY.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build-loader:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout official OpenXR SDK source
+        uses: actions/checkout@v4
+        with:
+          repository: KhronosGroup/OpenXR-SDK-Source
+          ref: release-1.1.63
+          path: openxr
+      - name: Configure x64 dynamic loader
+        shell: pwsh
+        run: cmake -S openxr -B openxr-build -A x64 -DDYNAMIC_LOADER=ON -DBUILD_TESTING=OFF
+      - name: Build loader
+        run: cmake --build openxr-build --config Release --target openxr_loader --parallel
+      - name: Capture built loader hashes
+        shell: pwsh
+        run: |
+          Get-ChildItem openxr-build -Recurse -File |
+            Where-Object { $_.Name -match 'openxr_loader.*\.(dll|lib)$' } |
+            Get-FileHash -Algorithm SHA256 |
+            Select-Object Path,Hash |
+            ConvertTo-Json | Set-Content openxr-loader-sha256.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openxr-loader-smoke
+          path: openxr-loader-sha256.json
+          retention-days: 7

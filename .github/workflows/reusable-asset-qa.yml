@@ -1,0 +1,43 @@
+name: Reusable texture font asset QA
+
+on:
+  workflow_call:
+    inputs:
+      asset-path:
+        type: string
+        default: '.'
+      toolkit-ref:
+        type: string
+        default: 'main'
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: project
+      - uses: actions/checkout@v4
+        with:
+          repository: thp32tt/Model2VR-tools
+          ref: ${{ inputs.toolkit-ref }}
+          path: moddev
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install --disable-pip-version-check -r moddev/requirements-toolkit.txt
+      - name: Batch asset report
+        run: python moddev/tools/batch_asset_report.py "project/${{ inputs.asset-path }}" --output asset-report.json
+      - name: Full hash manifest
+        run: python moddev/tools/moddev.py manifest "project/${{ inputs.asset-path }}" --output asset-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: texture-font-asset-qa
+          path: |
+            asset-report.json
+            asset-manifest.json
+          retention-days: 14

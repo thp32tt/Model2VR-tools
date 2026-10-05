@@ -1,0 +1,62 @@
+name: Reusable binary analysis
+
+on:
+  workflow_call:
+    inputs:
+      binary-path:
+        type: string
+        required: true
+      bits:
+        type: number
+        default: 32
+      disasm-offset:
+        type: string
+        default: '0'
+      disasm-address:
+        type: string
+        default: '0'
+      disasm-length:
+        type: string
+        default: '256'
+      toolkit-ref:
+        type: string
+        default: 'main'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: project
+      - uses: actions/checkout@v4
+        with:
+          repository: thp32tt/Model2VR-tools
+          ref: ${{ inputs.toolkit-ref }}
+          path: moddev
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install --disable-pip-version-check -r moddev/requirements-toolkit.txt
+      - name: Hash
+        run: python moddev/tools/moddev.py hash "project/${{ inputs.binary-path }}" > binary-hash.json
+      - name: Strings
+        run: python moddev/tools/moddev.py strings "project/${{ inputs.binary-path }}" --limit 5000 --output binary-strings.json
+      - name: PE metadata
+        run: python moddev/tools/moddev.py pe-info "project/${{ inputs.binary-path }}" --output pe-info.json
+      - name: Disassembly window
+        run: |
+          python moddev/tools/moddev.py disasm "project/${{ inputs.binary-path }}"             --bits "${{ inputs.bits }}"             --offset "${{ inputs.disasm-offset }}"             --address "${{ inputs.disasm-address }}"             --length "${{ inputs.disasm-length }}"             --output disasm.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-analysis
+          path: |
+            binary-hash.json
+            binary-strings.json
+            pe-info.json
+            disasm.json
+          retention-days: 14
