@@ -55,6 +55,8 @@ jobs:
         shell: pwsh
         run: |
           & ./external-tools/texdiag.exe -?
+          $code = $LASTEXITCODE
+          if ($code -ne 0 -and $code -ne 1) { throw "Unexpected texdiag help exit code: $code" }
           Get-FileHash ./external-tools/texconv.exe -Algorithm SHA256
       - name: OpenXR/runtime snapshot smoke
         shell: pwsh
