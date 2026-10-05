@@ -59,6 +59,14 @@ jobs:
           Write-Host "texdiag help exit code: $code"
           Get-FileHash ./external-tools/texconv.exe -Algorithm SHA256
           $global:LASTEXITCODE = 0
+      - name: Install and verify pinned minidump stackwalker
+        shell: pwsh
+        run: |
+          ./scripts/bootstrap_minidump_stackwalk.ps1
+          $exe = Get-ChildItem ./external-tools/minidump -Recurse -Filter "minidump-stackwalk.exe" | Select-Object -First 1
+          if (-not $exe) { throw "minidump-stackwalk.exe not found after verified extraction" }
+          Write-Host "minidump-stackwalk: $($exe.FullName)"
+          $global:LASTEXITCODE = 0
       - name: OpenXR/runtime snapshot smoke
         shell: pwsh
         run: ./scripts/openxr_snapshot.ps1 -Output openxr_snapshot.json
@@ -67,5 +75,6 @@ jobs:
           name: moddev-windows-smoke
           path: |
             external-tools/tool-manifest.json
+            external-tools/minidump/
             openxr_snapshot.json
           retention-days: 7
