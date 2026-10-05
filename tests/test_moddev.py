@@ -48,6 +48,21 @@ class ModdevTests(unittest.TestCase):
             with p.open("a",encoding="utf-8",newline="") as f:
                 csv.writer(f).writerow(["%s","누락"])
             self.assertNotEqual(run("placeholder-qa",p,ok=False).returncode,0)
+    def test_find_convert_package(self):
+        with tempfile.TemporaryDirectory() as td:
+            d=Path(td); src=d/"src"; src.mkdir()
+            (src/"a.txt").write_text("한글",encoding="utf-8")
+            (src/"b.bin").write_bytes(b"x"*50)
+            j=json.loads(run("find",src,"--glob","*.bin","--min-bytes","10").stdout)
+            self.assertEqual(j["count"],1)
+            cp=d/"cp949.txt"
+            run("text-convert",src/"a.txt",cp,"--from-encoding","utf-8","--to-encoding","cp949")
+            self.assertEqual(cp.read_bytes().decode("cp949"),"한글")
+            z=d/"pkg.zip"; run("package",src,z)
+            self.assertTrue(z.exists())
+            with __import__("zipfile").ZipFile(z) as f:
+                self.assertIn("MODDEV_MANIFEST.json",f.namelist())
+
     def test_zip_roundtrip(self):
         with tempfile.TemporaryDirectory() as td:
             d=Path(td); src=d/"src"; src.mkdir(); (src/"a.txt").write_text("abc")

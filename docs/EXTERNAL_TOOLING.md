@@ -20,6 +20,8 @@ source into this repository.
 | ValveResourceFormat/ValveResourceFormat | MIT | Source 2 VPK/resources | Optional external CLI/subprocess |
 | Perfare/AssetStudio | MIT, archived | Legacy Unity extraction reference | Do not build new integrations around it |
 | AssetRipper/AssetRipper | GPL-3.0 | Unity analysis/extraction | Optional external subprocess only; do not copy/link GPL code into this MIT repo |
+| rust-minidump/rust-minidump | MIT | Minidump parsing and stackwalk | Pinned external binary; SHA-256 verified |
+| getsentry/symbolic | MIT | Symbolication/reference | Optional external integration |
 | jmacd/xdelta | upstream open-source license | Binary delta/patch | Optional subprocess |
 | microsoft/vcpkg | MIT | C/C++ dependencies | Preferred package manager on GitHub Windows runners |
 | Kitware/CMake | BSD-3-Clause | Build orchestration | GitHub runner preinstalled |
@@ -32,6 +34,8 @@ source into this repository.
   - `texdiag.exe` SHA-256 `411c303c98ba73e4423376f717ac139347dd749bf80a7fc1a22368ab1088ff56`
   - `texassemble.exe` SHA-256 `324721a80cf954eccfd888a6c587f6602146f043a01d0181af25884c549e8f46`
 - OpenXR-SDK-Source: `release-1.1.63`
+- rust-minidump/minidump-stackwalk: `v0.27.0`
+  - Windows x86_64 zip SHA-256 `f6f2d7f1665843c4a270cd13fcd1458fed3b19013ea5dd909e12bc3599b959f4`
 
 ## Rules
 

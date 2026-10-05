@@ -1,0 +1,61 @@
+name: Reusable crash triage
+
+on:
+  workflow_call:
+    inputs:
+      dump-path:
+        type: string
+        required: true
+      symbol-path:
+        type: string
+        default: ''
+      toolkit-ref:
+        type: string
+        default: 'main'
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: project
+      - uses: actions/checkout@v4
+        with:
+          repository: thp32tt/Model2VR-tools
+          ref: ${{ inputs.toolkit-ref }}
+          path: moddev
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Hash and strings
+        shell: pwsh
+        run: |
+          python moddev/tools/moddev.py hash "project/${{ inputs.dump-path }}" | Set-Content dump-hash.json
+          python moddev/tools/moddev.py strings "project/${{ inputs.dump-path }}" --limit 5000 --output dump-strings.json
+      - name: Install pinned minidump-stackwalk
+        shell: pwsh
+        run: ./moddev/scripts/bootstrap_minidump_stackwalk.ps1
+      - name: Stackwalk
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem moddev/external-tools/minidump -Recurse -Filter "minidump-stackwalk.exe" | Select-Object -First 1
+          if (-not $exe) { throw "minidump-stackwalk.exe not found" }
+          if ("${{ inputs.symbol-path }}" -ne "") {
+            & $exe.FullName "project/${{ inputs.dump-path }}" "project/${{ inputs.symbol-path }}" | Set-Content stackwalk.txt
+          } else {
+            & $exe.FullName "project/${{ inputs.dump-path }}" | Set-Content stackwalk.txt
+          }
+          $global:LASTEXITCODE = 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crash-triage
+          path: |
+            dump-hash.json
+            dump-strings.json
+            stackwalk.txt
+          retention-days: 14

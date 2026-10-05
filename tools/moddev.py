@@ -6,7 +6,7 @@ PE, disassembly, font and image commands. Core hash/manifest/chunk/archive/DDS/
 binary/string/placeholder commands use the Python standard library.
 """
 from __future__ import annotations
-import argparse, csv, hashlib, json, os, re, struct, sys, zipfile
+import argparse, csv, hashlib, json, os, re, struct, sys, zipfile, urllib.request, urllib.parse
 from collections import Counter
 from pathlib import Path
 
@@ -245,10 +245,67 @@ def cmd_disasm(a):
          for i in md.disasm(code,a.address)]
     json_out({"path":a.path,"offset":a.offset,"address":hex(a.address),"bits":a.bits,"instructions":ins},a.output)
 
+
+def cmd_find(a):
+    root=Path(a.root); items=[]
+    for p in sorted(root.rglob(a.glob)):
+        if not p.is_file(): continue
+        size=p.stat().st_size
+        if a.min_bytes is not None and size<a.min_bytes: continue
+        if a.max_bytes is not None and size>a.max_bytes: continue
+        items.append({"path":str(p.relative_to(root)),"size":size})
+        if len(items)>=a.limit: break
+    json_out({"root":str(root),"glob":a.glob,"matches":items,"count":len(items)},a.output)
+
+def cmd_download(a):
+    u=urllib.parse.urlparse(a.url)
+    if u.scheme!="https": raise SystemExit("download requires https://")
+    out=Path(a.output); out.parent.mkdir(parents=True,exist_ok=True)
+    tmp=out.with_name(out.name+".part")
+    h=hashlib.sha256(); size=0
+    req=urllib.request.Request(a.url,headers={"User-Agent":"Model2VR-tools/moddev"})
+    with urllib.request.urlopen(req,timeout=a.timeout) as r, tmp.open("wb") as w:
+        while True:
+            b=r.read(1024*1024)
+            if not b: break
+            w.write(b); h.update(b); size+=len(b)
+    digest=h.hexdigest()
+    if a.sha256 and digest.lower()!=a.sha256.lower():
+        tmp.unlink(missing_ok=True); raise SystemExit(f"SHA256 mismatch: {digest}")
+    os.replace(tmp,out)
+    json_out({"url":a.url,"output":str(out),"size":size,"sha256":digest,"verified":bool(a.sha256)})
+
+def cmd_text_convert(a):
+    src=Path(a.path); out=Path(a.output)
+    text=src.read_bytes().decode(a.from_encoding,errors=a.errors)
+    data=text.encode(a.to_encoding,errors=a.errors)
+    out.parent.mkdir(parents=True,exist_ok=True)
+    tmp=out.with_name(out.name+".part"); tmp.write_bytes(data); os.replace(tmp,out)
+    json_out({"source":str(src),"output":str(out),"from":a.from_encoding,"to":a.to_encoding,
+              "characters":len(text),"bytes":len(data),"sha256":sha256_file(out)})
+
+def cmd_package(a):
+    src=Path(a.path); out=Path(a.output)
+    with zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+        entries=[]
+        for p in iter_files(src):
+            arc=p.name if src.is_file() else str(p.relative_to(src))
+            z.write(p,arc); entries.append({"path":arc,"size":p.stat().st_size,"sha256":sha256_file(p)})
+        manifest={"source":str(src),"files":entries,"count":len(entries)}
+        z.writestr("MODDEV_MANIFEST.json",json.dumps(manifest,ensure_ascii=False,indent=2)+"\n")
+    side=Path(str(out)+".json")
+    result={"package":str(out),"size":out.stat().st_size,"sha256":sha256_file(out),
+            "source_count":len(entries),"embedded_manifest":"MODDEV_MANIFEST.json"}
+    side.write_text(json.dumps(result,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    json_out(result)
+
 def build_parser():
     p=argparse.ArgumentParser(prog="moddev",description="GitHub-first game localization/mod/VR utility")
     sp=p.add_subparsers(dest="cmd",required=True)
     q=sp.add_parser("hash"); q.add_argument("path"); q.set_defaults(func=cmd_hash)
+    q=sp.add_parser("find"); q.add_argument("root"); q.add_argument("--glob",default="*"); q.add_argument("--min-bytes",type=int); q.add_argument("--max-bytes",type=int); q.add_argument("--limit",type=int,default=10000); q.add_argument("--output"); q.set_defaults(func=cmd_find)
+    q=sp.add_parser("download"); q.add_argument("url"); q.add_argument("output"); q.add_argument("--sha256"); q.add_argument("--timeout",type=int,default=60); q.set_defaults(func=cmd_download)
+    q=sp.add_parser("text-convert"); q.add_argument("path"); q.add_argument("output"); q.add_argument("--from-encoding",default="utf-8"); q.add_argument("--to-encoding",default="utf-8"); q.add_argument("--errors",choices=("strict","replace","ignore"),default="strict"); q.set_defaults(func=cmd_text_convert)
     q=sp.add_parser("manifest"); q.add_argument("path"); q.add_argument("--output"); q.set_defaults(func=cmd_manifest)
     q=sp.add_parser("split"); q.add_argument("path"); q.add_argument("output_dir"); q.add_argument("--chunk-mib",type=int,default=64); q.set_defaults(func=cmd_split)
     q=sp.add_parser("join"); q.add_argument("manifest"); q.add_argument("output"); q.set_defaults(func=cmd_join)
@@ -260,6 +317,7 @@ def build_parser():
     q=sp.add_parser("zip-create"); q.add_argument("path"); q.add_argument("output"); q.set_defaults(func=cmd_zip_create)
     q=sp.add_parser("zip-list"); q.add_argument("path"); q.set_defaults(func=cmd_zip_list)
     q=sp.add_parser("zip-extract"); q.add_argument("path"); q.add_argument("output_dir"); q.set_defaults(func=cmd_zip_extract)
+    q=sp.add_parser("package"); q.add_argument("path"); q.add_argument("output"); q.set_defaults(func=cmd_package)
     q=sp.add_parser("image-diff"); q.add_argument("a"); q.add_argument("b"); q.add_argument("--output"); q.set_defaults(func=cmd_image_diff)
     q=sp.add_parser("font-info"); q.add_argument("path"); q.set_defaults(func=cmd_font)
     q=sp.add_parser("pe-info"); q.add_argument("path"); q.add_argument("--output"); q.set_defaults(func=cmd_pe)
