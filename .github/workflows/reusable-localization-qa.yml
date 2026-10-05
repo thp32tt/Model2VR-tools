@@ -1,0 +1,62 @@
+name: Reusable localization QA
+
+on:
+  workflow_call:
+    inputs:
+      translation-csv:
+        type: string
+        default: ''
+      asset-path:
+        type: string
+        default: '.'
+      source-column:
+        type: string
+        default: 'source'
+      target-column:
+        type: string
+        default: 'target'
+      toolkit-ref:
+        type: string
+        default: 'main'
+    outputs:
+      manifest-artifact:
+        value: localization-qa-manifest
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v4
+        with:
+          path: project
+      - name: Checkout ModDev toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: thp32tt/Model2VR-tools
+          ref: ${{ inputs.toolkit-ref }}
+          path: moddev
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install toolkit dependencies
+        run: python -m pip install --disable-pip-version-check -r moddev/requirements-toolkit.txt
+      - name: Translation placeholder QA
+        if: ${{ inputs.translation-csv != '' }}
+        run: |
+          python moddev/tools/moddev.py placeholder-qa "project/${{ inputs.translation-csv }}"             --source-col "${{ inputs.source-column }}"             --target-col "${{ inputs.target-column }}"             --output translation-placeholder-qa.json
+      - name: Asset manifest
+        run: |
+          python moddev/tools/moddev.py manifest "project/${{ inputs.asset-path }}" --output asset-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: localization-qa-manifest
+          path: |
+            asset-manifest.json
+            translation-placeholder-qa.json
+          if-no-files-found: warn
+          retention-days: 14

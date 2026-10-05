@@ -1,0 +1,68 @@
+name: ModDev toolkit CI
+
+on:
+  push:
+    paths:
+      - 'tools/moddev.py'
+      - 'tests/test_moddev.py'
+      - 'requirements-toolkit.txt'
+      - 'scripts/**'
+      - 'docs/MODDEV_TOOLKIT.md'
+      - 'docs/EXTERNAL_TOOLING.md'
+      - '.github/workflows/toolkit-ci.yml'
+  pull_request:
+    paths:
+      - 'tools/moddev.py'
+      - 'tests/test_moddev.py'
+      - 'requirements-toolkit.txt'
+      - 'scripts/**'
+      - '.github/workflows/toolkit-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-toolkit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install optional analysis dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-toolkit.txt
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: CLI smoke
+        run: python tools/moddev.py --help
+
+  windows-external-tools:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify pinned DirectXTex tools
+        shell: pwsh
+        run: ./scripts/bootstrap_external_tools.ps1
+      - name: Texture tool smoke
+        shell: pwsh
+        run: |
+          & ./external-tools/texdiag.exe -?
+          Get-FileHash ./external-tools/texconv.exe -Algorithm SHA256
+      - name: OpenXR/runtime snapshot smoke
+        shell: pwsh
+        run: ./scripts/openxr_snapshot.ps1 -Output openxr_snapshot.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moddev-windows-smoke
+          path: |
+            external-tools/tool-manifest.json
+            openxr_snapshot.json
+          retention-days: 7

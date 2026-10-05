@@ -1,0 +1,56 @@
+name: Reusable Windows CMake mod build
+
+on:
+  workflow_call:
+    inputs:
+      source-dir:
+        type: string
+        default: '.'
+      architecture:
+        type: string
+        default: 'Win32'
+      configuration:
+        type: string
+        default: 'Release'
+      artifact-name:
+        type: string
+        default: 'windows-mod-build'
+      cmake-args:
+        type: string
+        default: ''
+    outputs:
+      artifact-name:
+        value: ${{ jobs.build.outputs.artifact_name }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      artifact_name: ${{ inputs.artifact-name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S "${{ inputs.source-dir }}" -B build -A "${{ inputs.architecture }}" -DCMAKE_INSTALL_PREFIX="$env:GITHUB_WORKSPACE/stage" ${{ inputs.cmake-args }}
+      - name: Build
+        run: cmake --build build --config "${{ inputs.configuration }}" --parallel
+      - name: Install
+        run: cmake --install build --config "${{ inputs.configuration }}"
+      - name: Create build manifest
+        shell: pwsh
+        run: |
+          if (Test-Path stage) {
+            Get-ChildItem stage -File -Recurse | Get-FileHash -Algorithm SHA256 |
+              Select-Object Path,Hash | ConvertTo-Json | Set-Content stage/build-sha256.json
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: stage
+          if-no-files-found: error
+          retention-days: 14
