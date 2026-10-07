@@ -1,0 +1,16 @@
+{
+  "name": "n100-mcp",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test:mcp": "node client-test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.3.0",
+    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/server": "^2.3.0",
+    "zod": "^4.6.5"
+  }
+}

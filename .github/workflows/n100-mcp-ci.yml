@@ -1,0 +1,47 @@
+name: N100 MCP v0.3 CI
+
+on:
+  push:
+    paths:
+      - 'n100-mcp/**'
+      - '.github/workflows/n100-mcp-ci.yml'
+  pull_request:
+    paths:
+      - 'n100-mcp/**'
+      - '.github/workflows/n100-mcp-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install MCP dependencies
+        run: npm ci --prefix n100-mcp
+      - name: Install media helper dependency
+        run: python -m pip install --disable-pip-version-check Pillow
+      - name: Syntax checks
+        run: |
+          node --check n100-mcp/server.mjs
+          python -m py_compile n100-mcp/helpers/media_archive.py
+      - name: Start local MCP and run end-to-end smoke
+        shell: bash
+        run: |
+          export PORT=8877
+          export N100_MCP_ROOT="$GITHUB_WORKSPACE"
+          node n100-mcp/server.mjs > /tmp/n100-mcp.out 2> /tmp/n100-mcp.err &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true; cat /tmp/n100-mcp.err' EXIT
+          sleep 2
+          export N100_MCP_URL="http://127.0.0.1:8877/mcp"
+          node n100-mcp/ci-smoke.mjs
