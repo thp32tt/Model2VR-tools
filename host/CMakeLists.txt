@@ -15,7 +15,7 @@ FetchContent_Declare(openxr
  GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(openxr)
-add_executable(Model2VROpenXRHost main.cpp)
+add_executable(Model2VROpenXRHost main.cpp xr_session.cpp xr_frame.cpp)
 target_compile_features(Model2VROpenXRHost PRIVATE cxx_std_20)
 target_compile_definitions(Model2VROpenXRHost PRIVATE
  XR_USE_PLATFORM_WIN32 XR_USE_GRAPHICS_API_D3D11 NOMINMAX WIN32_LEAN_AND_MEAN)
