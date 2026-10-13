@@ -13,8 +13,8 @@ void XrApp::create_swapchains(){
         throw std::runtime_error("XR runtime does not support RGBA8 format");
     for(std::size_t eye=0;eye<chains_.size();++eye){
         auto& chain=chains_[eye];
-        chain.width=view_configs_[eye].recommendedImageRectWidth;
-        chain.height=view_configs_[eye].recommendedImageRectHeight;
+        chain.width=source_pid_ ? transport::kWidth : view_configs_[eye].recommendedImageRectWidth;
+        chain.height=source_pid_ ? transport::kHeight : view_configs_[eye].recommendedImageRectHeight;
         XrSwapchainCreateInfo create{XR_TYPE_SWAPCHAIN_CREATE_INFO};
         create.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
         create.format=format;create.sampleCount=1;
@@ -44,6 +44,26 @@ void XrApp::draw_frame(XrTime display_time){
     if(count!=2 || !(state.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) ||
        !(state.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT))
         throw std::runtime_error("HMD eye poses are not valid");
+    bool incoming_stereo=false;
+    if(source_pid_!=0){
+        if(!shared_frames_.Valid()) shared_frames_.Open(source_pid_);
+        if(shared_frames_.Valid()){
+            transport::Snapshot snapshot;
+            if(shared_frames_.Read(snapshot)){
+                if(snapshot.kind==transport::FrameKind::Diagnostic && !saw_diagnostic_){
+                    std::cout<<"Model2VR: diagnostic frame producer (NOT game stereo)\n";
+                    saw_diagnostic_=true;
+                }
+                last_frame_id_=snapshot.frame_id;
+                eye_frame_=std::move(snapshot);
+                incoming_stereo=true;
+            } else {
+                // If the writer disappeared, never keep submitting a stale
+                // image indefinitely as a live rendered frame.
+                eye_frame_={};
+            }
+        }
+    }
     std::array<XrCompositionLayerProjectionView,2> layer_views{
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}
@@ -56,15 +76,20 @@ void XrApp::draw_frame(XrTime display_time){
         XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
         wait.timeout=XR_INFINITE_DURATION;
         check(xrWaitSwapchainImage(chain.handle,&wait),"wait swapchain image");
-        // This is intentionally a stereo tracking/render path validation pattern,
-        // NOT a Model 2 game frame. Scene textures will be connected separately.
-        const float color[4]={
-            eye==0?0.02f:0.15f,
-            0.05f,
-            eye==0?0.17f:0.04f,
-            1.0f
-        };
-        context_->ClearRenderTargetView(chain.rtvs.at(index).Get(),color);
+        if(incoming_stereo && chain.width==transport::kWidth &&
+           chain.height==transport::kHeight &&
+           eye_frame_.eyes[eye].size()==transport::kBytesPerEye){
+            // Upload the *independent* left/right RGBA8 buffers. Never clone
+            // one eye or synthesize world depth from a desktop screenshot.
+            context_->UpdateSubresource(chain.images.at(index).texture,0,nullptr,
+                  eye_frame_.eyes[eye].data(),transport::kPitch,0);
+        }else{
+            // Missing producer is a clearly differentiated diagnostic color.
+            const float color[4]={
+                eye==0?0.02f:0.15f,0.05f,eye==0?0.17f:0.04f,1.f
+            };
+            context_->ClearRenderTargetView(chain.rtvs.at(index).Get(),color);
+        }
         XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         check(xrReleaseSwapchainImage(chain.handle,&release),"release swapchain image");
         auto& layer=layer_views[eye];
