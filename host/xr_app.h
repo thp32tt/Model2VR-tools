@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <vector>
 #include "../src/common/stereo_frame_ipc.h"
+#include "../src/common/stereo_pose_ipc.h"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -42,6 +43,8 @@ private:
     std::array<EyeChain,2> chains_;
     std::uint32_t source_pid_=0;
     transport::SharedFrames shared_frames_;
+    pose::Link pose_writer_;
+    std::uint64_t predicted_pose_sequence_=0;
     transport::Snapshot eye_frame_;
     std::uint64_t last_frame_id_=0;
     bool saw_diagnostic_=false;
