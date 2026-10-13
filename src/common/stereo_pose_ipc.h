@@ -22,11 +22,12 @@ static_assert(sizeof(EyeView)==44);
 struct Frame {
     std::uint64_t sequence=0;
     std::int64_t predicted_display_time=0;
+    std::uint64_t published_qpc=0;
     EyeView eyes[2]{};
     std::uint32_t view_flags=0;
     std::uint32_t reserved=0;
 };
-static_assert(sizeof(Frame)==112);
+static_assert(sizeof(Frame)==120);
 struct alignas(8) Shared {
     std::uint32_t magic=0,version=0,size=0,reserved=0;
     volatile LONG generation=0;
@@ -34,7 +35,7 @@ struct alignas(8) Shared {
     Frame frame{};
 };
 static_assert(offsetof(Shared,frame)==24);
-static_assert(sizeof(Shared)==136);
+static_assert(sizeof(Shared)==144);
 inline std::wstring NameForPid(std::uint32_t pid){
     return L"Local\\Model2VR_HeadViews_v1_"+std::to_wstring(pid);
 }
@@ -80,7 +81,11 @@ public:
         const LONG previous=InterlockedCompareExchange(&data_->generation,0,0);
         if(previous & 1)return false;
         InterlockedExchange(&data_->generation,previous+1);
-        std::memcpy(&data_->frame,&value,sizeof(Frame));
+        Frame stamped=value;
+        LARGE_INTEGER now{};
+        QueryPerformanceCounter(&now);
+        stamped.published_qpc=static_cast<std::uint64_t>(now.QuadPart);
+        std::memcpy(&data_->frame,&stamped,sizeof(Frame));
         InterlockedExchange(&data_->generation,previous+2);
         last_written_=value.sequence;
         return true;
@@ -96,6 +101,14 @@ public:
         const LONG after=data_->generation;
         if(before!=after||(after&1)||copy.sequence==0||
            !(copy.view_flags&kOrientationValid))return false;
+        LARGE_INTEGER now{},freq{};
+        QueryPerformanceCounter(&now);
+        QueryPerformanceFrequency(&freq);
+        const auto stamp=copy.published_qpc;
+        if(stamp==0 || static_cast<std::uint64_t>(now.QuadPart)<stamp ||
+           static_cast<std::uint64_t>(now.QuadPart)-stamp >
+              static_cast<std::uint64_t>(freq.QuadPart)*2u)
+            return false; // fail closed on disconnected/abandoned XR host
         out=copy;
         return true;
     }
