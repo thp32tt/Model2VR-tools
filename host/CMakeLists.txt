@@ -24,3 +24,10 @@ if(MSVC)
  target_compile_options(Model2VROpenXRHost PRIVATE /W4 /EHsc /permissive-)
 endif()
 install(TARGETS Model2VROpenXRHost RUNTIME DESTINATION .)
+
+# ABI contract must be identical between the 32-bit emulator producer
+# and the 64-bit HMD consumer; run the same regression in both builds.
+enable_testing()
+add_executable(model2vr_shared_ipc_x64_test ../tests/stereo_frame_ipc_test.cpp)
+target_compile_features(model2vr_shared_ipc_x64_test PRIVATE cxx_std_20)
+add_test(NAME stereo_frame_transport_x64 COMMAND model2vr_shared_ipc_x64_test)
