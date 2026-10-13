@@ -1,0 +1,26 @@
+name: OpenXR x64 host build
+on:
+  push:
+    paths:
+      - 'host/**'
+      - '.github/workflows/openxr-host-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  openxr-host:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure host x64
+        run: cmake -S host -B build-xr -A x64 -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/stage-xr"
+      - name: Build host
+        run: cmake --build build-xr --config Release --parallel
+      - name: Package executable
+        run: cmake --install build-xr --config Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Model2VROpenXRHost-x64
+          path: stage-xr/
+          retention-days: 7
