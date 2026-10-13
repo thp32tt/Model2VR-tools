@@ -20,6 +20,7 @@ namespace {
 
 m2vr::ProbeConfig g_config;
 std::uint8_t* g_exe_base = nullptr;
+std::uint32_t g_exe_size = 0;
 
 std::atomic<std::uint64_t> g_transform_counter{0};
 std::atomic<std::uint64_t> g_project_counter{0};
@@ -61,11 +62,11 @@ std::uint64_t FloatBits(float value) {
 }
 
 std::uint32_t ReadStateRva(std::uint32_t rva) {
-    if (!g_exe_base || rva == 0) return 0;
+    if (!g_exe_base || rva == 0 || rva > g_exe_size || g_exe_size-rva < 4) return 0;
     return SafeReadU32(g_exe_base + rva);
 }
 
-extern "C" void __cdecl M2VR_OnTransformPoint(void* point) {
+extern "C" void __cdecl M2VR_OnTransformPoint(void* point, std::uint32_t caller) {
     if (!ShouldSample(g_transform_counter, g_config.transform_sample_every)) {
         return;
     }
@@ -76,6 +77,10 @@ extern "C" void __cdecl M2VR_OnTransformPoint(void* point) {
         return;
     }
 
+    m2vr::LogEvent("transform_ctx", reinterpret_cast<std::uintptr_t>(point),
+                   caller - reinterpret_cast<std::uintptr_t>(g_exe_base),
+                   ReadStateRva(g_config.geometry_stream_ptr_rva),
+                   ReadStateRva(g_config.active_matrix_ptr_rva));
     m2vr::LogEvent(
         "transform_in",
         reinterpret_cast<std::uintptr_t>(point),
@@ -84,7 +89,7 @@ extern "C" void __cdecl M2VR_OnTransformPoint(void* point) {
         FloatBits(z));
 }
 
-extern "C" void __cdecl M2VR_OnProjectVertex(void* point) {
+extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) {
     if (!ShouldSample(g_project_counter, g_config.project_sample_every)) {
         return;
     }
@@ -96,12 +101,11 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point) {
     }
 
     const auto active_matrix = ReadStateRva(g_config.active_matrix_ptr_rva);
-    m2vr::LogEvent(
-        "project_in",
-        FloatBits(x),
-        FloatBits(y),
-        FloatBits(z),
-        active_matrix);
+    m2vr::LogEvent("project_ctx", reinterpret_cast<std::uintptr_t>(point),
+                   caller - reinterpret_cast<std::uintptr_t>(g_exe_base),
+                   ReadStateRva(g_config.geometry_stream_ptr_rva), active_matrix);
+    m2vr::LogEvent("project_in", reinterpret_cast<std::uintptr_t>(point),
+                   FloatBits(x), FloatBits(y), FloatBits(z));
 }
 
 extern "C" void __cdecl M2VR_OnFfbDispatch(std::uint32_t ecx_value) {
@@ -112,16 +116,18 @@ extern "C" void __cdecl M2VR_OnFfbDispatch(std::uint32_t ecx_value) {
     const std::uint32_t command = ecx_value & 0xffu;
     const std::uint32_t backend_mode = ReadStateRva(g_config.ffb_backend_mode_rva);
     const std::uint32_t raw_mirror = ReadStateRva(g_config.ffb_raw_mirror_rva) & 0xffu;
-    m2vr::LogEvent("ffb_in", command, backend_mode, raw_mirror, 0);
+    m2vr::LogEvent("ffb_in", command, backend_mode, raw_mirror,
+                   command == raw_mirror ? 1 : 0);
 }
 
 __declspec(naked) void TransformPointDetour() {
     __asm {
         pushfd
         pushad
+        push dword ptr [esp + 36]
         push eax
         call M2VR_OnTransformPoint
-        add esp, 4
+        add esp, 8
         popad
         popfd
         jmp dword ptr [g_original_transform_point]
@@ -132,9 +138,10 @@ __declspec(naked) void ProjectVertexDetour() {
     __asm {
         pushfd
         pushad
+        push dword ptr [esp + 36]
         push eax
         call M2VR_OnProjectVertex
-        add esp, 4
+        add esp, 8
         popad
         popfd
         jmp dword ptr [g_original_project_vertex]
@@ -164,6 +171,12 @@ bool InstallOne(
         return true;
     }
 
+    if (spec.rva > g_exe_size || spec.signature.empty() ||
+        spec.signature.size() > 64 ||
+        static_cast<std::size_t>(g_exe_size-spec.rva) < spec.signature.size()) {
+        m2vr::LogEvent(std::string("hook_rva_invalid_")+name,spec.rva);
+        return false;
+    }
     auto* target = g_exe_base + spec.rva;
     std::string signature_error;
     if (!m2vr::VerifySignature(target, spec.signature, signature_error)) {
@@ -188,6 +201,15 @@ namespace m2vr {
 bool InstallProbeHooks(HMODULE executable, const ProbeConfig& config) {
     g_config = config;
     g_exe_base = reinterpret_cast<std::uint8_t*>(executable);
+    __try {
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(g_exe_base);
+        if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0 || dos->e_lfanew > 0x1000)
+            return false;
+        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(g_exe_base+dos->e_lfanew);
+        if (nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+            return false;
+        g_exe_size = nt->OptionalHeader.SizeOfImage;
+    } __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
 
     const MH_STATUS init = MH_Initialize();
     if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED) {
