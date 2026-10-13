@@ -6,6 +6,8 @@ on:
       - 'CMakeLists.txt'
       - 'src/**'
       - 'config/**'
+      - 'tests/**'
+      - 'tools/model2_stereo_diagnostic.cpp'
       - '.github/workflows/windows-build.yml'
   pull_request:
     paths:
