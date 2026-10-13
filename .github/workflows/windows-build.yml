@@ -32,6 +32,9 @@ jobs:
       - name: Build Release
         run: cmake --build build --config Release --parallel
 
+      - name: Run stereo invariants
+        run: ctest --test-dir build -C Release --output-on-failure
+
       - name: Install package
         run: cmake --install build --config Release
 
