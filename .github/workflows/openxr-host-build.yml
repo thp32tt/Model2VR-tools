@@ -17,6 +17,8 @@ jobs:
         run: cmake -S host -B build-xr -A x64 -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/stage-xr"
       - name: Build host
         run: cmake --build build-xr --config Release --parallel
+      - name: Verify shared-frame ABI x64
+        run: ctest --test-dir build-xr -C Release --output-on-failure
       - name: Package executable
         run: cmake --install build-xr --config Release
       - uses: actions/upload-artifact@v4
