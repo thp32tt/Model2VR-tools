@@ -1,0 +1,30 @@
+name: OpenXR host Windows x64
+on:
+  push:
+    paths:
+      - 'src/openxr_host/**'
+      - '.github/workflows/openxr-host.yml'
+  pull_request:
+    paths:
+      - 'src/openxr_host/**'
+      - '.github/workflows/openxr-host.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure OpenXR x64
+        run: cmake -S src/openxr_host -B build-openxr -A x64 -DDYNAMIC_LOADER=OFF -DBUILD_TESTING=OFF
+      - name: Build OpenXR x64
+        run: cmake --build build-openxr --config Release --target Model2OpenXRHost --parallel
+      - name: Upload OpenXR host
+        uses: actions/upload-artifact@v4
+        with:
+          name: Model2VR-OpenXRHost-Win64
+          path: build-openxr/Release/Model2OpenXRHost.exe
+          if-no-files-found: error
+          retention-days: 7
