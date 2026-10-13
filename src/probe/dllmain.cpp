@@ -6,6 +6,7 @@
 
 #include <Windows.h>
 #include <filesystem>
+#include <cwchar>
 #include <string>
 
 namespace {
@@ -27,6 +28,14 @@ DWORD WINAPI ProbeThread(void* parameter) {
 
     auto log_path = config.log_file;
     if (log_path.is_relative()) log_path = directory / log_path;
+    SYSTEMTIME now{};
+    GetLocalTime(&now);
+    wchar_t suffix[96]{};
+    swprintf_s(suffix, L"_%04hu%02hu%02hu_%02hu%02hu%02hu_%lu",
+               now.wYear, now.wMonth, now.wDay,
+               now.wHour, now.wMinute, now.wSecond, GetCurrentProcessId());
+    log_path = log_path.parent_path() /
+        (log_path.stem().wstring()+suffix+log_path.extension().wstring());
     if (!m2vr::OpenLog(log_path)) {
         m2vr::PublishProbeState(m2vr::ProbeState::Failed, m2vr::ProbeError::LogOpen);
         return 0;
