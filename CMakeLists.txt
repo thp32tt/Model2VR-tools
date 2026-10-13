@@ -74,3 +74,14 @@ enable_testing()
 add_executable(model2vr_stereo_core_test tests/stereo_core_test.cpp)
 target_link_libraries(model2vr_stereo_core_test PRIVATE model2vr_stereo_core)
 add_test(NAME stereo_geometry_invariants COMMAND model2vr_stereo_core_test)
+
+# 32/64-bit ABI-compatible shared stereo transport and diagnostic producer.
+add_executable(model2vr_stereo_ipc_test tests/stereo_frame_ipc_test.cpp)
+target_compile_features(model2vr_stereo_ipc_test PRIVATE cxx_std_20)
+add_test(NAME stereo_frame_transport COMMAND model2vr_stereo_ipc_test)
+
+add_executable(model2vr_stereo_diagnostic tools/model2_stereo_diagnostic.cpp)
+target_compile_features(model2vr_stereo_diagnostic PRIVATE cxx_std_20)
+set_target_properties(model2vr_stereo_diagnostic PROPERTIES
+  OUTPUT_NAME "Model2VRStereoDiagnostic")
+install(TARGETS model2vr_stereo_diagnostic RUNTIME DESTINATION .)
