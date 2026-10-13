@@ -50,13 +50,27 @@ void XrApp::draw_frame(XrTime display_time){
         if(shared_frames_.Valid()){
             transport::Snapshot snapshot;
             if(shared_frames_.Read(snapshot)){
-                if(snapshot.kind==transport::FrameKind::Diagnostic && !saw_diagnostic_){
+                LARGE_INTEGER now{},hz{};
+                QueryPerformanceCounter(&now);
+                QueryPerformanceFrequency(&hz);
+                constexpr std::int64_t kMaxFrameAgeSeconds=2;
+                const auto maxFrameAgeQpc=hz.QuadPart*kMaxFrameAgeSeconds;
+                const bool fresh=snapshot.timestamp_qpc>0 &&
+                    now.QuadPart>=0 &&
+                    static_cast<std::uint64_t>(now.QuadPart)>=snapshot.timestamp_qpc &&
+                    static_cast<std::uint64_t>(now.QuadPart)-snapshot.timestamp_qpc<=
+                      static_cast<std::uint64_t>(maxFrameAgeQpc);
+                if(fresh && snapshot.kind==transport::FrameKind::Diagnostic && !saw_diagnostic_){
                     std::cout<<"Model2VR: diagnostic frame producer (NOT game stereo)\n";
                     saw_diagnostic_=true;
                 }
-                last_frame_id_=snapshot.frame_id;
-                eye_frame_=std::move(snapshot);
-                incoming_stereo=true;
+                if(fresh){
+                    last_frame_id_=snapshot.frame_id;
+                    eye_frame_=std::move(snapshot);
+                    incoming_stereo=true;
+                } else {
+                    eye_frame_={}; // fail closed instead of repeating stale frames
+                }
             } else {
                 // If the writer disappeared, never keep submitting a stale
                 // image indefinitely as a live rendered frame.
