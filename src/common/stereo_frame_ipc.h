@@ -9,6 +9,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace m2vr::transport {
@@ -61,7 +62,7 @@ public:
         if(!key_pid)return false;
         const auto name=NameForPid(key_pid);
         mapping_=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,
-               static_cast<DWORD>(kSharedBytes>>32),static_cast<DWORD>(kSharedBytes),name.c_str());
+               0,static_cast<DWORD>(kSharedBytes),name.c_str());
         if(!mapping_)return false;
         if(GetLastError()==ERROR_ALREADY_EXISTS){Close();return false;} // one writer
         base_=static_cast<std::uint8_t*>(MapViewOfFile(mapping_,FILE_MAP_ALL_ACCESS,
@@ -122,8 +123,8 @@ public:
     bool Read(Snapshot& out)const{
         if(!Valid())return false;
         const auto* h=reinterpret_cast<const Header*>(base_);
-        const LONG start=InterlockedCompareExchange(
-            const_cast<volatile LONG*>(&h->sequence),0,0);
+        const LONG start=h->sequence;
+        MemoryBarrier();
         if(start & 1)return false;
         const FrameKind kind=static_cast<FrameKind>(h->kind);
         if(kind!=FrameKind::GameStereo && kind!=FrameKind::Diagnostic)return false;
@@ -132,8 +133,8 @@ public:
         for(auto& eye:tmp.eyes)eye.resize(kBytesPerEye);
         std::memcpy(tmp.eyes[0].data(),base_+sizeof(Header),kBytesPerEye);
         std::memcpy(tmp.eyes[1].data(),base_+sizeof(Header)+kBytesPerEye,kBytesPerEye);
-        const LONG end=InterlockedCompareExchange(
-            const_cast<volatile LONG*>(&h->sequence),0,0);
+        MemoryBarrier();
+        const LONG end=h->sequence;
         if(start!=end || (end & 1) || tmp.frame_id==0)return false;
         out=std::move(tmp);
         return true;
