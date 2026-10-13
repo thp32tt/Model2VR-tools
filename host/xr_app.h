@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include "../src/common/stereo_frame_ipc.h"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -27,6 +28,7 @@ public:
     ~XrApp();
     void initialize();
     void run(int max_frames);
+    void set_source_pid(std::uint32_t pid) { source_pid_=pid; }
 private:
     void create_swapchains();
     void draw_frame(XrTime predicted_time);
@@ -38,5 +40,10 @@ private:
     ComPtr<ID3D11DeviceContext> context_;
     std::vector<XrViewConfigurationView> view_configs_;
     std::array<EyeChain,2> chains_;
+    std::uint32_t source_pid_=0;
+    transport::SharedFrames shared_frames_;
+    transport::Snapshot eye_frame_;
+    std::uint64_t last_frame_id_=0;
+    bool saw_diagnostic_=false;
 };
 }  // namespace m2vr::host
