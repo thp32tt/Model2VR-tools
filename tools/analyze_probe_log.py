@@ -29,6 +29,10 @@ def finite_stats(values):
 def analyze(path: Path):
     event_counts = Counter()
     active_matrices = Counter()
+    project_callers = Counter()
+    geometry_streams = Counter()
+    qpc_frequency = 0
+    ffb_duplicates = 0
     ffb_commands = Counter()
     ffb_modes = Counter()
     ffb_transitions = Counter()
@@ -56,16 +60,22 @@ def analyze(path: Path):
 
             a0, a1, a2, a3 = (int(row[f"a{i}"]) for i in range(4))
 
-            if event == "transform_in":
+            if event == "qpc_frequency":
+                qpc_frequency = a0
+            elif event == "project_ctx":
+                project_callers[f"0x{a1:08X}"] += 1
+                geometry_streams[f"0x{a2:08X}"] += 1
+                active_matrices[f"0x{a3:08X}"] += 1
+            elif event == "transform_in":
                 transform["x"].append(bits_to_float(a1))
                 transform["y"].append(bits_to_float(a2))
                 transform["z"].append(bits_to_float(a3))
             elif event == "project_in":
-                project["x"].append(bits_to_float(a0))
-                project["y"].append(bits_to_float(a1))
-                project["z"].append(bits_to_float(a2))
-                active_matrices[f"0x{a3:08X}"] += 1
+                project["x"].append(bits_to_float(a1))
+                project["y"].append(bits_to_float(a2))
+                project["z"].append(bits_to_float(a3))
             elif event == "ffb_in":
+                ffb_duplicates += int(a3 == 1)
                 command = a0 & 0xFF
                 mode = a1
                 ffb_commands[f"0x{command:02X}"] += 1
@@ -79,11 +89,15 @@ def analyze(path: Path):
         "events": dict(event_counts.most_common()),
         "thread_count": len(threads),
         "qpc_span": None if first_qpc is None else last_qpc - first_qpc,
+        "duration_seconds": None if first_qpc is None or not qpc_frequency else (last_qpc-first_qpc)/qpc_frequency,
         "transform": {axis: finite_stats(values) for axis, values in transform.items()},
         "project": {axis: finite_stats(values) for axis, values in project.items()},
         "active_matrices": dict(active_matrices.most_common()),
+        "project_callers": dict(project_callers.most_common()),
+        "geometry_streams": dict(geometry_streams.most_common()),
         "ffb": {
             "commands": dict(ffb_commands.most_common()),
+            "duplicate_entries": ffb_duplicates,
             "backend_modes": dict(ffb_modes.most_common()),
             "transitions": dict(ffb_transitions.most_common(64)),
         },
