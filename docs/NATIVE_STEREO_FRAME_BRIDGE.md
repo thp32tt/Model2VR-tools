@@ -77,3 +77,32 @@ See `.github/workflows/windows-build.yml` and
 
 This does not upload any game binary, ROM or private reverse map to the
 public repo.
+
+
+## OpenXR predicted-view return channel (M03.1)
+
+The shared transport now works in both directions:
+
+- **Win64 host → Win32 renderer:** `src/common/stereo_pose_ipc.h`,
+  `Local\\Model2VR_HeadViews_v1_<emulator-pid>`; a single coherent predicted
+  pair of eye poses, quaternions, asymmetric FOV angles, `XrTime` and valid flags.
+- **Win32 renderer → Win64 host:** `src/common/stereo_frame_ipc.h`, two
+  independently generated 1024x1024 RGBA8 eye images with frame sequence.
+- The x86 Probe DLL exports `Model2VR_ReadPredictedEyeViews()` alongside
+  `Model2VR_SubmitStereoRGBA()`; native render code must read one snapshot
+  per emulated frame, **not** one view per vertex.
+- Pose packets expire after two seconds so missing/abandoned OpenXR hosts
+  cannot leave frozen head movement silently applied to future game frames.
+- Both wire formats are compiled and tested in x86 and x64 CI.
+
+The OpenXR camera uses right-handed meters with forward **-Z**; the current
+Model2 stereo core assumes game view forward **+Z**. Conversion and game
+units-per-meter are **not yet calibrated**. Do not apply these raw poses to the
+Model 2 CPU matrix globals without a verified axis conversion.
+
+## Status warning
+
+**End-to-end live native Model2 game VR is still pending renderer-specific
+world polygon capture/replay.** Diagnostic transport and predicted-pose
+delivery are real code paths, not proof of successful Daytona HMD gameplay.
+
