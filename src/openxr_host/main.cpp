@@ -207,6 +207,15 @@ int Run(std::wstring window_title){
         XrOk(xrWaitFrame(xr.session,&wait,&state),"xrWaitFrame");
         XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};
         XrOk(xrBeginFrame(xr.session,&begin),"xrBeginFrame");
+        XrViewLocateInfo locate{XR_TYPE_VIEW_LOCATE_INFO};
+        locate.viewConfigurationType=XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+        locate.displayTime=state.predictedDisplayTime;
+        locate.space=xr.space;
+        XrViewState located{XR_TYPE_VIEW_STATE};
+        XrView eyeViews[2]{{XR_TYPE_VIEW},{XR_TYPE_VIEW}};
+        uint32_t eyeCount=0;
+        XrOk(xrLocateViews(xr.session,&locate,&located,2,&eyeCount,eyeViews),"xrLocateViews");
+        if(eyeCount!=2)throw std::runtime_error("Expected two eye views");
         XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
         const XrCompositionLayerBaseHeader* layer=nullptr;
         uint32_t layerCount=0;
@@ -218,7 +227,7 @@ int Run(std::wstring window_title){
             ready.timeout=XR_INFINITE_DURATION;
             XrOk(xrWaitSwapchainImage(xr.swapchain,&ready),"xrWaitSwapchainImage");
             if(index>=images.size())throw std::runtime_error("Swapchain image index invalid");
-            context->UpdateSubresource(images[index].texture,nullptr,nullptr,
+            context->UpdateSubresource(images[index].texture,0,nullptr,
                                        capture.pixels,capture.w*4,0);
             XrSwapchainImageReleaseInfo rel{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
             XrOk(xrReleaseSwapchainImage(xr.swapchain,&rel),"xrReleaseSwapchainImage");
