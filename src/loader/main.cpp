@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include "../common/probe_ipc.h"
+#include "../common/probe_ipc.h"
 
 #include <filesystem>
 #include <iostream>

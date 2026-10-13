@@ -2,6 +2,7 @@
 #include "hooks.h"
 #include "logger.h"
 #include "../common/probe_ipc.h"
+#include "../common/probe_ipc.h"
 
 #include <Windows.h>
 #include <filesystem>
@@ -30,7 +31,10 @@ DWORD WINAPI ProbeThread(void* parameter) {
         m2vr::PublishProbeState(m2vr::ProbeState::Failed, m2vr::ProbeError::LogOpen);
         return 0;
     }
-    m2vr::LogEvent("probe_start");
+    m2vr::LogEvent("probe_start", GetCurrentProcessId());
+    LARGE_INTEGER qpc_frequency{};
+    QueryPerformanceFrequency(&qpc_frequency);
+    m2vr::LogEvent("qpc_frequency", static_cast<std::uint64_t>(qpc_frequency.QuadPart));
 
     HMODULE exe = GetModuleHandleW(nullptr);
     if (!exe) {
@@ -46,6 +50,7 @@ DWORD WINAPI ProbeThread(void* parameter) {
         return 0;
     }
     m2vr::LogEvent("probe_ready");
+    m2vr::PublishProbeState(m2vr::ProbeState::Ready, m2vr::ProbeError::None);
     m2vr::PublishProbeState(m2vr::ProbeState::Ready, m2vr::ProbeError::None);
     return 0;
 }
