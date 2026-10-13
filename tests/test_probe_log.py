@@ -24,15 +24,19 @@ class ProbeLogTests(unittest.TestCase):
             with path.open("w", newline="", encoding="utf-8") as handle:
                 writer = csv.writer(handle)
                 writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
-                writer.writerow([1, 100, 7, "project_in", fbits(1.0), fbits(2.0), fbits(3.0), 0x10F0068])
-                writer.writerow([2, 120, 7, "ffb_in", 0x50, 1, 0, 0])
-                writer.writerow([3, 140, 7, "ffb_in", 0x51, 1, 0x50, 0])
+                writer.writerow([1, 100, 7, "qpc_frequency", 1000000, 0, 0, 0])
+                writer.writerow([2, 110, 7, "project_ctx", 123, 0xB51E, 0x700, 0x10F0068])
+                writer.writerow([3, 120, 7, "project_in", 123, fbits(1.0), fbits(2.0), fbits(3.0)])
+                writer.writerow([4, 130, 7, "ffb_in", 0x50, 1, 0, 0])
+                writer.writerow([5, 140, 7, "ffb_in", 0x51, 1, 0x50, 0])
 
             result = MODULE.analyze(path)
 
         self.assertEqual(result["events"]["project_in"], 1)
         self.assertEqual(result["project"]["x"]["min"], 1.0)
         self.assertEqual(result["active_matrices"]["0x010F0068"], 1)
+        self.assertEqual(result["project_callers"]["0x0000B51E"], 1)
+        self.assertAlmostEqual(result["duration_seconds"], 0.00004)
         self.assertEqual(result["ffb"]["commands"]["0x50"], 1)
         self.assertEqual(result["ffb"]["transitions"]["0x50->0x51"], 1)
 
