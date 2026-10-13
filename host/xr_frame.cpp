@@ -44,6 +44,31 @@ void XrApp::draw_frame(XrTime display_time){
     if(count!=2 || !(state.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) ||
        !(state.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT))
         throw std::runtime_error("HMD eye poses are not valid");
+    if(source_pid_!=0){
+        if(!pose_writer_.Valid())pose_writer_.Create(source_pid_);
+        if(pose_writer_.Valid()){
+            pose::Frame predicted{};
+            predicted.sequence=++predicted_pose_sequence_;
+            predicted.predicted_display_time=display_time;
+            predicted.view_flags=static_cast<std::uint32_t>(state.viewStateFlags);
+            for(std::size_t eye=0;eye<2;++eye){
+                const auto& p=views[eye].pose;
+                auto& dst=predicted.eyes[eye];
+                dst.position_m[0]=p.position.x;
+                dst.position_m[1]=p.position.y;
+                dst.position_m[2]=p.position.z;
+                dst.orientation_xyzw[0]=p.orientation.x;
+                dst.orientation_xyzw[1]=p.orientation.y;
+                dst.orientation_xyzw[2]=p.orientation.z;
+                dst.orientation_xyzw[3]=p.orientation.w;
+                dst.fov_left_right_up_down[0]=views[eye].fov.angleLeft;
+                dst.fov_left_right_up_down[1]=views[eye].fov.angleRight;
+                dst.fov_left_right_up_down[2]=views[eye].fov.angleUp;
+                dst.fov_left_right_up_down[3]=views[eye].fov.angleDown;
+            }
+            pose_writer_.Publish(predicted);
+        }
+    }
     bool incoming_stereo=false;
     if(source_pid_!=0){
         if(!shared_frames_.Valid()) shared_frames_.Open(source_pid_);
