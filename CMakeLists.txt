@@ -61,3 +61,16 @@ install(TARGETS model2vr_probe model2vr_loader
   LIBRARY DESTINATION .
 )
 install(FILES config/model2vr_probe.example.ini DESTINATION .)
+
+
+# Portable stereo math, isolated from the Model2 binary and VR runtime.
+add_library(model2vr_stereo_core STATIC
+  src/vr/stereo_core.cpp
+)
+target_include_directories(model2vr_stereo_core PUBLIC src/vr)
+target_compile_features(model2vr_stereo_core PUBLIC cxx_std_20)
+
+enable_testing()
+add_executable(model2vr_stereo_core_test tests/stereo_core_test.cpp)
+target_link_libraries(model2vr_stereo_core_test PRIVATE model2vr_stereo_core)
+add_test(NAME stereo_geometry_invariants COMMAND model2vr_stereo_core_test)
