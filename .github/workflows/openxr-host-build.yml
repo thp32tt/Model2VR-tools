@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - 'host/**'
+      - 'src/common/stereo_frame_ipc.h'
+      - 'tests/stereo_frame_ipc_test.cpp'
       - '.github/workflows/openxr-host-build.yml'
   workflow_dispatch:
 permissions:
