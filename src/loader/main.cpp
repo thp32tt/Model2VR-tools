@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include "../common/probe_ipc.h"
 
 #include <filesystem>
 #include <iostream>
@@ -6,6 +7,51 @@
 #include <vector>
 
 namespace {
+
+class ProbeHandshake {
+public:
+    explicit ProbeHandshake(DWORD pid) {
+        const auto map_name = m2vr::ProbeObjectName(L"Status", pid);
+        const auto event_name = m2vr::ProbeObjectName(L"Event", pid);
+        mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
+                                      sizeof(m2vr::ProbeShared), map_name.c_str());
+        if (!mapping_) return;
+        state_ = static_cast<m2vr::ProbeShared*>(MapViewOfFile(mapping_, FILE_MAP_WRITE, 0, 0,
+                                                              sizeof(m2vr::ProbeShared)));
+        if (!state_) return;
+        state_->magic = m2vr::kProbeMagic;
+        state_->version = 1;
+        state_->state = static_cast<LONG>(m2vr::ProbeState::Waiting);
+        state_->error = 0;
+        event_ = CreateEventW(nullptr, TRUE, FALSE, event_name.c_str());
+    }
+    ~ProbeHandshake() {
+        if (state_) UnmapViewOfFile(state_);
+        if (mapping_) CloseHandle(mapping_);
+        if (event_) CloseHandle(event_);
+    }
+    ProbeHandshake(const ProbeHandshake&) = delete;
+    ProbeHandshake& operator=(const ProbeHandshake&) = delete;
+    bool valid() const { return state_ && event_; }
+    bool wait_ready() const {
+        if (!valid()) return false;
+        DWORD result = WaitForSingleObject(event_, 15000);
+        if (result != WAIT_OBJECT_0) {
+            std::wcerr << L"Probe initialization timeout/failure: " << result << L"\n";
+            return false;
+        }
+        MemoryBarrier();
+        if (state_->state != static_cast<LONG>(m2vr::ProbeState::Ready)) {
+            std::wcerr << L"Probe initialization rejected, code=" << state_->error << L"\n";
+            return false;
+        }
+        return true;
+    }
+private:
+    HANDLE mapping_ = nullptr;
+    HANDLE event_ = nullptr;
+    m2vr::ProbeShared* state_ = nullptr;
+};
 
 std::wstring QuoteArg(const std::wstring& arg) {
     if (arg.find_first_of(L" \t\"") == std::wstring::npos) {
@@ -70,10 +116,18 @@ bool InjectDll(HANDLE process, const std::filesystem::path& dll) {
                 0,
                 nullptr);
             if (thread) {
-                WaitForSingleObject(thread, 10000);
-                DWORD module_result = 0;
-                if (GetExitCodeThread(thread, &module_result) && module_result != 0) {
-                    ok = true;
+                const DWORD wait = WaitForSingleObject(thread, 10000);
+                if (wait == WAIT_OBJECT_0) {
+                    DWORD exit_code = 0;
+                    if (GetExitCodeThread(thread, &exit_code) &&
+                        exit_code != 0 && exit_code != STILL_ACTIVE)
+                        ok = true;
+                }
+                // Never release the remote parameter buffer while the remote thread
+                // could still be using it. The suspended process is terminated on error.
+                if (wait != WAIT_OBJECT_0) {
+                    CloseHandle(thread);
+                    return false;
                 }
                 CloseHandle(thread);
             }
@@ -137,15 +191,21 @@ int wmain(int argc, wchar_t** argv) {
         return 6;
     }
 
-    if (!InjectDll(pi.hProcess, probe)) {
-        std::wcerr << L"DLL injection failed.\n";
+    ProbeHandshake handshake(pi.dwProcessId);
+    if (!handshake.valid() || !InjectDll(pi.hProcess, probe) || !handshake.wait_ready()) {
+        std::wcerr << L"Probe loading or initialization failed; emulator will not start.\n";
         TerminateProcess(pi.hProcess, 1);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         return 7;
     }
 
-    ResumeThread(pi.hThread);
+    if (ResumeThread(pi.hThread) == DWORD(-1)) {
+        TerminateProcess(pi.hProcess, 1);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return 8;
+    }
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return 0;
