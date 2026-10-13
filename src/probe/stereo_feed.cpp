@@ -2,6 +2,7 @@
 // Only use this callback AFTER a Model 2 render integration produced TWO
 // independently rendered game-eye images. It is not a 2D -> 3D converter.
 #include "../common/stereo_frame_ipc.h"
+#include "../common/stereo_pose_ipc.h"
 #include <Windows.h>
 #include <cstdint>
 #include <mutex>
@@ -37,4 +38,22 @@ extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitStereoRGBA(
     if(!g_initialized)return FALSE;
     return g_writer.Publish(left_rgba,right_rgba,emulated_frame_id,
                             m2vr::transport::FrameKind::GameStereo)?TRUE:FALSE;
+}
+
+// Returns an atomic, coherent *pair* of predicted OpenXR eye views, not two
+// independently sampled poses. Sample once per emulated render frame.
+namespace {
+std::mutex g_pose_mutex;
+m2vr::pose::Link g_pose_reader;
+}
+extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_ReadPredictedEyeViews(
+    m2vr::pose::Frame* output) {
+    if(!output)return FALSE;
+    std::scoped_lock lock(g_pose_mutex);
+    if(!g_pose_reader.Valid() &&
+       !g_pose_reader.Open(GetCurrentProcessId()))return FALSE;
+    m2vr::pose::Frame snapshot{};
+    if(!g_pose_reader.Read(snapshot))return FALSE;
+    *output=snapshot;
+    return TRUE;
 }
