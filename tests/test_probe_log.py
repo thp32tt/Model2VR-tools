@@ -40,6 +40,24 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(result["ffb"]["commands"]["0x50"], 1)
         self.assertEqual(result["ffb"]["transitions"]["0x50->0x51"], 1)
 
+    def test_d3d9_draw_and_native_projection(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "model2.csv"
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
+                writer.writerow([1, 100, 7, "model2_d3d9_frame", 1, 80, 20, 0])
+                writer.writerow([2, 110, 7, "model2_d3d9_draw_sample", 3, 0x0044, 5, 0xBB51E])
+                writer.writerow([3, 120, 7, "project_after", 0x1234, fbits(320.0), fbits(240.0), fbits(8.0)])
+                writer.writerow([4, 130, 7, "model2_d3d9_frame", 2, 70, 30, 0])
+            summary = MODULE.analyze(path)
+        self.assertEqual(summary["d3d9"]["presented_frames"], 2)
+        self.assertEqual(summary["d3d9"]["streamed_draw_calls"], 150)
+        self.assertEqual(summary["d3d9"]["user_pointer_draw_calls"], 50)
+        self.assertEqual(summary["d3d9"]["sampled_callers"]["0x000BB51E"], 1)
+        self.assertEqual(summary["d3d9"]["sampled_depth_and_xyzrhw"]["xyzrhw"], 1)
+        self.assertEqual(summary["native_projected_screen"]["x"]["max"], 320.0)
+
 
 if __name__ == "__main__":
     unittest.main()
