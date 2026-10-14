@@ -24,6 +24,7 @@ std::uint32_t g_exe_size = 0;
 
 std::atomic<std::uint64_t> g_transform_counter{0};
 std::atomic<std::uint64_t> g_project_counter{0};
+thread_local bool g_project_sample_after=false;
 std::atomic<std::uint64_t> g_ffb_counter{0};
 
 extern "C" void* g_original_transform_point = nullptr;
@@ -90,9 +91,8 @@ extern "C" void __cdecl M2VR_OnTransformPoint(void* point, std::uint32_t caller)
 }
 
 extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) {
-    if (!ShouldSample(g_project_counter, g_config.project_sample_every)) {
-        return;
-    }
+    g_project_sample_after=ShouldSample(g_project_counter,g_config.project_sample_every);
+    if (!g_project_sample_after) return;
 
     float x = 0, y = 0, z = 0;
     if (!SafeReadPoint(point, x, y, z)) {
@@ -106,6 +106,27 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
                    ReadStateRva(g_config.geometry_stream_ptr_rva), active_matrix);
     m2vr::LogEvent("project_in", reinterpret_cast<std::uintptr_t>(point),
                    FloatBits(x), FloatBits(y), FloatBits(z));
+}
+
+// Capture the actual Model 2 native post-projection X/Y/depth fields.
+// Called only on the same render thread and paired with project_in by pointer.
+// It never mutates the emulator's live vertex buffers.
+extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* point) {
+    if(!g_project_sample_after)return;
+    g_project_sample_after=false;
+    if(!point){m2vr::LogEvent("project_after_fault");return;}
+    float x=0,y=0,z=0;
+    __try {
+        const auto* bytes=static_cast<const volatile std::uint8_t*>(point);
+        x=*reinterpret_cast<const volatile float*>(bytes+0x18);
+        y=*reinterpret_cast<const volatile float*>(bytes+0x1c);
+        z=*reinterpret_cast<const volatile float*>(bytes+0x20);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        m2vr::LogEvent("project_after_fault",reinterpret_cast<std::uintptr_t>(point));
+        return;
+    }
+    m2vr::LogEvent("project_after",
+        reinterpret_cast<std::uintptr_t>(point),FloatBits(x),FloatBits(y),FloatBits(z));
 }
 
 extern "C" void __cdecl M2VR_OnFfbDispatch(std::uint32_t ecx_value) {
@@ -144,7 +165,17 @@ __declspec(naked) void ProjectVertexDetour() {
         add esp, 8
         popad
         popfd
-        jmp dword ptr [g_original_project_vertex]
+        // Use the relocated original trampoline, then record actual screen
+        // coordinates without changing the model's projection.
+        call dword ptr [g_original_project_vertex]
+        pushfd
+        pushad
+        push eax
+        call M2VR_OnProjectVertexAfter
+        add esp, 4
+        popad
+        popfd
+        ret
     }
 }
 
