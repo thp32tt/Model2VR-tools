@@ -92,3 +92,7 @@ install(TARGETS model2vr_stereo_diagnostic RUNTIME DESTINATION .)
 add_executable(model2vr_pose_ipc_test tests/stereo_pose_ipc_test.cpp)
 target_compile_features(model2vr_pose_ipc_test PRIVATE cxx_std_20)
 add_test(NAME stereo_predicted_pose_ipc COMMAND model2vr_pose_ipc_test)
+
+add_executable(model2_render_policy_test tests/model2_render_policy_test.cpp)
+target_compile_features(model2_render_policy_test PRIVATE cxx_std_20)
+add_test(NAME model2_renderer_stereo_safety COMMAND model2_render_policy_test)
