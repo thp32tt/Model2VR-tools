@@ -198,6 +198,8 @@ bool InstallOne(
 
 namespace m2vr {
 
+bool InstallD3D9ReadOnlyProbe(HMODULE executable,std::uint32_t exe_size);
+
 bool InstallProbeHooks(HMODULE executable, const ProbeConfig& config) {
     g_config = config;
     g_exe_base = reinterpret_cast<std::uint8_t*>(executable);
@@ -236,6 +238,10 @@ bool InstallProbeHooks(HMODULE executable, const ProbeConfig& config) {
              reinterpret_cast<void*>(&FfbDispatchDetour),
              &g_original_ffb_dispatch) &&
          ok;
+
+    if (ok && g_config.d3d9_read_only_probe) {
+        ok = InstallD3D9ReadOnlyProbe(executable,g_exe_size) && ok;
+    }
 
     if (!ok) {
         LogEvent("probe_fail_closed");
