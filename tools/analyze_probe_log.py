@@ -45,6 +45,7 @@ def analyze(path: Path):
     ffb_transitions = Counter()
     transform = {"x": [], "y": [], "z": []}
     project = {"x": [], "y": [], "z": []}
+    project_screen = {"x": [], "y": [], "depth": []}
 
     previous_ffb = None
     first_qpc = None
@@ -81,6 +82,10 @@ def analyze(path: Path):
                 project["x"].append(bits_to_float(a1))
                 project["y"].append(bits_to_float(a2))
                 project["z"].append(bits_to_float(a3))
+            elif event == "project_after":
+                project_screen["x"].append(bits_to_float(a1))
+                project_screen["y"].append(bits_to_float(a2))
+                project_screen["depth"].append(bits_to_float(a3))
             elif event == "model2_d3d9_draw_sample":
                 d3d9_api_samples[str(a0)] += 1
                 d3d9_fvf[f"0x{a1:08X}"] += 1
@@ -109,6 +114,9 @@ def analyze(path: Path):
         "duration_seconds": None if first_qpc is None or not qpc_frequency else (last_qpc-first_qpc)/qpc_frequency,
         "transform": {axis: finite_stats(values) for axis, values in transform.items()},
         "project": {axis: finite_stats(values) for axis, values in project.items()},
+        "native_projected_screen": {
+            axis: finite_stats(values) for axis, values in project_screen.items()
+        },
         "active_matrices": dict(active_matrices.most_common()),
         "project_callers": dict(project_callers.most_common()),
         "geometry_streams": dict(geometry_streams.most_common()),
@@ -152,6 +160,11 @@ def markdown(summary):
                 f"max={stats['max']:.6g} mean={stats['mean']:.6g}"
             )
 
+    lines += ["", "## Native post-projection screen X/Y/depth", ""]
+    for axis, stats in summary.get("native_projected_screen",{}).items():
+        if stats:
+            lines.append(f"- {axis}: n={stats['count']} min={stats['min']:.6g} "
+                         f"max={stats['max']:.6g} mean={stats['mean']:.6g}")
     lines += ["", "## Active matrices", ""]
     for value, count in summary["active_matrices"].items():
         lines.append(f"- {value}: {count}")
