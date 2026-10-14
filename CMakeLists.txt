@@ -96,3 +96,7 @@ add_test(NAME stereo_predicted_pose_ipc COMMAND model2vr_pose_ipc_test)
 add_executable(model2_render_policy_test tests/model2_render_policy_test.cpp)
 target_compile_features(model2_render_policy_test PRIVATE cxx_std_20)
 add_test(NAME model2_renderer_stereo_safety COMMAND model2_render_policy_test)
+
+add_executable(model2_cpu_stereo_test tests/model2_cpu_stereo_test.cpp)
+target_compile_features(model2_cpu_stereo_test PRIVATE cxx_std_20)
+add_test(NAME model2_cpu_eye_projection COMMAND model2_cpu_stereo_test)
