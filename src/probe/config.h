@@ -15,6 +15,7 @@ struct HookSpec {
 
 struct ProbeConfig {
     bool enabled = false;
+    bool d3d9_read_only_probe = false;
     std::filesystem::path log_file;
     std::uint32_t transform_sample_every = 256;
     std::uint32_t project_sample_every = 256;
