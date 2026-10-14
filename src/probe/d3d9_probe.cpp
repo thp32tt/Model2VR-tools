@@ -46,7 +46,12 @@ bool Hook(void* target,void* detour,T& original){
     const MH_STATUS status=MH_CreateHook(target,detour,
         reinterpret_cast<LPVOID*>(&original));
     if(status!=MH_OK)return false;
-    return MH_EnableHook(target)==MH_OK;
+    if(MH_EnableHook(target)!=MH_OK){
+        MH_RemoveHook(target);
+        original=nullptr;
+        return false;
+    }
+    return true;
 }
 std::uint32_t CallerRva(void* ret) {
     const auto raw=reinterpret_cast<std::uintptr_t>(ret);
@@ -111,8 +116,16 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool du=Hook(vtable[83],reinterpret_cast<void*>(&DrawUPHook),g_draw_up);
     const bool iu=Hook(vtable[84],reinterpret_cast<void*>(&IndexedUPHook),g_draw_indexed_up);
     if(!(p&&dp&&di&&du&&iu)){
-        // Never accept a partial installation as "native stereo ready".
-        m2vr::LogEvent("model2_d3d9_partial_hook",p,dp,di,du);
+        // Transactional rollback: partial GPU hooks must never be left armed
+        // after hook setup fails. Keep the emulator's normal render path.
+        if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
+        if(dp){MH_DisableHook(vtable[81]);MH_RemoveHook(vtable[81]);}
+        if(di){MH_DisableHook(vtable[82]);MH_RemoveHook(vtable[82]);}
+        if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
+        if(iu){MH_DisableHook(vtable[84]);MH_RemoveHook(vtable[84]);}
+        g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
+        g_draw_up=nullptr;g_draw_indexed_up=nullptr;
+        m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         return false;
     }
     g_device_installed=true;
