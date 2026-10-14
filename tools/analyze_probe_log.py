@@ -33,6 +33,13 @@ def analyze(path: Path):
     geometry_streams = Counter()
     qpc_frequency = 0
     ffb_duplicates = 0
+    d3d9_api_samples = Counter()
+    d3d9_fvf = Counter()
+    d3d9_callers = Counter()
+    d3d9_depth = Counter()
+    d3d9_up = 0
+    d3d9_buffered = 0
+    d3d9_frames = 0
     ffb_commands = Counter()
     ffb_modes = Counter()
     ffb_transitions = Counter()
@@ -74,6 +81,16 @@ def analyze(path: Path):
                 project["x"].append(bits_to_float(a1))
                 project["y"].append(bits_to_float(a2))
                 project["z"].append(bits_to_float(a3))
+            elif event == "model2_d3d9_draw_sample":
+                d3d9_api_samples[str(a0)] += 1
+                d3d9_fvf[f"0x{a1:08X}"] += 1
+                d3d9_callers[f"0x{a3:08X}"] += 1
+                d3d9_depth["enabled" if a2 & 1 else "disabled"] += 1
+                d3d9_depth["xyzrhw" if a2 & 4 else "not_xyzrhw"] += 1
+            elif event == "model2_d3d9_frame":
+                d3d9_frames += 1
+                d3d9_buffered += a1
+                d3d9_up += a2
             elif event == "ffb_in":
                 ffb_duplicates += int(a3 == 1)
                 command = a0 & 0xFF
@@ -95,6 +112,15 @@ def analyze(path: Path):
         "active_matrices": dict(active_matrices.most_common()),
         "project_callers": dict(project_callers.most_common()),
         "geometry_streams": dict(geometry_streams.most_common()),
+        "d3d9": {
+            "presented_frames": d3d9_frames,
+            "streamed_draw_calls": d3d9_buffered,
+            "user_pointer_draw_calls": d3d9_up,
+            "api_sample_family": dict(d3d9_api_samples.most_common()),
+            "sampled_fvf": dict(d3d9_fvf.most_common()),
+            "sampled_depth_and_xyzrhw": dict(d3d9_depth.most_common()),
+            "sampled_callers": dict(d3d9_callers.most_common()),
+        },
         "ffb": {
             "commands": dict(ffb_commands.most_common()),
             "duplicate_entries": ffb_duplicates,
@@ -130,6 +156,15 @@ def markdown(summary):
     for value, count in summary["active_matrices"].items():
         lines.append(f"- {value}: {count}")
 
+    lines += ["", "## D3D9 renderer real draw-path observations", ""]
+    d3d9 = summary.get("d3d9", {})
+    for k in ("presented_frames","streamed_draw_calls","user_pointer_draw_calls"):
+        lines.append(f"- {k}: {d3d9.get(k, 0)}")
+    lines += ["", "### Sampled vertex format and render-path caller RVAs", ""]
+    for k,v in d3d9.get("sampled_fvf",{}).items():
+        lines.append(f"- FVF {k}: {v}")
+    for k,v in d3d9.get("sampled_callers",{}).items():
+        lines.append(f"- Caller {k}: {v}")
     lines += ["", "## FFB commands", ""]
     for value, count in summary["ffb"]["commands"].items():
         lines.append(f"- {value}: {count}")
