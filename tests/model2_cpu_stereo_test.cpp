@@ -24,15 +24,15 @@ int main(){
     cal.view_to_xr={1,0,0,0,1,0,0,0,-1};
     cal.units_per_meter=1.f;cal.runtime_confirmed=true;
     REQUIRE(ValidCalibration(cal));
-    const auto near=ProjectModel2Stereo(front,xr,cal,pass);
-    REQUIRE(near.stereo&&near.eyes[0].valid&&near.eyes[1].valid);
-    REQUIRE(near.eyes[0].ndc_x>near.eyes[1].ndc_x);
-    REQUIRE(std::abs(near.eyes[0].ndc_x-0.016f)<0.001f);
-    REQUIRE(std::abs(near.eyes[1].ndc_x+0.016f)<0.001f);
-    const auto far=ProjectModel2Stereo(CpuPoint{0,0,100},xr,cal,pass);
-    REQUIRE(far.stereo);
-    REQUIRE(near.eyes[0].ndc_x-near.eyes[1].ndc_x >
-            far.eyes[0].ndc_x-far.eyes[1].ndc_x);
+    const auto nearPair=ProjectModel2Stereo(front,xr,cal,pass);
+    REQUIRE(nearPair.stereo&&nearPair.eyes[0].valid&&nearPair.eyes[1].valid);
+    REQUIRE(nearPair.eyes[0].ndc_x>nearPair.eyes[1].ndc_x);
+    REQUIRE(std::abs(nearPair.eyes[0].ndc_x-0.016f)<0.001f);
+    REQUIRE(std::abs(nearPair.eyes[1].ndc_x+0.016f)<0.001f);
+    const auto farPair=ProjectModel2Stereo(CpuPoint{0,0,100},xr,cal,pass);
+    REQUIRE(farPair.stereo);
+    REQUIRE(nearPair.eyes[0].ndc_x-nearPair.eyes[1].ndc_x >
+            farPair.eyes[0].ndc_x-farPair.eyes[1].ndc_x);
     for(auto kind:{RenderPass::Hud2D,RenderPass::Unknown,RenderPass::Sky,RenderPass::Auxiliary}){
         pass.verified_cpu_pass=kind;
         REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
