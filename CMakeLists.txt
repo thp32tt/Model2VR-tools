@@ -27,6 +27,7 @@ add_library(model2vr_probe SHARED
   src/probe/logger.cpp
   src/probe/signature.cpp
   src/probe/stereo_feed.cpp
+  src/probe/d3d9_probe.cpp
 )
 
 target_include_directories(model2vr_probe PRIVATE src/probe)
