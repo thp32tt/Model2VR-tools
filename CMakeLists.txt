@@ -100,3 +100,7 @@ add_test(NAME model2_renderer_stereo_safety COMMAND model2_render_policy_test)
 add_executable(model2_cpu_stereo_test tests/model2_cpu_stereo_test.cpp)
 target_compile_features(model2_cpu_stereo_test PRIVATE cxx_std_20)
 add_test(NAME model2_cpu_eye_projection COMMAND model2_cpu_stereo_test)
+
+add_executable(model2_stereo_mesh_test tests/model2_stereo_mesh_test.cpp)
+target_compile_features(model2_stereo_mesh_test PRIVATE cxx_std_20)
+add_test(NAME model2_stereo_mesh_transaction COMMAND model2_stereo_mesh_test)
