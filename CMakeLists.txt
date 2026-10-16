@@ -104,3 +104,8 @@ add_test(NAME model2_cpu_eye_projection COMMAND model2_cpu_stereo_test)
 add_executable(model2_stereo_mesh_test tests/model2_stereo_mesh_test.cpp)
 target_compile_features(model2_stereo_mesh_test PRIVATE cxx_std_20)
 add_test(NAME model2_stereo_mesh_transaction COMMAND model2_stereo_mesh_test)
+
+# Coherent one-pose-per-game-frame latch (no emulator execution).
+add_executable(model2_frame_latch_test tests/model2_frame_latch_test.cpp)
+target_compile_features(model2_frame_latch_test PRIVATE cxx_std_20)
+add_test(NAME model2_frame_pose_latch COMMAND model2_frame_latch_test)
