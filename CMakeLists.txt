@@ -109,3 +109,8 @@ add_test(NAME model2_stereo_mesh_transaction COMMAND model2_stereo_mesh_test)
 add_executable(model2_frame_latch_test tests/model2_frame_latch_test.cpp)
 target_compile_features(model2_frame_latch_test PRIVATE cxx_std_20)
 add_test(NAME model2_frame_pose_latch COMMAND model2_frame_latch_test)
+
+# Independently clipped eye draw streams, requiring a single frame pose latch.
+add_executable(model2_eye_clip_test tests/model2_eye_clip_test.cpp)
+target_compile_features(model2_eye_clip_test PRIVATE cxx_std_20)
+add_test(NAME model2_eye_clip_independent_streams COMMAND model2_eye_clip_test)
