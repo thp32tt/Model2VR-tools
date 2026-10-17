@@ -123,7 +123,7 @@ inline bool Normalize(const Vertex& v, double near_depth,
     if (!std::isfinite(x) || !std::isfinite(y) ||
         x < -1.000001 || x > 1.000001 ||
         y < -1.000001 || y > 1.000001 ||
-        v.w > std::numeric_limits<float>::max()) return false;
+        v.w > (std::numeric_limits<float>::max)()) return false;
     out={static_cast<float>(std::clamp(x,-1.,1.)),
          static_cast<float>(std::clamp(y,-1.,1.)),
          static_cast<float>(v.w),true};

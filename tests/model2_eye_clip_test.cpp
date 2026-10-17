@@ -49,8 +49,8 @@ int main() {
  CHECK(output.eyes[0].size()>=1 && output.eyes[1].size()>=1);
  CHECK(Inside(output,cal.min_depth_m));
  // A near-plane crossing is clipped in homogeneous space before division.
- const std::array<CpuPoint,3> near{{{-0.2f,-0.2f,2.f},{0.2f,-0.2f,2.f},{0.f,0.2f,0.01f}}};
- CHECK(BuildClippedStereoBatch(near.data(),near.size(),tri,3,100,latch,cal,world,output));
+ const std::array<CpuPoint,3> near_points{{{-0.2f,-0.2f,2.f},{0.2f,-0.2f,2.f},{0.f,0.2f,0.01f}}};
+ CHECK(BuildClippedStereoBatch(near_points.data(),near_points.size(),tri,3,100,latch,cal,world,output));
  CHECK(!output.eyes[0].empty() && !output.eyes[1].empty());
  CHECK(Inside(output,cal.min_depth_m));
  // A tiny triangle at the left edge can be visible to only one eye.
