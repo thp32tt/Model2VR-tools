@@ -37,6 +37,9 @@ def analyze(path: Path):
     d3d9_fvf = Counter()
     d3d9_callers = Counter()
     d3d9_depth = Counter()
+    d3d9_viewports = Counter()
+    d3d9_scissors = Counter()
+    d3d9_targets = Counter()
     d3d9_up = 0
     d3d9_buffered = 0
     d3d9_frames = 0
@@ -92,6 +95,21 @@ def analyze(path: Path):
                 d3d9_callers[f"0x{a3:08X}"] += 1
                 d3d9_depth["enabled" if a2 & 1 else "disabled"] += 1
                 d3d9_depth["xyzrhw" if a2 & 4 else "not_xyzrhw"] += 1
+            elif event == "model2_d3d9_viewport_sample":
+                width = (a3 >> 32) & 0xFFFFFFFF
+                height = a3 & 0xFFFFFFFF
+                d3d9_viewports[f"0x{a0:08X} @ ({a1},{a2}) {width}x{height}"] += 1
+            elif event == "model2_d3d9_scissor_sample":
+                def signed32(n):
+                    return (n & 0xFFFFFFFF) - (1 << 32) if n & 0x80000000 else n & 0xFFFFFFFF
+                right = signed32(a3 >> 32)
+                bottom = signed32(a3)
+                d3d9_scissors[
+                    f"0x{a0:08X} ({signed32(a1)},{signed32(a2)},{right},{bottom})"
+                ] += 1
+            elif event == "model2_d3d9_target_sample":
+                kind = {0: "unknown", 1: "main_backbuffer", 2: "auxiliary"}.get(a1, "invalid")
+                d3d9_targets[f"0x{a0:08X} {kind} {a2}x{a3}"] += 1
             elif event == "model2_d3d9_frame":
                 d3d9_frames += 1
                 d3d9_buffered += a1
@@ -128,6 +146,9 @@ def analyze(path: Path):
             "sampled_fvf": dict(d3d9_fvf.most_common()),
             "sampled_depth_and_xyzrhw": dict(d3d9_depth.most_common()),
             "sampled_callers": dict(d3d9_callers.most_common()),
+            "sampled_viewports": dict(d3d9_viewports.most_common()),
+            "sampled_scissors": dict(d3d9_scissors.most_common()),
+            "sampled_targets": dict(d3d9_targets.most_common()),
         },
         "ffb": {
             "commands": dict(ffb_commands.most_common()),
@@ -178,7 +199,14 @@ def markdown(summary):
         lines.append(f"- FVF {k}: {v}")
     for k,v in d3d9.get("sampled_callers",{}).items():
         lines.append(f"- Caller {k}: {v}")
-    lines += ["", "## FFB commands", ""]
+    lines += ["", "### Viewport, scissor and render-target samples", ""]
+    for key in ("sampled_viewports", "sampled_scissors", "sampled_targets"):
+        lines.append(f"#### {key}")
+        for sample, count in d3d9.get(key, {}).items():
+            lines.append(f"- {sample}: {count}")
+    lines += ["", "These are passive samples, not proven world/auxiliary classifications.",
+              "Unknown render targets remain unknown; no VR replay is enabled.",
+              "", "## FFB commands", ""]
     for value, count in summary["ffb"]["commands"].items():
         lines.append(f"- {value}: {count}")
 

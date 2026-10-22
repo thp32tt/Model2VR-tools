@@ -76,3 +76,32 @@ Classify which D3D9 Draw family receives world-projected geometry, track
 render targets/depth state in that call path, and bind two different
 transformed vertex streams for GPU-only stereo replay. Pose ID used to
 render each eye must match the host's submitted OpenXR projection layer.
+
+## Port0r v0.2.6 secondary-camera diagnostic reference (2026-10-22)
+
+Port0r's published Quest APK uses MAME (native `libtcvr_mame.so`) and
+OpenXR/Vulkan (`libhello_xr.so`); this project remains an **ElSemi x86
+D3D9 emulator** integration, not a MAME port. Static REA inspection found
+independent immersive/flat paths and separate main/secondary projection
+regions. See the private reference
+`thp32tt/Model2VR-analysis-private/docs/references/PORT0R_RALLY_VR_V026_REA_MODEL2VR_20261021.md`.
+
+The optional read-only D3D9 sample hook now also records:
+- `model2_d3d9_viewport_sample`: caller RVA, origin X/Y, Width/Height
+  packed as two unsigned 32-bit halves;
+- `model2_d3d9_scissor_sample`: caller RVA and a four-edge clip rect,
+  if scissor test is active;
+- `model2_d3d9_target_sample`: caller RVA, 0=unknown,
+  1=main backbuffer, 2=auxiliary render target, target Width/Height.
+
+Sampling is limited to roughly one in 1024 draw calls, with COM
+references released immediately. Failed target/backbuffer comparison
+remains **unknown**, never assumed main or auxiliary. No eye replay, MAME
+shader reuse, emulator simulation, FFB or render-target modifications
+occur. Correlate these records with `project_ctx` and sample caller/frame
+windows to learn which views should stay flat.
+
+The new summary JSON keys `sampled_viewports`, `sampled_scissors`,
+`sampled_targets` and Markdown descriptions are passive statistics,
+not a claimed runtime world/auxiliary classification. M04 still
+requires Daytona and Quest 3 runtime evidence.

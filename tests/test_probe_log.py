@@ -48,8 +48,12 @@ class ProbeLogTests(unittest.TestCase):
                 writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
                 writer.writerow([1, 100, 7, "model2_d3d9_frame", 1, 80, 20, 0])
                 writer.writerow([2, 110, 7, "model2_d3d9_draw_sample", 3, 0x0044, 5, 0xBB51E])
-                writer.writerow([3, 120, 7, "project_after", 0x1234, fbits(320.0), fbits(240.0), fbits(8.0)])
-                writer.writerow([4, 130, 7, "model2_d3d9_frame", 2, 70, 30, 0])
+                writer.writerow([3, 120, 7, "model2_d3d9_viewport_sample", 0xBB51E, 0, 0, (640 << 32) | 480])
+                writer.writerow([4, 125, 7, "model2_d3d9_scissor_sample", 0xBB51E, 5, 7, (630 << 32) | 470])
+                writer.writerow([5, 127, 7, "model2_d3d9_target_sample", 0xBB51E, 2, 512, 512])
+                writer.writerow([6, 129, 7, "model2_d3d9_target_sample", 0xBB51E, 0, 0, 0])
+                writer.writerow([7, 130, 7, "project_after", 0x1234, fbits(320.0), fbits(240.0), fbits(8.0)])
+                writer.writerow([8, 140, 7, "model2_d3d9_frame", 2, 70, 30, 0])
             summary = MODULE.analyze(path)
         self.assertEqual(summary["d3d9"]["presented_frames"], 2)
         self.assertEqual(summary["d3d9"]["streamed_draw_calls"], 150)
@@ -57,6 +61,10 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(summary["d3d9"]["sampled_callers"]["0x000BB51E"], 1)
         self.assertEqual(summary["d3d9"]["sampled_depth_and_xyzrhw"]["xyzrhw"], 1)
         self.assertEqual(summary["native_projected_screen"]["x"]["max"], 320.0)
+        self.assertEqual(summary["d3d9"]["sampled_viewports"]["0x000BB51E @ (0,0) 640x480"], 1)
+        self.assertEqual(summary["d3d9"]["sampled_scissors"]["0x000BB51E (5,7,630,470)"], 1)
+        self.assertEqual(summary["d3d9"]["sampled_targets"]["0x000BB51E auxiliary 512x512"], 1)
+        self.assertEqual(summary["d3d9"]["sampled_targets"]["0x000BB51E unknown 0x0"], 1)
 
 
 if __name__ == "__main__":

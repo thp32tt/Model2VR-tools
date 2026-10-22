@@ -68,9 +68,54 @@ void Sample(IDirect3DDevice9* dev,unsigned family,void* caller){
     if(!ok){m2vr::LogEvent("model2_d3d9_sample_failed",family);return;}
     // A sample shows whether pretransformed (XYZRHW) data dominates.
     // It is NEVER sufficient by itself to classify world geometry.
+    // Port0r's separate secondary projection regions motivate recording
+    // viewport, scissor and target provenance; none alone proves a world pass.
+    DWORD scissor_enabled=0;
+    const bool scissor_state_ok=SUCCEEDED(
+        dev->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor_enabled));
+    D3DVIEWPORT9 viewport{};
+    const bool viewport_ok=SUCCEEDED(dev->GetViewport(&viewport));
+    RECT scissor{};
+    const bool scissor_ok=scissor_state_ok && scissor_enabled &&
+        SUCCEEDED(dev->GetScissorRect(&scissor));
+
+    IDirect3DSurface9* target=nullptr;
+    IDirect3DSurface9* backbuffer=nullptr;
+    const bool target_ok=SUCCEEDED(dev->GetRenderTarget(0,&target)) && target;
+    const bool backbuffer_ok=SUCCEEDED(dev->GetBackBuffer(
+        0,0,D3DBACKBUFFER_TYPE_MONO,&backbuffer)) && backbuffer;
+    D3DSURFACE_DESC desc{};
+    const bool desc_ok=target_ok && SUCCEEDED(target->GetDesc(&desc));
+    // Unknown if either COM query fails; never claim auxiliary without a
+    // known main backbuffer comparison. Release all acquired COM references.
+    const std::uint32_t target_class=target_ok && backbuffer_ok ?
+        (target==backbuffer ? 1u : 2u) : 0u; // unknown/main/aux
+    if(target)target->Release();
+    if(backbuffer)backbuffer->Release();
+
     const std::uint32_t packed=(z?1u:0u)|(alpha?2u:0u)|
-        ((fvf&D3DFVF_POSITION_MASK)==D3DFVF_XYZRHW?4u:0u);
-    m2vr::LogEvent("model2_d3d9_draw_sample",family,fvf,packed,CallerRva(caller));
+        ((fvf&D3DFVF_POSITION_MASK)==D3DFVF_XYZRHW?4u:0u)|
+        (scissor_state_ok && scissor_enabled?8u:0u)|
+        (viewport_ok?16u:0u)|(scissor_ok?32u:0u)|
+        (target_class!=0u?64u:0u)|(target_class==1u?128u:0u);
+    const auto caller_rva=CallerRva(caller);
+    m2vr::LogEvent("model2_d3d9_draw_sample",family,fvf,packed,caller_rva);
+    if(viewport_ok){
+        const std::uint64_t size=(std::uint64_t{viewport.Width}<<32)|
+            std::uint64_t{viewport.Height};
+        m2vr::LogEvent("model2_d3d9_viewport_sample",caller_rva,
+            viewport.X,viewport.Y,size);
+    }
+    if(scissor_ok){
+        const std::uint64_t edges=
+            (std::uint64_t{static_cast<std::uint32_t>(scissor.right)}<<32)|
+            static_cast<std::uint32_t>(scissor.bottom);
+        m2vr::LogEvent("model2_d3d9_scissor_sample",caller_rva,
+            static_cast<std::uint32_t>(scissor.left),
+            static_cast<std::uint32_t>(scissor.top),edges);
+    }
+    m2vr::LogEvent("model2_d3d9_target_sample",caller_rva,target_class,
+        desc_ok?desc.Width:0u,desc_ok?desc.Height:0u);
 }
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     g_draws.fetch_add(1,std::memory_order_relaxed);
