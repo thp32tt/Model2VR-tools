@@ -34,6 +34,10 @@ def analyze(path: Path):
     qpc_frequency = 0
     ffb_duplicates = 0
     d3d9_api_samples = Counter()
+    d3d9_draw_origins = Counter()
+    d3d9_draw_topology = Counter()
+    d3d9_draw_frames = Counter()
+    d3d9_external_origin_samples = 0
     d3d9_fvf = Counter()
     d3d9_callers = Counter()
     d3d9_depth = Counter()
@@ -89,6 +93,18 @@ def analyze(path: Path):
                 project_screen["x"].append(bits_to_float(a1))
                 project_screen["y"].append(bits_to_float(a2))
                 project_screen["depth"].append(bits_to_float(a3))
+            elif event == "model2_d3d9_draw_origin":
+                frame, family, caller = a0, a1, a2
+                # a3 keeps the full unsigned 64-bit (primitive count, topology).
+                topology, primitive_count = a3 & 0xFFFFFFFF, a3 >> 32
+                family_names = {1: "DrawPrimitive", 2: "DrawIndexedPrimitive",
+                                3: "DrawPrimitiveUP", 4: "DrawIndexedPrimitiveUP"}
+                name = family_names.get(family, "Unknown")
+                d3d9_draw_origins[f"{name} caller=0x{caller:08X}"] += 1
+                d3d9_draw_topology[f"{name} type={topology} count={primitive_count}"] += 1
+                d3d9_draw_frames[str(frame)] += 1
+                if caller == 0:
+                    d3d9_external_origin_samples += 1
             elif event == "model2_d3d9_draw_sample":
                 d3d9_api_samples[str(a0)] += 1
                 d3d9_fvf[f"0x{a1:08X}"] += 1
@@ -146,6 +162,10 @@ def analyze(path: Path):
             "sampled_fvf": dict(d3d9_fvf.most_common()),
             "sampled_depth_and_xyzrhw": dict(d3d9_depth.most_common()),
             "sampled_callers": dict(d3d9_callers.most_common()),
+            "draw_origins": dict(d3d9_draw_origins.most_common()),
+            "draw_topology_and_count": dict(d3d9_draw_topology.most_common()),
+            "draw_origin_samples_per_frame": dict(d3d9_draw_frames.most_common()),
+            "external_or_unknown_caller_samples": d3d9_external_origin_samples,
             "sampled_viewports": dict(d3d9_viewports.most_common()),
             "sampled_scissors": dict(d3d9_scissors.most_common()),
             "sampled_targets": dict(d3d9_targets.most_common()),
@@ -199,6 +219,14 @@ def markdown(summary):
         lines.append(f"- FVF {k}: {v}")
     for k,v in d3d9.get("sampled_callers",{}).items():
         lines.append(f"- Caller {k}: {v}")
+    lines += ["", "### Verified API boundaries / observed Draw callers", ""]
+    for key in ("draw_origins", "draw_topology_and_count",
+                "draw_origin_samples_per_frame"):
+        lines.append(f"#### {key}")
+        for sample,count in d3d9.get(key,{}).items():
+            lines.append(f"- {sample}: {count}")
+    lines.append(f"- Outside-EXE or unknown caller samples: "
+                 f"{d3d9.get('external_or_unknown_caller_samples',0)}")
     lines += ["", "### Viewport, scissor and render-target samples", ""]
     for key in ("sampled_viewports", "sampled_scissors", "sampled_targets"):
         lines.append(f"#### {key}")

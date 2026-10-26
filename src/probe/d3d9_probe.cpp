@@ -4,6 +4,7 @@
 #include <MinHook.h>
 #include <intrin.h>
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <mutex>
 
@@ -36,7 +37,9 @@ std::mutex g_setup_mutex;
 std::uintptr_t g_exe_base=0;
 std::uint32_t g_exe_size=0;
 std::atomic<unsigned> g_draws{0},g_indexed{0},g_up{0},g_indexed_up{0};
-std::atomic<unsigned> g_samples{0};
+// Independent draw-family sampling; rare UP paths are not hidden by
+// thousands of indexed world draws. All counters reset each Present.
+std::array<std::atomic<unsigned>,4> g_family_samples{};
 std::atomic<unsigned> g_present_count{0};
 bool g_device_installed=false;
 
@@ -58,9 +61,25 @@ std::uint32_t CallerRva(void* ret) {
     if(raw<g_exe_base || raw-g_exe_base>=g_exe_size)return 0;
     return static_cast<std::uint32_t>(raw-g_exe_base);
 }
-void Sample(IDirect3DDevice9* dev,unsigned family,void* caller){
-    // The hot path only pays the sample counter, not a COM render-state roundtrip.
-    if((g_samples.fetch_add(1,std::memory_order_relaxed)&0x3ffu)!=0)return;
+void Sample(IDirect3DDevice9* dev,unsigned family,
+            D3DPRIMITIVETYPE topology,UINT primitive_count,void* caller){
+    if(family<1u || family>4u)return;
+    // First draw of EACH family for EACH Present is always reported, even if
+    // one geometry family dominates the whole game frame. After the first,
+    // retain the old ~1/1024 query cadence for low probe overhead.
+    const unsigned ordinal=g_family_samples[family-1].fetch_add(
+        1,std::memory_order_relaxed);
+    if(ordinal!=0u && (ordinal&0x3ffu)!=0u)return;
+    const auto caller_rva=CallerRva(caller);
+    const std::uint64_t topology_and_count=
+        (std::uint64_t{primitive_count}<<32)|
+        static_cast<std::uint32_t>(topology);
+    // a0=frame about to Present, a1=draw API family (1..4),
+    // a2=caller RVA (0 means unverified/outside EXE), a3=(count<<32)|type.
+    // It is a caller observation, not world/HUD/mirror classification.
+    m2vr::LogEvent("model2_d3d9_draw_origin",
+        g_present_count.load(std::memory_order_relaxed)+1u,
+        family,caller_rva,topology_and_count);
     DWORD fvf=0,z=0,alpha=0;
     const bool ok=SUCCEEDED(dev->GetFVF(&fvf)) &&
                   SUCCEEDED(dev->GetRenderState(D3DRS_ZENABLE,&z)) &&
@@ -98,7 +117,6 @@ void Sample(IDirect3DDevice9* dev,unsigned family,void* caller){
         (scissor_state_ok && scissor_enabled?8u:0u)|
         (viewport_ok?16u:0u)|(scissor_ok?32u:0u)|
         (target_class!=0u?64u:0u)|(target_class==1u?128u:0u);
-    const auto caller_rva=CallerRva(caller);
     m2vr::LogEvent("model2_d3d9_draw_sample",family,fvf,packed,caller_rva);
     if(viewport_ok){
         const std::uint64_t size=(std::uint64_t{viewport.Width}<<32)|
@@ -119,25 +137,25 @@ void Sample(IDirect3DDevice9* dev,unsigned family,void* caller){
 }
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     g_draws.fetch_add(1,std::memory_order_relaxed);
-    Sample(d,1,_ReturnAddress());
+    Sample(d,1,p,count,_ReturnAddress());
     return g_draw(d,p,start,count);
 }
 HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT base,
                                       UINT min,UINT num,UINT start,UINT count){
     g_indexed.fetch_add(1,std::memory_order_relaxed);
-    Sample(d,2,_ReturnAddress());
+    Sample(d,2,p,count,_ReturnAddress());
     return g_draw_indexed(d,p,base,min,num,start,count);
 }
 HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT count,
                                     const void* verts,UINT stride){
     g_up.fetch_add(1,std::memory_order_relaxed);
-    Sample(d,3,_ReturnAddress());
+    Sample(d,3,p,count,_ReturnAddress());
     return g_draw_up(d,p,count,verts,stride);
 }
 HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
      UINT num,UINT count,const void* idx,D3DFORMAT fmt,const void* verts,UINT stride){
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
-    Sample(d,4,_ReturnAddress());
+    Sample(d,4,p,count,_ReturnAddress());
     return g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
 }
 HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RECT* b,
@@ -146,6 +164,9 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     m2vr::LogEvent("model2_d3d9_frame",frame,
         g_draws.exchange(0)+g_indexed.exchange(0),
         g_up.exchange(0)+g_indexed_up.exchange(0));
+    // Snapshot sampling state belongs to a frame, not a process lifetime.
+    for(auto& counter:g_family_samples)
+        counter.store(0u,std::memory_order_relaxed);
     // Return the original Present result unchanged; no game GPU replay.
     return g_present(d,a,b,w,dirty);
 }

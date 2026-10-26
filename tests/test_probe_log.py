@@ -47,7 +47,9 @@ class ProbeLogTests(unittest.TestCase):
                 writer = csv.writer(handle)
                 writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
                 writer.writerow([1, 100, 7, "model2_d3d9_frame", 1, 80, 20, 0])
-                writer.writerow([2, 110, 7, "model2_d3d9_draw_sample", 3, 0x0044, 5, 0xBB51E])
+                writer.writerow([2, 105, 7, "model2_d3d9_draw_origin", 1, 3, 0xBB51E, (7 << 32) | 4])
+                writer.writerow([3, 107, 7, "model2_d3d9_draw_origin", 1, 4, 0, (2 << 32) | 5])
+                writer.writerow([4, 110, 7, "model2_d3d9_draw_sample", 3, 0x0044, 5, 0xBB51E])
                 writer.writerow([3, 120, 7, "model2_d3d9_viewport_sample", 0xBB51E, 0, 0, (640 << 32) | 480])
                 writer.writerow([4, 125, 7, "model2_d3d9_scissor_sample", 0xBB51E, 5, 7, (630 << 32) | 470])
                 writer.writerow([5, 127, 7, "model2_d3d9_target_sample", 0xBB51E, 2, 512, 512])
@@ -65,6 +67,10 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(summary["d3d9"]["sampled_scissors"]["0x000BB51E (5,7,630,470)"], 1)
         self.assertEqual(summary["d3d9"]["sampled_targets"]["0x000BB51E auxiliary 512x512"], 1)
         self.assertEqual(summary["d3d9"]["sampled_targets"]["0x000BB51E unknown 0x0"], 1)
+        self.assertEqual(summary["d3d9"]["draw_origins"]["DrawPrimitiveUP caller=0x000BB51E"], 1)
+        self.assertEqual(summary["d3d9"]["draw_topology_and_count"]["DrawPrimitiveUP type=4 count=7"], 1)
+        self.assertEqual(summary["d3d9"]["draw_origin_samples_per_frame"]["1"], 2)
+        self.assertEqual(summary["d3d9"]["external_or_unknown_caller_samples"], 1)
 
 
 if __name__ == "__main__":

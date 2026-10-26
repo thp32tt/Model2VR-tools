@@ -105,3 +105,36 @@ The new summary JSON keys `sampled_viewports`, `sampled_scissors`,
 `sampled_targets` and Markdown descriptions are passive statistics,
 not a claimed runtime world/auxiliary classification. M04 still
 requires Daytona and Quest 3 runtime evidence.
+
+## REA x86 projection and Draw-boundary confirmation (2026-10-26)
+
+The 1,924,608-byte authorised original `EMULATOR.EXE` was re-extracted
+privately; SHA-256
+`2abe14866db96f4853b58bfaebc95d803c931a0e5ae33e95758c6b39520bccbc`
+matches the private version gate. REA 6.5.0 / Ghidra 12.1.4 produced
+function pseudocode for `0x004B9B20` (`ProjectVertexToScreen`). It writes
+screen/projection data at float offsets `+0x18`, `+0x1C`, `+0x20`;
+this independently corroborates the existing pre/post CPU probe.
+The EXE imports `Direct3DCreate9`; COM vtable slots 81-84 are the
+documented four D3D9 draw families. **Specific emulator Draw caller RVAs
+and runtime pass ownership are not yet verified**. Do not substitute a
+static source label or unverified call target for an observed runtime draw.
+
+The opt-in passive probe now emits `model2_d3d9_draw_origin` before the
+original Draw call: `a0` = upcoming Present frame ID, `a1` = draw
+family (1:DP, 2:DIP, 3:DPUP, 4:DIPUP), `a2` = EXE caller RVA or zero,
+`a3` = (primitiveCount << 32) | primitiveType. **First draw of each
+family in each frame is always sampled; then every 1024th per family.**
+This fixes starvation of rare UP/fallback families by the previous
+global sampling counter. Separate per-family summaries help identify
+the first genuine Draw callsite without changing render outputs.
+The analyzer adds `draw_origins`, `draw_topology_and_count`,
+`draw_origin_samples_per_frame`, and
+`external_or_unknown_caller_samples`. A zero RVA means the caller is
+outside the authenticated EXE, not that it can be classified as HUD.
+
+Runtime test remains essential: Daytona attract/menu/race, compare
+caller RVAs with CPU `project_ctx` events and target/viewport/depth
+samples, identify world vs tile/HUD/secondary camera, then permit
+verified game-owned world draws only. **No stereo GPU replay or
+game executable binary patch has been enabled.**
