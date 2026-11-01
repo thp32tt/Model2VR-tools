@@ -72,6 +72,35 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(summary["d3d9"]["draw_origin_samples_per_frame"]["1"], 2)
         self.assertEqual(summary["d3d9"]["external_or_unknown_caller_samples"], 1)
 
+    def test_up_witness_correlates_only_prior_same_thread_coordinates(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "up.csv"
+            def pack(a, b):
+                return (fbits(a) << 32) | fbits(b)
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
+                writer.writerow([1, 100, 3, "qpc_frequency", 1000000, 0, 0, 0])
+                writer.writerow([2, 200, 3, "project_ctx", 0x300, 0xB51E, 0x700, 0x10F0068])
+                writer.writerow([3, 210, 3, "project_after", 0x300, fbits(320.), fbits(240.), fbits(1.)])
+                writer.writerow([4, 220, 3, "model2_d3d9_up_meta", 55, 1, 0xB8F0, (3 << 32) | 28])
+                writer.writerow([5, 230, 3, "model2_d3d9_up_vertex", 55, 0,
+                                 pack(320., 240.), pack(0.5, 1.)])
+                writer.writerow([6, 240, 4, "model2_d3d9_up_vertex", 55, 1,
+                                 pack(320., 240.), pack(0.5, 1.)])
+                writer.writerow([7, 250, 3, "model2_d3d9_up_vertex", 55, 2,
+                                 pack(355., 255.), pack(0.5, 1.)])
+            d3d9 = MODULE.analyze(path)["d3d9"]
+        self.assertEqual(d3d9["up_xyzw_witnesses"]["family=3 caller=0x0000B8F0 stride=28"], 3)
+        counts = d3d9["up_cpu_projection_candidate_counts"]
+        self.assertEqual(counts["exact_coordinate_candidate"], 1)
+        self.assertEqual(counts["no_coordinate_candidate"], 2)
+        self.assertEqual(len(d3d9["up_cpu_projection_candidates"]), 1)
+        match = d3d9["up_cpu_projection_candidates"][0]
+        self.assertEqual(match["draw_caller_rva"], "0x0000B8F0")
+        self.assertEqual(match["cpu_project_caller_rva"], "0x0000B51E")
+        self.assertEqual(match["confidence"], "candidate_only_not_world_proof")
+
 
 if __name__ == "__main__":
     unittest.main()

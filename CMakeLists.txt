@@ -114,3 +114,9 @@ add_test(NAME model2_frame_pose_latch COMMAND model2_frame_latch_test)
 add_executable(model2_eye_clip_test tests/model2_eye_clip_test.cpp)
 target_compile_features(model2_eye_clip_test PRIVATE cxx_std_20)
 add_test(NAME model2_eye_clip_independent_streams COMMAND model2_eye_clip_test)
+
+
+# Read-only, allocation-free UP vertex witness parser; no emulator runtime.
+add_executable(model2_up_witness_test tests/model2_up_witness_test.cpp)
+target_compile_features(model2_up_witness_test PRIVATE cxx_std_20)
+add_test(NAME model2_bounded_up_vertex_witness COMMAND model2_up_witness_test)

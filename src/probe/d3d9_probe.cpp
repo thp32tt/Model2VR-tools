@@ -1,4 +1,5 @@
 #include "logger.h"
+#include "draw_up_witness.hpp"
 #include <Windows.h>
 #include <d3d9.h>
 #include <MinHook.h>
@@ -6,6 +7,7 @@
 #include <atomic>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 
 // Passive Direct3D9 command-boundary instrumentation. This deliberately DOES
@@ -41,6 +43,7 @@ std::atomic<unsigned> g_draws{0},g_indexed{0},g_up{0},g_indexed_up{0};
 // thousands of indexed world draws. All counters reset each Present.
 std::array<std::atomic<unsigned>,4> g_family_samples{};
 std::atomic<unsigned> g_present_count{0};
+std::atomic<std::uint64_t> g_witness_serial{0};
 bool g_device_installed=false;
 
 template<class T>
@@ -61,15 +64,15 @@ std::uint32_t CallerRva(void* ret) {
     if(raw<g_exe_base || raw-g_exe_base>=g_exe_size)return 0;
     return static_cast<std::uint32_t>(raw-g_exe_base);
 }
-void Sample(IDirect3DDevice9* dev,unsigned family,
+bool Sample(IDirect3DDevice9* dev,unsigned family,
             D3DPRIMITIVETYPE topology,UINT primitive_count,void* caller){
-    if(family<1u || family>4u)return;
+    if(family<1u || family>4u)return false;
     // First draw of EACH family for EACH Present is always reported, even if
     // one geometry family dominates the whole game frame. After the first,
     // retain the old ~1/1024 query cadence for low probe overhead.
     const unsigned ordinal=g_family_samples[family-1].fetch_add(
         1,std::memory_order_relaxed);
-    if(ordinal!=0u && (ordinal&0x3ffu)!=0u)return;
+    if(ordinal!=0u && (ordinal&0x3ffu)!=0u)return false;
     const auto caller_rva=CallerRva(caller);
     const std::uint64_t topology_and_count=
         (std::uint64_t{primitive_count}<<32)|
@@ -84,7 +87,7 @@ void Sample(IDirect3DDevice9* dev,unsigned family,
     const bool ok=SUCCEEDED(dev->GetFVF(&fvf)) &&
                   SUCCEEDED(dev->GetRenderState(D3DRS_ZENABLE,&z)) &&
                   SUCCEEDED(dev->GetRenderState(D3DRS_ALPHABLENDENABLE,&alpha));
-    if(!ok){m2vr::LogEvent("model2_d3d9_sample_failed",family);return;}
+    if(!ok){m2vr::LogEvent("model2_d3d9_sample_failed",family);return true;}
     // A sample shows whether pretransformed (XYZRHW) data dominates.
     // It is NEVER sufficient by itself to classify world geometry.
     // Port0r's separate secondary projection regions motivate recording
@@ -134,6 +137,80 @@ void Sample(IDirect3DDevice9* dev,unsigned family,
     }
     m2vr::LogEvent("model2_d3d9_target_sample",caller_rva,target_class,
         desc_ok?desc.Width:0u,desc_ok?desc.Height:0u);
+    return true;
+}
+
+// Read at most 16 guarded bytes at a time from game-owned UP pointers.
+// The small SEH helper contains no C++ objects requiring unwinding.
+bool SafeReadBytes(const void* source,std::size_t offset,
+                   void* destination,std::size_t size) noexcept {
+    if(!source||!destination||!size||size>16u||offset>65536u)return false;
+    const auto* p=static_cast<const volatile std::uint8_t*>(source);
+    auto* out=static_cast<std::uint8_t*>(destination);
+    __try {
+        for(std::size_t j=0;j<size;++j)out[j]=p[offset+j];
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+    return true;
+}
+
+void ObserveUP(IDirect3DDevice9* dev,unsigned family,
+               D3DPRIMITIVETYPE type,UINT primitive_count,void* caller,
+               const void* vertices,UINT stride,const void* indices=nullptr,
+               D3DFORMAT index_format=D3DFMT_UNKNOWN,UINT first=0,
+               UINT vertex_count=0) {
+    using namespace m2vr::drawprobe;
+    const auto elements=PrimitiveElements(
+        static_cast<std::uint32_t>(type),primitive_count);
+    if(!dev||!vertices||!ValidStride(stride)||!elements)return;
+    DWORD fvf=0;
+    if(FAILED(dev->GetFVF(&fvf)) ||
+       (fvf&D3DFVF_POSITION_MASK)!=D3DFVF_XYZRHW)return;
+
+    // For indexed UP the vertex base is only unambiguous at index zero.
+    // Skip all other layouts rather than risk a false draw association.
+    if(family==4u && (!indices||first!=0u||!vertex_count||
+       vertex_count>65536u ||
+       (index_format!=D3DFMT_INDEX16 &&
+        index_format!=D3DFMT_INDEX32)))return;
+
+    struct Observation {std::uint32_t index=0; VertexWitness vertex{};};
+    std::array<Observation,MaxVertices> observations{};
+    const unsigned count=elements<MaxVertices?elements:MaxVertices;
+    for(unsigned i=0;i<count;++i){
+        std::uint32_t index=i;
+        if(family==4u){
+            std::array<std::uint8_t,4> bytes{};
+            const unsigned width=index_format==D3DFMT_INDEX16?2u:4u;
+            if(!SafeReadBytes(indices,std::size_t{i}*width,
+                              bytes.data(),width))return;
+            if(width==2u){
+                std::uint16_t short_index=0;
+                std::memcpy(&short_index,bytes.data(),2u);
+                index=short_index;
+            }else{
+                std::memcpy(&index,bytes.data(),4u);
+            }
+            if(index>=vertex_count)return;
+        }
+        std::array<std::uint32_t,4> bits{};
+        if(!SafeReadBytes(vertices,std::size_t{index}*stride,
+                          bits.data(),sizeof(bits)) ||
+           !DecodeXYZRHW(bits,observations[i].vertex))return;
+        observations[i].index=index;
+    }
+
+    const auto sample_id=g_witness_serial.fetch_add(
+        1u,std::memory_order_relaxed)+1u;
+    m2vr::LogEvent("model2_d3d9_up_meta",sample_id,
+        g_present_count.load(std::memory_order_relaxed)+1u,
+        CallerRva(caller),(std::uint64_t{family}<<32)|stride);
+    for(unsigned i=0;i<count;++i){
+        const auto& v=observations[i].vertex;
+        m2vr::LogEvent("model2_d3d9_up_vertex",sample_id,
+            observations[i].index,PackPair(v.x,v.y),PackPair(v.z,v.rhw));
+    }
 }
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     g_draws.fetch_add(1,std::memory_order_relaxed);
@@ -149,13 +226,17 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
 HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT count,
                                     const void* verts,UINT stride){
     g_up.fetch_add(1,std::memory_order_relaxed);
-    Sample(d,3,p,count,_ReturnAddress());
+    void* caller=_ReturnAddress();
+    if(Sample(d,3,p,count,caller))
+        ObserveUP(d,3,p,count,caller,verts,stride);
     return g_draw_up(d,p,count,verts,stride);
 }
 HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
      UINT num,UINT count,const void* idx,D3DFORMAT fmt,const void* verts,UINT stride){
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
-    Sample(d,4,p,count,_ReturnAddress());
+    void* caller=_ReturnAddress();
+    if(Sample(d,4,p,count,caller))
+        ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num);
     return g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
 }
 HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RECT* b,

@@ -138,3 +138,42 @@ caller RVAs with CPU `project_ctx` events and target/viewport/depth
 samples, identify world vs tile/HUD/secondary camera, then permit
 verified game-owned world draws only. **No stereo GPU replay or
 game executable binary patch has been enabled.**
+
+## OutRun VR geometry provenance transferred to Model 2 (2026-11-02)
+
+Reviewed OutRun2006Tweaks \`vr-d3d9ex-focus\` code in
+\`src/vr/d3d9/vr_pass_policy.hpp\`,
+\`src/vr/d3d9/stereo_renderer_r33.cpp\`, and
+\`src/vr/d3d9/r30_indexed_up_bounds.hpp\`. Model 2 performs CPU geometry
+projection before D3D9 submission, so OutRun shader WVP injection cannot
+be copied. The transferable contract is: verify the game's actual
+3D world provenance before eye translation; preserve HUD, unknown and
+auxiliary draws; bound indexed-UP accesses; simulate the game and FFB
+once per frame.
+
+The optional read-only Model2VR D3D9 probe now captures a bounded
+**actual draw-submitted XYZRHW vertex witness** from
+\`DrawPrimitiveUP\` and conservative zero-based
+\`DrawIndexedPrimitiveUP\`. It never reads arbitrary whole meshes:
+no more than the first three referenced vertices, no more than 16
+game-memory bytes per guarded read, stride 16–256 bytes, no buffer locks,
+and no rendering changes. Invalid indices, inaccessible pointers,
+unsupported FVF/stride, or nonfinite coordinates fail closed.
+
+Two new event families share a unique capture ID:
+- \`model2_d3d9_up_meta\`: (ID, upcoming frame, caller RVA,
+  (draw-family << 32) | stride)
+- \`model2_d3d9_up_vertex\`: (ID, source vertex index,
+  packed float32 X/Y, packed float32 Z/RHW).
+
+\`tools/analyze_probe_log.py\` cross-checks these witness XY coordinates
+against the preceding CPU \`project_ctx/project_after\` results on the
+same thread, within a 200ms QPC window and 0.25px per axis. Returned
+\`up_cpu_projection_candidates\` are **diagnostic candidates only**.
+Matching XY does not independently establish that a Draw is world
+geometry; unmatched samples may be due to reformatting or buffered
+D3D9 Draw paths. No automatic stereo replay has been enabled.
+
+Native Daytona + Quest 3 runtime validation remains UNTESTED. This
+milestone is C++ source, unit tests and synthetic/static CI evidence,
+not a demonstrated playable headset build.
