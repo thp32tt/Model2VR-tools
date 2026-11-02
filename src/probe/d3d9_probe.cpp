@@ -24,6 +24,7 @@ using CreateDeviceFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3D9*,UINT,D3DDEVTYPE,HWND,DWORD,D3DPRESENT_PARAMETERS*,IDirect3DDevice9**);
 using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,CONST RECT*,CONST RECT*,HWND,CONST RGNDATA*);
+using ResetFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRESENT_PARAMETERS*);
 using PrimitiveFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,UINT);
 using IndexedFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,D3DPRIMITIVETYPE,INT,UINT,UINT,UINT,UINT);
@@ -35,6 +36,7 @@ using IndexedUPFn=HRESULT (STDMETHODCALLTYPE*)(
 Create9Fn g_create9=nullptr;
 CreateDeviceFn g_create_device=nullptr;
 PresentFn g_present=nullptr;
+ResetFn g_reset=nullptr;
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -559,6 +561,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Return the original Present result unchanged; no game GPU replay.
     return g_present(d,a,b,w,dirty);
 }
+HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
+                                     D3DPRESENT_PARAMETERS* pp){
+    if(g_native_stereo)m2vr::daytona::ResetResources();
+    return g_reset(d,pp);
+}
 bool HookDevice(IDirect3DDevice9* dev){
     if(!dev)return false;
     std::lock_guard lock(g_setup_mutex);
@@ -570,7 +577,9 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool di=Hook(vtable[82],reinterpret_cast<void*>(&IndexedHook),g_draw_indexed);
     const bool du=Hook(vtable[83],reinterpret_cast<void*>(&DrawUPHook),g_draw_up);
     const bool iu=Hook(vtable[84],reinterpret_cast<void*>(&IndexedUPHook),g_draw_indexed_up);
-    if(!(p&&dp&&di&&du&&iu)){
+    const bool reset=!g_native_stereo ||
+        Hook(vtable[16],reinterpret_cast<void*>(&ResetHook),g_reset);
+    if(!(p&&dp&&di&&du&&iu&&reset)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -578,7 +587,9 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(di){MH_DisableHook(vtable[82]);MH_RemoveHook(vtable[82]);}
         if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
         if(iu){MH_DisableHook(vtable[84]);MH_RemoveHook(vtable[84]);}
+        if(g_native_stereo&&reset){MH_DisableHook(vtable[16]);MH_RemoveHook(vtable[16]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
+        g_reset=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         return false;
