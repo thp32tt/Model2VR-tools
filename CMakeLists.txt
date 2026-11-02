@@ -162,6 +162,12 @@ add_executable(model2_texture_sampler_test tests/model2_texture_sampler_test.cpp
 target_compile_features(model2_texture_sampler_test PRIVATE cxx_std_20)
 target_compile_definitions(model2_texture_sampler_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME model2_native_d3d9_texture_sampler COMMAND model2_texture_sampler_test)
+# Original D3D9 raster-state parity: per-eye CW/CCW culling, LESS/LEQUAL
+# depth tie-break and ZWRITE control with source-state fail-closed admission.
+add_executable(model2_d3d9_depth_cull_test tests/model2_d3d9_depth_cull_test.cpp)
+target_compile_features(model2_d3d9_depth_cull_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_d3d9_depth_cull_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME model2_native_d3d9_depth_cull_occlusion COMMAND model2_d3d9_depth_cull_test)
 
 
 # Read-only, allocation-free UP vertex witness parser; no emulator runtime.
