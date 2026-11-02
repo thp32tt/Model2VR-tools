@@ -1,0 +1,109 @@
+name: Daytona native stereo Win32 producer and Win64 Quest OpenXR release
+
+on:
+  push:
+    paths:
+      - 'src/probe/daytona_native_stereo.*'
+      - 'src/probe/d3d9_probe.cpp'
+      - 'src/probe/config.*'
+      - 'src/probe/hooks_x86.cpp'
+      - 'src/loader/main.cpp'
+      - 'src/common/**'
+      - 'host/**'
+      - 'CMakeLists.txt'
+      - 'config/daytona_native_stereo.ini'
+      - 'scripts/Run-Daytona-NativeStereo.cmd'
+      - 'tests/test_daytona_native_stereo.py'
+      - '.github/workflows/daytona-native-stereo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  game-win32:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate original-game and FFB-safe stereo integration
+        run: python -m unittest discover -s tests -p test_daytona_native_stereo.py -v
+      - name: Configure original game x86 hook
+        run: cmake -S . -B build-game -A Win32
+      - name: Build original game hook/loader
+        run: cmake --build build-game --config Release --parallel
+      - name: Execute native game source contract tests
+        run: ctest --test-dir build-game -C Release --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daytona-game-x86
+          path: |
+            build-game/Release/Model2VRProbe.dll
+            build-game/Release/Model2VRLoader.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  xr-win64:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure XR D3D11 stereo host x64
+        run: cmake -S host -B build-xr -A x64
+      - name: Build OpenXR game stereo host
+        run: cmake --build build-xr --config Release --parallel
+      - name: Verify x86/x64 shared stereo and pose contracts
+        run: ctest --test-dir build-xr -C Release --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daytona-xr-x64
+          path: build-xr/Release/Model2VROpenXRHost.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  bundle:
+    needs: [game-win32, xr-win64]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: daytona-game-x86
+          path: from-game
+      - uses: actions/download-artifact@v4
+        with:
+          name: daytona-xr-x64
+          path: from-xr
+      - name: Stage user-ready single package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          New-Item -ItemType Directory -Force -Path stage | Out-Null
+          Copy-Item from-game/Model2VRProbe.dll stage/
+          Copy-Item from-game/Model2VRLoader.exe stage/
+          Copy-Item from-xr/Model2VROpenXRHost.exe stage/
+          Copy-Item config/daytona_native_stereo.ini stage/
+          Copy-Item scripts/Run-Daytona-NativeStereo.cmd stage/
+          Copy-Item docs/DAYTONA_NATIVE_STEREO.md stage/README-KO.md
+          $components=@(
+            @("stage/Model2VRProbe.dll",0x14c),
+            @("stage/Model2VRLoader.exe",0x14c),
+            @("stage/Model2VROpenXRHost.exe",0x8664))
+          foreach($c in $components) {
+            $bytes=[IO.File]::ReadAllBytes((Resolve-Path $c[0]))
+            if($bytes.Length -lt 128 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {throw "Not an executable: $($c[0])"}
+            $pe=[BitConverter]::ToInt32($bytes,0x3c)
+            if($pe -lt 64 -or $pe -gt ($bytes.Length-8)) {throw "Invalid PE: $($c[0])"}
+            $machine=[BitConverter]::ToUInt16($bytes,$pe+4)
+            if($machine -ne $c[1]) {throw "Wrong PE architecture: $($c[0]) / $machine"}
+          }
+          Get-ChildItem stage -File | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object {"$($_.Hash)  $([IO.Path]::GetFileName($_.Path))"} |
+            Out-File -Encoding ascii stage/SHA256_MANIFEST.txt
+          Compress-Archive -Path stage/* -DestinationPath DaytonaUSA_NativeStereo_Quest3_Experimental.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DaytonaUSA-NativeStereo-Quest3-Win32-Win64
+          path: DaytonaUSA_NativeStereo_Quest3_Experimental.zip
+          if-no-files-found: error
+          retention-days: 14
