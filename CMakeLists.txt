@@ -29,6 +29,7 @@ add_library(model2vr_probe SHARED
   src/probe/stereo_feed.cpp
   src/probe/verified_world_bridge.cpp
   src/probe/d3d9_up_material_bridge.cpp
+  src/probe/d3d9_vb_material_bridge.cpp
   src/probe/d3d9_probe.cpp
 )
 
@@ -167,6 +168,11 @@ add_executable(model2_d3d9_world_source_test tests/model2_d3d9_world_source_test
 target_compile_features(model2_d3d9_world_source_test PRIVATE cxx_std_20)
 add_test(NAME model2_real_d3d9_world_up_source_layout
     COMMAND model2_d3d9_world_source_test)
+# Exact D3D9 DrawPrimitive/DrawIndexedPrimitive source VB/IB index remapping.
+add_executable(model2_d3d9_vb_window_test tests/model2_d3d9_vb_window_test.cpp)
+target_compile_features(model2_d3d9_vb_window_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_d3d9_vb_window_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME model2_real_d3d9_vb_ib_source_window COMMAND model2_d3d9_vb_window_test)
 
 
 # Original Generic DD Model 2 emulator binding key contract (no SDL or FFB).
