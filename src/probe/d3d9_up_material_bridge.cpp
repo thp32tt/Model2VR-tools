@@ -84,9 +84,19 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
     const bool have_main=SUCCEEDED(d->GetBackBuffer(
         0,0,D3DBACKBUFFER_TYPE_MONO,&main))&&main;
     const bool same=have_current&&have_main&&current==main;
+    D3DSURFACE_DESC backbuffer_desc{};
+    D3DVIEWPORT9 viewport{};
+    DWORD scissor_enabled=1u;
+    const bool full_view=same &&
+        SUCCEEDED(main->GetDesc(&backbuffer_desc)) &&
+        SUCCEEDED(d->GetViewport(&viewport)) &&
+        SUCCEEDED(d->GetRenderState(D3DRS_SCISSORTESTENABLE,
+                                    &scissor_enabled)) &&
+        m2vr::drawprobe::FullBackbufferViewport(
+            scissor_enabled,viewport,backbuffer_desc);
     if(current)current->Release();
     if(main)main->Release();
-    return same;
+    return full_view;
 }
 } // namespace
 
