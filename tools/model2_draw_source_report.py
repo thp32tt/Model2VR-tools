@@ -20,6 +20,7 @@ NAMES = {
     "model2_d3d9_vb_draw_args", "model2_d3d9_ib_source",
     "model2_d3d9_vb_camera", "model2_d3d9_vb_camera_unknown",
     "model2_d3d9_vb_texture",
+    "model2_d3d9_vb_sampler", "model2_d3d9_vb_alpha",
 }
 
 def number(raw):
@@ -72,6 +73,10 @@ def audit_csv(path):
                 fields["index"] = values
             elif event == "model2_d3d9_vb_texture":
                 fields["texture"] = values
+            elif event == "model2_d3d9_vb_sampler":
+                fields["sampler"] = values
+            elif event == "model2_d3d9_vb_alpha":
+                fields["alpha"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -81,7 +86,9 @@ def audit_csv(path):
         "observations": 0, "vb_byte_sizes": set(), "strides": set(),
         "fvf": set(), "texture_formats": set(), "texture_sizes": set(),
         "index_formats": set(), "writeonly_vb_seen": False,
-        "has_camera_matrix": False, "candidate_only": True,
+        "has_camera_matrix": False,
+        "sampler_modes": set(), "alpha_test_modes": set(),
+        "candidate_only": True,
         "world_pass_proven": False
     })
     for data in witnesses.values():
@@ -111,6 +118,17 @@ def audit_csv(path):
             entry["index_formats"].add(fmt)
         if "camera" in data:
             entry["has_camera_matrix"] = True
+        if "sampler" in data:
+            addresses, filters, mip_srgb = data["sampler"]
+            au, av = halves(addresses)
+            minimum, magnify = halves(filters)
+            mip, srgb = halves(mip_srgb)
+            entry["sampler_modes"].add(
+                (au, av, minimum, magnify, mip, srgb))
+        if "alpha" in data:
+            alpha_mode, ref, _ = data["alpha"]
+            enabled, func = halves(alpha_mode)
+            entry["alpha_test_modes"].add((enabled, func, ref))
         if "texture" in data:
             fmt, width, height = data["texture"]
             entry["texture_formats"].add(fmt)
