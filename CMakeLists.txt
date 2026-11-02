@@ -91,6 +91,15 @@ install(TARGETS model2vr_probe model2vr_loader
   LIBRARY DESTINATION .
 )
 install(FILES config/model2vr_probe.example.ini DESTINATION .)
+# Opt-in Daytona USA desktop 2D source-probe bundle. The launcher copies
+# the read-only config to model2vr_probe.ini when the user runs this test.
+# Never ship the emulator, ROM, original FFB plugin or user traces.
+install(FILES
+  config/daytona_2d_probe.ini
+  scripts/Run-Daytona2D-Probe.cmd
+  docs/DAYTONA_2D_PROBE_GUIDE.md
+  DESTINATION .
+)
 
 
 # Portable stereo math, isolated from the Model2 binary and VR runtime.
