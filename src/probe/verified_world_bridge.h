@@ -52,6 +52,22 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWit
     unsigned int texture_width, unsigned int texture_height,
     unsigned int texture_pitch, unsigned int alpha_cutoff,
     unsigned int filter_mode, unsigned int address_u, unsigned int address_v);
+/* Source D3D9 raster states (verified material bridge only):
+   cull_mode: 0=NONE, 1=cull CW, 2=cull CCW (per-eye screen pixels).
+   depth_mode: 0=LESS, 1=LESS_EQUAL. depth_write: 0/1.
+   These arguments are only trusted when a separately authenticated
+   gameplay world pass is active; no automatic D3D9 Draw hooking. */
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
+    const float* view_space_xyz, const float* interleaved_uv,
+    unsigned int vertex_count,
+    const std::uint32_t* triangle_indices, unsigned int index_count,
+    const unsigned char* texture_rgba,
+    unsigned int texture_width, unsigned int texture_height,
+    unsigned int texture_pitch, unsigned int alpha_cutoff,
+    unsigned int filter_mode, unsigned int address_u, unsigned int address_v,
+    unsigned int cull_mode, unsigned int depth_mode,
+    unsigned int depth_write);
+
 
 // Reads *actual* fixed-function D3D9 UP XYZ+TEX1 source vertices,
 // original D3DTS_WORLD/VIEW transforms and stage-0 CPU-lockable texture.
