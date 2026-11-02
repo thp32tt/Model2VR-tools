@@ -4,6 +4,7 @@
 // from FVF, never hooks automatically and never touches simulation or FFB.
 #include "verified_world_bridge.h"
 #include "d3d9_texture_snapshot.hpp"
+#include "d3d9_sampler_states.hpp"
 #include <Windows.h>
 #include <d3d9.h>
 #include <cstdint>
@@ -16,7 +17,8 @@ bool GuardCopy(void* dst,const void* src,std::size_t size) noexcept {
     __try { std::memcpy(dst,src,size);return true; }
     __except(EXCEPTION_EXECUTE_HANDLER){return false;}
 }
-bool FixedFunctionMaterial(IDirect3DDevice9* d) {
+bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
+                           m2vr::vr::SamplerPolicy& sampler) {
     if(!d)return false;
     IDirect3DVertexShader9* vs=nullptr;
     if(FAILED(d->GetVertexShader(&vs)))return false;
@@ -41,14 +43,27 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d) {
        colorop!=D3DTOP_SELECTARG1 || arg!=D3DTA_TEXTURE ||
        alphaop!=D3DTOP_SELECTARG1 || alphaarg!=D3DTA_TEXTURE)return false;
     DWORD address_u=0,address_v=0,min_filter=0,mag_filter=0,mip_filter=0;
+    DWORD srgb_texture=0,alpha_test=0,alpha_ref=0,alpha_func=0;
+    DWORD stage1_colorop=0,texcoord_index=0,transform_flags=0;
     if(FAILED(d->GetSamplerState(0,D3DSAMP_ADDRESSU,&address_u)) ||
        FAILED(d->GetSamplerState(0,D3DSAMP_ADDRESSV,&address_v)) ||
        FAILED(d->GetSamplerState(0,D3DSAMP_MINFILTER,&min_filter)) ||
        FAILED(d->GetSamplerState(0,D3DSAMP_MAGFILTER,&mag_filter)) ||
        FAILED(d->GetSamplerState(0,D3DSAMP_MIPFILTER,&mip_filter)) ||
-       address_u!=D3DTADDRESS_CLAMP || address_v!=D3DTADDRESS_CLAMP ||
-       min_filter!=D3DTEXF_POINT || mag_filter!=D3DTEXF_POINT ||
-       mip_filter!=D3DTEXF_NONE)return false;
+       FAILED(d->GetSamplerState(0,D3DSAMP_SRGBTEXTURE,&srgb_texture)) ||
+       FAILED(d->GetRenderState(D3DRS_ALPHATESTENABLE,&alpha_test)) ||
+       FAILED(d->GetRenderState(D3DRS_ALPHAREF,&alpha_ref)) ||
+       FAILED(d->GetRenderState(D3DRS_ALPHAFUNC,&alpha_func)) ||
+       FAILED(d->GetTextureStageState(1,D3DTSS_COLOROP,&stage1_colorop)) ||
+       FAILED(d->GetTextureStageState(0,D3DTSS_TEXCOORDINDEX,&texcoord_index)) ||
+       FAILED(d->GetTextureStageState(0,D3DTSS_TEXTURETRANSFORMFLAGS,
+                                     &transform_flags)) ||
+       stage1_colorop!=D3DTOP_DISABLE ||
+       texcoord_index!=0u || transform_flags!=D3DTTFF_DISABLE ||
+       !m2vr::drawprobe::DecodeSamplerPolicy(address_u,address_v,
+            min_filter,mag_filter,mip_filter,srgb_texture,sampler) ||
+       !m2vr::drawprobe::AlphaCutoffMatches(
+            alpha_test,alpha_func,alpha_ref,cutoff))return false;
     IDirect3DSurface9* current=nullptr;
     IDirect3DSurface9* main=nullptr;
     const bool have_current=SUCCEEDED(d->GetRenderTarget(0,&current))&&current;
@@ -66,10 +81,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     unsigned int stride, const std::uint32_t* triangle_indices,
     unsigned int index_count,unsigned int alpha_cutoff) {
     auto* d=static_cast<IDirect3DDevice9*>(device);
+    m2vr::vr::SamplerPolicy sampler{};
     if(!d || !source || !triangle_indices ||
        !count || count>2048 || !index_count ||
        index_count%3 || index_count>6144u || alpha_cutoff>255u ||
-       !FixedFunctionMaterial(d))return FALSE;
+       !FixedFunctionMaterial(d,alpha_cutoff,sampler))return FALSE;
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)))return FALSE;
     const auto layout=m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride);
@@ -106,8 +122,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
             return FALSE;
     }catch(...){return FALSE;}
     // No second haptic owner, no duplicated emulator CPU draw or state.
-    return Model2VR_AppendVerifiedTexturedTriangles(
+    return Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
         positions.data(),uv.data(),count,safe_indices.data(),index_count,
         texture.rgba.data(),texture.width,texture.height,texture.width*4u,
-        alpha_cutoff);
+        alpha_cutoff,
+        static_cast<unsigned int>(sampler.filter),
+        static_cast<unsigned int>(sampler.u),
+        static_cast<unsigned int>(sampler.v));
 }
