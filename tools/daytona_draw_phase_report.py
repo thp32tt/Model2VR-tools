@@ -9,11 +9,25 @@ import argparse
 from collections import Counter, defaultdict
 import csv
 import json
+import math
+import struct
 from pathlib import Path
 
 MAX_ROWS = 2_000_000
 REQUIRED = {"thread", "event", "a0", "a1", "a2", "a3"}
 UINT64_MAX = 2**64-1
+
+def unpack2(packed):
+    return (struct.unpack("<f",struct.pack("<I",(packed>>32)&0xffffffff))[0],
+            struct.unpack("<f",struct.pack("<I",packed&0xffffffff))[0])
+
+def bounded_float_ranges(rows):
+    if not rows:
+        return {}
+    return {axis:{"min":round(min(v[i] for v in rows),6),
+                  "max":round(max(v[i] for v in rows),6)}
+            for i,axis in enumerate(("x","y","z","w","u","v"))}
+
 
 def number(s):
     v = int(s, 10)
@@ -33,6 +47,9 @@ def analyze(path):
     per_frame_draws=[]
     up_layouts={}
     up_elements=defaultdict(list)
+    source_positions={}
+    position_vertices=defaultdict(dict)
+    position_uv=defaultdict(dict)
     with Path(path).open(encoding="utf-8-sig",newline="") as handle:
         reader=csv.DictReader(handle)
         if not REQUIRED.issubset(reader.fieldnames or []):
@@ -47,7 +64,10 @@ def analyze(path):
                              "model2_d3d9_frame",
                              "model2_d3d9_draw_interval",
                              "model2_d3d9_up_layout",
-                             "model2_d3d9_up_decl_element"):
+                             "model2_d3d9_up_decl_element",
+                             "model2_d3d9_up_position_source",
+                             "model2_d3d9_up_position",
+                             "model2_d3d9_up_uv"):
                 continue
             try:
                 a0,a1,a2,a3=(number(row[x]) for x in
@@ -55,7 +75,21 @@ def analyze(path):
             except (TypeError,ValueError) as exc:
                 raise ValueError(f"invalid row {count}") from exc
             thread=row["thread"]
-            if event=="model2_d3d9_draw_interval":
+            if event=="model2_d3d9_up_position_source":
+                if a0 and a0 not in source_positions and a3==3:
+                    source_positions[a0]=a1
+            elif event=="model2_d3d9_up_position":
+                if a0 in source_positions and a1<=2:
+                    xy=unpack2(a2)
+                    zw=unpack2(a3)
+                    if all(map(math.isfinite,xy+zw)):
+                        position_vertices[a0][a1]=xy+zw
+            elif event=="model2_d3d9_up_uv":
+                if a0 in source_positions and a1<=2:
+                    uv=unpack2(a2)
+                    if all(map(math.isfinite,uv)):
+                        position_uv[a0][a1]=uv
+            elif event=="model2_d3d9_draw_interval":
                 frequency=a0
             elif event=="model2_d3d9_up_layout":
                 if a0==0 or a0 in up_layouts:
@@ -114,6 +148,12 @@ def analyze(path):
         sequence=tuple(e[1:] for e in sorted(elements))
         modes[key][(stride,vs,ps,count)]+=1
         signatures[key][sequence]+=1
+    per_caller_vertex=defaultdict(list)
+    for wid,caller in source_positions.items():
+        if set(position_vertices[wid])=={0,1,2} and set(position_uv[wid])=={0,1,2}:
+            for i in range(3):
+                per_caller_vertex[(3,caller)].append(
+                    position_vertices[wid][i]+position_uv[wid][i])
     sources=[]
     for (family,caller),value in sorted(callers.items(),
           key=lambda it:(-it[1]["draw_samples"],it[0])):
@@ -125,6 +165,9 @@ def analyze(path):
             "unknown_ordinal_samples":value["unknown_ordinal_samples"],
             "topologies":dict(value["topologies"].most_common()),
             "source_layout_witnesses":sum(modes[(family,caller)].values()),
+            "typed_source_vertices":len(per_caller_vertex[(family,caller)]),
+            "typed_position_uv_ranges":bounded_float_ranges(
+                per_caller_vertex[(family,caller)]),
             "shader_presence": [
                 {"stride":key[0],"vertex_shader":key[1],
                  "pixel_shader":key[2],"element_count":key[3],
@@ -136,7 +179,7 @@ def analyze(path):
                 for signature,n in signatures[(family,caller)].most_common(8)],
         })
     return {
-        "schema":2,"capture_kind":"original_2d_d3d9_com_draw_source",
+        "schema":3,"capture_kind":"original_2d_d3d9_com_draw_source",
         "HUD_WORLD_PROOF":"NOT_ESTABLISHED",
         "sample_interval":frequency or "LEGACY_UNSPECIFIED",
         "presented_frames":frames,
