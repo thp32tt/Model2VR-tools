@@ -2,6 +2,7 @@
 // The already-installed Generic DD FFB Arcade Plugin remains sole FFB owner.
 // Native desktop control surface; XR-rendered UI is a separate milestone.
 #include <Windows.h>
+#include "binding_editor.hpp"
 #include <filesystem>
 #include <array>
 #include <string>
@@ -9,7 +10,7 @@
 #include <cwctype>
 
 namespace {
-constexpr int kHotkey=1, kSave=900, kReload=901, kBindings=902, kClose=903;
+constexpr int kHotkey=1, kSave=900, kReload=901, kBindings=902, kClose=903, kOfficialGui=904;
 constexpr int kFirstEdit=100;
 struct Option {
     const wchar_t* section;
@@ -155,9 +156,9 @@ LRESULT CALLBACK WindowProc(HWND h,UINT msg,WPARAM w,LPARAM l){
                 0,453,y+3,90,24,0);
         }
         add(L"BUTTON",L"Save FFB settings",BS_PUSHBUTTON,18,504,162,32,kSave);
-        add(L"BUTTON",L"Wheel / key bindings...",BS_PUSHBUTTON,190,504,183,32,kBindings);
-        add(L"BUTTON",L"Reload",BS_PUSHBUTTON,383,504,78,32,kReload);
-        add(L"BUTTON",L"Hide",BS_PUSHBUTTON,470,504,72,32,kClose);
+        add(L"BUTTON",L"Edit wheel/buttons",BS_PUSHBUTTON,190,504,153,32,kBindings);
+        add(L"BUTTON",L"Official GUI",BS_PUSHBUTTON,352,504,100,32,kOfficialGui);
+        add(L"BUTTON",L"Hide",BS_PUSHBUTTON,463,504,78,32,kClose);
         status_label=add(L"STATIC",L"",0,18,548,550,44,0);
         LoadValues();return 0;
     }
@@ -165,7 +166,8 @@ LRESULT CALLBACK WindowProc(HWND h,UINT msg,WPARAM w,LPARAM l){
         switch(LOWORD(w)){
         case kSave:SaveValues();return 0;
         case kReload:LoadValues();return 0;
-        case kBindings:LaunchBindingEditor();return 0;
+        case kBindings:m2vr::ffbui::ShowBindingEditor(h,ini_path,game_dir);return 0;
+        case kOfficialGui:LaunchBindingEditor();return 0;
         case kClose:ShowWindow(h,SW_HIDE);return 0;
         default:break;
         }break;

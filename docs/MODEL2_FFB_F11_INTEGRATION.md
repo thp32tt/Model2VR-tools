@@ -20,9 +20,19 @@ allows the FFB plugin's own focus watchdog to release torque.
   gains, build and reversal rates, per-effect direction inversion, focus
   safety and command lease. Values are validated before saving.
 - `InputDeviceWheelEnable` enables the plugin's own wheel/pedal/button input
-  support. **Wheel/key bindings...** launches the official
-  `FFBPluginGUI.exe` already provided in the plugin's full Model 2 package.
-  Steering, pedals, shifting, Start and game buttons are mapped in that GUI.
+  support. **Edit wheel/buttons** opens the new Model2VR native F11 numeric
+  binding editor using actual Generic DD v2 `[Settings]` keys from
+  Daytona/Sega Rally/Indy 500 source: steering/accelerator/brake axes,
+  pedal inversion and combination, deadzones, Start, shifts, camera views,
+  coins, service, test and exit. Each edited value is validated before any
+  change is written; a timestamped `.bindings-*.bak` of the existing INI
+  is required before saving. Restart the emulator to consistently apply
+  mappings; the plugin itself still owns input and FFB.
+- **Official GUI** launches the separate GPLv3 `FFBPluginGUI.exe` for
+  keyboard-name bindings, device GUID selection, second devices and advanced
+  setup. The new Model2VR editor changes numeric SDL indices only; it does
+  **not** claim to auto-detect a wheel button yet or directly alter running
+  device input. No second SDL/DirectInput/FFB owner is opened.
 - Save modifies only the matching keys in the existing `FFBPlugin.ini`
   and preserves the rest of the user's file. Relaunch the emulator after
   changing plugin FFB controls, since several plugin values are cached.

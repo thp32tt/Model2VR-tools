@@ -51,6 +51,7 @@ add_executable(model2vr_loader
 # distributed Generic DD plugin; never link a second haptic backend here.
 add_executable(model2vr_ffb_control_panel WIN32
   src/ffb/control_panel.cpp
+  src/ffb/binding_editor.cpp
 )
 target_compile_features(model2vr_ffb_control_panel PRIVATE cxx_std_20)
 target_compile_definitions(model2vr_ffb_control_panel PRIVATE
@@ -136,3 +137,8 @@ add_test(NAME model2_eye_clip_independent_streams COMMAND model2_eye_clip_test)
 add_executable(model2_up_witness_test tests/model2_up_witness_test.cpp)
 target_compile_features(model2_up_witness_test PRIVATE cxx_std_20)
 add_test(NAME model2_bounded_up_vertex_witness COMMAND model2_up_witness_test)
+
+# Original Generic DD Model 2 emulator binding key contract (no SDL or FFB).
+add_executable(model2_ffb_binding_contract_test tests/ffb_binding_contract_test.cpp)
+target_compile_features(model2_ffb_binding_contract_test PRIVATE cxx_std_20)
+add_test(NAME model2_real_ffb_ini_bindings COMMAND model2_ffb_binding_contract_test)
