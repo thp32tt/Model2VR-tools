@@ -5,9 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
-#define CHECK(expr) do {if(!(expr)){std::fprintf(stderr,
-    "stereo render state failure line %d: %s\n",__LINE__,#expr);return 1;}}
-    while(0)
+#define CHECK(expr) do {if(!(expr)){std::fprintf(stderr,"stereo render state failure line %d: %s\\n",__LINE__,#expr);return 1;}} while(0)
 using namespace m2vr::vr;
 namespace {
 std::uint32_t Center(const StereoWorldRaster& surface,int eye) {
