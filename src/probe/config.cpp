@@ -125,6 +125,11 @@ bool LoadProbeConfig(const std::filesystem::path& path, ProbeConfig& out, std::w
 
     out.enabled = ParseBool(ReadIniString(L"probe", L"enabled", L"0", path));
     out.d3d9_read_only_probe = ParseBool(ReadIniString(L"probe", L"d3d9_read_only_probe", L"0", path));
+    // Cap overhead in long Daytona racing sessions; default retains the
+    // original 1/1024 capture, while diagnostic opt-in uses 1/128.
+    out.d3d9_draw_sample_every = std::clamp<std::uint32_t>(
+        ReadU32(L"probe", L"d3d9_draw_sample_every", 1024, path),
+        64u, 4096u);
     out.transform_sample_every = std::max<std::uint32_t>(
         1, ReadU32(L"probe", L"transform_sample_every", 256, path));
     out.project_sample_every = std::max<std::uint32_t>(
