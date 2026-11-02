@@ -156,6 +156,12 @@ add_test(NAME model2_native_opaque_stereo_raster COMMAND model2_stereo_raster_te
 add_executable(model2_textured_stereo_test tests/model2_textured_stereo_test.cpp)
 target_compile_features(model2_textured_stereo_test PRIVATE cxx_std_20)
 add_test(NAME model2_native_textured_stereo_raster COMMAND model2_textured_stereo_test)
+# Source D3D9 POINT/LINEAR + CLAMP/WRAP sampling, bilinear alpha and
+# fail-closed fixed-function state mapping (independent of HMD/runtime).
+add_executable(model2_texture_sampler_test tests/model2_texture_sampler_test.cpp)
+target_compile_features(model2_texture_sampler_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_texture_sampler_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME model2_native_d3d9_texture_sampler COMMAND model2_texture_sampler_test)
 
 
 # Read-only, allocation-free UP vertex witness parser; no emulator runtime.
