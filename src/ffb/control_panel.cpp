@@ -35,6 +35,7 @@ std::array<Option,14> options{{
     {L"Model2Modern",L"CommandLeaseMs",L"Torque lease (ms)",180,40,1000},
 }};
 HWND window=nullptr, status_label=nullptr;
+bool hotkey_registered=false;
 std::filesystem::path game_dir, ini_path;
 DWORD emulator_pid=0;
 HANDLE emulator_process=nullptr;
@@ -107,6 +108,19 @@ bool EmulatorForeground(){
     if(foreground)GetWindowThreadProcessId(foreground,&pid);
     return pid==emulator_pid;
 }
+// Register F11 only while the emulator or its companion menu has focus.
+// A process-wide/global F11 grab in other apps would be an OS input bug.
+void UpdateHotkey(){
+    const bool panel_focused=IsWindowVisible(window) &&
+        GetForegroundWindow()==window;
+    const bool allowed=EmulatorForeground() || panel_focused;
+    if(allowed && !hotkey_registered)
+        hotkey_registered=RegisterHotKey(nullptr,kHotkey,MOD_NOREPEAT,VK_F11)!=FALSE;
+    else if(!allowed && hotkey_registered){
+        UnregisterHotKey(nullptr,kHotkey);
+        hotkey_registered=false;
+    }
+}
 void Toggle(){
     if(IsWindowVisible(window)){
         ShowWindow(window,SW_HIDE);
@@ -157,8 +171,10 @@ LRESULT CALLBACK WindowProc(HWND h,UINT msg,WPARAM w,LPARAM l){
         }break;
     case WM_CLOSE:ShowWindow(h,SW_HIDE);return 0;
     case WM_TIMER:
-        if(emulator_process && WaitForSingleObject(emulator_process,0)==WAIT_OBJECT_0)
-            DestroyWindow(h);
+        if(emulator_process && WaitForSingleObject(emulator_process,0)==WAIT_OBJECT_0){
+            DestroyWindow(h);return 0;
+        }
+        UpdateHotkey();
         return 0;
     case WM_DESTROY:PostQuitMessage(0);return 0;
     }
@@ -192,14 +208,11 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int){
             WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,
             CW_USEDEFAULT,CW_USEDEFAULT,570,655,nullptr,nullptr,instance,nullptr);
     if(!window)return 5;
-    // When a game binds F11 itself, fail instead of intercepting gameplay
-    // via a low-level keyboard hook. Window is still usable if shown manually.
-    const bool shortcut=RegisterHotKey(nullptr,kHotkey,MOD_NOREPEAT,VK_F11)!=FALSE;
-    if(!shortcut){
-        ShowWindow(window,SW_SHOWNORMAL);
-        Status(L"F11 is unavailable; this panel is still usable.");
-    }
-    if(emulator_process)SetTimer(window,1,500,nullptr);
+    // Never capture F11 globally while other applications are foreground.
+    // The panel can be opened manually if another program reserves F11.
+    if(!emulator_pid)ShowWindow(window,SW_SHOWNORMAL);
+    SetTimer(window,1,125,nullptr);
+    UpdateHotkey();
     MSG msg{};
     while(GetMessageW(&msg,nullptr,0,0)>0){
         if(msg.message==WM_HOTKEY&&msg.wParam==kHotkey){
@@ -208,7 +221,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int){
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    if(shortcut)UnregisterHotKey(nullptr,kHotkey);
+    if(hotkey_registered)UnregisterHotKey(nullptr,kHotkey);
     if(emulator_process)CloseHandle(emulator_process);
     return 0;
 }

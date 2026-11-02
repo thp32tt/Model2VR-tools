@@ -31,8 +31,32 @@ allows the FFB plugin's own focus watchdog to release torque.
   in-headset wheel-button/axis assignment is not implemented. The native
   panel is designed as an interim step until Model2VR emits real stereo
   geometry and has its own HUD compositor.
-- If F11 is unavailable, the panel opens as a normal window. It avoids
-  injecting a second keyboard hook into the emulator.
+- If F11 is reserved by another application, open Model2VRControlPanel.exe
+  manually from the Model2VR installation directory. The F11 hotkey is
+  registered only while the emulator or control panel is foreground; no
+  low-level keyboard hook is installed.
+
+## One-package installer and collision handling
+
+The integrated package is produced by
+`.github/workflows/model2-ffb-bundle.yml` on Windows and includes two
+distinct subdirectories: `VR/` (MIT Model2VR loader/probe/F11 companion)
+and `FFB/` (a separately built GPL-3.0 Generic DD v2 backend, official
+GUI, SDL2 runtime, license and presets). It also contains the installer:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install-Model2VR-FFB.ps1 -EmulatorExe "C:\Model2\emulator_multicpu.exe"
+```
+
+Installer defaults to **refusing any existing FFB input DLL/config files**.
+Only choose `-ReplaceExisting` after reviewing existing wrappers; it
+creates a timestamped backup of existing FFB files before replacement.
+Use one `dinput8.dll` (the Generic DD v2 one) next to the emulator.
+Do not put a second `dinput8.dll` inside the VR folder.
+The upstream source revision is pinned to
+`thp32tt/FFBArcadePlugin-moza-r3@b562a8ee79b6b7b4b0d46fbc6e9bdb24d6132d86`
+and the GUI baseline to official FFB Arcade Plugin 2.0.0.53.
+Never claim runtime FFB is working based only on package unit tests.
 
 ## Installation and sole-owner constraints
 

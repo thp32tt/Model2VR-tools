@@ -1,0 +1,107 @@
+name: Model2VR + Generic DD v2 integrated Win32 package
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/model2-ffb-bundle.yml'
+      - 'scripts/Install-Model2VR-FFB.ps1'
+      - 'tools/assemble_model2_ffb.py'
+      - 'src/ffb/**'
+      - 'src/loader/main.cpp'
+      - 'CMakeLists.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  combined:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Model2VR
+        uses: actions/checkout@v4
+        with:
+          path: vr
+
+      - name: Checkout known Generic DD v2 source
+        uses: actions/checkout@v4
+        with:
+          repository: thp32tt/FFBArcadePlugin-moza-r3
+          ref: b562a8ee79b6b7b4b0d46fbc6e9bdb24d6132d86
+          path: ffb-src
+
+      - name: Validate FFB bundle compatibility and safety
+        shell: pwsh
+        run: |
+          python -m unittest discover -s vr/tests -p test_ffb_bundle.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'FFB installer and archive tests failed' }
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+
+      - name: Build, test and stage Model2VR Win32
+        shell: pwsh
+        run: |
+          cmake -S vr -B vr/build -A Win32 "-DCMAKE_INSTALL_PREFIX=$env:GITHUB_WORKSPACE/bundle/VR"
+          if ($LASTEXITCODE -ne 0) { throw 'Model2VR configure failed' }
+          cmake --build vr/build --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Model2VR build failed' }
+          ctest --test-dir vr/build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Model2VR tests failed' }
+          cmake --install vr/build --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'Model2VR stage failed' }
+          Copy-Item vr/config/model2vr_probe.example.ini bundle/VR/model2vr_probe.ini
+          Copy-Item vr/LICENSE bundle/VR/LICENSE-Model2VR-MIT.txt
+          Copy-Item vr/docs/MODEL2_FFB_F11_INTEGRATION.md bundle/VR/README-FFB-F11.md
+
+      - name: Restore and patch Generic DD v2 source
+        shell: pwsh
+        working-directory: ffb-src
+        run: |
+          nuget restore Dinput8Wrapper.sln -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet restore failed' }
+          $projectPath = 'Dinput8Wrapper.vcxproj'
+          $project = Get-Content $projectPath -Raw
+          if ($project -notmatch 'Game Files\\Cars\.cpp') {
+            $needle = '    <ClCompile Include="Game Files\CrazyTaxi.cpp" />'
+            $extra = '    <ClCompile Include="Game Files\Cars.cpp" />'
+            if (-not $project.Contains($needle)) { throw 'Upstream Cars.cpp marker missing' }
+            $project = $project.Replace($needle, $needle+[Environment]::NewLine+$extra)
+            [System.IO.File]::WriteAllText((Resolve-Path $projectPath), $project)
+          }
+
+      - name: Build the single Generic DD v2 FFB backend
+        shell: pwsh
+        working-directory: ffb-src
+        run: |
+          msbuild Dinput8Wrapper.sln /m /p:Configuration=Release /p:Platform=x86 /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Generic DD x86 plugin build failed' }
+
+      - name: Obtain pinned official GUI/runtime baseline
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/Boomslangnz/FFBArcadePlugin/releases/download/2.0.0.53/FFB.Arcade.Plugin.v2.0.0.53.zip'
+          curl.exe -L --fail --retry 3 -o official-model2-ffb.zip $url
+          if ($LASTEXITCODE -ne 0) { throw 'Official upstream GUI distribution unavailable' }
+
+      - name: Assemble compatible Model 2 FFB files
+        shell: pwsh
+        run: |
+          python vr/tools/assemble_model2_ffb.py --official-zip official-model2-ffb.zip --ffb-source ffb-src --destination bundle/FFB
+          if ($LASTEXITCODE -ne 0) { throw 'Model 2 FFB packaging contract failed' }
+          Copy-Item vr/scripts/Install-Model2VR-FFB.ps1 bundle/Install-Model2VR-FFB.ps1
+
+      - name: Archive and upload distribution
+        shell: pwsh
+        run: |
+          Compress-Archive -Path bundle/* -DestinationPath Model2VR-GenericDDv2-F11-Win32.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Model2VR-GenericDDv2-F11-Win32
+          path: Model2VR-GenericDDv2-F11-Win32.zip
+          if-no-files-found: error
+          retention-days: 14
