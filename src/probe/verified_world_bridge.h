@@ -51,6 +51,21 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     unsigned int vertex_count, unsigned int stride_bytes,
     const std::uint32_t* triangle_indices, unsigned int index_count,
     unsigned int alpha_cutoff);
+// Source-backed VB/IB companions for a trusted world-pass adapter.
+// Both accept only actual D3DPT_TRIANGLELIST source calls and use CPU-
+// readable, non-WRITEONLY stream-0 FVF XYZ/TEX1 buffers. They do not
+// independently assert the verified-world proof or hook GPU draws.
+// Mirrors DrawPrimitive(StartVertex, PrimitiveCount).
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTextured(
+    void* d3d9_device, unsigned int start_vertex,
+    unsigned int primitive_count, unsigned int alpha_cutoff);
+// Mirrors DrawIndexedPrimitive(BaseVertexIndex, MinVertexIndex,
+// NumVertices, StartIndex, PrimitiveCount).
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTextured(
+    void* d3d9_device, int base_vertex_index,
+    unsigned int min_vertex_index, unsigned int num_vertices,
+    unsigned int start_index, unsigned int primitive_count,
+    unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 __declspec(dllexport) void __stdcall Model2VR_AbortVerifiedWorldFrame();
 }
