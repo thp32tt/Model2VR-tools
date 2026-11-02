@@ -5,6 +5,7 @@
 // world draw plus real game view-space vertices and calibrated axes.
 #include "model2_eye_clip.hpp"
 #include "model2_textured_stereo.hpp"
+#include "model2_texture_sampler.hpp"
 #include "../common/stereo_frame_ipc.h"
 #include <algorithm>
 #include <array>
@@ -64,6 +65,7 @@ public:
         const std::uint8_t* rgba=nullptr;
         std::uint32_t width=0,height=0,stride=0;
         std::uint8_t alpha_cutoff=128;
+        SamplerPolicy sampler{};
     };
     // Fully clipped and validated beforehand; no half-eye write on a bad
     // texture, stale frame, invalid UV, or unsupported mixed pass.
@@ -73,6 +75,7 @@ public:
         if(!texture.rgba || !texture.width || !texture.height ||
            texture.width>1024 || texture.height>1024 ||
            texture.stride!=texture.width*4u ||
+           !ValidSampler(texture.sampler) ||
            batch.game_frame==0 || batch.pose_sequence==0)
             return false;
         for(const auto& eye:batch.eyes){
@@ -198,23 +201,19 @@ private:
                 const double tex_v=(a*v_over_z[0]+b*v_over_z[1]+
                                     c*v_over_z[2])/inv;
                 if(!std::isfinite(u)||!std::isfinite(tex_v))continue;
-                const double clamped_u=(std::clamp)(u,0.0,1.0);
-                const double clamped_v=(std::clamp)(tex_v,0.0,1.0);
-                const auto sx=(std::min)(texture.width-1u,
-                     static_cast<std::uint32_t>(clamped_u*texture.width));
-                const auto sy=(std::min)(texture.height-1u,
-                     static_cast<std::uint32_t>(clamped_v*texture.height));
-                const auto tex_index=
-                     std::size_t(sy)*texture.stride+std::size_t(sx)*4u;
-                const auto* texel=texture.rgba+tex_index;
-                // Transparent texture cutouts must not occlude geometry.
-                if(texel[3]<texture.alpha_cutoff)continue;
+                SampledRGBA texel{};
+                if(!SampleTextureRGBA(texture.rgba,texture.width,
+                     texture.height,texture.stride,u,tex_v,
+                     texture.sampler,texel))continue;
+                // Bilinear alpha is filtered BEFORE the alpha cutoff,
+                // mirroring the fixed-function texture sample pipeline.
+                if(texel.a<texture.alpha_cutoff)continue;
                 const auto pixel=offset*4u;
                 depth_[eye][offset]=static_cast<float>(z);
                 auto& color=color_[eye];
-                color[pixel]=texel[0];
-                color[pixel+1]=texel[1];
-                color[pixel+2]=texel[2];
+                color[pixel]=texel.r;
+                color[pixel+1]=texel.g;
+                color[pixel+2]=texel.b;
                 color[pixel+3]=255u;
                 ++pixels_;
             }
