@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <limits>
+#include <utility>
 #include <vector>
 
 namespace m2vr::drawprobe {
@@ -49,8 +49,8 @@ inline bool RemapIndexedTriangleList(
         const std::int64_t vertex=std::int64_t(base_vertex)+index;
         if(vertex<0 || vertex>UINT32_MAX)return false;
         const auto actual=static_cast<std::uint32_t>(vertex);
-        low=std::min(low,actual);
-        high=std::max(high,actual);
+        if(actual<low)low=actual;
+        if(actual>high)high=actual;
         absolute.push_back(actual);
     }
     const auto span=std::uint64_t(high)-low+1u;
