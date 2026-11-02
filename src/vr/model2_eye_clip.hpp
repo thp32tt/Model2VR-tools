@@ -15,6 +15,7 @@
 namespace m2vr::vr {
 struct ClippedEyeTriangle {
     std::array<EyeProjection, 3> vertices{};
+    std::uint32_t source_triangle=0; // 1-to-many clipping retains source color
 };
 struct ClippedStereoBatch {
     std::array<std::vector<ClippedEyeTriangle>, 2> eyes{};
@@ -166,6 +167,7 @@ inline bool BuildClippedStereoBatch(
                 return false;
             for (std::size_t j=1;j+1<count;++j) {
                 ClippedEyeTriangle triangle{};
+                triangle.source_triangle=static_cast<std::uint32_t>(i/3);
                 if (!clip_detail::Normalize(polygon[0],cal.min_depth_m,triangle.vertices[0]) ||
                     !clip_detail::Normalize(polygon[j],cal.min_depth_m,triangle.vertices[1]) ||
                     !clip_detail::Normalize(polygon[j+1],cal.min_depth_m,triangle.vertices[2]))

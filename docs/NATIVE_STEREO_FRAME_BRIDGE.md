@@ -138,3 +138,58 @@ not a native Model2 polygon renderer. Source images remain diagnostic
 until the binary-specific world camera projection and game draw
 classification gates are verified. Quest 3/VDXR hardware runtime is
 `UNTESTED`.
+
+## Experimental world-triangle → independent eye RGBA8 renderer (2026-11-02)
+
+This step adds real **CPU-side independent rasterization** for supplied
+and already-calibrated Model 2 view-space world geometry; it does **not**
+automatically infer world geometry from arbitrary D3D9 calls. Integration
+work remains to connect verified original game polygon buffers to this API.
+
+Implementation:
+- `src/vr/model2_stereo_raster.hpp`: two separate 1024×1024 RGBA8 color
+  targets and per-eye floating-point depth buffers; perspective-correct
+  reciprocal-depth interpolation, near/side frustum clipping through the
+  existing `BuildClippedStereoBatch`, opaque RGB source-triangle colors,
+  and fail-closed input validation.
+- `src/vr/model2_eye_clip.hpp`: clipped fan triangles retain their original
+  source-triangle index. Each left/right view clips independently, retaining
+  original flat RGB (not placeholder eye-tint colors).
+- `src/probe/verified_world_bridge.{h,cpp}`: exported x86 render-only
+  `Model2VR_BeginVerifiedWorldFrame`, `Model2VR_AppendVerifiedWorldTriangles`,
+  `Model2VR_EndVerifiedWorldFrame`, and abort API. The emulator renderer
+  adapter submits *once-transformed original game world geometry* and one
+  indexed RGB color per source triangle. Begin reads a coherent predicted
+  XR eye-pose pair and requires a calibrated axis conversion/scale,
+  **every** world/depth/backbuffer/gameplay/no-replay safety proof flag,
+  and a monotonic emulated-frame ID. Append accepts bounded actual
+  triangle indices and point data, depth-rasterizes both eyes, then End
+  publishes the two independently rendered images as one GameStereo frame.
+  Any failed draw aborts the transaction; empty frames are not labeled
+  game stereo. The original D3D9 draw and game simulation paths are
+  untouched. FFB is not read, redirected, or linked into this path.
+
+### Required non-automatic integration (not yet game-playable)
+
+A trusted per-game renderer integrator must **actually prove** the flags
+declared in `verified_world_bridge.h`, supply original view-space world
+vertex triplets (never desktop XYZRHW or HUD), triangulation/index order,
+flat source colors, measured units-per-meter and calibrated model-to-XR
+basis. It must call Begin/Append/End from a single game render thread,
+never from simulation, input or FFB. The regular D3D9 probe collects
+sampling telemetry only; it does not set the proof flags, perform
+camera calibration, or call this bridge automatically.
+
+This first source adapter uses **opaque, untextured flat-colored** triangles
+as a correctness step. It does not yet preserve original textured surface
+UVs, blending, specular effects, HUD or menus, or reproduce the game
+renderer fully. Current output remains fail-closed until those integration
+facts are established; do not describe the feature as working Daytona VR.
+An active XR host is required for Begin to obtain valid predicted views.
+
+The new `model2_native_opaque_stereo_raster` CTest verifies actual
+RGBA pixels in left/right targets differ as expected from geometric
+parallax, front-over-back depth occlusion in two draw orders, clipped
+near-plane triangles, original source color tracking, and rejection of
+corrupt input without partial raster writes. It can run without a ROM,
+emulator or headset. Quest3/VDXR gameplay remains **UNTESTED**.

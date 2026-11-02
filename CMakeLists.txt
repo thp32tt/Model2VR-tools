@@ -27,6 +27,7 @@ add_library(model2vr_probe SHARED
   src/probe/logger.cpp
   src/probe/signature.cpp
   src/probe/stereo_feed.cpp
+  src/probe/verified_world_bridge.cpp
   src/probe/d3d9_probe.cpp
 )
 
@@ -143,6 +144,11 @@ add_test(NAME model2_frame_pose_latch COMMAND model2_frame_latch_test)
 add_executable(model2_eye_clip_test tests/model2_eye_clip_test.cpp)
 target_compile_features(model2_eye_clip_test PRIVATE cxx_std_20)
 add_test(NAME model2_eye_clip_independent_streams COMMAND model2_eye_clip_test)
+# Actual opaque RGBA8 left/right targets with independent per-eye Z buffers,
+# source-triangle color provenance and clipped world geometry, no FFB calls.
+add_executable(model2_stereo_raster_test tests/model2_stereo_raster_test.cpp)
+target_compile_features(model2_stereo_raster_test PRIVATE cxx_std_20)
+add_test(NAME model2_native_opaque_stereo_raster COMMAND model2_stereo_raster_test)
 
 
 # Read-only, allocation-free UP vertex witness parser; no emulator runtime.
