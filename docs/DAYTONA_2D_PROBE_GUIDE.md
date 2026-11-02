@@ -42,6 +42,14 @@ arrive); hard termination may still lose recent buffered events.
 - `model2_d3d9_device_created`,
   `model2_d3d9_device_hooks_ready`: D3D9 CreateDevice observed.
 - `model2_d3d9_frame`: per-present Draw counters.
+- `model2_d3d9_draw_interval`: the configured per-family sample spacing;
+  Daytona now uses **128** instead of the conservative default 1,024.
+- `model2_d3d9_draw_ordinal`: same sampled Draw's zero-based position
+  within the upcoming Present frame (by D3D9 Draw family). The first
+  Draw is always captured, then each 128th. Compare ordinal 0 against
+  the middle/late-frame FVF, viewport, target and texture evidence.
+  The separate `tools/daytona_draw_phase_report.py` reports per-caller
+  ordinal bands but never classifies HUD/world automatically.
 - `model2_d3d9_draw_origin` (frame, API family, original EXE caller RVA,
   topology/count) plus `model2_d3d9_draw_sample` (FVF/Z/alpha).
 - `model2_d3d9_up_meta`/`model2_d3d9_up_vertex` for selected
@@ -90,3 +98,28 @@ stereo world-pass bridge.
 **Validation scope:** GitHub Windows x86 compile/CTest validates
 the probe and packaging. Daytona 2D runtime and Quest 3 HMD verification
 remain `RUNTIME_VALIDATION=UNTESTED` until a user run is inspected.
+
+## Grounded first Daytona 2D trace findings (2026-11-02)
+
+The initial private Daytona capture (111 s, 5,412 complete Present frames)
+recorded **1,598,314 DrawPrimitiveUP calls** but sampled only 5,413
+source origins under the old first/1024th policy. No DrawPrimitive,
+DrawIndexedPrimitive or DrawIndexedPrimitiveUP were counted in those
+completed frames. The dominant sample caller `0x000EDBF2` issued a
+`D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_SPECULAR | D3DFVF_TEX1`
+(0x1c4) two-primitive triangle strip of stride 32, screen z=0,
+RHW=1, spanning x~73.5..586.5 then x~-0.5..659.5 in a 660x384
+backbuffer. The width change occurred around 50.76s; a transient
+full-width sample occurred around 11.45s. The first-only sample
+strongly resembles a composited 2D blit, **not a proven HUD/world
+separation**. Some race intervals had over 700 DrawUP calls per
+frame, all hidden from deeper sampling. The revised 1/128 cadence
+and explicit Draw ordinal telemetry address this evidence gap.
+The user owns the runtime trace; no raw log is committed.
+
+The diagnostic `daytona_draw_phase_report.py` reads the CSV
+and separates zero-indexed Draw positions, per-caller FVF and
+triangle topology, without promoting guesses to world proof:
+```sh
+python tools/daytona_draw_phase_report.py daytona_2d_probe_*.csv --output daytona_phase.json
+```
