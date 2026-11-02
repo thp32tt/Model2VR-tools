@@ -2,6 +2,7 @@
 import csv
 import importlib.util
 import tempfile
+import struct
 import unittest
 from pathlib import Path
 
@@ -76,6 +77,38 @@ class DaytonaPhaseTests(unittest.TestCase):
             self.assertEqual(src["declaration_signatures"][0]["elements"][0],
                              [0,0,2,0,0,0])
             self.assertEqual(src["source_layout_witnesses"],1)
+
+    def test_exact_source_position_w_and_uv_aggregates_no_world_proof(self):
+        def pk(a,b):
+            def bits(x):
+                return struct.unpack("<I",struct.pack("<f",x))[0]
+            return (bits(a)<<32)|bits(b)
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"v4.csv"
+            events=[
+                ("model2_d3d9_draw_origin",13,3,0xBABAD,(2<<32)|4),
+                ("model2_d3d9_draw_ordinal",13,3,128,0xBABAD),
+                ("model2_d3d9_draw_sample",3,0,209,0xBABAD),
+                ("model2_d3d9_up_position_source",51,0xBABAD,2,3),
+            ]
+            for i in range(3):
+                events.extend([
+                    ("model2_d3d9_up_position",51,i,
+                     pk(-2.0+i,1.0+i),pk(3.0+i,4.0+i)),
+                    ("model2_d3d9_up_uv",51,i,
+                     pk(0.5*i,0.25*i),0),
+                ])
+            self.generate(p,events)
+            r=phase.analyze(p)
+            source=r["sources"][0]
+            self.assertEqual(source["typed_source_vertices"],3)
+            self.assertEqual(source["typed_position_uv_ranges"]["x"],
+                             {"min":-2,"max":0})
+            self.assertEqual(source["typed_position_uv_ranges"]["w"],
+                             {"min":4,"max":6})
+            self.assertEqual(source["typed_position_uv_ranges"]["v"],
+                             {"min":0,"max":0.5})
+            self.assertEqual(r["HUD_WORLD_PROOF"],"NOT_ESTABLISHED")
 
     def test_legacy_first_only_log_is_not_world_proof(self):
         with tempfile.TemporaryDirectory() as tmp:
