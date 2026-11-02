@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <utility>
 #define CHECK(expr) do {if(!(expr)){std::fprintf(stderr,"stereo render state failure line %d: %s\\n",__LINE__,#expr);return 1;}} while(0)
 using namespace m2vr::vr;
 namespace {
@@ -97,6 +98,20 @@ int main() {
     const auto farther=Triangle(3.f);
     StereoWorldRaster raster;
     bool ok=true;
+    // Reverse the same original game triangle's screen-space winding.
+    // One cull mode must reject it and the opposite mode must accept it,
+    // independently for left and right eye RGBA buffers.
+    auto flipped=farther;
+    for(auto& eye:flipped.eyes)
+        std::swap(eye[0].vertices[1],eye[0].vertices[2]);
+    r.raster.cull=FaceCull::Clockwise;
+    CHECK(raster.DrawTextured(flipped,r));
+    CheckBoth(raster,0x000000u,ok);CHECK(ok);
+    r.raster.cull=FaceCull::CounterClockwise;
+    CHECK(raster.DrawTextured(flipped,r));
+    CheckBoth(raster,0xFF0000u,ok);CHECK(ok);
+    raster.Clear();
+    r.raster.cull=FaceCull::None;
     r.raster.cull=FaceCull::CounterClockwise; // culls screen-CCW tri
     CHECK(raster.DrawTextured(farther,r));
     CheckBoth(raster,0x000000u,ok);CHECK(ok);
