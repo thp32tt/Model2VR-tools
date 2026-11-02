@@ -64,6 +64,31 @@ int main() {
     CHECK(!DecodeRasterPolicy(D3DCULL_NONE,D3DCMP_LESS,1,
                               0,0,0,0,D3DCOLORWRITEENABLE_RED,decoded));
 
+    // The independently rendered game-world target cannot honor an
+    // original sub-viewport, cropped scissor or depth-range remap.
+    D3DVIEWPORT9 viewport{};
+    viewport.X=0;viewport.Y=0;
+    viewport.Width=640;viewport.Height=480;
+    viewport.MinZ=0.f;viewport.MaxZ=1.f;
+    D3DSURFACE_DESC backbuffer{};
+    backbuffer.Width=640;backbuffer.Height=480;
+    CHECK(m2vr::drawprobe::FullBackbufferViewport(
+        0u,viewport,backbuffer));
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        1u,viewport,backbuffer));
+    viewport.X=1;
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        0u,viewport,backbuffer));
+    viewport.X=0;viewport.Width=639;
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        0u,viewport,backbuffer));
+    viewport.Width=640;viewport.MaxZ=0.75f;
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        0u,viewport,backbuffer));
+    viewport.MaxZ=1.f;
+    CHECK(m2vr::drawprobe::FullBackbufferViewport(
+        0u,viewport,backbuffer));
+
     const std::array<std::uint8_t,4> red={255,0,0,255};
     const std::array<std::uint8_t,4> blue={0,0,255,255};
     StereoWorldRaster::TextureRGBA r{red.data(),1,1,4,0};
