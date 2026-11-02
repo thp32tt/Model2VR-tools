@@ -39,6 +39,10 @@ class SourceAuditTests(unittest.TestCase):
                  pack(1, 3), pack(2, 2), pack(0, 0)),
                 ("model2_d3d9_vb_alpha", 101,
                  pack(1, 7), 128, 0),
+                ("model2_d3d9_vb_raster", 101,
+                 pack(3, 4), pack(1, 0), pack(0, 0)),
+                ("model2_d3d9_vb_write_color", 101,
+                 pack(0, 15), 0, 0),
                 ("model2_d3d9_vb_source", 102, 0x1234,
                  pack(2, 0x112), pack(65536, 20)),
                 ("model2_d3d9_vb_stream", 102, pack(8, 8), 0, 12),
@@ -61,6 +65,8 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["texture_sizes"], [[64, 128]])
             self.assertEqual(src["sampler_modes"], [[1, 3, 2, 2, 0, 0]])
             self.assertEqual(src["alpha_test_modes"], [[1, 7, 128]])
+            self.assertEqual(src["raster_modes"], [[3, 4, 1, 0, 0, 0]])
+            self.assertEqual(src["color_write_modes"], [[0, 15]])
             self.assertTrue(src["has_camera_matrix"])
             self.assertTrue(src["writeonly_vb_seen"])
             self.assertFalse(src["world_pass_proven"])
