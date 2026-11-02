@@ -33,14 +33,14 @@ int main(){
     }
     Model2FramePoseLatch latch;
     CHECK(latch.Begin(100,pose));
-    const std::array<CpuPoint,3> near{{{-0.5f,-0.5f,2.f},
+    const std::array<CpuPoint,3> near_vertices{{{-0.5f,-0.5f,2.f},
          {0.5f,-0.5f,2.f},{0.f,0.5f,2.f}}};
-    const std::array<CpuPoint,3> far{{{-1.f,-1.f,4.f},
+    const std::array<CpuPoint,3> far_vertices{{{-1.f,-1.f,4.f},
          {1.f,-1.f,4.f},{0.f,1.f,4.f}}};
     const std::uint32_t indices[]={0,1,2};
     const float uv[]={0.f,1.f, 1.f,1.f, 0.5f,0.f};
     ClippedTexturedStereoBatch textured{};
-    CHECK(BuildTexturedStereoBatch(near.data(),uv,3,indices,3,
+    CHECK(BuildTexturedStereoBatch(near_vertices.data(),uv,3,indices,3,
                                    100,latch,cal,world,textured));
     CHECK(textured.game_frame==100 && textured.pose_sequence==27);
     CHECK(textured.eyes[0].size()==1 && textured.eyes[1].size()==1);
@@ -58,7 +58,7 @@ int main(){
     StereoWorldRaster raster;
     const std::uint32_t blue[]={0x2040CD};
     ClippedStereoBatch background{};
-    CHECK(BuildClippedStereoBatch(far.data(),3,indices,3,
+    CHECK(BuildClippedStereoBatch(far_vertices.data(),3,indices,3,
                                   100,latch,cal,world,background));
     CHECK(raster.Draw(background,blue,1));
     const auto count_before=raster.DrawnPixels();
@@ -101,8 +101,8 @@ int main(){
     for(auto& eye:manual.eyes){
         ClippedTexturedEyeTriangle tri{};
         tri.vertices[0]={{-0.5f,-0.5f,1.f,true},0.f,0.f};
-        tri.vertices[1]={{0.5f,-0.5f,4.f,true},1.f,0.f};
-        tri.vertices[2]={{0.f,0.5f,4.f,true},1.f,0.f};
+        tri.vertices[1]={{0.5f,-0.5f,16.f,true},1.f,0.f};
+        tri.vertices[2]={{0.f,0.5f,16.f,true},1.f,0.f};
         eye.push_back(tri);
     }
     std::array<std::uint8_t,16> stripe{
@@ -128,11 +128,11 @@ int main(){
     const float bad_uv[]={0.f,1.f, 1.f,1.f,
        (std::numeric_limits<float>::infinity)(),0.f};
     const auto old_frame=textured.game_frame;
-    CHECK(!BuildTexturedStereoBatch(near.data(),bad_uv,3,indices,3,
+    CHECK(!BuildTexturedStereoBatch(near_vertices.data(),bad_uv,3,indices,3,
                                    100,latch,cal,world,textured));
     CHECK(textured.game_frame==old_frame);
     world.verified_cpu_pass=RenderPass::Hud2D;
-    CHECK(!BuildTexturedStereoBatch(near.data(),uv,3,indices,3,
+    CHECK(!BuildTexturedStereoBatch(near_vertices.data(),uv,3,indices,3,
                                    100,latch,cal,world,textured));
     return 0;
 }
