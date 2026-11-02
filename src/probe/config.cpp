@@ -125,6 +125,9 @@ bool LoadProbeConfig(const std::filesystem::path& path, ProbeConfig& out, std::w
 
     out.enabled = ParseBool(ReadIniString(L"probe", L"enabled", L"0", path));
     out.d3d9_read_only_probe = ParseBool(ReadIniString(L"probe", L"d3d9_read_only_probe", L"0", path));
+    out.daytona_native_stereo = ParseBool(ReadIniString(L"probe", L"daytona_native_stereo", L"0", path));
+    out.daytona_eye_shift_milliunits = std::clamp<std::uint32_t>(
+        ReadU32(L"probe", L"daytona_eye_shift_milliunits", 100, path),1u,250u);
     // Cap overhead in long Daytona racing sessions; default retains the
     // original 1/1024 capture, while diagnostic opt-in uses 1/128.
     out.d3d9_draw_sample_every = std::clamp<std::uint32_t>(
