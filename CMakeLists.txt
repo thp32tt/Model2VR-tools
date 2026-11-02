@@ -31,6 +31,7 @@ add_library(model2vr_probe SHARED
   src/probe/d3d9_up_material_bridge.cpp
   src/probe/d3d9_vb_material_bridge.cpp
   src/probe/d3d9_probe.cpp
+  src/probe/daytona_native_stereo.cpp
 )
 
 target_include_directories(model2vr_probe PRIVATE src/probe)
