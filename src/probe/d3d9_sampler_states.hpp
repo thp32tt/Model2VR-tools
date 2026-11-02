@@ -57,6 +57,18 @@ inline bool DecodeRasterPolicy(DWORD cull_mode,DWORD zfunc,
     out=value;
     return true;
 }
+inline bool FullBackbufferViewport(DWORD scissor_enabled,
+                                   const D3DVIEWPORT9& viewport,
+                                   const D3DSURFACE_DESC& backbuffer) noexcept {
+    // This raster does not implement D3D9 viewport subrect/scissor or
+    // range-remapped depth. Never replay cropped HUD/mirror/aux draws.
+    return scissor_enabled==0u &&
+           backbuffer.Width>0u && backbuffer.Height>0u &&
+           viewport.X==0u && viewport.Y==0u &&
+           viewport.Width==backbuffer.Width &&
+           viewport.Height==backbuffer.Height &&
+           viewport.MinZ==0.f && viewport.MaxZ==1.f;
+}
 inline bool AlphaCutoffMatches(DWORD alpha_enable,DWORD alpha_func,
                                DWORD alpha_ref,
                                unsigned int requested_cutoff) noexcept {
