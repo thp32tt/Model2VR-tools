@@ -173,6 +173,10 @@ add_executable(model2_d3d9_vb_window_test tests/model2_d3d9_vb_window_test.cpp)
 target_compile_features(model2_d3d9_vb_window_test PRIVATE cxx_std_20)
 target_compile_definitions(model2_d3d9_vb_window_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME model2_real_d3d9_vb_ib_source_window COMMAND model2_d3d9_vb_window_test)
+# Verify per-family first-seen caller evidence and low-overhead periodic probe.
+add_executable(model2_draw_origin_gate_test tests/draw_origin_gate_test.cpp)
+target_compile_features(model2_draw_origin_gate_test PRIVATE cxx_std_20)
+add_test(NAME model2_real_d3d9_caller_coverage COMMAND model2_draw_origin_gate_test)
 
 
 # Original Generic DD Model 2 emulator binding key contract (no SDL or FFB).
