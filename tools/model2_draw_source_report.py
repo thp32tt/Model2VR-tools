@@ -21,6 +21,7 @@ NAMES = {
     "model2_d3d9_vb_camera", "model2_d3d9_vb_camera_unknown",
     "model2_d3d9_vb_texture",
     "model2_d3d9_vb_sampler", "model2_d3d9_vb_alpha",
+    "model2_d3d9_vb_raster", "model2_d3d9_vb_write_color",
 }
 
 def number(raw):
@@ -77,6 +78,10 @@ def audit_csv(path):
                 fields["sampler"] = values
             elif event == "model2_d3d9_vb_alpha":
                 fields["alpha"] = values
+            elif event == "model2_d3d9_vb_raster":
+                fields["raster"] = values
+            elif event == "model2_d3d9_vb_write_color":
+                fields["write_color"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -88,6 +93,7 @@ def audit_csv(path):
         "index_formats": set(), "writeonly_vb_seen": False,
         "has_camera_matrix": False,
         "sampler_modes": set(), "alpha_test_modes": set(),
+        "raster_modes": set(), "color_write_modes": set(),
         "candidate_only": True,
         "world_pass_proven": False
     })
@@ -129,6 +135,17 @@ def audit_csv(path):
             alpha_mode, ref, _ = data["alpha"]
             enabled, func = halves(alpha_mode)
             entry["alpha_test_modes"].add((enabled, func, ref))
+        if "raster" in data:
+            cull_zfunc, zwrite_stencil, depth_slope = data["raster"]
+            cull, zfunc = halves(cull_zfunc)
+            zwrite, stencil = halves(zwrite_stencil)
+            depth_bias, slope_bias = halves(depth_slope)
+            entry["raster_modes"].add(
+                (cull, zfunc, zwrite, stencil, depth_bias, slope_bias))
+        if "write_color" in data:
+            write_mode, _, _ = data["write_color"]
+            srgb_write, color_mask = halves(write_mode)
+            entry["color_write_modes"].add((srgb_write, color_mask))
         if "texture" in data:
             fmt, width, height = data["texture"]
             entry["texture_formats"].add(fmt)
