@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cwctype>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -79,23 +80,41 @@ struct Capture {
                           screen,pt.x,pt.y,sw,sh,SRCCOPY)!=FALSE;
     }
 };
-struct Search { std::wstring fragment; HWND result=nullptr; };
+// Prefer the actual emulator PID over a guessed title. Some Model 2 builds
+// have no fixed title and can recreate their window when fullscreen changes.
+// Pick the largest owned visible client window, not an early splash/dialog.
+struct Search {
+    std::wstring fragment;
+    DWORD pid=0;
+    HWND result=nullptr;
+    std::uint64_t area=0;
+};
 BOOL CALLBACK FindWindowCallback(HWND hwnd,LPARAM userdata){
     auto& search=*reinterpret_cast<Search*>(userdata);
-    if(!IsWindowVisible(hwnd)||GetWindow(hwnd,GW_OWNER))return TRUE;
-    wchar_t name[512]{};
-    GetWindowTextW(hwnd,name,512);
-    std::wstring haystack(name);
-    std::transform(haystack.begin(),haystack.end(),haystack.begin(),::towlower);
-    if(haystack.find(search.fragment)!=std::wstring::npos){
-        search.result=hwnd;
-        return FALSE;
+    if(!IsWindowVisible(hwnd)||IsIconic(hwnd)||GetWindow(hwnd,GW_OWNER))
+        return TRUE;
+    DWORD owner_pid=0;
+    GetWindowThreadProcessId(hwnd,&owner_pid);
+    if(search.pid && owner_pid!=search.pid)return TRUE;
+    if(!search.pid){
+        wchar_t name[512]{};
+        GetWindowTextW(hwnd,name,512);
+        std::wstring title(name);
+        std::transform(title.begin(),title.end(),title.begin(),::towlower);
+        if(title.find(search.fragment)==std::wstring::npos)return TRUE;
     }
+    RECT rc{};
+    if(!GetClientRect(hwnd,&rc))return TRUE;
+    const auto width=rc.right-rc.left,height=rc.bottom-rc.top;
+    if(width<160 || height<120)return TRUE;
+    const auto area=std::uint64_t{static_cast<unsigned>(width)}*
+                    static_cast<unsigned>(height);
+    if(area>search.area){search.result=hwnd;search.area=area;}
     return TRUE;
 }
-HWND FindEmulator(std::wstring keyword){
+HWND FindEmulator(std::wstring keyword,DWORD pid){
     std::transform(keyword.begin(),keyword.end(),keyword.begin(),::towlower);
-    Search s{keyword,nullptr};
+    Search s{};s.fragment=std::move(keyword);s.pid=pid;
     EnumWindows(FindWindowCallback,reinterpret_cast<LPARAM>(&s));
     return s.result;
 }
@@ -111,9 +130,16 @@ ComPtr<IDXGIAdapter1> FindRuntimeAdapter(LUID luid){
     }
     throw std::runtime_error("No D3D11 GPU matches OpenXR runtime adapter LUID");
 }
-int Run(std::wstring window_title){
-    HWND hwnd=FindEmulator(std::move(window_title));
-    if(!hwnd)throw std::runtime_error("Model 2 window not found (start emulator first)");
+int Run(std::wstring window_title,DWORD emulator_pid){
+    // The one-click Daytona launcher starts the original emulator once.
+    // It may not create its actual game window until after ROM selection.
+    HWND hwnd=nullptr;
+    for(unsigned attempt=0;attempt<120u && !hwnd;++attempt){
+        hwnd=FindEmulator(window_title,emulator_pid);
+        if(!hwnd)Sleep(250);
+    }
+    if(!hwnd)throw std::runtime_error(
+        "Model 2 game window not found within 30 seconds");
     XrOwned xr;
     const char* ext[]={XR_KHR_D3D11_ENABLE_EXTENSION_NAME};
     XrInstanceCreateInfo create{XR_TYPE_INSTANCE_CREATE_INFO};
@@ -200,7 +226,13 @@ int Run(std::wstring window_title){
             }else if(event.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING)alive=false;
             event={XR_TYPE_EVENT_DATA_BUFFER};
         }
-        if(!alive||!IsWindow(hwnd))break;
+        if(!alive)break;
+        // The original emulator can change its HWND at fullscreen/window
+        // transitions. Reacquire only within the same verified process.
+        if(!IsWindow(hwnd) || !IsWindowVisible(hwnd)){
+            hwnd=FindEmulator(window_title,emulator_pid);
+            if(!hwnd){Sleep(25);continue;}
+        }
         if(!running){Sleep(25);continue;}
         XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};
         XrFrameState state{XR_TYPE_FRAME_STATE};
@@ -254,7 +286,21 @@ int Run(std::wstring window_title){
 }
 }
 int wmain(int argc,wchar_t** argv){
-    try{return Run(argc>1?argv[1]:L"Model 2");}
+    try{
+        DWORD pid=0;
+        std::wstring title=L"Model 2";
+        if(argc>=3 && std::wstring(argv[1])==L"--pid"){
+            const std::wstring digits(argv[2]);
+            if(digits.empty()||digits.find_first_not_of(L"0123456789")!=
+                std::wstring::npos)
+                throw std::runtime_error("Usage: Model2OpenXRHost.exe --pid <emulator PID>");
+            const unsigned long parsed=std::stoul(digits);
+            if(parsed==0||parsed>std::numeric_limits<DWORD>::max())
+                throw std::runtime_error("Invalid emulator PID");
+            pid=static_cast<DWORD>(parsed);
+        }else if(argc>1)title=argv[1];
+        return Run(title,pid);
+    }
     catch(const std::exception& e){
         std::cerr<<"Model2VR OpenXR host: "<<e.what()<<"\n";
         return 1;
