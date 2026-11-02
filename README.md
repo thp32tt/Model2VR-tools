@@ -92,3 +92,43 @@ caller source sites to authenticated gameplay world-passes and verify
 calibration, render target, materials and texture availability.
 `RUNTIME_VALIDATION=UNTESTED` until that evidence and an actual HMD
 run have been obtained; FFB remains with the separate Generic DD plugin.
+
+## Verified D3D9 sampler parity for native stereo (2026-11-02)
+
+The fixed-function native D3D9 texture bridge now handles **POINT or LINEAR**
+min/mag filtering with **independent CLAMP/WRAP U and V** address modes,
+using perspective-correct UVs and texel-center bilinear interpolation in
+the existing independent-eye RGBA/Z renderer. This expands actual
+D3D9 material coverage beyond the previous point+clamp-only path.
+The new `Model2VR_AppendVerifiedTexturedTrianglesWithSampler` interface
+accepts an explicitly validated source policy; the old
+`Model2VR_AppendVerifiedTexturedTriangles` ABI remains point+clamp.
+The verified UP and VB/IB source adapters read the original D3D9
+sampler states and pass the supported modes to both eyes.
+
+The source adapter now checks the original alpha-test mode against its
+requested cutoff: disabled alpha test is passed with cutoff 0, and
+enabled alpha test requires `GREATER_EQUAL` with an exact
+`ALPHAREF` match. Bilinear alpha is tested **after filtering** and
+discarded pixels do not overwrite Z. Other alpha tests, mismatched
+min/mag filter, mipmapped, sRGB, BORDER/MIRROR, texture transforms,
+additional active texture stages, blend/fog/lighting/shader passes
+continue to fail closed, rather than rendering incorrect colors.
+This is not full D3D9 fixed-function parity; source raster culling,
+depth-function semantics, GPU-private textures and other materials
+still need runtime evidence and support.
+
+Passive `DrawPrimitive`/`DrawIndexedPrimitive` metadata telemetry
+now emits `model2_d3d9_vb_sampler` and `model2_d3d9_vb_alpha`
+under the same witness ID as source geometry, which
+`tools/model2_draw_source_report.py` groups by original EXE caller
+for a future **local** attract/menu/race capture. It records no
+textures, ROMs or private frame data. New CTest tests address wrapping,
+bilinear seams, alpha interpolation, unsupported state rejection and
+legacy point+clamp compatibility.
+
+**RUNTIME_VALIDATION=UNTESTED** until the emulator world's authenticated
+Draw callsites, calibration and Quest 3 runtime are proven. No autonomous
+world-pass classification, D3D9 draw replay, gameplay simulation or FFB
+backend replacement is introduced. The separate Generic DD v2 plugin
+and its `dinput8.dll` are untouched.
