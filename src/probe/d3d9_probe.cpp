@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "draw_up_witness.hpp"
+#include "daytona_native_stereo.hpp"
 #include "daytona_up_decl_witness.hpp"
 #include "draw_origin_gate.hpp"
 #include "d3d9_world_source.hpp"
@@ -50,6 +51,7 @@ std::atomic<unsigned> g_present_count{0};
 std::atomic<std::uint64_t> g_witness_serial{0};
 std::uint32_t g_draw_sample_every=1024u;
 bool g_device_installed=false;
+bool g_native_stereo=false;
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -529,9 +531,12 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
                                     const void* verts,UINT stride){
     g_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
-    if(Sample(d,3,p,count,caller))
+    if(!g_native_stereo && Sample(d,3,p,count,caller))
         ObserveUP(d,3,p,count,caller,verts,stride);
-    return g_draw_up(d,p,count,verts,stride);
+    const HRESULT hr=g_draw_up(d,p,count,verts,stride);
+    if(SUCCEEDED(hr) && g_native_stereo)
+        m2vr::daytona::MirrorDraw(d,p,count,verts,stride,CallerRva(caller),g_draw_up);
+    return hr;
 }
 HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
      UINT num,UINT count,const void* idx,D3DFORMAT fmt,const void* verts,UINT stride){
@@ -544,7 +549,8 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
 HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RECT* b,
                                      HWND w,CONST RGNDATA* dirty){
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
-    m2vr::LogEvent("model2_d3d9_frame",frame,
+    if(g_native_stereo)m2vr::daytona::PublishFrame(d,frame);
+    if(!g_native_stereo)m2vr::LogEvent("model2_d3d9_frame",frame,
         g_draws.exchange(0)+g_indexed.exchange(0),
         g_up.exchange(0)+g_indexed_up.exchange(0));
     // Snapshot sampling state belongs to a frame, not a process lifetime.
@@ -608,12 +614,15 @@ IDirect3D9* WINAPI Create9Hook(UINT sdk){
 
 namespace m2vr {
 bool InstallD3D9ReadOnlyProbe(HMODULE executable,std::uint32_t exe_size,
-                             std::uint32_t draw_sample_every) {
+                             std::uint32_t draw_sample_every,
+                             bool native_stereo,std::uint32_t eye_shift_milliunits) {
     if(!executable || exe_size==0)return false;
     g_exe_base=reinterpret_cast<std::uintptr_t>(executable);
     g_exe_size=exe_size;
     // A diagnostic setting is an integer [64,4096] after INI parsing.
     // Preserve conservative sampling if this function is called directly.
+    g_native_stereo=native_stereo;
+    m2vr::daytona::Configure(native_stereo,eye_shift_milliunits);
     g_draw_sample_every=(draw_sample_every>=64u &&
         draw_sample_every<=4096u)?draw_sample_every:1024u;
     LogEvent("model2_d3d9_draw_interval",g_draw_sample_every);
