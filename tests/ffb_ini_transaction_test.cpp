@@ -52,6 +52,10 @@ int main() {
         {L"Settings",L"StartButton",std::wstring(L"8"),L"9"}};
     CHECK(SaveModel2Ini(path,duplicate)==IniSaveStatus::Saved);
     CHECK(ReadIniSetting(path,L"Settings",L"StartButton")==L"9");
+    std::size_t backups_after=0;
+    for(const auto& entry:fs::directory_iterator(folder))
+        if(entry.path().extension()==L".bak")++backups_after;
+    CHECK(backups_after==2); // quick consecutive saves keep both backups
 
     const std::vector<IniEdit> invalid={
         {L"Settings",L"StartButton",std::wstring(L"9"),L""}};
