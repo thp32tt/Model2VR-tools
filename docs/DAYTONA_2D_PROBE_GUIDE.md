@@ -123,3 +123,51 @@ triangle topology, without promoting guesses to world proof:
 ```sh
 python tools/daytona_draw_phase_report.py daytona_2d_probe_*.csv --output daytona_phase.json
 ```
+
+## Verified second Daytona 2D trace — 2026-11-02 23:48:31 KST
+
+The owner-supplied v2 CSV (private, not committed) contains 4,352
+**complete** D3D9 Present frames, 1,386,239 actual
+`DrawPrimitiveUP` calls, and 13,581 origin/ordinal/FVF/target/viewport
+sample sets at the configured 1-in-128 spacing. The final CSV line is
+partial and frame 4,353 is not yet Present-complete; this is **not**
+necessarily a game error, and the count excludes that frame.
+
+- `0x000EDBF2`: 4,388 sampled calls, almost always ordinal 0,
+  `FVF=0x1c4` XYZRHW, Z disabled, full 660x384 viewport.
+  Strong early screen-space compositor candidate, **not an isolated
+  HUD renderer**.
+- `0x000BABAD`: 8,925 sampled calls in 3,168 frames, typically
+  ordinal 128/256/384/512/640, `FVF=0`, Z enabled, no alpha blending.
+  Major depth-tested scene draw candidate. Its source RVA maps
+  near the separately private-REA-identified original Model2 geometry
+  projection/dispatch region with the approved EXE's 0x00400000 base,
+  but no world-pass proof is established.
+- `0x000BA70F`: 158 samples, `FVF=0`, Z enabled,
+  alpha blending enabled. Texture-effect/sprite/HUD classification
+  remains unknown.
+- `0x000BBD9B`: 87 samples, `FVF=0`, Z enabled,
+  alpha blending disabled. Auxiliary depth-tested draw candidate.
+- `0x000EE19C`: 23 samples, XYZRHW, Z disabled.
+  Additional screen-space compositing candidate.
+
+The dominant `FVF=0` case cannot currently be decoded by the strict
+XYZ/XYZRHW UP vertex parser. v3 adds passive `GetVertexDeclaration`
+and `GetVertexShader`/`GetPixelShader` metadata for **already sampled**
+FVF=0 DrawUP calls, using `model2_d3d9_up_layout` and
+`model2_d3d9_up_decl_element` with bounded 16-element declarations.
+This never reads unknown vertex bytes, never labels a Draw as 3D world,
+and never injects stereo into the running Daytona game. A single 2D
+race capture can now identify whether the depth-tested source uses a
+D3D9 explicit position/UV declaration and shaders before further
+source-specific extraction is attempted.
+
+Analyze with:
+```sh
+python tools/daytona_draw_phase_report.py daytona_2d_probe_*.csv --output daytona_phase.json
+```
+The `shader_presence` result encodes 0=unknown, 1=absent, 2=present;
+`declaration_signatures` stores D3D9 stream/offset/type/method/usage
+semantics only, **not geometry contents**. Missing declaration,
+unsupported shader layouts or missing world-pass proof remain
+`HUD_WORLD_PROOF=NOT_ESTABLISHED`.
