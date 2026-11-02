@@ -6,6 +6,7 @@
 #include "model2_eye_clip.hpp"
 #include "model2_textured_stereo.hpp"
 #include "model2_texture_sampler.hpp"
+#include "model2_raster_states.hpp"
 #include "../common/stereo_frame_ipc.h"
 #include <algorithm>
 #include <array>
@@ -66,6 +67,7 @@ public:
         std::uint32_t width=0,height=0,stride=0;
         std::uint8_t alpha_cutoff=128;
         SamplerPolicy sampler{};
+        RasterPolicy raster{};
     };
     // Fully clipped and validated beforehand; no half-eye write on a bad
     // texture, stale frame, invalid UV, or unsupported mixed pass.
@@ -76,6 +78,7 @@ public:
            texture.width>1024 || texture.height>1024 ||
            texture.stride!=texture.width*4u ||
            !ValidSampler(texture.sampler) ||
+           !ValidRasterPolicy(texture.raster) ||
            batch.game_frame==0 || batch.pose_sequence==0)
             return false;
         for(const auto& eye:batch.eyes){
@@ -172,7 +175,7 @@ private:
             v_over_z[k]=double(tri.vertices[k].v)*v[k].inv_z;
         }
         const double signed_area=Edge(v[0],v[1],v[2].x,v[2].y);
-        if(!std::isfinite(signed_area)||std::abs(signed_area)<1.e-8)
+        if(!TriangleSurvivesCull(signed_area,texture.raster.cull))
             return;
         const int x0=static_cast<int>((std::max)(0.0,
             std::floor((std::min)({v[0].x,v[1].x,v[2].x}))));
@@ -195,7 +198,8 @@ private:
                 if(!(inv>0.)||!std::isfinite(inv))continue;
                 const double z=1./inv;
                 const auto offset=std::size_t(y)*Width+std::size_t(x);
-                if(!(z<double(depth_[eye][offset])))continue;
+                if(!DepthPasses(z,depth_[eye][offset],
+                     texture.raster.depth))continue;
                 const double u=(a*u_over_z[0]+b*u_over_z[1]+
                                 c*u_over_z[2])/inv;
                 const double tex_v=(a*v_over_z[0]+b*v_over_z[1]+
@@ -209,7 +213,8 @@ private:
                 // mirroring the fixed-function texture sample pipeline.
                 if(texel.a<texture.alpha_cutoff)continue;
                 const auto pixel=offset*4u;
-                depth_[eye][offset]=static_cast<float>(z);
+                if(texture.raster.write_depth)
+                    depth_[eye][offset]=static_cast<float>(z);
                 auto& color=color_[eye];
                 color[pixel]=texel.r;
                 color[pixel+1]=texel.g;
