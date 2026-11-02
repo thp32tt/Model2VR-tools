@@ -230,7 +230,8 @@ bool InstallOne(
 namespace m2vr {
 
 bool InstallD3D9ReadOnlyProbe(HMODULE executable,std::uint32_t exe_size,
-                              std::uint32_t draw_sample_every);
+                              std::uint32_t draw_sample_every,
+                              bool native_stereo,std::uint32_t eye_shift_milliunits);
 
 bool InstallProbeHooks(HMODULE executable, const ProbeConfig& config) {
     g_config = config;
@@ -273,7 +274,9 @@ bool InstallProbeHooks(HMODULE executable, const ProbeConfig& config) {
 
     if (ok && g_config.d3d9_read_only_probe) {
         ok = InstallD3D9ReadOnlyProbe(executable,g_exe_size,
-                g_config.d3d9_draw_sample_every) && ok;
+                g_config.d3d9_draw_sample_every,
+                g_config.daytona_native_stereo,
+                g_config.daytona_eye_shift_milliunits) && ok;
     }
 
     if (!ok) {
