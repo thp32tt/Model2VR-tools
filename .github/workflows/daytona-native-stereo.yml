@@ -97,7 +97,7 @@ jobs:
             $machine=[BitConverter]::ToUInt16($bytes,$pe+4)
             if($machine -ne $c[1]) {throw "Wrong PE architecture: $($c[0]) / $machine"}
           }
-          Get-ChildItem stage -File | Get-FileHash -Algorithm SHA256 |
+          Get-ChildItem stage -File | Where-Object {$_.Name -ne 'SHA256_MANIFEST.txt'} | Get-FileHash -Algorithm SHA256 |
             ForEach-Object {"$($_.Hash)  $([IO.Path]::GetFileName($_.Path))"} |
             Out-File -Encoding ascii stage/SHA256_MANIFEST.txt
           Compress-Archive -Path stage/* -DestinationPath DaytonaUSA_NativeStereo_Quest3_Experimental.zip -Force
