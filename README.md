@@ -149,7 +149,11 @@ incorrectly occluding later surfaces.
 
 The earlier `WithSampler` and legacy `AppendVerifiedTexturedTriangles`
 exports preserve their old default cull-none, strict-LESS, Z-write-on
-behavior to avoid changing existing callers. The D3D9 source adapter
+behavior to avoid changing existing callers.
+An explicit full-backbuffer viewport gate also rejects scissored/subrect
+draws and nonstandard D3D9 depth ranges. Cropped menus, mirror surfaces
+and auxiliary passes must not be reprojected as an unrestricted stereo
+world target until exact source-specific viewport handling is available. The D3D9 source adapter
 additionally rejects stencil-enabled draws, nonzero depth/slope bias,
 sRGB render-target write and partial color masks, since the existing
 CPU stereo raster cannot faithfully reproduce those operations. The
