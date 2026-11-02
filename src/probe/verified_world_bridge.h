@@ -40,6 +40,19 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
     const unsigned char* texture_rgba,
     unsigned int texture_width, unsigned int texture_height,
     unsigned int texture_pitch, unsigned int alpha_cutoff);
+/* Fully verified source material sampler: 0=clamp/point, 1=wrap/linear.
+   Filter argument is 0 for POINT, 1 for LINEAR. U/V arguments are
+   0 for CLAMP and 1 for WRAP. Other values fail closed.
+   Existing textured entrypoint retains point/clamp ABI unchanged. */
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
+    const float* view_space_xyz, const float* interleaved_uv,
+    unsigned int vertex_count,
+    const std::uint32_t* triangle_indices, unsigned int index_count,
+    const unsigned char* texture_rgba,
+    unsigned int texture_width, unsigned int texture_height,
+    unsigned int texture_pitch, unsigned int alpha_cutoff,
+    unsigned int filter_mode, unsigned int address_u, unsigned int address_v);
+
 // Reads *actual* fixed-function D3D9 UP XYZ+TEX1 source vertices,
 // original D3DTS_WORLD/VIEW transforms and stage-0 CPU-lockable texture.
 // It is callable only during a proven BeginVerifiedWorldFrame transaction.
