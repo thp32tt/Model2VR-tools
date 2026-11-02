@@ -1,30 +1,50 @@
-name: OpenXR host Windows x64
+name: Daytona USA Quest VR OpenXR host Windows x64
+
 on:
   push:
     paths:
       - 'src/openxr_host/**'
+      - 'scripts/Start-DaytonaVR.cmd'
+      - 'scripts/Start-DaytonaVR.ps1'
+      - 'docs/DAYTONA_VR_DISPLAY.md'
+      - 'tests/test_daytona_vr_launcher.py'
       - '.github/workflows/openxr-host.yml'
   pull_request:
     paths:
       - 'src/openxr_host/**'
+      - 'scripts/Start-DaytonaVR.*'
       - '.github/workflows/openxr-host.yml'
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Check Daytona VR source and non-invasive launcher
+        shell: pwsh
+        run: python -m unittest discover -s tests -p test_daytona_vr_launcher.py -v
       - name: Configure OpenXR x64
         run: cmake -S src/openxr_host -B build-openxr -A x64 -DDYNAMIC_LOADER=OFF -DBUILD_TESTING=OFF
       - name: Build OpenXR x64
         run: cmake --build build-openxr --config Release --target Model2OpenXRHost --parallel
-      - name: Upload OpenXR host
+      - name: Package one-click VR game display
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path stage-daytona-vr | Out-Null
+          Copy-Item build-openxr/Release/Model2OpenXRHost.exe stage-daytona-vr/
+          Copy-Item scripts/Start-DaytonaVR.cmd stage-daytona-vr/
+          Copy-Item scripts/Start-DaytonaVR.ps1 stage-daytona-vr/
+          Copy-Item docs/DAYTONA_VR_DISPLAY.md stage-daytona-vr/README-Quest-VR.md
+          Compress-Archive -Path stage-daytona-vr/* -DestinationPath DaytonaUSA-Quest3-OpenXR-VR-Win64.zip -Force
+      - name: Upload Daytona VR host package
         uses: actions/upload-artifact@v4
         with:
-          name: Model2VR-OpenXRHost-Win64
-          path: build-openxr/Release/Model2OpenXRHost.exe
+          name: DaytonaUSA-Quest3-OpenXR-VR-Win64
+          path: DaytonaUSA-Quest3-OpenXR-VR-Win64.zip
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
