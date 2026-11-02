@@ -47,6 +47,7 @@ std::array<std::atomic<unsigned>,4> g_family_samples{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 std::atomic<std::uint64_t> g_witness_serial{0};
+std::uint32_t g_draw_sample_every=1024u;
 bool g_device_installed=false;
 
 template<class T>
@@ -70,23 +71,30 @@ std::uint32_t CallerRva(void* ret) {
 bool Sample(IDirect3DDevice9* dev,unsigned family,
             D3DPRIMITIVETYPE topology,UINT primitive_count,void* caller){
     if(family<1u || family>4u)return false;
-    // Preserve per-frame first + every 1024th draw while also observing
-    // up to 64 novel in-EXE caller buckets per API family per process.
+    // Preserve the first/1024th draw and up to 64 novel in-EXE sources,
+    // while explicitly sampling mid-frame Draws with the bounded opt-in
+    // cadence. The first-only Daytona log exposed a 2D blit but missed
+    // up to hundreds of later DrawPrimitiveUP calls within each frame.
     // This exposes rare actual world draw callsites without GPU readbacks.
     const unsigned ordinal=g_family_samples[family-1].fetch_add(
         1,std::memory_order_relaxed);
     const auto caller_rva=CallerRva(caller);
-    if(!g_draw_origin_gate.ShouldObserve(family,caller_rva,ordinal))
-        return false;
+    if(!g_draw_origin_gate.ShouldObserve(family,caller_rva,ordinal) &&
+       (ordinal%g_draw_sample_every)!=0u)return false;
     const std::uint64_t topology_and_count=
         (std::uint64_t{primitive_count}<<32)|
         static_cast<std::uint32_t>(topology);
     // a0=frame about to Present, a1=draw API family (1..4),
     // a2=caller RVA (0 means unverified/outside EXE), a3=(count<<32)|type.
     // It is a caller observation, not world/HUD/mirror classification.
+    const auto upcoming_frame=g_present_count.load(
+        std::memory_order_relaxed)+1u;
     m2vr::LogEvent("model2_d3d9_draw_origin",
-        g_present_count.load(std::memory_order_relaxed)+1u,
-        family,caller_rva,topology_and_count);
+        upcoming_frame,family,caller_rva,topology_and_count);
+    // Relative Draw position lets offline analysis distinguish early
+    // full-screen blits from late UI/HUD overlays at the same caller RVA.
+    m2vr::LogEvent("model2_d3d9_draw_ordinal",
+        upcoming_frame,family,ordinal,caller_rva);
     DWORD fvf=0,z=0,alpha=0;
     const bool ok=SUCCEEDED(dev->GetFVF(&fvf)) &&
                   SUCCEEDED(dev->GetRenderState(D3DRS_ZENABLE,&z)) &&
@@ -510,10 +518,16 @@ IDirect3D9* WINAPI Create9Hook(UINT sdk){
 } // namespace
 
 namespace m2vr {
-bool InstallD3D9ReadOnlyProbe(HMODULE executable,std::uint32_t exe_size) {
+bool InstallD3D9ReadOnlyProbe(HMODULE executable,std::uint32_t exe_size,
+                             std::uint32_t draw_sample_every) {
     if(!executable || exe_size==0)return false;
     g_exe_base=reinterpret_cast<std::uintptr_t>(executable);
     g_exe_size=exe_size;
+    // A diagnostic setting is an integer [64,4096] after INI parsing.
+    // Preserve conservative sampling if this function is called directly.
+    g_draw_sample_every=(draw_sample_every>=64u &&
+        draw_sample_every<=4096u)?draw_sample_every:1024u;
+    LogEvent("model2_d3d9_draw_interval",g_draw_sample_every);
     HMODULE d3d9=GetModuleHandleW(L"d3d9.dll");
     if(!d3d9) {
         // The loader injects before the suspended emulator main thread
