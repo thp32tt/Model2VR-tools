@@ -244,6 +244,9 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
         tex->Release();
     }
 }
+// Defined below: bounded original FVF=0 declaration observation.
+void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
+                            void* caller,UINT stride);
 void ObserveUP(IDirect3DDevice9* dev,unsigned family,
                D3DPRIMITIVETYPE type,UINT primitive_count,void* caller,
                const void* vertices,UINT stride,const void* indices=nullptr,
