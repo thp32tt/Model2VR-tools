@@ -80,6 +80,10 @@ int main(){
         colored_centroid[eye]/=double(red[eye]+green[eye]);
     }
     CHECK(colored_centroid[0]>colored_centroid[1]+10.0);
+    // Specifically test the zero-alpha texel at the *different* eye-space
+    // centers. Opaque background must remain visible, without a new Z write.
+    CHECK(Pixel(raster,0,522,512)==blue[0]);
+    CHECK(Pixel(raster,1,502,512)==blue[0]);
 
     // One eye can clip the textured source into a different fan.
     const std::array<CpuPoint,3> near_cross{{
