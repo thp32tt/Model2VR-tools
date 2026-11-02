@@ -117,6 +117,40 @@ int main(){
     CHECK(Pixel(raster,0,512,512)==0xFF0000);
     CHECK(Pixel(raster,1,512,512)==0xFF0000);
 
+    // The full independently rendered eye path must honor the original
+    // D3D9 bilinear WRAP seam, not just the standalone sampler helper.
+    raster.Clear();
+    auto seam=manual;
+    for(auto& eye:seam.eyes)
+        for(auto& tri:eye)
+            for(auto& vert:tri.vertices){vert.u=0.f;vert.v=0.f;}
+    const std::array<std::uint8_t,16> quad{{
+        255,0,0,0, 0,255,0,0,
+        0,0,255,0, 255,255,255,255
+    }};
+    StereoWorldRaster::TextureRGBA wrap_image{
+        quad.data(),2,2,8,32,
+        {TextureAddress::Wrap,TextureAddress::Wrap,TextureFilter::Linear}};
+    CHECK(raster.DrawTextured(seam,wrap_image));
+    CHECK(Pixel(raster,0,512,512)==0x808080);
+    CHECK(Pixel(raster,1,512,512)==0x808080);
+    raster.Clear();
+    wrap_image.alpha_cutoff=128; // blended seam alpha is only ~64
+    CHECK(raster.DrawTextured(seam,wrap_image));
+    CHECK(Pixel(raster,0,512,512)==0x000000);
+    CHECK(Pixel(raster,1,512,512)==0x000000);
+    raster.Clear();
+    wrap_image.alpha_cutoff=0;
+    wrap_image.sampler={};
+    CHECK(raster.DrawTextured(seam,wrap_image));
+    CHECK(Pixel(raster,0,512,512)==0xFF0000);
+    CHECK(Pixel(raster,1,512,512)==0xFF0000);
+    raster.Clear();
+    auto invalid_sampler=wrap_image;
+    invalid_sampler.sampler.filter=static_cast<TextureFilter>(9);
+    CHECK(!raster.DrawTextured(seam,invalid_sampler));
+    CHECK(raster.DrawnPixels()==0u);
+
     // Validate the whole batch before either eye can write.
     auto invalid=manual;
     invalid.eyes[1][0].vertices[2].u=
