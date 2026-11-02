@@ -193,3 +193,40 @@ parallax, front-over-back depth occlusion in two draw orders, clipped
 near-plane triangles, original source color tracking, and rejection of
 corrupt input without partial raster writes. It can run without a ROM,
 emulator or headset. Quest3/VDXR gameplay remains **UNTESTED**.
+
+## World texture/UV stage — 2026-11-02 (experimental)
+
+The verified-world bridge now accepts an **explicit textured triangle batch**
+via Model2VR_AppendVerifiedTexturedTriangles. The per-game integration
+must provide calibrated original view-space vertices, source UVs per vertex,
+triangle indices, and a CPU-readable, already-decoded RGBA8 texture. This
+does not read game textures automatically and does not intercept D3D9 texture
+bindings, game input, or FFB.
+
+- src/vr/model2_textured_stereo.hpp carries (U,V) attributes through
+  near/side homogeneous clipping into independently built left/right
+  triangle fans. It rejects nonfinite geometry/UV, invalid indices, incorrect
+  game-frame latch, and unverified world/HUD classification atomically.
+- src/vr/model2_stereo_raster.hpp::DrawTextured interpolates
+  (U/depth,V/depth,1/depth) in screen space, performs perspective-correct
+  UV reconstruction, nearest-neighbor clamped RGBA8 texture sampling,
+  alpha-cutout rejection **before writing depth**, and eye-local depth
+  occlusion. This is not full transparency blending.
+- The x86 bridge copies game-side geometry/UV/texture inputs into
+  bounds-checked, locally owned snapshots before clipping/rasterization.
+  Texture: maximum 1024×1024, tightly packed RGBA8 with pitch=width*4;
+  index count: multiple of three, max 2,048 source triangles per frame.
+  Source adapters must prove all kRequiredWorldProof bits at Begin and
+  supply an authentic calibrated eye pose from the x64 OpenXR host.
+- model2_native_textured_stereo_raster CI regression creates a synthetic
+  checkerboard/alpha-cutout texture, renders independently shifted eye
+  surfaces over a far opaque polygon, tests near-plane UV survival,
+  perspective correction (a depth-sloped triangle must not use affine UV),
+  and rejects invalid UV or pitch without partial-eye pixels.
+
+**Scope and remaining work:** this is a real CPU pixel renderer and a valid
+API surface, but **not** the game integration that would locate and decode
+original Model2 polygon material textures, run a verified world-pass gate,
+or map source blend/fog/light/shader semantics. Real Daytona/Sega Rally
+textures and Quest 3 HMD gameplay **RUNTIME_VALIDATION=UNTESTED**. The
+external Generic DD v2 FFB dinput8.dll and wheel settings are untouched.

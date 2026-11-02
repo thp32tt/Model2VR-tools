@@ -142,6 +142,61 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
         return FALSE;
     }
 }
+// Optional texture source path for a trusted Model2 CPU-world integration.
+// This does not query game textures, rerun any D3D9 draw, or alter FFB.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
+    const float* xyz,const float* uv,unsigned int vertex_count,
+    const std::uint32_t* indices,unsigned int index_count,
+    const unsigned char* texture_rgba,unsigned int width,
+    unsigned int height,unsigned int pitch,unsigned int alpha_cutoff) {
+    std::scoped_lock lock(g.mutex);
+    if(!Owner() || !xyz || !uv || !indices || !texture_rgba ||
+       !vertex_count || vertex_count>4096u ||
+       !index_count || index_count%3u!=0 ||
+       index_count>3u*2048u ||
+       index_count/3u>2048u-g.triangle_count ||
+       g.draw_count>=2048u ||
+       !width || !height || width>1024u || height>1024u ||
+       pitch!=width*4u || alpha_cutoff>255u) {
+        if(Owner())g.Abort();
+        return FALSE;
+    }
+    try {
+        std::vector<m2vr::vr::CpuPoint> positions(vertex_count);
+        std::vector<float> safe_uv(std::size_t(vertex_count)*2u);
+        std::vector<std::uint32_t> safe_indices(index_count);
+        std::vector<std::uint8_t> safe_texture(std::size_t(pitch)*height);
+        if(!GuardedCopy(positions.data(),xyz,
+                        std::size_t(vertex_count)*3u*sizeof(float)) ||
+           !GuardedCopy(safe_uv.data(),uv,
+                        safe_uv.size()*sizeof(float)) ||
+           !GuardedCopy(safe_indices.data(),indices,
+                        safe_indices.size()*sizeof(std::uint32_t)) ||
+           !GuardedCopy(safe_texture.data(),texture_rgba,
+                        safe_texture.size())) {
+            g.Abort();return FALSE;
+        }
+        m2vr::vr::ClippedTexturedStereoBatch clipped{};
+        if(!m2vr::vr::BuildTexturedStereoBatch(
+              positions.data(),safe_uv.data(),positions.size(),
+              safe_indices.data(),safe_indices.size(),g.frame,g.latch,
+              g.calibration,g.evidence,clipped)) {
+            g.Abort();return FALSE;
+        }
+        m2vr::vr::StereoWorldRaster::TextureRGBA texture{
+            safe_texture.data(),width,height,pitch,
+            static_cast<std::uint8_t>(alpha_cutoff)
+        };
+        if(!g.raster->DrawTextured(clipped,texture)) {
+            g.Abort();return FALSE;
+        }
+        ++g.draw_count;
+        g.triangle_count+=index_count/3u;
+        return TRUE;
+    }catch(...){
+        g.Abort();return FALSE;
+    }
+}
 extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     std::scoped_lock lock(g.mutex);
     if(!Owner())return FALSE;

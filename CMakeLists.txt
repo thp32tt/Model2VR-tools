@@ -149,6 +149,11 @@ add_test(NAME model2_eye_clip_independent_streams COMMAND model2_eye_clip_test)
 add_executable(model2_stereo_raster_test tests/model2_stereo_raster_test.cpp)
 target_compile_features(model2_stereo_raster_test PRIVATE cxx_std_20)
 add_test(NAME model2_native_opaque_stereo_raster COMMAND model2_stereo_raster_test)
+# Per-eye homogeneous UV clipping, perspective-correct texture sampling,
+# alpha-cutout and Z ordering. Synthetic CTest: no ROM/headset/FFB required.
+add_executable(model2_textured_stereo_test tests/model2_textured_stereo_test.cpp)
+target_compile_features(model2_textured_stereo_test PRIVATE cxx_std_20)
+add_test(NAME model2_native_textured_stereo_raster COMMAND model2_textured_stereo_test)
 
 
 # Read-only, allocation-free UP vertex witness parser; no emulator runtime.

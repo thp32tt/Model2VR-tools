@@ -30,6 +30,16 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
     const float* view_space_xyz, unsigned int vertex_count,
     const std::uint32_t* triangle_indices, unsigned int index_count,
     const std::uint32_t* triangle_colors_rgb);
+// Optional verified native world texture stage. Interleaved UVs are
+// per source vertex, texture is tightly-packed RGBA8 (no palette inference).
+// Supports clamp + nearest sampling and alpha test, not translucent blending.
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
+    const float* view_space_xyz, const float* interleaved_uv,
+    unsigned int vertex_count,
+    const std::uint32_t* triangle_indices, unsigned int index_count,
+    const unsigned char* texture_rgba,
+    unsigned int texture_width, unsigned int texture_height,
+    unsigned int texture_pitch, unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 __declspec(dllexport) void __stdcall Model2VR_AbortVerifiedWorldFrame();
 }
