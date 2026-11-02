@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "draw_up_witness.hpp"
+#include "d3d9_world_source.hpp"
 #include <Windows.h>
 #include <d3d9.h>
 #include <MinHook.h>
@@ -155,6 +156,83 @@ bool SafeReadBytes(const void* source,std::size_t offset,
     return true;
 }
 
+// Candidate only: the actual fixed-function preprojection UP vertex,
+ // stage-zero UV and original World/View matrices. Even D3DFVF_XYZ can be
+ // HUD/UI or non-gameplay; this function NEVER asserts world proof or
+ // publishes a GameStereo frame. Logs three bounded vertices at most.
+void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
+                    D3DPRIMITIVETYPE type,UINT primitive_count,void* caller,
+                    const void* vertices,UINT stride,const void* indices,
+                    D3DFORMAT index_format,UINT first,UINT vertex_count) {
+    using namespace m2vr::drawprobe;
+    if(!dev||!vertices||type!=D3DPT_TRIANGLELIST)return;
+    DWORD fvf=0;
+    if(FAILED(dev->GetFVF(&fvf)))return;
+    const auto layout=DecodeWorldUpFVF(fvf,stride);
+    if(!layout.eligible)return;
+    if(family==4u && (!indices||first!=0u||!vertex_count||
+       vertex_count>65536u ||
+       (index_format!=D3DFMT_INDEX16 &&
+        index_format!=D3DFMT_INDEX32)))return;
+    D3DMATRIX world{},view{};
+    if(FAILED(dev->GetTransform(D3DTS_WORLD,&world)) ||
+       FAILED(dev->GetTransform(D3DTS_VIEW,&view)) ||
+       !AffineMatrix(world)||!AffineMatrix(view))return;
+    const auto elements=PrimitiveElements(
+        static_cast<std::uint32_t>(type),primitive_count);
+    if(!elements)return;
+    constexpr unsigned max_sample=3u;
+    std::array<WorldVertex,max_sample> samples{};
+    std::array<std::uint32_t,max_sample> ids{};
+    const unsigned count=elements<max_sample?elements:max_sample;
+    for(unsigned i=0;i<count;++i) {
+        std::uint32_t index=i;
+        if(family==4u) {
+            const unsigned bytes=index_format==D3DFMT_INDEX16?2u:4u;
+            std::array<std::uint8_t,4> raw{};
+            if(!SafeReadBytes(indices,std::size_t(i)*bytes,
+                              raw.data(),bytes))return;
+            if(bytes==2u){std::uint16_t x=0;std::memcpy(&x,raw.data(),2);index=x;}
+            else std::memcpy(&index,raw.data(),4);
+            if(index>=vertex_count)return;
+        }
+        // Read only fixed layout fields. Never dereference beyond 65536
+        // source bytes, and never ask the caller to provide hidden memory.
+        std::array<std::uint8_t,256> source{};
+        if(!SafeReadBytes(vertices,std::size_t(index)*stride,
+                          source.data(),12u) ||
+           !SafeReadBytes(vertices,std::size_t(index)*stride+
+                              layout.uv_offset,
+                          source.data()+layout.uv_offset,8u) ||
+           !DecodeWorldVertex(source.data(),stride,layout,
+                              world,view,samples[i]))return;
+        ids[i]=index;
+    }
+    const auto id=g_witness_serial.fetch_add(
+        1u,std::memory_order_relaxed)+1u;
+    m2vr::LogEvent("model2_world_up_candidate",id,
+         CallerRva(caller),fvf,
+         (std::uint64_t{family}<<32)|stride);
+    for(unsigned i=0;i<count;++i){
+        const auto& v=samples[i];
+        m2vr::LogEvent("model2_world_up_view_xyz",id,ids[i],
+            PackPair(v.view_xyz[0],v.view_xyz[1]),
+            PackPair(v.view_xyz[2],v.uv[0]));
+        m2vr::LogEvent("model2_world_up_source_uv",id,ids[i],
+            PackPair(v.uv[0],v.uv[1]),0u);
+    }
+    IDirect3DBaseTexture9* tex=nullptr;
+    if(SUCCEEDED(dev->GetTexture(0,&tex)) && tex) {
+        if(tex->GetType()==D3DRTYPE_TEXTURE) {
+            auto* t=static_cast<IDirect3DTexture9*>(tex);
+            D3DSURFACE_DESC desc{};
+            if(SUCCEEDED(t->GetLevelDesc(0,&desc)))
+                m2vr::LogEvent("model2_world_up_texture_meta",id,
+                    desc.Format,desc.Width,desc.Height);
+        }
+        tex->Release();
+    }
+}
 void ObserveUP(IDirect3DDevice9* dev,unsigned family,
                D3DPRIMITIVETYPE type,UINT primitive_count,void* caller,
                const void* vertices,UINT stride,const void* indices=nullptr,
@@ -165,8 +243,13 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
         static_cast<std::uint32_t>(type),primitive_count);
     if(!dev||!vertices||!ValidStride(stride)||!elements)return;
     DWORD fvf=0;
-    if(FAILED(dev->GetFVF(&fvf)) ||
-       (fvf&D3DFVF_POSITION_MASK)!=D3DFVF_XYZRHW)return;
+    if(FAILED(dev->GetFVF(&fvf)))return;
+    if((fvf&D3DFVF_POSITION_MASK)==D3DFVF_XYZ){
+        ObserveWorldUP(dev,family,type,primitive_count,caller,
+                       vertices,stride,indices,index_format,first,vertex_count);
+        return;
+    }
+    if((fvf&D3DFVF_POSITION_MASK)!=D3DFVF_XYZRHW)return;
 
     // For indexed UP the vertex base is only unambiguous at index zero.
     // Skip all other layouts rather than risk a false draw association.

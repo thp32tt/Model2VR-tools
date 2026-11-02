@@ -28,6 +28,7 @@ add_library(model2vr_probe SHARED
   src/probe/signature.cpp
   src/probe/stereo_feed.cpp
   src/probe/verified_world_bridge.cpp
+  src/probe/d3d9_up_material_bridge.cpp
   src/probe/d3d9_probe.cpp
 )
 
@@ -160,6 +161,13 @@ add_test(NAME model2_native_textured_stereo_raster COMMAND model2_textured_stere
 add_executable(model2_up_witness_test tests/model2_up_witness_test.cpp)
 target_compile_features(model2_up_witness_test PRIVATE cxx_std_20)
 add_test(NAME model2_bounded_up_vertex_witness COMMAND model2_up_witness_test)
+# Strict D3D9 fixed-function XYZ+UV source decoding and native texture
+# BGRA -> RGBA conversion; does not require hardware or actual game.
+add_executable(model2_d3d9_world_source_test tests/model2_d3d9_world_source_test.cpp)
+target_compile_features(model2_d3d9_world_source_test PRIVATE cxx_std_20)
+add_test(NAME model2_real_d3d9_world_up_source_layout
+    COMMAND model2_d3d9_world_source_test)
+
 
 # Original Generic DD Model 2 emulator binding key contract (no SDL or FFB).
 add_executable(model2_ffb_binding_contract_test tests/ffb_binding_contract_test.cpp)

@@ -230,3 +230,60 @@ original Model2 polygon material textures, run a verified world-pass gate,
 or map source blend/fog/light/shader semantics. Real Daytona/Sega Rally
 textures and Quest 3 HMD gameplay **RUNTIME_VALIDATION=UNTESTED**. The
 external Generic DD v2 FFB dinput8.dll and wheel settings are untouched.
+
+## Actual D3D9 fixed-function source-material connector (2026-11-02)
+
+**Material progress, VR only.** The prior bridge required an external
+integration to supply predecoded view XYZ, UV and RGBA. A new source-side
+adapter now reads eligible, **actual game D3D9 fixed-function UP data**:
+
+- `src/probe/d3d9_world_source.hpp` decodes only a strict
+  `D3DFVF_XYZ + D3DFVF_TEX1` vertex format (plus bounded optional
+  normal/point-size/diffuse/specular). It explicitly rejects
+  `D3DFVF_XYZRHW` desktop/HUD coordinates, multi-texture UVs,
+  unknown stride and attribute formats, nonfinite transforms and UVs.
+  It applies the device's actual `D3DTS_WORLD` then `D3DTS_VIEW`
+  fixed-function row-vector transforms to recover view-space positions.
+- `src/probe/d3d9_texture_snapshot.hpp` obtains the bound stage-zero
+  `IDirect3DTexture9` and reads level-zero if CPU-lockable via
+  `LockRect(D3DLOCK_READONLY)`. Only 1–1024px RGBA-compatible
+  `D3DFMT_A8R8G8B8/X8R8G8B8` are accepted; rows are copied with
+  a guarded, pitch-aware read and converted BGRA→RGBA. Missing, DXT,
+  paletted, unsupported, device-private nonlockable or oversized
+  resources fail CLOSED. It never creates GPU resources, replays draws,
+  or changes game textures.
+- `src/probe/d3d9_up_material_bridge.cpp` exports
+  `Model2VR_AppendVerifiedD3D9UPTextured`, for use **only after a
+  trusted original-game renderer adapter has already called the
+  proof/pose-calibrated `Model2VR_BeginVerifiedWorldFrame`**. It
+  copies actual source vertices/indices with memory guards, rejects
+  vertex/pixel shaders, unverified fixed-function color/alpha ops,
+  lighting, fog, alpha blending, multi-texture, incompatible sampler,
+  and non-backbuffer render targets. It then submits the original
+  vertex UV and real RGBA texture snapshot to the existing per-eye
+  triangle renderer. All caller data is bounded and copied before use.
+- `src/probe/d3d9_probe.cpp` samples live `DrawPrimitiveUP` and
+  `DrawIndexedPrimitiveUP` fixed-function `XYZ/TEX1` candidates as
+  `model2_world_up_candidate`, `model2_world_up_view_xyz`,
+  `model2_world_up_source_uv`, `model2_world_up_texture_meta`.
+  Candidate telemetry is READ-ONLY, max 3 points per sampled call;
+  it does **not** award the world-proof flags or publish stereo
+  automatically. This helps determine whether the emulator even
+  submits original world geometry through UP methods versus the
+  more prevalent indexed GPU vertex-buffer methods.
+- `tests/model2_d3d9_world_source_test.cpp` runs a synthetic layout
+  and row-vector world→view transformation test plus actual
+  D3D9 little-endian BGRA→RGBA conversion, rejecting XYZRHW,
+  invalid texture formats, stride, UV and nonaffine matrices.
+
+**Remaining blocker:** The game-specific authenticated world
+polygon/camera classification and proof of original material stage
+semantics still require runtime evidence. The adapter intentionally
+cannot convert arbitrary observed D3D9 geometry into playable VR.
+`DrawPrimitive`/`DrawIndexedPrimitive` backed by GPU vertex buffers
+are NOT captured by this UP-only connector. Texturing supports nearest
+clamp + alpha cutout, not the emulator's full palette, texture stages,
+lighting, fog, transparency, depth/fog blends, HUD or other effects.
+The Quest 3/MOZA runtime has not run: `RUNTIME_VALIDATION=UNTESTED`.
+The separate Generic DD v2 wheel/FFB source and `dinput8.dll` are
+untouched.

@@ -40,6 +40,17 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
     const unsigned char* texture_rgba,
     unsigned int texture_width, unsigned int texture_height,
     unsigned int texture_pitch, unsigned int alpha_cutoff);
+// Reads *actual* fixed-function D3D9 UP XYZ+TEX1 source vertices,
+// original D3DTS_WORLD/VIEW transforms and stage-0 CPU-lockable texture.
+// It is callable only during a proven BeginVerifiedWorldFrame transaction.
+// Unknown shader/material states and GPU-only textures fail closed.
+// vertex_data must be a full, tightly-strided vertex list. Indices are
+// triangle-list values relative to that list (not DrawIndexedUP MinIndex).
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
+    void* d3d9_device, const void* vertex_data,
+    unsigned int vertex_count, unsigned int stride_bytes,
+    const std::uint32_t* triangle_indices, unsigned int index_count,
+    unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 __declspec(dllexport) void __stdcall Model2VR_AbortVerifiedWorldFrame();
 }
