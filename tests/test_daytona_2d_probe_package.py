@@ -14,6 +14,7 @@ class Daytona2DPackageTests(unittest.TestCase):
         self.assertEqual(cfg["probe"]["d3d9_read_only_probe"], "1")
         self.assertEqual(cfg["probe"]["launch_ffb_control_panel"], "0")
         self.assertEqual(cfg["probe"]["log_file"], "daytona_2d_probe.csv")
+        self.assertEqual(cfg["probe"]["d3d9_draw_sample_every"], "128")
         for section in ("hook.transform_point", "hook.project_vertex",
                         "hook.ffb_dispatch"):
             self.assertEqual(cfg[section]["enabled"], "0")
@@ -39,6 +40,8 @@ class Daytona2DPackageTests(unittest.TestCase):
             encoding="utf-8")
         self.assertIn('LoadLibraryW(L"d3d9.dll")', source)
         self.assertIn('GetProcAddress(d3d9,"Direct3DCreate9")', source)
+        self.assertIn('model2_d3d9_draw_ordinal', source)
+        self.assertIn('ordinal%g_draw_sample_every', source)
         self.assertNotIn("Direct3DCreate9(D3D_SDK_VERSION)", source)
         log = (ROOT / "src" / "probe" / "logger.cpp").read_text(
             encoding="utf-8")
