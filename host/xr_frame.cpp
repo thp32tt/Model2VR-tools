@@ -174,7 +174,7 @@ void XrApp::draw_frame(XrTime display_time){
 void XrApp::run(int max_frames){
     bool running=false,exit=false;
     int frames=0;
-    while(!exit && frames<max_frames){
+    while(!exit && (max_frames==0 || frames<max_frames)){
         XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};
         while(xrPollEvent(instance_,&event)==XR_SUCCESS){
             if(event.type==XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED){
