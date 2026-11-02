@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "draw_up_witness.hpp"
+#include "draw_origin_gate.hpp"
 #include "d3d9_world_source.hpp"
 #include <Windows.h>
 #include <d3d9.h>
@@ -43,6 +44,7 @@ std::atomic<unsigned> g_draws{0},g_indexed{0},g_up{0},g_indexed_up{0};
 // Independent draw-family sampling; rare UP paths are not hidden by
 // thousands of indexed world draws. All counters reset each Present.
 std::array<std::atomic<unsigned>,4> g_family_samples{};
+m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 std::atomic<std::uint64_t> g_witness_serial{0};
 bool g_device_installed=false;
@@ -68,13 +70,14 @@ std::uint32_t CallerRva(void* ret) {
 bool Sample(IDirect3DDevice9* dev,unsigned family,
             D3DPRIMITIVETYPE topology,UINT primitive_count,void* caller){
     if(family<1u || family>4u)return false;
-    // First draw of EACH family for EACH Present is always reported, even if
-    // one geometry family dominates the whole game frame. After the first,
-    // retain the old ~1/1024 query cadence for low probe overhead.
+    // Preserve per-frame first + every 1024th draw while also observing
+    // up to 64 novel in-EXE caller buckets per API family per process.
+    // This exposes rare actual world draw callsites without GPU readbacks.
     const unsigned ordinal=g_family_samples[family-1].fetch_add(
         1,std::memory_order_relaxed);
-    if(ordinal!=0u && (ordinal&0x3ffu)!=0u)return false;
     const auto caller_rva=CallerRva(caller);
+    if(!g_draw_origin_gate.ShouldObserve(family,caller_rva,ordinal))
+        return false;
     const std::uint64_t topology_and_count=
         (std::uint64_t{primitive_count}<<32)|
         static_cast<std::uint32_t>(topology);
@@ -295,15 +298,95 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
             observations[i].index,PackPair(v.x,v.y),PackPair(v.z,v.rhw));
     }
 }
+
+// Source-only D3D9 DrawPrimitive/DrawIndexedPrimitive provenance.
+// No buffer Lock(), texture copy, original draw replay or world-pass flag.
+// The actual real game source ranges and fixed-function camera state are
+// associated by witness ID for offline, authorized render-path analysis.
+void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
+                         D3DPRIMITIVETYPE type,void* caller,
+                         UINT start_vertex,INT base_vertex,
+                         UINT min_vertex,UINT num_vertices,
+                         UINT start_index,UINT primitive_count) {
+    using namespace m2vr::drawprobe;
+    if(!dev || (family!=1u && family!=2u) ||
+       type!=D3DPT_TRIANGLELIST || !primitive_count)return;
+    DWORD fvf=0;
+    if(FAILED(dev->GetFVF(&fvf)))return;
+    IDirect3DVertexBuffer9* vb=nullptr;
+    UINT offset=0,stride=0;
+    if(FAILED(dev->GetStreamSource(0,&vb,&offset,&stride)) || !vb)
+        return;
+    D3DVERTEXBUFFER_DESC vdesc{};
+    const bool desc_ok=SUCCEEDED(vb->GetDesc(&vdesc));
+    vb->Release();
+    if(!desc_ok)return;
+    const auto layout=DecodeWorldUpFVF(fvf,stride);
+    if(!layout.eligible)return; // unknown vertex declaration: no guessing
+    D3DMATRIX world{},view{};
+    const bool transforms_ok=
+        SUCCEEDED(dev->GetTransform(D3DTS_WORLD,&world)) &&
+        SUCCEEDED(dev->GetTransform(D3DTS_VIEW,&view)) &&
+        AffineMatrix(world)&&AffineMatrix(view);
+    const auto id=g_witness_serial.fetch_add(
+        1u,std::memory_order_relaxed)+1u;
+    m2vr::LogEvent("model2_d3d9_vb_source",id,CallerRva(caller),
+        (std::uint64_t{family}<<32)|fvf,
+        (std::uint64_t{vdesc.Size}<<32)|stride);
+    m2vr::LogEvent("model2_d3d9_vb_stream",id,
+        (std::uint64_t{offset}<<32)|vdesc.Usage,
+        vdesc.Pool,layout.uv_offset);
+    if(family==1u){
+        m2vr::LogEvent("model2_d3d9_vb_draw_args",id,family,
+            start_vertex,primitive_count);
+    }else{
+        m2vr::LogEvent("model2_d3d9_vb_draw_args",id,
+            static_cast<std::uint32_t>(base_vertex),
+            (std::uint64_t{min_vertex}<<32)|num_vertices,
+            (std::uint64_t{start_index}<<32)|primitive_count);
+        IDirect3DIndexBuffer9* ib=nullptr;
+        if(SUCCEEDED(dev->GetIndices(&ib))&&ib){
+            D3DINDEXBUFFER_DESC idesc{};
+            if(SUCCEEDED(ib->GetDesc(&idesc)))
+                m2vr::LogEvent("model2_d3d9_ib_source",id,
+                    idesc.Format,idesc.Size,idesc.Usage);
+            ib->Release();
+        }
+    }
+    if(transforms_ok){
+        m2vr::LogEvent("model2_d3d9_vb_camera",id,
+            PackPair(world._41,world._42),
+            PackPair(world._43,view._41),
+            PackPair(view._42,view._43));
+    }else{
+        m2vr::LogEvent("model2_d3d9_vb_camera_unknown",id);
+    }
+    IDirect3DBaseTexture9* base=nullptr;
+    if(SUCCEEDED(dev->GetTexture(0,&base))&&base){
+        if(base->GetType()==D3DRTYPE_TEXTURE){
+            auto* tex=static_cast<IDirect3DTexture9*>(base);
+            D3DSURFACE_DESC tdesc{};
+            if(SUCCEEDED(tex->GetLevelDesc(0,&tdesc)))
+                m2vr::LogEvent("model2_d3d9_vb_texture",id,
+                    tdesc.Format,tdesc.Width,tdesc.Height);
+        }
+        base->Release();
+    }
+}
+
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     g_draws.fetch_add(1,std::memory_order_relaxed);
-    Sample(d,1,p,count,_ReturnAddress());
+    void* caller=_ReturnAddress();
+    if(Sample(d,1,p,count,caller))
+        ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count);
     return g_draw(d,p,start,count);
 }
 HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT base,
                                       UINT min,UINT num,UINT start,UINT count){
     g_indexed.fetch_add(1,std::memory_order_relaxed);
-    Sample(d,2,p,count,_ReturnAddress());
+    void* caller=_ReturnAddress();
+    if(Sample(d,2,p,count,caller))
+        ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count);
     return g_draw_indexed(d,p,base,min,num,start,count);
 }
 HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT count,
