@@ -179,6 +179,14 @@ target_compile_definitions(model2_d3d9_depth_cull_test PRIVATE NOMINMAX WIN32_LE
 add_test(NAME model2_native_d3d9_depth_cull_occlusion COMMAND model2_d3d9_depth_cull_test)
 
 
+# Exact Daytona real D3D9 stream-zero 32-byte vertex declaration and
+# finite source position/UV decoder: no emulator ROM/HMD needed.
+add_executable(daytona_up_decl_witness_test tests/daytona_up_decl_witness_test.cpp)
+target_compile_features(daytona_up_decl_witness_test PRIVATE cxx_std_20)
+target_compile_definitions(daytona_up_decl_witness_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME daytona_real_d3d9_decl_position_source_guard
+    COMMAND daytona_up_decl_witness_test)
+
 # Read-only, allocation-free UP vertex witness parser; no emulator runtime.
 add_executable(model2_up_witness_test tests/model2_up_witness_test.cpp)
 target_compile_features(model2_up_witness_test PRIVATE cxx_std_20)
