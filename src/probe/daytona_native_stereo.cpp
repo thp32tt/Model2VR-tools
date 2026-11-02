@@ -49,7 +49,7 @@ public:
     }
     void Draw(IDirect3DDevice9* d,D3DPRIMITIVETYPE primitive,UINT count,
               const void* source,UINT stride,std::uint32_t caller,
-              m2vr::daytona::OriginalDrawUP original)noexcept {
+              m2vr::daytona::OriginalDrawUP original) {
         if(!enabled_||!d||!source||!original||count==0||count>512||
            stride<16u||stride>256u)return;
         std::lock_guard lock(mu_);
@@ -139,7 +139,7 @@ public:
         frame_started_=true;
         if(scene)++scene_draws_;
     }
-    void Present(IDirect3DDevice9* d,std::uint64_t frame)noexcept{
+    void Present(IDirect3DDevice9* d,std::uint64_t frame){
         if(!enabled_||!d)return;
         std::lock_guard lock(mu_);
         if(!frame_started_ || !scene_draws_ || !frame || d!=device_){
@@ -270,10 +270,12 @@ void Configure(bool enabled,std::uint32_t shift)noexcept{
 void MirrorDraw(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT n,
                 const void* v,UINT stride,std::uint32_t caller,
                 OriginalDrawUP original)noexcept{
-    g_eye.Draw(d,p,n,v,stride,caller,original);
+    try {g_eye.Draw(d,p,n,v,stride,caller,original);}
+    catch(...){g_eye.ResetExternal();}
 }
 void PublishFrame(IDirect3DDevice9* d,std::uint64_t frame)noexcept{
-    g_eye.Present(d,frame);
+    try {g_eye.Present(d,frame);}
+    catch(...){g_eye.ResetExternal();}
 }
 void ResetResources()noexcept{g_eye.ResetExternal();}
 }
