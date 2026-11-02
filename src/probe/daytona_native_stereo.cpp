@@ -181,7 +181,7 @@ private:
     D3DVIEWPORT9 ClippedViewport(D3DVIEWPORT9 vp)const noexcept{
         return Clip(vp,width_,height_);
     }
-    bool Ensure(IDirect3DDevice9* d)noexcept{
+    bool Ensure(IDirect3DDevice9* d){
         if(d==device_ && backbuffer_ && eyes_[0].color&&eyes_[1].color)return true;
         Reset();
         IDirect3DSurface9* back=nullptr;
