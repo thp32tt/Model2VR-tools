@@ -84,14 +84,14 @@ private:
         const double signed_area=Edge(v[0],v[1],v[2].x,v[2].y);
         if(!std::isfinite(signed_area) ||
            std::abs(signed_area)<1.e-8)return;
-        const double left=std::max(0.0,std::floor(std::min({
+        const double left=(std::max)(0.0,std::floor((std::min)({
             v[0].x,v[1].x,v[2].x})));
-        const double right=std::min(double(Width)-1.,
-            std::ceil(std::max({v[0].x,v[1].x,v[2].x})));
-        const double top=std::max(0.0,std::floor(std::min({
+        const double right=(std::min)(double(Width)-1.,
+            std::ceil((std::max)({v[0].x,v[1].x,v[2].x})));
+        const double top=(std::max)(0.0,std::floor((std::min)({
             v[0].y,v[1].y,v[2].y})));
-        const double bottom=std::min(double(Height)-1.,
-            std::ceil(std::max({v[0].y,v[1].y,v[2].y})));
+        const double bottom=(std::min)(double(Height)-1.,
+            std::ceil((std::max)({v[0].y,v[1].y,v[2].y})));
         if(left>right || top>bottom)return;
         const auto x0=static_cast<int>(left),x1=static_cast<int>(right);
         const auto y0=static_cast<int>(top),y1=static_cast<int>(bottom);
