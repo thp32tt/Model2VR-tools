@@ -132,3 +132,35 @@ Draw callsites, calibration and Quest 3 runtime are proven. No autonomous
 world-pass classification, D3D9 draw replay, gameplay simulation or FFB
 backend replacement is introduced. The separate Generic DD v2 plugin
 and its `dinput8.dll` are untouched.
+
+## Verified D3D9 per-eye culling and depth-state fidelity (2026-11-02)
+
+Native textured stereo rasterization now accepts **source-proven**
+`D3DRS_CULLMODE` NONE/CW/CCW, `D3DRS_ZFUNC` LESS/LESSEQUAL and
+`D3DRS_ZWRITEENABLE` true/false, passed from the real D3D9
+fixed-function material source by
+`Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates`.
+Culling is evaluated independently in each eye after clipping and
+screen projection; screen Y points down, so **positive signed area
+means clockwise screen winding**. LESS vs LESSEQUAL determines whether
+coplanar fragments can replace an earlier pixel. A source draw with
+depth-writing disabled can update its visible RGBA pixel without
+incorrectly occluding later surfaces.
+
+The earlier `WithSampler` and legacy `AppendVerifiedTexturedTriangles`
+exports preserve their old default cull-none, strict-LESS, Z-write-on
+behavior to avoid changing existing callers. The D3D9 source adapter
+additionally rejects stencil-enabled draws, nonzero depth/slope bias,
+sRGB render-target write and partial color masks, since the existing
+CPU stereo raster cannot faithfully reproduce those operations. The
+read-only draw probe now records `model2_d3d9_vb_raster` and
+`model2_d3d9_vb_write_color` under the same caller witness ID so
+local render-path evidence can show these unsupported cases.
+
+The `model2_native_d3d9_depth_cull_occlusion` CTest exercises
+opposite winding, both eyes' center pixels, equal-depth tie handling,
+depth-write-off overdraw and failure without modifying either eye.
+This implements bounded source-state rendering fidelity **only**,
+not a proven Model 2 game world hook or a Quest 3 runtime feature.
+`RUNTIME_VALIDATION=UNTESTED`; Generic DD v2 FFB and emulator
+input/simulation are unchanged.
