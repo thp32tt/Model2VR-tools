@@ -31,6 +31,9 @@ enable_testing()
 add_executable(model2vr_shared_ipc_x64_test ../tests/stereo_frame_ipc_test.cpp)
 target_compile_features(model2vr_shared_ipc_x64_test PRIVATE cxx_std_20)
 add_test(NAME stereo_frame_transport_x64 COMMAND model2vr_shared_ipc_x64_test)
+add_executable(model2vr_frame_policy_x64_test ../tests/stereo_frame_policy_test.cpp)
+target_compile_features(model2vr_frame_policy_x64_test PRIVATE cxx_std_20)
+add_test(NAME stereo_frame_rate_gate_x64 COMMAND model2vr_frame_policy_x64_test)
 
 
 add_executable(model2vr_pose_ipc_x64_test ../tests/stereo_pose_ipc_test.cpp)

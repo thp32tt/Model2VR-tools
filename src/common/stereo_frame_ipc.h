@@ -45,6 +45,12 @@ constexpr std::size_t kSharedBytes = sizeof(Header) + kBytesPerEye * 2;
 inline std::wstring NameForPid(std::uint32_t emulator_pid) {
     return L"Local\\Model2VR_StereoFrames_v1_" + std::to_wstring(emulator_pid);
 }
+struct FrameStamp {
+    std::uint64_t frame_id=0;
+    std::uint64_t timestamp_qpc=0;
+    FrameKind kind=FrameKind::Invalid;
+    std::uint32_t writer_pid=0;
+};
 struct Snapshot {
     std::uint64_t frame_id=0;
     std::uint64_t timestamp_qpc=0;
@@ -118,6 +124,28 @@ public:
         InterlockedExchange(&h->kind,static_cast<LONG>(kind));
         InterlockedExchange(&h->sequence,before+2);
         last_written_=frame_id;
+        return true;
+    }
+    // Small, coherent metadata check before copying two 4-MiB eyes.
+    // No writer lock, no extra mapped memory, and no ABI wire change.
+    bool Peek(FrameStamp& out)const{
+        if(!Valid())return false;
+        const auto* h=reinterpret_cast<const Header*>(base_);
+        const LONG start=h->sequence;
+        MemoryBarrier();
+        if(start&1)return false;
+        FrameStamp stamp{};
+        stamp.frame_id=h->frame_id;
+        stamp.timestamp_qpc=h->timestamp_qpc;
+        stamp.kind=static_cast<FrameKind>(h->kind);
+        stamp.writer_pid=h->writer_pid;
+        MemoryBarrier();
+        const LONG end=h->sequence;
+        if(start!=end || (end&1) || stamp.frame_id==0 ||
+           !stamp.writer_pid ||
+           (stamp.kind!=FrameKind::GameStereo &&
+            stamp.kind!=FrameKind::Diagnostic))return false;
+        out=stamp;
         return true;
     }
     bool Read(Snapshot& out)const{

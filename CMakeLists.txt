@@ -106,6 +106,10 @@ add_test(NAME stereo_geometry_invariants COMMAND model2vr_stereo_core_test)
 add_executable(model2vr_stereo_ipc_test tests/stereo_frame_ipc_test.cpp)
 target_compile_features(model2vr_stereo_ipc_test PRIVATE cxx_std_20)
 add_test(NAME stereo_frame_transport COMMAND model2vr_stereo_ipc_test)
+# Verify bounded 60Hz producer -> 90/120Hz HMD holding and expiry.
+add_executable(model2vr_frame_policy_test tests/stereo_frame_policy_test.cpp)
+target_compile_features(model2vr_frame_policy_test PRIVATE cxx_std_20)
+add_test(NAME stereo_frame_rate_gate COMMAND model2vr_frame_policy_test)
 
 add_executable(model2vr_stereo_diagnostic tools/model2_stereo_diagnostic.cpp)
 target_compile_features(model2vr_stereo_diagnostic PRIVATE cxx_std_20)

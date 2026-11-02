@@ -27,6 +27,7 @@ void XrApp::create_swapchains(){
         check(xrEnumerateSwapchainImages(chain.handle,image_count,&image_count,
             reinterpret_cast<XrSwapchainImageBaseHeader*>(chain.images.data())),"images");
         chain.rtvs.resize(image_count);
+        chain.uploaded_frame_ids.assign(image_count,0);
         for(std::size_t i=0;i<image_count;++i)
             checkhr(device_->CreateRenderTargetView(chain.images[i].texture,nullptr,
                 &chain.rtvs[i]),"render target view");
@@ -41,9 +42,19 @@ void XrApp::draw_frame(XrTime display_time){
     XrViewState state{XR_TYPE_VIEW_STATE};
     std::uint32_t count=0;
     check(xrLocateViews(session_,&locate,&state,2,&count,views.data()),"locate HMD views");
-    if(count!=2 || !(state.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) ||
-       !(state.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT))
-        throw std::runtime_error("HMD eye poses are not valid");
+    if(count!=2 ||
+       !(state.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) ||
+       !(state.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT)) {
+        // A brief headset-tracking loss is not a fatal OpenXR session error.
+        // Revoke the previously published pose so game geometry cannot use
+        // the old eye views, and submit an empty composition frame.
+        if(pose_writer_.Valid())pose_writer_.Invalidate();
+        XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
+        end.displayTime=display_time;
+        end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+        check(xrEndFrame(session_,&end),"end lost-tracking frame");
+        return;
+    }
     if(source_pid_!=0){
         if(!pose_writer_.Valid())pose_writer_.Create(source_pid_);
         if(pose_writer_.Valid()){
@@ -69,40 +80,43 @@ void XrApp::draw_frame(XrTime display_time){
             pose_writer_.Publish(predicted);
         }
     }
-    bool incoming_stereo=false;
+    LARGE_INTEGER now_ticks{},qpc_hz{};
+    QueryPerformanceCounter(&now_ticks);
+    QueryPerformanceFrequency(&qpc_hz);
+    const auto now=now_ticks.QuadPart>0 ?
+        static_cast<std::uint64_t>(now_ticks.QuadPart):0ull;
+    const auto hz=qpc_hz.QuadPart>0 ?
+        static_cast<std::uint64_t>(qpc_hz.QuadPart):0ull;
     if(source_pid_!=0){
-        if(!shared_frames_.Valid()) shared_frames_.Open(source_pid_);
+        if(!shared_frames_.Valid())shared_frames_.Open(source_pid_);
         if(shared_frames_.Valid()){
-            transport::Snapshot snapshot;
-            if(shared_frames_.Read(snapshot)){
-                LARGE_INTEGER now{},hz{};
-                QueryPerformanceCounter(&now);
-                QueryPerformanceFrequency(&hz);
-                constexpr std::int64_t kMaxFrameAgeSeconds=2;
-                const auto maxFrameAgeQpc=hz.QuadPart*kMaxFrameAgeSeconds;
-                const bool fresh=snapshot.timestamp_qpc>0 &&
-                    now.QuadPart>=0 &&
-                    static_cast<std::uint64_t>(now.QuadPart)>=snapshot.timestamp_qpc &&
-                    static_cast<std::uint64_t>(now.QuadPart)-snapshot.timestamp_qpc<=
-                      static_cast<std::uint64_t>(maxFrameAgeQpc);
-                if(fresh && snapshot.kind==transport::FrameKind::Diagnostic && !saw_diagnostic_){
-                    std::cout<<"Model2VR: diagnostic frame producer (NOT game stereo)\n";
-                    saw_diagnostic_=true;
+            transport::FrameStamp stamp{};
+            const bool stamp_ok=shared_frames_.Peek(stamp);
+            const auto action=frame_gate_.Decide(stamp_ok?&stamp:nullptr,now,hz);
+            if(action==transport::FrameUse::ReadNew){
+                transport::Snapshot next_frame{};
+                if(shared_frames_.Read(next_frame) &&
+                   frame_gate_.Accept(next_frame,now,hz)){
+                    if(next_frame.kind==transport::FrameKind::Diagnostic &&
+                       !saw_diagnostic_){
+                        std::cout<<"Model2VR: DIAGNOSTIC source; not native game stereo\n";
+                        saw_diagnostic_=true;
+                    }
+                    // Two-eye source generation is one atomic game frame,
+                    // never split a left eye from one producer frame and
+                    // a right eye from another.
+                    eye_frame_=std::move(next_frame);
                 }
-                if(fresh){
-                    last_frame_id_=snapshot.frame_id;
-                    eye_frame_=std::move(snapshot);
-                    incoming_stereo=true;
-                } else {
-                    eye_frame_={}; // fail closed instead of repeating stale frames
-                }
-            } else {
-                // If the writer disappeared, never keep submitting a stale
-                // image indefinitely as a live rendered frame.
-                eye_frame_={};
             }
         }
     }
+    // The emulator can run at 60Hz with a 90Hz or 120Hz HMD.
+    // Re-use a *bounded* coherent previous pair, never clear on every
+    // display tick, but stop presenting it if the producer stalls.
+    const bool usable=frame_gate_.Cached(now,hz) &&
+        eye_frame_.frame_id==frame_gate_.id() &&
+        eye_frame_.eyes[0].size()==transport::kBytesPerEye &&
+        eye_frame_.eyes[1].size()==transport::kBytesPerEye;
     std::array<XrCompositionLayerProjectionView,2> layer_views{
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}
@@ -115,19 +129,24 @@ void XrApp::draw_frame(XrTime display_time){
         XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
         wait.timeout=XR_INFINITE_DURATION;
         check(xrWaitSwapchainImage(chain.handle,&wait),"wait swapchain image");
-        if(incoming_stereo && chain.width==transport::kWidth &&
-           chain.height==transport::kHeight &&
-           eye_frame_.eyes[eye].size()==transport::kBytesPerEye){
-            // Upload the *independent* left/right RGBA8 buffers. Never clone
-            // one eye or synthesize world depth from a desktop screenshot.
-            context_->UpdateSubresource(chain.images.at(index).texture,0,nullptr,
-                  eye_frame_.eyes[eye].data(),transport::kPitch,0);
+        if(usable && chain.width==transport::kWidth &&
+           chain.height==transport::kHeight){
+            // XR may return the same swapchain image on subsequent frames.
+            // It already holds the exact current left/right source frame:
+            // avoid redundant CPU->GPU uploads on that image.
+            if(chain.uploaded_frame_ids.at(index)!=frame_gate_.id()){
+                context_->UpdateSubresource(chain.images.at(index).texture,0,nullptr,
+                      eye_frame_.eyes[eye].data(),transport::kPitch,0);
+                chain.uploaded_frame_ids[index]=frame_gate_.id();
+            }
         }else{
-            // Missing producer is a clearly differentiated diagnostic color.
+            // Absent/stale producer: clear and invalidate each XR image slot,
+            // including images that previously held live game pixels.
             const float color[4]={
                 eye==0?0.02f:0.15f,0.05f,eye==0?0.17f:0.04f,1.f
             };
             context_->ClearRenderTargetView(chain.rtvs.at(index).Get(),color);
+            chain.uploaded_frame_ids[index]=0;
         }
         XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         check(xrReleaseSwapchainImage(chain.handle,&release),"release swapchain image");
@@ -166,6 +185,7 @@ void XrApp::run(int max_frames){
                     check(xrBeginSession(session_,&begin),"begin XR session");
                     running=true;
                 }else if(s.state==XR_SESSION_STATE_STOPPING){
+                    if(pose_writer_.Valid())pose_writer_.Invalidate();
                     if(running)check(xrEndSession(session_),"stop XR session");
                     running=false;
                 }else if(s.state==XR_SESSION_STATE_EXITING ||
@@ -183,6 +203,7 @@ void XrApp::run(int max_frames){
             draw_frame(state.predictedDisplayTime);
             ++frames;
         }else{
+            if(pose_writer_.Valid())pose_writer_.Invalidate();
             XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
             end.displayTime=state.predictedDisplayTime;
             end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;

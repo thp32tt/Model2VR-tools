@@ -106,3 +106,35 @@ Model 2 CPU matrix globals without a verified axis conversion.
 world polygon capture/replay.** Diagnostic transport and predicted-pose
 delivery are real code paths, not proof of successful Daytona HMD gameplay.
 
+
+## XR stereo consumer hardening — 2026-11-02
+
+**VR-only change; the existing Generic DD v2 wheel/FFB plugin is unchanged.**
+
+- `src/common/stereo_frame_ipc.h` now exposes `Peek(FrameStamp&)` to read
+  a seqlock-coherent frame ID, timestamp, kind, and writer PID without
+  copying two 4-MiB pixel planes. Wire ABI version/size do not change.
+- `src/common/stereo_frame_policy.hpp` implements a bounded 125ms
+  independent-source hold policy. A 60Hz game can feed a 90Hz/120Hz
+  headset without repeatedly copying the same eight-megabyte source, but
+  stale/disconnected producers expire and the host displays distinct
+  fallback diagnostic colors.
+- The x64 XR host remembers the last uploaded frame *per eye and per XR
+  swapchain image*. Upload only when that exact image index needs new
+  pixels. On expiry, clear the image and its cached frame ID so old game
+  pixels never silently survive a disconnected producer.
+- `src/common/stereo_pose_ipc.h` now revokes old predicted eye pose when
+  OpenXR tracking becomes invalid, session stops, or no render is
+  submitted. Momentary tracking loss submits an empty XR frame rather
+  than throwing and terminating the headset host.
+- `tests/stereo_frame_policy_test.cpp` and x86/x64 IPC/pose tests cover
+  new-frame admission, duplicate holds, 125ms expiry, complete left/right
+  buffers, diagnostics, stale frame rejection, writer metadata and
+  explicit pose invalidation/recovery. Both Win32 and x64 GitHub CI
+  compile the same policy.
+
+This is an **actual runtime code-path change to the stereo consumer**,
+not a native Model2 polygon renderer. Source images remain diagnostic
+until the binary-specific world camera projection and game draw
+classification gates are verified. Quest 3/VDXR hardware runtime is
+`UNTESTED`.

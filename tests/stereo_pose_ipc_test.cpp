@@ -30,6 +30,12 @@ int main(){
     REQUIRE(host.Publish(frame));
     REQUIRE(emulator.Read(got));
     REQUIRE(got.sequence==2 && std::fabs(got.eyes[0].position_m[1]-0.5f)<0.00001f);
+    REQUIRE(host.Invalidate());
+    REQUIRE(!emulator.Read(got)); // transient tracking loss clears stale pose
+    frame.sequence=3;
+    REQUIRE(host.Publish(frame));
+    REQUIRE(emulator.Read(got));
+    REQUIRE(got.sequence==3); // tracking recovery
     emulator.Close();host.Close();
     REQUIRE(!emulator.Read(got));
     return 0;

@@ -4,6 +4,8 @@ on:
     paths:
       - 'host/**'
       - 'src/common/stereo_frame_ipc.h'
+      - 'src/common/stereo_frame_policy.hpp'
+      - 'tests/stereo_frame_policy_test.cpp'
       - 'src/common/stereo_pose_ipc.h'
       - 'tests/stereo_frame_ipc_test.cpp'
       - 'tests/stereo_pose_ipc_test.cpp'

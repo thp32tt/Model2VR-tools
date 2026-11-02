@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <vector>
 #include "../src/common/stereo_frame_ipc.h"
+#include "../src/common/stereo_frame_policy.hpp"
 #include "../src/common/stereo_pose_ipc.h"
 
 namespace m2vr::host {
@@ -18,6 +19,7 @@ struct EyeChain {
     XrSwapchain handle=XR_NULL_HANDLE;
     std::vector<XrSwapchainImageD3D11KHR> images;
     std::vector<ComPtr<ID3D11RenderTargetView>> rtvs;
+    std::vector<std::uint64_t> uploaded_frame_ids; // per XR image, per eye
     std::uint32_t width=0;
     std::uint32_t height=0;
 };
@@ -46,7 +48,7 @@ private:
     pose::Link pose_writer_;
     std::uint64_t predicted_pose_sequence_=0;
     transport::Snapshot eye_frame_;
-    std::uint64_t last_frame_id_=0;
+    transport::StereoFrameGate frame_gate_;
     bool saw_diagnostic_=false;
 };
 }  // namespace m2vr::host

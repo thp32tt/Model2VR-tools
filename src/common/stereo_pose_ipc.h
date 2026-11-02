@@ -90,6 +90,19 @@ public:
         last_written_=value.sequence;
         return true;
     }
+    // Explicitly revoke the last valid pose on transient tracking loss.
+    // Leaving an old pose in shared memory can otherwise produce a stale
+    // two-second headset orientation even when the host stops rendering.
+    bool Invalidate() {
+        if(!writable_ || !Valid())return false;
+        const LONG previous=InterlockedCompareExchange(&data_->generation,0,0);
+        if(previous&1)return false;
+        InterlockedExchange(&data_->generation,previous+1);
+        const Frame invalid{};
+        std::memcpy(&data_->frame,&invalid,sizeof(Frame));
+        InterlockedExchange(&data_->generation,previous+2);
+        return true;
+    }
     bool Read(Frame& out)const{
         if(!Valid())return false;
         const LONG before=data_->generation;
