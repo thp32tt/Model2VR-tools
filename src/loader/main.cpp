@@ -234,7 +234,11 @@ int wmain(int argc, wchar_t** argv) {
         CloseHandle(pi.hProcess);
         return 8;
     }
-    StartFfbControlPanel(pi.dwProcessId, emulator.parent_path());
+    // Diagnostic-only Daytona sessions must not launch any FFB editor.
+    // Preserve existing behavior when this optional INI key is absent.
+    if (GetPrivateProfileIntW(L"probe",L"launch_ffb_control_panel",
+                              1,config.c_str()) != 0)
+        StartFfbControlPanel(pi.dwProcessId, emulator.parent_path());
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return 0;
