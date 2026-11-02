@@ -6,7 +6,7 @@
 
 int main(int argc,char** argv){
     try {
-        const int frames=argc>1?std::clamp(std::stoi(argv[1]),1,10000):600;
+        const int frames=argc>1?std::clamp(std::stoi(argv[1]),0,10000):600; // 0=until XR session exits
         m2vr::host::XrApp app;
         if(argc>2){
             const auto pid=std::stoul(argv[2]);
