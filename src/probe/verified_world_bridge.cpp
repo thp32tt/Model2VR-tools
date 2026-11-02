@@ -144,12 +144,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
 }
 // Optional texture source path for a trusted Model2 CPU-world integration.
 // This does not query game textures, rerun any D3D9 draw, or alter FFB.
-extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
     const float* xyz,const float* uv,unsigned int vertex_count,
     const std::uint32_t* indices,unsigned int index_count,
     const unsigned char* texture_rgba,unsigned int width,
     unsigned int height,unsigned int pitch,unsigned int alpha_cutoff,
-    unsigned int filter_mode,unsigned int address_u,unsigned int address_v) {
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write) {
     std::scoped_lock lock(g.mutex);
     if(!Owner() || !xyz || !uv || !indices || !texture_rgba ||
        !vertex_count || vertex_count>4096u ||
@@ -159,7 +160,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
        g.draw_count>=2048u ||
        !width || !height || width>1024u || height>1024u ||
        pitch!=width*4u || alpha_cutoff>255u ||
-       filter_mode>1u || address_u>1u || address_v>1u) {
+       filter_mode>1u || address_u>1u || address_v>1u ||
+       cull_mode>2u || depth_mode>1u || depth_write>1u) {
         if(Owner())g.Abort();
         return FALSE;
     }
@@ -192,6 +194,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
                 static_cast<m2vr::vr::TextureAddress>(address_u),
                 static_cast<m2vr::vr::TextureAddress>(address_v),
                 static_cast<m2vr::vr::TextureFilter>(filter_mode)
+            },
+            {
+                static_cast<m2vr::vr::FaceCull>(cull_mode),
+                static_cast<m2vr::vr::DepthCompare>(depth_mode),
+                depth_write!=0u
             }
         };
         if(!g.raster->DrawTextured(clipped,texture)) {
@@ -203,6 +210,19 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
     }catch(...){
         g.Abort();return FALSE;
     }
+}
+// The earlier point/linear + address ABI remains valid with its historical
+// no-culling, strict-less and depth-writing defaults.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
+    const float* xyz,const float* uv,unsigned int vertex_count,
+    const std::uint32_t* indices,unsigned int index_count,
+    const unsigned char* texture_rgba,unsigned int width,
+    unsigned int height,unsigned int pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v) {
+    return Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
+        xyz,uv,vertex_count,indices,index_count,texture_rgba,width,
+        height,pitch,alpha_cutoff,filter_mode,address_u,address_v,
+        0u,0u,1u);
 }
 // Preserve the original public ABI: old callers keep point/clamp.
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
