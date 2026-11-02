@@ -46,6 +46,37 @@ class DaytonaPhaseTests(unittest.TestCase):
             self.assertEqual(r["sources"][0]["fvf"],{"0x1c4":2})
             self.assertEqual(r["sources"][1]["fvf"],{"0x112":1})
 
+    def test_fvf_zero_decl_and_shader_are_only_source_witness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"declaration.csv"
+            self.generate(p,[
+                ("model2_d3d9_draw_origin",7,3,0xBABAD,(4<<32)|4),
+                ("model2_d3d9_draw_ordinal",7,3,128,0xBABAD),
+                ("model2_d3d9_draw_sample",3,0,209,0xBABAD),
+                ("model2_d3d9_up_layout",701,0xBABAD,(3<<32)|32,
+                 (2<<40)|(1<<32)|3),
+                ("model2_d3d9_up_decl_element",701,0,(0<<32)|0,
+                 (2<<24)|(0<<16)|(0<<8)|0),
+                ("model2_d3d9_up_decl_element",701,1,(0<<32)|12,
+                 (1<<24)|(0<<16)|(5<<8)|0),
+                ("model2_d3d9_up_decl_element",701,2,(255<<32)|0,
+                 (17<<24)|(0<<16)|(0<<8)|0),
+                ("model2_d3d9_frame",7,0,270,0),
+            ])
+            result=phase.analyze(p)
+            self.assertEqual(result["HUD_WORLD_PROOF"],"NOT_ESTABLISHED")
+            self.assertEqual(result["fvf_zero_source_layout_witnesses"],1)
+            src=result["sources"][0]
+            self.assertEqual(src["fvf"],{"0x0":1})
+            self.assertEqual(src["shader_presence"],[{
+                "stride":32,"vertex_shader":2,"pixel_shader":1,
+                "element_count":3,"samples":1,
+            }])
+            self.assertEqual(src["declaration_signatures"][0]["samples"],1)
+            self.assertEqual(src["declaration_signatures"][0]["elements"][0],
+                             [0,0,2,0,0,0])
+            self.assertEqual(src["source_layout_witnesses"],1)
+
     def test_legacy_first_only_log_is_not_world_proof(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"legacy.csv"
