@@ -31,6 +31,8 @@ def analyze(path):
     frequency=0
     frames=0
     per_frame_draws=[]
+    up_layouts={}
+    up_elements=defaultdict(list)
     with Path(path).open(encoding="utf-8-sig",newline="") as handle:
         reader=csv.DictReader(handle)
         if not REQUIRED.issubset(reader.fieldnames or []):
@@ -43,7 +45,9 @@ def analyze(path):
                              "model2_d3d9_draw_ordinal",
                              "model2_d3d9_draw_sample",
                              "model2_d3d9_frame",
-                             "model2_d3d9_draw_interval"):
+                             "model2_d3d9_draw_interval",
+                             "model2_d3d9_up_layout",
+                             "model2_d3d9_up_decl_element"):
                 continue
             try:
                 a0,a1,a2,a3=(number(row[x]) for x in
@@ -53,6 +57,17 @@ def analyze(path):
             thread=row["thread"]
             if event=="model2_d3d9_draw_interval":
                 frequency=a0
+            elif event=="model2_d3d9_up_layout":
+                if a0==0 or a0 in up_layouts:
+                    raise ValueError("duplicate or zero declaration witness")
+                up_layouts[a0]=(a1,a2>>32,a2&0xffffffff,
+                    (a3>>40)&0xff,(a3>>32)&0xff,a3&0xffffffff)
+            elif event=="model2_d3d9_up_decl_element":
+                if a0 in up_layouts:
+                    up_elements[a0].append((
+                        a1,(a2>>32)&0xffffffff,a2&0xffffffff,
+                        (a3>>24)&0xff,(a3>>16)&0xff,
+                        (a3>>8)&0xff,a3&0xff))
             elif event=="model2_d3d9_frame":
                 frames+=1
                 per_frame_draws.append(a1+a2)
@@ -84,6 +99,21 @@ def analyze(path):
                     record["fvf_counts"][f"0x{a1:x}"]+=1
                     if current[3] is None:
                         record["unknown_ordinal_samples"]+=1
+    # Every declaration element is an original D3D9 semantic, not
+    # the vertex byte values or shader bytecode. Aggregate duplicates
+    # into compact per-caller signatures, never declare world proof.
+    modes=defaultdict(Counter)
+    signatures=defaultdict(Counter)
+    for witness,(caller,family,stride,vs,ps,count) in up_layouts.items():
+        key=(family,caller)
+        elements=up_elements[witness]
+        if count>16 or len(elements)!=count or sorted(
+                e[0] for e in elements)!=list(range(count)):
+            signatures[key][("UNVERIFIED",)]+=1
+            continue
+        sequence=tuple(e[1:] for e in sorted(elements))
+        modes[key][(stride,vs,ps,count)]+=1
+        signatures[key][sequence]+=1
     sources=[]
     for (family,caller),value in sorted(callers.items(),
           key=lambda it:(-it[1]["draw_samples"],it[0])):
@@ -94,13 +124,24 @@ def analyze(path):
             "ordinal_bands":dict(value["ordinal_bands"]),
             "unknown_ordinal_samples":value["unknown_ordinal_samples"],
             "topologies":dict(value["topologies"].most_common()),
+            "source_layout_witnesses":sum(modes[(family,caller)].values()),
+            "shader_presence": [
+                {"stride":key[0],"vertex_shader":key[1],
+                 "pixel_shader":key[2],"element_count":key[3],
+                 "samples":n}
+                for key,n in modes[(family,caller)].most_common(12)],
+            "declaration_signatures":[
+                {"elements":[list(e) for e in signature],
+                 "samples":n}
+                for signature,n in signatures[(family,caller)].most_common(8)],
         })
     return {
-        "schema":1,"capture_kind":"original_2d_d3d9_com_draw_source",
+        "schema":2,"capture_kind":"original_2d_d3d9_com_draw_source",
         "HUD_WORLD_PROOF":"NOT_ESTABLISHED",
         "sample_interval":frequency or "LEGACY_UNSPECIFIED",
         "presented_frames":frames,
         "sampled_callers":len(sources),
+        "fvf_zero_source_layout_witnesses":len(up_layouts),
         "max_draws_per_frame":max(per_frame_draws,default=0),
         "mean_draws_per_frame":round(sum(per_frame_draws)/len(per_frame_draws),2)
              if per_frame_draws else 0,
