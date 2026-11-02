@@ -47,6 +47,22 @@ add_executable(model2vr_loader
   src/loader/main.cpp
 )
 
+# Win32 F11 FFB/input control panel. FFB output remains in the separately
+# distributed Generic DD plugin; never link a second haptic backend here.
+add_executable(model2vr_ffb_control_panel WIN32
+  src/ffb/control_panel.cpp
+)
+target_compile_features(model2vr_ffb_control_panel PRIVATE cxx_std_20)
+target_compile_definitions(model2vr_ffb_control_panel PRIVATE
+  WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+if(MSVC)
+  target_compile_options(model2vr_ffb_control_panel PRIVATE /W4 /permissive- /EHsc)
+endif()
+set_target_properties(model2vr_ffb_control_panel PROPERTIES
+  OUTPUT_NAME "Model2VRControlPanel")
+install(TARGETS model2vr_ffb_control_panel RUNTIME DESTINATION .)
+
+
 target_compile_features(model2vr_loader PRIVATE cxx_std_20)
 target_compile_definitions(model2vr_loader PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 

@@ -87,6 +87,33 @@ std::filesystem::path SelfDirectory() {
     return std::filesystem::path(path).parent_path();
 }
 
+// Control panel is a separate *UI* process; never initializes a wheel,
+// DirectInput device or second FFB effect router. The plugin's dinput8.dll
+// remains the only FFB owner and is loaded by the emulator's normal path.
+void StartFfbControlPanel(DWORD emulator_pid,const std::filesystem::path& game_dir) {
+    const auto ui=SelfDirectory()/L"Model2VRControlPanel.exe";
+    if(!std::filesystem::exists(ui))return;
+    if(!std::filesystem::exists(game_dir/L"dinput8.dll") ||
+       !std::filesystem::exists(game_dir/L"FFBPlugin.ini")){
+        std::wcerr<<L"FFB companion not installed beside emulator; "
+                    L"control panel skipped.\n";
+        return;
+    }
+    const std::wstring cmd=QuoteArg(ui.wstring())+L" "+
+        std::to_wstring(emulator_pid)+L" "+QuoteArg(game_dir.wstring());
+    std::vector<wchar_t> command(cmd.begin(),cmd.end());
+    command.push_back(L'\0');
+    STARTUPINFOW si{}; si.cb=sizeof(si);
+    PROCESS_INFORMATION proc{};
+    if(CreateProcessW(ui.c_str(),command.data(),nullptr,nullptr,FALSE,0,
+                      nullptr,game_dir.c_str(),&si,&proc)){
+        CloseHandle(proc.hThread);
+        CloseHandle(proc.hProcess);
+    } else {
+        std::wcerr<<L"FFB control panel could not start: "<<GetLastError()<<L"\n";
+    }
+}
+
 bool InjectDll(HANDLE process, const std::filesystem::path& dll) {
     const std::wstring dll_path = std::filesystem::absolute(dll).wstring();
     const SIZE_T bytes = (dll_path.size() + 1) * sizeof(wchar_t);
@@ -207,6 +234,7 @@ int wmain(int argc, wchar_t** argv) {
         CloseHandle(pi.hProcess);
         return 8;
     }
+    StartFfbControlPanel(pi.dwProcessId, emulator.parent_path());
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return 0;
