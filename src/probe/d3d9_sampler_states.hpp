@@ -5,6 +5,7 @@
 // alpha compares must never be silently approximated in stereo output.
 #include <d3d9.h>
 #include "../vr/model2_texture_sampler.hpp"
+#include "../vr/model2_raster_states.hpp"
 #include <cstdint>
 
 namespace m2vr::drawprobe {
@@ -27,6 +28,32 @@ inline bool DecodeSamplerPolicy(DWORD address_u,DWORD address_v,
                                              TextureAddress::Clamp;
     value.filter=min_filter==D3DTEXF_LINEAR ? TextureFilter::Linear:
                                                TextureFilter::Point;
+    out=value;
+    return true;
+}
+inline bool DecodeRasterPolicy(DWORD cull_mode,DWORD zfunc,
+                               DWORD zwrite,DWORD stencil_enabled,
+                               DWORD depth_bias,DWORD slope_bias,
+                               DWORD srgb_write,DWORD color_mask,
+                               m2vr::vr::RasterPolicy& out) noexcept {
+    using m2vr::vr::FaceCull;
+    using m2vr::vr::DepthCompare;
+    if((cull_mode!=D3DCULL_NONE && cull_mode!=D3DCULL_CW &&
+        cull_mode!=D3DCULL_CCW) ||
+       (zfunc!=D3DCMP_LESS && zfunc!=D3DCMP_LESSEQUAL) ||
+       (zwrite!=0u && zwrite!=1u) ||
+       stencil_enabled!=0u || depth_bias!=0u || slope_bias!=0u ||
+       srgb_write!=0u ||
+       color_mask!=(D3DCOLORWRITEENABLE_RED|D3DCOLORWRITEENABLE_GREEN|
+                    D3DCOLORWRITEENABLE_BLUE|D3DCOLORWRITEENABLE_ALPHA))
+        return false;
+    m2vr::vr::RasterPolicy value{};
+    value.cull=cull_mode==D3DCULL_CW?FaceCull::Clockwise:
+               cull_mode==D3DCULL_CCW?FaceCull::CounterClockwise:
+                                        FaceCull::None;
+    value.depth=zfunc==D3DCMP_LESS?DepthCompare::Less:
+                                      DepthCompare::LessEqual;
+    value.write_depth=(zwrite!=0u);
     out=value;
     return true;
 }
