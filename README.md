@@ -64,3 +64,31 @@ multitexture, alpha-blend, lighting/fog, material and GPU-only textures
 remain fail-closed. Real Model2 game integration and Quest 3 validation
 are **RUNTIME_VALIDATION=UNTESTED**. The existing Generic DD v2
 FFB plugin and `dinput8.dll` are unchanged.
+
+## Actual Model 2 D3D9 Draw source identification (2026-11-02)
+
+The passive D3D9 probe now retains the first observation for up to 64
+previously unseen in-executable COM callsite hash buckets **per draw family**
+during a process, in addition to the first and every 1024th draw per
+presented frame. The purpose is to resolve real `DrawPrimitive` and
+`DrawIndexedPrimitive` callers which static REA vtable references alone
+could not establish. The guard is allocation-free and atomic, and does
+not claim that any observed caller is a 3D world draw.
+
+For sampled `D3DPT_TRIANGLELIST` fixed-function XYZ/TEX1 stream-0 VB
+draws, CSV events `model2_d3d9_vb_source`, `_vb_stream`,
+`_vb_draw_args`, `_ib_source`, `_vb_camera` and
+`_vb_texture` share one source witness ID. These identify the actual
+EXE caller RVA (or zero if not proven), vertex layout, buffer
+size/offset/usage, signed indexed-draw parameters, fixed-function
+world/view translation and bound texture format/dimensions. The probe
+only queries COM metadata: **no VB/IB lock, GPU readback, draw replay,
+state writes, source buffer dumps, or second simulation/FFB path.**
+Unsupported layouts are still visible in the existing general
+`model2_d3d9_draw_sample` telemetry.
+
+A runtime log for attract/menu/actual race remains necessary to map
+caller source sites to authenticated gameplay world-passes and verify
+calibration, render target, materials and texture availability.
+`RUNTIME_VALIDATION=UNTESTED` until that evidence and an actual HMD
+run have been obtained; FFB remains with the separate Generic DD plugin.
