@@ -2,7 +2,6 @@
 // Pure, bounded D3D9 triangle-list index-window validation. The game owns
 // the buffers; this code only validates a previously copied index slice.
 #include <d3d9.h>
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
