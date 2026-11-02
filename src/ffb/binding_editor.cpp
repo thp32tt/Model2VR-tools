@@ -1,11 +1,14 @@
 #include "binding_contract.hpp"
 #include "binding_editor.hpp"
+#include "ini_edit_transaction.hpp"
 #include <Windows.h>
 #include <array>
 #include <cwchar>
 #include <cwctype>
 #include <filesystem>
 #include <string>
+#include <optional>
+#include <vector>
 
 namespace m2vr::ffbui {
 namespace {
@@ -13,72 +16,81 @@ constexpr int kSave=800, kReload=801, kAdvanced=802, kExit=803;
 constexpr int kInputId=1000;
 HWND g_editor=nullptr, g_status=nullptr;
 std::array<HWND,kBindings.size()> g_edits{};
+std::array<std::wstring,kBindings.size()> g_loaded{};
+std::array<std::optional<std::wstring>,kBindings.size()> g_snapshot{};
+bool g_ready=false;
 std::filesystem::path g_ini, g_game_dir;
 
 void Status(const wchar_t* text) {
     if(g_status)SetWindowTextW(g_status,text);
 }
 void Read() {
-    if(!std::filesystem::is_regular_file(g_ini)) {
-        Status(L"FFBPlugin.ini missing. Install Generic DD v2 first.");
+    g_ready=false;
+    if(!std::filesystem::is_regular_file(g_ini) ||
+       GetPrivateProfileIntW(L"Settings",L"GameId",-1,g_ini.c_str())!=25){
+        for(auto edit:g_edits)SetWindowTextW(edit,L"");
+        Status(L"Not a Model 2 GameId=25 FFBPlugin.ini. Changes disabled.");
         return;
     }
-    for(std::size_t i=0;i<kBindings.size();++i){
+    for(std::size_t i=0;i<kBindings.size();++i) {
         const auto& b=kBindings[i];
         const std::wstring key(b.key);
-        const int value=GetPrivateProfileIntW(L"Settings",key.c_str(),b.initial,g_ini.c_str());
-        SetWindowTextW(g_edits[i],std::to_wstring(value).c_str());
+        g_snapshot[i]=ReadIniSetting(g_ini,L"Settings",key.c_str());
+        // Missing keys are BLANK, not fabricated zero values. Save writes
+        // only fields changed by the operator, preserving legacy defaults.
+        g_loaded[i]=g_snapshot[i].value_or(L"");
+        SetWindowTextW(g_edits[i],g_loaded[i].c_str());
     }
-    Status(L"Numeric SDL axis/button indices. Save requires emulator restart.");
+    g_ready=true;
+    Status(L"Blank = setting absent; only changed fields saved. Restart game.");
 }
 bool Parse(const wchar_t* text,int& value) {
     if(!text||!*text)return false;
     wchar_t* end=nullptr;
     const long raw=wcstol(text,&end,10);
-    if(end==text)return false;
+    if(end==text || raw<0 || raw>100000)return false;
     while(*end && iswspace(*end))++end;
     if(*end)return false;
     value=static_cast<int>(raw);
     return true;
 }
 void Save() {
-    if(!std::filesystem::is_regular_file(g_ini)) {
-        Status(L"Missing FFBPlugin.ini: nothing saved.");return;
+    if(!g_ready){
+        Status(L"Not a verified Model 2 config. Nothing saved.");return;
     }
-    std::array<int,kBindings.size()> proposed{};
-    for(std::size_t i=0;i<kBindings.size();++i){
-        wchar_t buffer[32]{};
-        GetWindowTextW(g_edits[i],buffer,32);
-        if(!Parse(buffer,proposed[i]) || !Valid(kBindings[i],proposed[i])){
-            Status(L"Invalid binding index: ALL changes rejected.");
+    std::vector<IniEdit> edits;
+    edits.reserve(kBindings.size());
+    for(std::size_t i=0;i<kBindings.size();++i) {
+        wchar_t buffer[128]{};
+        GetWindowTextW(g_edits[i],buffer,static_cast<int>(std::size(buffer)));
+        const std::wstring after(buffer);
+        if(after==g_loaded[i])continue; // missing key stays missing
+        int number=0;
+        if(!Parse(buffer,number) || !Valid(kBindings[i],number)){
+            Status(L"Invalid edited index: no changes saved.");
             SetFocus(g_edits[i]);return;
         }
+        edits.push_back({
+            L"Settings",std::wstring(kBindings[i].key),
+            g_snapshot[i],std::to_wstring(number)
+        });
     }
-    // Never mutate the game's real wheel input while it is active.
-    // Back up every previous INI before any change; any failure is visible.
-    SYSTEMTIME st{};
-    GetLocalTime(&st);
-    wchar_t suffix[64]{};
-    swprintf_s(suffix,L".bindings-%04hu%02hu%02hu-%02hu%02hu%02hu.bak",
-        st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
-    std::filesystem::path backup=g_ini;
-    backup+=suffix;
-    if(!CopyFileW(g_ini.c_str(),backup.c_str(),TRUE)){
-        Status(L"Cannot back up FFBPlugin.ini. No changes written.");
-        return;
+    const auto result=SaveModel2Ini(g_ini,edits);
+    switch(result) {
+    case IniSaveStatus::Saved:
+        Read();
+        Status(L"Changed bindings saved atomically; backup created. Restart game.");
+        break;
+    case IniSaveStatus::NoChanges:Status(L"No changed bindings. File untouched.");break;
+    case IniSaveStatus::WrongGame:
+        g_ready=false;Status(L"Wrong GameId: expected Model 2 = 25. Nothing saved.");break;
+    case IniSaveStatus::Conflict:
+        Status(L"INI changed outside menu. Reload before saving (no changes made).");
+        break;
+    case IniSaveStatus::IoError:
+        Status(L"Save failed. Original FFBPlugin.ini kept; check file access.");
+        break;
     }
-    for(std::size_t i=0;i<kBindings.size();++i){
-        const std::wstring key(kBindings[i].key);
-        const auto new_value=std::to_wstring(proposed[i]);
-        if(!WritePrivateProfileStringW(
-            L"Settings",key.c_str(),new_value.c_str(),g_ini.c_str())){
-            // Retain backup for manual recovery; partial save is not claimed.
-            Status(L"INI write failed. Restore .bindings-*.bak if needed.");
-            return;
-        }
-    }
-    WritePrivateProfileStringW(nullptr,nullptr,nullptr,g_ini.c_str());
-    Status(L"Bindings saved. Restart Model 2 for consistent game input.");
 }
 void LaunchOfficialGui(){
     const auto gui=g_game_dir/L"FFBPluginGUI.exe";

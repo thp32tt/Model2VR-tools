@@ -3,11 +3,14 @@
 // Native desktop control surface; XR-rendered UI is a separate milestone.
 #include <Windows.h>
 #include "binding_editor.hpp"
+#include "ini_edit_transaction.hpp"
 #include <filesystem>
 #include <array>
 #include <string>
 #include <cwchar>
 #include <cwctype>
+#include <optional>
+#include <vector>
 
 namespace {
 constexpr int kHotkey=1, kSave=900, kReload=901, kBindings=902, kClose=903, kOfficialGui=904;
@@ -36,6 +39,9 @@ std::array<Option,14> options{{
     {L"Model2Modern",L"CommandLeaseMs",L"Torque lease (ms)",180,40,1000},
 }};
 HWND window=nullptr, status_label=nullptr;
+std::array<std::wstring,options.size()> g_loaded{};
+std::array<std::optional<std::wstring>,options.size()> g_snapshot{};
+bool g_ready=false;
 bool hotkey_registered=false;
 std::filesystem::path game_dir, ini_path;
 DWORD emulator_pid=0;
@@ -45,11 +51,23 @@ void Status(const wchar_t* message){
     if(status_label)SetWindowTextW(status_label,message);
 }
 void LoadValues(){
-    for(auto& o:options){
-        const auto value=GetPrivateProfileIntW(o.section,o.key,o.initial,ini_path.c_str());
-        SetWindowTextW(o.edit,std::to_wstring(value).c_str());
+    g_ready=false;
+    if(!std::filesystem::is_regular_file(ini_path) ||
+       GetPrivateProfileIntW(L"Settings",L"GameId",-1,ini_path.c_str())!=25){
+        for(auto& o:options)SetWindowTextW(o.edit,L"");
+        Status(L"Expected Model 2 FFBPlugin.ini (GameId=25). Save disabled.");
+        return;
     }
-    Status(L"Loaded. Save writes FFBPlugin.ini (relaunch emulator to apply force changes).");
+    for(std::size_t i=0;i<options.size();++i){
+        auto& o=options[i];
+        g_snapshot[i]=m2vr::ffbui::ReadIniSetting(ini_path,o.section,o.key);
+        // Use the documented defaults for display only. They are NOT
+        // written unless the operator actively changes this edit box.
+        g_loaded[i]=g_snapshot[i].value_or(std::to_wstring(o.initial));
+        SetWindowTextW(o.edit,g_loaded[i].c_str());
+    }
+    g_ready=true;
+    Status(L"Values loaded. Only changed fields saved; restart emulator.");
 }
 bool ReadEdit(const Option& o,int& result){
     wchar_t value[48]{};
@@ -61,28 +79,40 @@ bool ReadEdit(const Option& o,int& result){
     result=static_cast<int>(parsed);return true;
 }
 void SaveValues(){
-    if(!std::filesystem::exists(ini_path)){
-        Status(L"Missing FFBPlugin.ini: install Generic DD v2 next to emulator.");
-        return;
+    if(!g_ready){
+        Status(L"Invalid Model 2 INI: no changes written.");return;
     }
-    std::array<int,options.size()> next{};
+    std::vector<m2vr::ffbui::IniEdit> edits;
+    edits.reserve(options.size());
     for(std::size_t i=0;i<options.size();++i){
-        if(!ReadEdit(options[i],next[i])){
-            Status(L"Invalid or out-of-range setting. No settings were written.");
+        wchar_t buffer[48]{};
+        GetWindowTextW(options[i].edit,buffer,48);
+        if(g_loaded[i]==buffer)continue;
+        int value=0;
+        if(!ReadEdit(options[i],value)){
+            Status(L"Invalid edited value: no settings were written.");
             SetFocus(options[i].edit);return;
         }
+        edits.push_back({options[i].section,options[i].key,
+                         g_snapshot[i],std::to_wstring(value)});
     }
-    // These INI writes are the *only* mutation. Never acquire a second haptic
-    // device or send test torques: plugin owns all wheel effects and watchdog.
-    for(std::size_t i=0;i<options.size();++i){
-        if(!WritePrivateProfileStringW(options[i].section,options[i].key,
-                                      std::to_wstring(next[i]).c_str(),ini_path.c_str())){
-            Status(L"Write failed. Check FFBPlugin.ini permissions and reload.");
-            return;
-        }
+    const auto result=m2vr::ffbui::SaveModel2Ini(ini_path,edits);
+    switch(result){
+    case m2vr::ffbui::IniSaveStatus::Saved:
+        LoadValues();
+        Status(L"Updated settings saved atomically + backed up. Restart game.");
+        break;
+    case m2vr::ffbui::IniSaveStatus::NoChanges:
+        Status(L"No changes: original FFBPlugin.ini untouched.");break;
+    case m2vr::ffbui::IniSaveStatus::WrongGame:
+        g_ready=false;Status(L"Wrong GameId: expected Model 2 = 25.");break;
+    case m2vr::ffbui::IniSaveStatus::Conflict:
+        Status(L"INI changed externally. Reload instead of overwriting.");
+        break;
+    case m2vr::ffbui::IniSaveStatus::IoError:
+        Status(L"Failed to save. Original INI retained; check permissions.");
+        break;
     }
-    WritePrivateProfileStringW(nullptr,nullptr,nullptr,ini_path.c_str());
-    Status(L"Saved. Restart the emulator to apply FFB gains and wheel input mode.");
 }
 void LaunchBindingEditor(){
     const auto gui=game_dir / L"FFBPluginGUI.exe";

@@ -49,10 +49,18 @@ add_executable(model2vr_loader
 
 # Win32 F11 FFB/input control panel. FFB output remains in the separately
 # distributed Generic DD plugin; never link a second haptic backend here.
+add_library(model2vr_ffb_ini STATIC src/ffb/ini_edit_transaction.cpp)
+target_compile_features(model2vr_ffb_ini PUBLIC cxx_std_20)
+target_compile_definitions(model2vr_ffb_ini PRIVATE
+  WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+if(MSVC)
+  target_compile_options(model2vr_ffb_ini PRIVATE /W4 /permissive- /EHsc)
+endif()
 add_executable(model2vr_ffb_control_panel WIN32
   src/ffb/control_panel.cpp
   src/ffb/binding_editor.cpp
 )
+target_link_libraries(model2vr_ffb_control_panel PRIVATE model2vr_ffb_ini)
 target_compile_features(model2vr_ffb_control_panel PRIVATE cxx_std_20)
 target_compile_definitions(model2vr_ffb_control_panel PRIVATE
   WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
@@ -142,3 +150,10 @@ add_test(NAME model2_bounded_up_vertex_witness COMMAND model2_up_witness_test)
 add_executable(model2_ffb_binding_contract_test tests/ffb_binding_contract_test.cpp)
 target_compile_features(model2_ffb_binding_contract_test PRIVATE cxx_std_20)
 add_test(NAME model2_real_ffb_ini_bindings COMMAND model2_ffb_binding_contract_test)
+
+# Windows temporary-file regression: wrong GameId, only-dirty writes,
+# backup, atomic swap, stale-INI conflict, and no-op preservation.
+add_executable(model2vr_ffb_ini_transaction_test tests/ffb_ini_transaction_test.cpp)
+target_link_libraries(model2vr_ffb_ini_transaction_test PRIVATE model2vr_ffb_ini)
+target_compile_features(model2vr_ffb_ini_transaction_test PRIVATE cxx_std_20)
+add_test(NAME model2_ffb_ini_transaction COMMAND model2vr_ffb_ini_transaction_test)
