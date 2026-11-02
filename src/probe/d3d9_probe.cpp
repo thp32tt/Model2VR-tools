@@ -255,6 +255,10 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     if(!dev||!vertices||!ValidStride(stride)||!elements)return;
     DWORD fvf=0;
     if(FAILED(dev->GetFVF(&fvf)))return;
+    if(fvf==0u) {
+        ObserveUnknownUpLayout(dev,family,caller,stride);
+        return;
+    }
     if((fvf&D3DFVF_POSITION_MASK)==D3DFVF_XYZ){
         ObserveWorldUP(dev,family,type,primitive_count,caller,
                        vertices,stride,indices,index_format,first,vertex_count);
@@ -304,6 +308,53 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
         const auto& v=observations[i].vertex;
         m2vr::LogEvent("model2_d3d9_up_vertex",sample_id,
             observations[i].index,PackPair(v.x,v.y),PackPair(v.z,v.rhw));
+    }
+}
+
+// Observe the original stream-zero D3D9 vertex declaration when GetFVF
+// reports 0 (shader/declaration path). The actual Daytona world candidate
+// uses this path for >8k mid-frame samples. Never treat FVF=0 as world
+// proof, never read unknown UP source bytes, and never mutate D3D9 state.
+// A declaration query is bounded to 16 elements including D3DDECL_END.
+void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
+                            void* caller,UINT stride) {
+    if(!dev || family<3u || family>4u)return;
+    const auto id=g_witness_serial.fetch_add(
+        1u,std::memory_order_relaxed)+1u;
+    // 0=unknown/error, 1=shader absent, 2=shader present.
+    std::uint32_t vs_status=0u,ps_status=0u;
+    IDirect3DVertexShader9* vs=nullptr;
+    if(SUCCEEDED(dev->GetVertexShader(&vs)))
+        vs_status=vs?2u:1u;
+    if(vs)vs->Release();
+    IDirect3DPixelShader9* ps=nullptr;
+    if(SUCCEEDED(dev->GetPixelShader(&ps)))
+        ps_status=ps?2u:1u;
+    if(ps)ps->Release();
+    IDirect3DVertexDeclaration9* declaration=nullptr;
+    const HRESULT hr=dev->GetVertexDeclaration(&declaration);
+    std::array<D3DVERTEXELEMENT9,16> elements{};
+    UINT count=0u;
+    if(SUCCEEDED(hr)&&declaration){
+        count=static_cast<UINT>(elements.size());
+        if(FAILED(declaration->GetDeclaration(elements.data(),&count)) ||
+           count==0u || count>elements.size() ||
+           elements[count-1u].Stream!=0xffu)count=0u;
+    }
+    if(declaration)declaration->Release();
+    m2vr::LogEvent("model2_d3d9_up_layout",id,CallerRva(caller),
+        (std::uint64_t{family}<<32)|stride,
+        (std::uint64_t{vs_status}<<40)|
+        (std::uint64_t{ps_status}<<32)|count);
+    // Only the original declarative byte offsets and D3D9 semantics
+    // are logged. No game vertex data or shader bytecode is copied.
+    for(UINT k=0u;k<count;++k) {
+        const auto& e=elements[k];
+        m2vr::LogEvent("model2_d3d9_up_decl_element",id,k,
+            (std::uint64_t{e.Stream}<<32)|e.Offset,
+            (std::uint64_t{e.Type}<<24)|
+            (std::uint64_t{e.Method}<<16)|
+            (std::uint64_t{e.Usage}<<8)|e.UsageIndex);
     }
 }
 
