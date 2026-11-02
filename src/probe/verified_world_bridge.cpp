@@ -144,11 +144,12 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
 }
 // Optional texture source path for a trusted Model2 CPU-world integration.
 // This does not query game textures, rerun any D3D9 draw, or alter FFB.
-extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
     const float* xyz,const float* uv,unsigned int vertex_count,
     const std::uint32_t* indices,unsigned int index_count,
     const unsigned char* texture_rgba,unsigned int width,
-    unsigned int height,unsigned int pitch,unsigned int alpha_cutoff) {
+    unsigned int height,unsigned int pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v) {
     std::scoped_lock lock(g.mutex);
     if(!Owner() || !xyz || !uv || !indices || !texture_rgba ||
        !vertex_count || vertex_count>4096u ||
@@ -157,7 +158,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
        index_count/3u>2048u-g.triangle_count ||
        g.draw_count>=2048u ||
        !width || !height || width>1024u || height>1024u ||
-       pitch!=width*4u || alpha_cutoff>255u) {
+       pitch!=width*4u || alpha_cutoff>255u ||
+       filter_mode>1u || address_u>1u || address_v>1u) {
         if(Owner())g.Abort();
         return FALSE;
     }
@@ -185,7 +187,12 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
         }
         m2vr::vr::StereoWorldRaster::TextureRGBA texture{
             safe_texture.data(),width,height,pitch,
-            static_cast<std::uint8_t>(alpha_cutoff)
+            static_cast<std::uint8_t>(alpha_cutoff),
+            {
+                static_cast<m2vr::vr::TextureAddress>(address_u),
+                static_cast<m2vr::vr::TextureAddress>(address_v),
+                static_cast<m2vr::vr::TextureFilter>(filter_mode)
+            }
         };
         if(!g.raster->DrawTextured(clipped,texture)) {
             g.Abort();return FALSE;
@@ -196,6 +203,16 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
     }catch(...){
         g.Abort();return FALSE;
     }
+}
+// Preserve the original public ABI: old callers keep point/clamp.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
+    const float* xyz,const float* uv,unsigned int vertex_count,
+    const std::uint32_t* indices,unsigned int index_count,
+    const unsigned char* texture_rgba,unsigned int width,
+    unsigned int height,unsigned int pitch,unsigned int alpha_cutoff) {
+    return Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
+        xyz,uv,vertex_count,indices,index_count,texture_rgba,width,height,
+        pitch,alpha_cutoff,0u,0u,0u);
 }
 extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     std::scoped_lock lock(g.mutex);
