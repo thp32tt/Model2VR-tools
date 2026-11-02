@@ -364,6 +364,23 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
     // Evidence-only snapshot of the sampler/alpha modes that the native
     // stereo material adapter can (or cannot) currently represent.
     // Unknown states remain unknown, never reported as supported.
+    DWORD cull=0,zfunc=0,zwrite=0,stencil=0,depth_bias=0,slope_bias=0;
+    DWORD srgb_write=0,color_mask=0;
+    if(SUCCEEDED(dev->GetRenderState(D3DRS_CULLMODE,&cull)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_ZFUNC,&zfunc)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_ZWRITEENABLE,&zwrite)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_STENCILENABLE,&stencil)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_DEPTHBIAS,&depth_bias)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_SLOPESCALEDEPTHBIAS,&slope_bias)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_SRGBWRITEENABLE,&srgb_write)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_COLORWRITEENABLE,&color_mask))) {
+        m2vr::LogEvent("model2_d3d9_vb_raster",id,
+            (std::uint64_t{cull}<<32)|zfunc,
+            (std::uint64_t{zwrite}<<32)|stencil,
+            (std::uint64_t{depth_bias}<<32)|slope_bias);
+        m2vr::LogEvent("model2_d3d9_vb_write_color",id,
+            (std::uint64_t{srgb_write}<<32)|color_mask,0u,0u);
+    }
     DWORD au=0,av=0,mn=0,mg=0,mip=0,srgb=0;
     if(SUCCEEDED(dev->GetSamplerState(0,D3DSAMP_ADDRESSU,&au)) &&
        SUCCEEDED(dev->GetSamplerState(0,D3DSAMP_ADDRESSV,&av)) &&
