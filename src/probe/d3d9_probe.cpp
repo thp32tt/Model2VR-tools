@@ -514,8 +514,20 @@ bool InstallD3D9ReadOnlyProbe(HMODULE executable,std::uint32_t exe_size) {
     if(!executable || exe_size==0)return false;
     g_exe_base=reinterpret_cast<std::uintptr_t>(executable);
     g_exe_size=exe_size;
-    const HMODULE d3d9=GetModuleHandleW(L"d3d9.dll");
-    if(!d3d9){LogEvent("model2_d3d9_module_missing");return false;}
+    HMODULE d3d9=GetModuleHandleW(L"d3d9.dll");
+    if(!d3d9) {
+        // The loader injects before the suspended emulator main thread
+        // resumes, so d3d9.dll commonly has not been loaded yet.
+        // Load the process's normal D3D9 runtime *without creating a GPU
+        // device* so the original Direct3DCreate9 call can be hooked.
+        // The reference stays loaded for process-lifetime probe hooks.
+        d3d9=LoadLibraryW(L"d3d9.dll");
+        if(d3d9)LogEvent("model2_d3d9_runtime_preloaded");
+    }
+    if(!d3d9){
+        LogEvent("model2_d3d9_runtime_load_failed",GetLastError());
+        return false;
+    }
     auto* create=reinterpret_cast<void*>(GetProcAddress(d3d9,"Direct3DCreate9"));
     if(!create)return false;
     const MH_STATUS status=MH_CreateHook(create,
