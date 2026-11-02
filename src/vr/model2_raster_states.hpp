@@ -1,0 +1,38 @@
+#pragma once
+// Explicit screen-space triangle raster state for verified D3D9 materials.
+// D3D9 front-face culling is expressed in final per-eye viewport pixels:
+// screen Y points down, so a positive edge cross product is clockwise.
+// Never infer world geometry or depth/cull source state from an FVF.
+#include <cmath>
+#include <cstdint>
+namespace m2vr::vr {
+enum class FaceCull : std::uint32_t { None=0, Clockwise=1, CounterClockwise=2 };
+enum class DepthCompare : std::uint32_t { Less=0, LessEqual=1 };
+struct RasterPolicy {
+    FaceCull cull=FaceCull::None;
+    DepthCompare depth=DepthCompare::Less;
+    bool write_depth=true;
+};
+inline bool ValidRasterPolicy(const RasterPolicy& p) noexcept {
+    return (p.cull==FaceCull::None || p.cull==FaceCull::Clockwise ||
+            p.cull==FaceCull::CounterClockwise) &&
+           (p.depth==DepthCompare::Less ||
+            p.depth==DepthCompare::LessEqual);
+}
+inline bool TriangleSurvivesCull(double area,FaceCull mode) noexcept {
+    if(!std::isfinite(area)||std::abs(area)<1.e-8)return false;
+    // Edge((x0,y0),(x1,y1),(x2,y2)) in a top-left-origin viewport:
+    // CW screen-space winding has positive signed area.
+    return mode==FaceCull::None ||
+           (mode==FaceCull::Clockwise && area<0.) ||
+           (mode==FaceCull::CounterClockwise && area>0.);
+}
+inline bool DepthPasses(double candidate,float existing,
+                        DepthCompare func) noexcept {
+    if(!std::isfinite(candidate) || !(candidate>0.) ||
+       !ValidRasterPolicy({FaceCull::None,func,true}))return false;
+    return func==DepthCompare::Less ?
+        candidate<double(existing) :
+        candidate<=double(existing);
+}
+} // namespace m2vr::vr
