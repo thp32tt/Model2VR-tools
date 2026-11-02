@@ -239,6 +239,31 @@ int wmain(int argc, wchar_t** argv) {
     if (GetPrivateProfileIntW(L"probe",L"launch_ffb_control_panel",
                               1,config.c_str()) != 0)
         StartFfbControlPanel(pi.dwProcessId, emulator.parent_path());
+    // Experimental true-eye Daytona renderer consumes the same process PID
+    // already verified by our loader, no window-title guessing or second game.
+    // OpenXR runs out-of-process (x64); never blocks/resets game input or FFB.
+    if (GetPrivateProfileIntW(L"probe",L"launch_openxr_stereo_host",
+                               0,config.c_str()) != 0) {
+        const auto xr=SelfDirectory()/L"Model2VROpenXRHost.exe";
+        if (std::filesystem::exists(xr)) {
+            const std::wstring cmd=QuoteArg(xr.wstring())+L" 0 "+
+                 std::to_wstring(pi.dwProcessId);
+            std::vector<wchar_t> args(cmd.begin(),cmd.end());
+            args.push_back(L'\0');
+            STARTUPINFOW host_si{};host_si.cb=sizeof(host_si);
+            PROCESS_INFORMATION host_pi{};
+            const auto folder=SelfDirectory().wstring();
+            if(CreateProcessW(xr.c_str(),args.data(),nullptr,nullptr,FALSE,0,
+                              nullptr,folder.c_str(),&host_si,&host_pi)){
+                CloseHandle(host_pi.hThread);CloseHandle(host_pi.hProcess);
+            } else {
+                std::wcerr<<L"OpenXR stereo host could not start: "
+                          <<GetLastError()<<L"\n";
+            }
+        }else{
+            std::wcerr<<L"OpenXR stereo host missing beside loader\n";
+        }
+    }
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return 0;
