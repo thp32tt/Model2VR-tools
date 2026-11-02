@@ -16,6 +16,7 @@ struct HookSpec {
 struct ProbeConfig {
     bool enabled = false;
     bool d3d9_read_only_probe = false;
+    std::uint32_t d3d9_draw_sample_every = 1024; // independent per-frame family samples
     std::filesystem::path log_file;
     std::uint32_t transform_sample_every = 256;
     std::uint32_t project_sample_every = 256;
