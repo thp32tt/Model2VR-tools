@@ -361,6 +361,28 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
     }else{
         m2vr::LogEvent("model2_d3d9_vb_camera_unknown",id);
     }
+    // Evidence-only snapshot of the sampler/alpha modes that the native
+    // stereo material adapter can (or cannot) currently represent.
+    // Unknown states remain unknown, never reported as supported.
+    DWORD au=0,av=0,mn=0,mg=0,mip=0,srgb=0;
+    if(SUCCEEDED(dev->GetSamplerState(0,D3DSAMP_ADDRESSU,&au)) &&
+       SUCCEEDED(dev->GetSamplerState(0,D3DSAMP_ADDRESSV,&av)) &&
+       SUCCEEDED(dev->GetSamplerState(0,D3DSAMP_MINFILTER,&mn)) &&
+       SUCCEEDED(dev->GetSamplerState(0,D3DSAMP_MAGFILTER,&mg)) &&
+       SUCCEEDED(dev->GetSamplerState(0,D3DSAMP_MIPFILTER,&mip)) &&
+       SUCCEEDED(dev->GetSamplerState(0,D3DSAMP_SRGBTEXTURE,&srgb))) {
+        m2vr::LogEvent("model2_d3d9_vb_sampler",id,
+            (std::uint64_t{au}<<32)|av,
+            (std::uint64_t{mn}<<32)|mg,
+            (std::uint64_t{mip}<<32)|srgb);
+    }
+    DWORD ae=0,af=0,ar=0;
+    if(SUCCEEDED(dev->GetRenderState(D3DRS_ALPHATESTENABLE,&ae)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_ALPHAFUNC,&af)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_ALPHAREF,&ar))) {
+        m2vr::LogEvent("model2_d3d9_vb_alpha",id,
+            (std::uint64_t{ae}<<32)|af,ar,0u);
+    }
     IDirect3DBaseTexture9* base=nullptr;
     if(SUCCEEDED(dev->GetTexture(0,&base))&&base){
         if(base->GetType()==D3DRTYPE_TEXTURE){
