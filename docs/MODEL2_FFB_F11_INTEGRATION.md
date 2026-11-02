@@ -61,6 +61,16 @@ No MOZA-only assumptions; capability-driven SDL wheel routing continues.
 
 FFB Arcade Plugin is GPL-3.0; its license and original copyright
 notices must accompany redistributed plugin binaries and source link.
+**The GUI is a separately published GPL-3.0 source project**, not an
+unlicensed, closed-source tool: https://github.com/Boomslangnz/FFBArcadePluginGUI
+and https://github.com/Boomslangnz/FFBArcadePluginGUI/blob/master/LICENSE .
+Any modified and distributed FFBPluginGUI.exe must retain GPL-3.0 notices,
+identify modifications and make its corresponding modified source available
+under GPL-3.0. Source files include FFBPluginGUI.vcxproj and
+M2EmulatorInput.cpp. Review third-party MetroFramework and SDL2 licenses
+separately before shipping those binaries. Keep the MIT Model2VR application
+and GPL GUI/plugin as separately built, separately licensed executables
+rather than copying GPL implementation into the MIT probe source.
 Do not copy upstream GPL implementation into the independent Model2VR probe.
 This first-stage panel only edits the existing plugin's supported INI
 settings. Packaged plugin and OpenXR host remain independent processes.
