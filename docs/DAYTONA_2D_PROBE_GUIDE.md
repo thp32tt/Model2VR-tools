@@ -171,3 +171,46 @@ The `shader_presence` result encodes 0=unknown, 1=absent, 2=present;
 semantics only, **not geometry contents**. Missing declaration,
 unsupported shader layouts or missing world-pass proof remain
 `HUD_WORLD_PROOF=NOT_ESTABLISHED`.
+
+## 2026-11-03 00:05:55 KST v3 verified owner capture
+
+In the private third owner CSV the D3D9 probe observed **8,260**
+completed frames, **2,718,744 DrawPrimitiveUP calls**, 26,136 origin
+records and **17,707 complete bounded D3D9 vertex declarations**.
+All 17,707 layouts in the FVF=0 depth-tested source family used
+stream 0 stride **32 bytes**, active VS+PS, and the same five elements:
+
+| Byte offset | Original D3D9 declaration |
+|---|---|
+| 0 | `POSITION0 FLOAT4` |
+| 16 | `COLOR0 D3DCOLOR` |
+| 20 | `COLOR1 D3DCOLOR` |
+| 24 | `TEXCOORD0 FLOAT2` |
+| 32 | `D3DDECL_END` (sentinel, not vertex bytes) |
+
+Caller `0x000BABAD` supplied 17,276 declaration observations,
+`0x000BA70F` 291, and `0x000BBD9B` 140. All were shader-backed;
+this proves the fixed-function `GetFVF`-only decoder cannot interpret
+those exact game draws. The original screen-space compositor
+`0x000EDBF2` remained `FVF=0x1c4`, depth off, mostly first draw.
+
+**v4 additive passive source witness**: For sampled
+`DrawPrimitiveUP(D3DPT_TRIANGLELIST)` only, when the original
+`GetVertexDeclaration` matches exactly all five above elements,
+stride=32 and both shaders are bound, the probe reads *only*
+the first **three** source positions (FLOAT4 XYZW) and UV0 (FLOAT2)
+using guarded, bounded SEH copies and rejects nonfinite values.
+The events `model2_d3d9_up_position_source`,
+`model2_d3d9_up_position` and `model2_d3d9_up_uv` share their witness
+ID with the original declaration events and carry no texture, shader
+bytecode or game asset dumps. No geometry is replayed, no stereo mode is
+enabled, and original FFB paths are unchanged. The offline
+`tools/daytona_draw_phase_report.py` aggregates per-source X/Y/Z/W
+and UV ranges but always reports
+`HUD_WORLD_PROOF=NOT_ESTABLISHED`. Only a future user-run v4 trace
+can determine if source XYZW is homogeneous preprojection or already
+screen-space.
+
+**Runtime caveat:** the uploaded v3 CSV has one partially written
+last row after frame 8260; all cited completion totals use intact
+frames, and a partial tail is not evidence of a game crash.
