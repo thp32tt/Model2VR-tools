@@ -18,7 +18,8 @@ bool GuardCopy(void* dst,const void* src,std::size_t size) noexcept {
     __except(EXCEPTION_EXECUTE_HANDLER){return false;}
 }
 bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
-                           m2vr::vr::SamplerPolicy& sampler) {
+                           m2vr::vr::SamplerPolicy& sampler,
+                           m2vr::vr::RasterPolicy& raster) {
     if(!d)return false;
     IDirect3DVertexShader9* vs=nullptr;
     if(FAILED(d->GetVertexShader(&vs)))return false;
@@ -29,6 +30,19 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
     IDirect3DBaseTexture9* second=nullptr;
     if(FAILED(d->GetTexture(1,&second)))return false;
     if(second){second->Release();return false;}
+    DWORD zfunc=0,zwrite=0,cull=0,stencil=0,dbias=0,sbias=0;
+    DWORD srgb_write=0,color_mask=0;
+    if(FAILED(d->GetRenderState(D3DRS_ZFUNC,&zfunc)) ||
+       FAILED(d->GetRenderState(D3DRS_ZWRITEENABLE,&zwrite)) ||
+       FAILED(d->GetRenderState(D3DRS_CULLMODE,&cull)) ||
+       FAILED(d->GetRenderState(D3DRS_STENCILENABLE,&stencil)) ||
+       FAILED(d->GetRenderState(D3DRS_DEPTHBIAS,&dbias)) ||
+       FAILED(d->GetRenderState(D3DRS_SLOPESCALEDEPTHBIAS,&sbias)) ||
+       FAILED(d->GetRenderState(D3DRS_SRGBWRITEENABLE,&srgb_write)) ||
+       FAILED(d->GetRenderState(D3DRS_COLORWRITEENABLE,&color_mask)) ||
+       !m2vr::drawprobe::DecodeRasterPolicy(cull,zfunc,zwrite,
+          stencil,dbias,sbias,srgb_write,color_mask,raster))
+        return false;
     DWORD z=0,blend=1,fog=1,lighting=1;
     if(FAILED(d->GetRenderState(D3DRS_ZENABLE,&z)) ||
        FAILED(d->GetRenderState(D3DRS_ALPHABLENDENABLE,&blend)) ||
@@ -82,10 +96,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     unsigned int index_count,unsigned int alpha_cutoff) {
     auto* d=static_cast<IDirect3DDevice9*>(device);
     m2vr::vr::SamplerPolicy sampler{};
+    m2vr::vr::RasterPolicy raster{};
     if(!d || !source || !triangle_indices ||
        !count || count>2048 || !index_count ||
        index_count%3 || index_count>6144u || alpha_cutoff>255u ||
-       !FixedFunctionMaterial(d,alpha_cutoff,sampler))return FALSE;
+       !FixedFunctionMaterial(d,alpha_cutoff,sampler,raster))return FALSE;
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)))return FALSE;
     const auto layout=m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride);
@@ -122,11 +137,14 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
             return FALSE;
     }catch(...){return FALSE;}
     // No second haptic owner, no duplicated emulator CPU draw or state.
-    return Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
+    return Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
         positions.data(),uv.data(),count,safe_indices.data(),index_count,
         texture.rgba.data(),texture.width,texture.height,texture.width*4u,
         alpha_cutoff,
         static_cast<unsigned int>(sampler.filter),
         static_cast<unsigned int>(sampler.u),
-        static_cast<unsigned int>(sampler.v));
+        static_cast<unsigned int>(sampler.v),
+        static_cast<unsigned int>(raster.cull),
+        static_cast<unsigned int>(raster.depth),
+        raster.write_depth?1u:0u);
 }
