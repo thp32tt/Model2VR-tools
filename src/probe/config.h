@@ -16,6 +16,8 @@ struct HookSpec {
 struct ProbeConfig {
     bool enabled = false;
     bool d3d9_read_only_probe = false;
+    bool daytona_native_stereo = false; // opt-in experimental D3D9 two-eye replay
+    std::uint32_t daytona_eye_shift_milliunits = 100;
     std::uint32_t d3d9_draw_sample_every = 1024; // independent per-frame family samples
     std::filesystem::path log_file;
     std::uint32_t transform_sample_every = 256;
