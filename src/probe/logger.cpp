@@ -12,6 +12,7 @@ namespace {
 std::mutex g_log_mutex;
 std::FILE* g_log = nullptr;
 std::atomic<std::uint64_t> g_sequence{0};
+ULONGLONG g_last_flush_tick=0;
 
 }  // namespace
 
@@ -21,6 +22,7 @@ bool OpenLog(const std::filesystem::path& path) {
         return true;
     }
 
+    g_last_flush_tick=GetTickCount64();
     if (_wfopen_s(&g_log, path.c_str(), L"ab") != 0 || !g_log) {
         g_log = nullptr;
         return false;
@@ -72,8 +74,14 @@ void LogEvent(
         static_cast<unsigned long long>(a2),
         static_cast<unsigned long long>(a3));
 
-    if ((seq & 0x3ffu) == 0) {
+    // 2D Daytona sessions are short; waiting for 1,024 events loses
+    // valuable last-frame evidence on an emulator crash/forced exit.
+    // Flush at most once per 64 rows or about once per second while
+    // events arrive, without syncing the filesystem on every Draw.
+    const ULONGLONG tick=GetTickCount64();
+    if ((seq & 63u) == 0u || tick-g_last_flush_tick>=1000u) {
         std::fflush(g_log);
+        g_last_flush_tick=tick;
     }
 }
 
