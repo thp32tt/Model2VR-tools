@@ -41,6 +41,11 @@ class Daytona2DPackageTests(unittest.TestCase):
         self.assertIn('LoadLibraryW(L"d3d9.dll")', source)
         self.assertIn('GetProcAddress(d3d9,"Direct3DCreate9")', source)
         self.assertIn('model2_d3d9_draw_ordinal', source)
+        self.assertIn('model2_d3d9_up_layout', source)
+        self.assertIn('model2_d3d9_up_decl_element', source)
+        self.assertIn('GetVertexDeclaration(&declaration)', source)
+        self.assertIn('GetVertexShader(&vs)', source)
+        self.assertIn('GetPixelShader(&ps)', source)
         self.assertIn('ordinal%g_draw_sample_every', source)
         self.assertNotIn("Direct3DCreate9(D3D_SDK_VERSION)", source)
         log = (ROOT / "src" / "probe" / "logger.cpp").read_text(
