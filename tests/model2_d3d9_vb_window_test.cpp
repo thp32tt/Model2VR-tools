@@ -48,6 +48,13 @@ int main(){
         sizeof(spread),D3DFMT_INDEX32,0,0,3001,1,w)); // >2048 span
     const std::array<std::uint32_t,3> overflow{
         UINT32_MAX-2,UINT32_MAX-1,UINT32_MAX};
+    // The last legal UINT32 vertex is valid. Adding a signed base
+    // must still reject overflow rather than silently wrapping to zero.
+    CHECK(RemapIndexedTriangleList(
+        reinterpret_cast<const std::uint8_t*>(overflow.data()),
+        sizeof(overflow),D3DFMT_INDEX32,0,UINT32_MAX-2,3,1,w));
+    CHECK(w.first==UINT32_MAX-2 && w.count==3 &&
+          w.indices==std::vector<std::uint32_t>({0,1,2}));
     CHECK(!RemapIndexedTriangleList(
         reinterpret_cast<const std::uint8_t*>(overflow.data()),
         sizeof(overflow),D3DFMT_INDEX32,2,UINT32_MAX-2,3,1,w));
