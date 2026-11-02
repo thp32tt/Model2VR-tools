@@ -2,6 +2,7 @@
 #include <Windows.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -10,6 +11,8 @@
 namespace m2vr::ffbui {
 namespace {
 constexpr wchar_t kAbsent[]=L"{m2vr-no-such-ini-key-6D4728}";
+// Backups from multiple consecutive saves must not share a millisecond name.
+std::atomic<std::uint64_t> g_backup_sequence{0};
 struct Handle {
     HANDLE value=nullptr;
     explicit Handle(HANDLE handle):value(handle){}
@@ -121,7 +124,9 @@ IniSaveStatus SaveModel2Ini(const std::filesystem::path& ini,
 
     const auto backup=std::filesystem::path(
         absolute.wstring()+L".model2vr-"+std::to_wstring(GetCurrentProcessId())+
-        L"-"+std::to_wstring(GetTickCount64())+L".bak");
+        L"-"+std::to_wstring(GetTickCount64())+L"-"+
+        std::to_wstring(g_backup_sequence.fetch_add(
+            1u,std::memory_order_relaxed)+1u)+L".bak");
     if(!CopyFileW(absolute.c_str(),backup.c_str(),TRUE))
         return IniSaveStatus::IoError;
     if(!MoveFileExW(temp.path.c_str(),absolute.c_str(),
