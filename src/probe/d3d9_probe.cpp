@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "draw_up_witness.hpp"
+#include "daytona_up_decl_witness.hpp"
 #include "draw_origin_gate.hpp"
 #include "d3d9_world_source.hpp"
 #include <Windows.h>
@@ -246,7 +247,9 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
 }
 // Defined below: bounded original FVF=0 declaration observation.
 void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
-                            void* caller,UINT stride);
+                            void* caller,UINT stride,
+                            D3DPRIMITIVETYPE topology,
+                            UINT primitive_count,const void* vertices);
 void ObserveUP(IDirect3DDevice9* dev,unsigned family,
                D3DPRIMITIVETYPE type,UINT primitive_count,void* caller,
                const void* vertices,UINT stride,const void* indices=nullptr,
@@ -259,7 +262,8 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     DWORD fvf=0;
     if(FAILED(dev->GetFVF(&fvf)))return;
     if(fvf==0u) {
-        ObserveUnknownUpLayout(dev,family,caller,stride);
+        ObserveUnknownUpLayout(dev,family,caller,stride,type,
+                               primitive_count,vertices);
         return;
     }
     if((fvf&D3DFVF_POSITION_MASK)==D3DFVF_XYZ){
@@ -320,7 +324,9 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
 // proof, never read unknown UP source bytes, and never mutate D3D9 state.
 // A declaration query is bounded to 16 elements including D3DDECL_END.
 void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
-                            void* caller,UINT stride) {
+                            void* caller,UINT stride,
+                            D3DPRIMITIVETYPE topology,
+                            UINT primitive_count,const void* vertices) {
     if(!dev || family<3u || family>4u)return;
     const auto id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -358,6 +364,35 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
             (std::uint64_t{e.Type}<<24)|
             (std::uint64_t{e.Method}<<16)|
             (std::uint64_t{e.Usage}<<8)|e.UsageIndex);
+    }
+    // After v3 confirmed exactly this 32-byte declaration on *real*
+    // Daytona DrawPrimitiveUP, safely witness only its first triangle.
+    // FVF=0 alone is insufficient: reject any other declaration,
+    // stride, topology, missing shaders or indexed-source mapping.
+    // No GPU state is changed, and source vertices are never replayed.
+    if(family!=3u || !vertices || topology!=D3DPT_TRIANGLELIST ||
+       !primitive_count || vs_status!=2u || ps_status!=2u ||
+       !m2vr::drawprobe::ExactDaytonaUPDeclaration(
+           elements.data(),count,stride))return;
+    std::array<m2vr::drawprobe::DaytonaUPVertex,3> samples{};
+    for(unsigned i=0;i<3u;++i) {
+        std::array<std::uint8_t,32> bytes{};
+        const std::size_t source_offset=std::size_t{i}*stride;
+        if(!SafeReadBytes(vertices,source_offset,bytes.data(),16u) ||
+           !SafeReadBytes(vertices,source_offset+24u,
+                          bytes.data()+24u,8u) ||
+           !m2vr::drawprobe::DecodeDaytonaUPVertex(bytes,samples[i]))
+            return;
+    }
+    m2vr::LogEvent("model2_d3d9_up_position_source",id,
+        CallerRva(caller),primitive_count,3u);
+    for(unsigned i=0;i<3u;++i) {
+        const auto& v=samples[i];
+        m2vr::LogEvent("model2_d3d9_up_position",id,i,
+            m2vr::drawprobe::PackPair(v.position[0],v.position[1]),
+            m2vr::drawprobe::PackPair(v.position[2],v.position[3]));
+        m2vr::LogEvent("model2_d3d9_up_uv",id,i,
+            m2vr::drawprobe::PackPair(v.texcoord[0],v.texcoord[1]),0u);
     }
 }
 
