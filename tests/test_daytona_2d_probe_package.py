@@ -47,6 +47,15 @@ class Daytona2DPackageTests(unittest.TestCase):
             encoding="utf-8")
         self.assertIn("(seq & 63u)", log)
         self.assertIn(">=1000u", log)
+        hooks = (ROOT / "src" / "probe" / "hooks_x86.cpp").read_text(
+            encoding="utf-8")
+        self.assertIn("g_config.d3d9_draw_sample_every", hooks)
+        cfgsource = (ROOT / "src" / "probe" / "config.cpp").read_text(
+            encoding="utf-8")
+        self.assertIn('L"d3d9_draw_sample_every"', cfgsource)
+        self.assertIn("64u, 4096u", cfgsource)
+        self.assertTrue((ROOT / "tools" /
+                         "daytona_draw_phase_report.py").is_file())
 
 
 if __name__ == "__main__":
