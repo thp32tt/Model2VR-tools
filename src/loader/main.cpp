@@ -333,7 +333,7 @@ int wmain(int argc, wchar_t** argv) {
                               0, config.c_str()) != 0) {
         const DWORD configured_timeout = static_cast<DWORD>(GetPrivateProfileIntW(
             L"probe", L"openxr_host_ready_timeout_ms", 15000, config.c_str()));
-        const DWORD timeout_ms = (std::clamp)(configured_timeout, 3000u, 60000u);
+        const DWORD timeout_ms = (std::max)(DWORD{3000}, (std::min)(configured_timeout, DWORD{60000}));
         const bool require_ready = GetPrivateProfileIntW(
             L"probe", L"require_openxr_host_ready", 1, config.c_str()) != 0;
         std::wstring host_error;
