@@ -17,7 +17,7 @@ void XrApp::create_swapchains(){
         chain.width=source_pid_ ? transport::kWidth : view_configs_[eye].recommendedImageRectWidth;
         chain.height=source_pid_ ? transport::kHeight : view_configs_[eye].recommendedImageRectHeight;
         XrSwapchainCreateInfo create{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-        create.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+        create.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |\n                          XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
         create.format=format;create.sampleCount=1;
         create.width=chain.width;create.height=chain.height;
         create.faceCount=1;create.arraySize=1;create.mipCount=1;
@@ -27,6 +27,8 @@ void XrApp::create_swapchains(){
         chain.images.resize(image_count,{XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
         check(xrEnumerateSwapchainImages(chain.handle,image_count,&image_count,
             reinterpret_cast<XrSwapchainImageBaseHeader*>(chain.images.data())),"images");
+        if(image_count==0)
+            throw std::runtime_error("OpenXR returned zero swapchain images");
         chain.rtvs.resize(image_count);
         chain.uploaded_frame_ids.assign(image_count,0);
         for(std::size_t i=0;i<image_count;++i){
@@ -34,6 +36,10 @@ void XrApp::create_swapchains(){
             if(!texture)throw std::runtime_error("OpenXR returned null D3D11 swapchain texture");
             D3D11_TEXTURE2D_DESC texture_desc{};
             texture->GetDesc(&texture_desc);
+            if(texture_desc.Width<chain.width || texture_desc.Height<chain.height)
+                throw std::runtime_error("OpenXR swapchain texture smaller than requested image");
+            if((texture_desc.BindFlags&D3D11_BIND_RENDER_TARGET)==0)
+                throw std::runtime_error("OpenXR color swapchain texture lacks D3D11_BIND_RENDER_TARGET");
 
             // VDXR can expose a runtime-owned swapchain texture whose resource
             // format is not suitable for D3D11's implicit/null RTV descriptor.
