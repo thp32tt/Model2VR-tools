@@ -1,7 +1,8 @@
 #include <Windows.h>
 #include "../common/probe_ipc.h"
-#include "../common/probe_ipc.h"
+#include "../common/daytona_host_ready.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -85,6 +86,104 @@ std::filesystem::path SelfDirectory() {
     wchar_t path[MAX_PATH]{};
     GetModuleFileNameW(nullptr, path, MAX_PATH);
     return std::filesystem::path(path).parent_path();
+}
+
+std::filesystem::path HostLogPath(DWORD emulator_pid) {
+    const auto logs = SelfDirectory() / L"logs";
+    std::error_code ec;
+    std::filesystem::create_directories(logs, ec);
+    SYSTEMTIME now{};
+    GetLocalTime(&now);
+    wchar_t name[160]{};
+    swprintf_s(name, L"daytona_vr_host_%04hu%02hu%02hu_%02hu%02hu%02hu_%lu.log",
+               now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
+               now.wSecond, emulator_pid);
+    return logs / name;
+}
+
+bool StartOpenXRHostAndWait(DWORD emulator_pid,
+                           DWORD timeout_ms,
+                           HANDLE& host_process,
+                           std::filesystem::path& host_log,
+                           std::wstring& error) {
+    host_process = nullptr;
+    host_log = HostLogPath(emulator_pid);
+    const auto xr = SelfDirectory() / L"Model2VROpenXRHost.exe";
+    if (!std::filesystem::exists(xr)) {
+        error = L"OpenXR stereo host missing beside loader";
+        return false;
+    }
+
+    const auto ready_name = m2vr::hostready::EventName(emulator_pid);
+    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, ready_name.c_str());
+    if (!ready) {
+        error = L"Cannot create OpenXR ready event, error=" + std::to_wstring(GetLastError());
+        return false;
+    }
+    ResetEvent(ready);
+
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    HANDLE log = CreateFileW(host_log.c_str(), GENERIC_WRITE,
+                             FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+                             CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (log == INVALID_HANDLE_VALUE) {
+        error = L"Cannot create OpenXR host log: " + host_log.wstring();
+        CloseHandle(ready);
+        return false;
+    }
+
+    const std::wstring cmd = QuoteArg(xr.wstring()) + L" 0 " +
+        std::to_wstring(emulator_pid);
+    std::vector<wchar_t> args(cmd.begin(), cmd.end());
+    args.push_back(L'\0');
+    STARTUPINFOW host_si{};
+    host_si.cb = sizeof(host_si);
+    host_si.dwFlags = STARTF_USESTDHANDLES;
+    host_si.hStdOutput = log;
+    host_si.hStdError = log;
+    host_si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    PROCESS_INFORMATION host_pi{};
+    const auto folder = SelfDirectory().wstring();
+    const BOOL started = CreateProcessW(
+        xr.c_str(), args.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
+        nullptr, folder.c_str(), &host_si, &host_pi);
+    CloseHandle(log);
+    if (!started) {
+        error = L"OpenXR stereo host could not start, error=" +
+                std::to_wstring(GetLastError());
+        CloseHandle(ready);
+        return false;
+    }
+    CloseHandle(host_pi.hThread);
+
+    HANDLE waits[2]{ready, host_pi.hProcess};
+    const DWORD wait = WaitForMultipleObjects(2, waits, FALSE, timeout_ms);
+    if (wait == WAIT_OBJECT_0) {
+        host_process = host_pi.hProcess;
+        CloseHandle(ready);
+        std::wcout << L"OpenXR headset/tracking ready; host log: "
+                   << host_log << L"\n";
+        return true;
+    }
+
+    DWORD exit_code = STILL_ACTIVE;
+    GetExitCodeProcess(host_pi.hProcess, &exit_code);
+    if (wait == WAIT_OBJECT_0 + 1) {
+        error = L"OpenXR host exited before headset/tracking became ready; code=" +
+                std::to_wstring(exit_code) + L"; see " + host_log.wstring();
+    } else if (wait == WAIT_TIMEOUT) {
+        error = L"OpenXR headset/tracking readiness timed out after " +
+                std::to_wstring(timeout_ms) + L" ms; see " + host_log.wstring();
+    } else {
+        error = L"OpenXR host readiness wait failed, error=" +
+                std::to_wstring(GetLastError()) + L"; see " + host_log.wstring();
+    }
+    if (exit_code == STILL_ACTIVE) TerminateProcess(host_pi.hProcess, 2);
+    CloseHandle(host_pi.hProcess);
+    CloseHandle(ready);
+    return false;
 }
 
 // Control panel is a separate *UI* process; never initializes a wheel,
@@ -228,42 +327,50 @@ int wmain(int argc, wchar_t** argv) {
         return 7;
     }
 
+    HANDLE host_process = nullptr;
+    std::filesystem::path host_log;
+    if (GetPrivateProfileIntW(L"probe", L"launch_openxr_stereo_host",
+                              0, config.c_str()) != 0) {
+        const DWORD configured_timeout = static_cast<DWORD>(GetPrivateProfileIntW(
+            L"probe", L"openxr_host_ready_timeout_ms", 15000, config.c_str()));
+        const DWORD timeout_ms = (std::clamp)(configured_timeout, 3000u, 60000u);
+        const bool require_ready = GetPrivateProfileIntW(
+            L"probe", L"require_openxr_host_ready", 1, config.c_str()) != 0;
+        std::wstring host_error;
+        if (!StartOpenXRHostAndWait(pi.dwProcessId, timeout_ms,
+                                    host_process, host_log, host_error)) {
+            std::wcerr << host_error << L"\n";
+            if (require_ready) {
+                TerminateProcess(pi.hProcess, 1);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                return 9;
+            }
+            std::wcerr << L"Continuing without VR because require_openxr_host_ready=0\n";
+        }
+    }
+
+    // Do not let the desktop game silently continue in 2D while the requested
+    // VR host is still failing. For Daytona VR the emulator is resumed only
+    // after OpenXR has produced a valid tracked stereo pose.
     if (ResumeThread(pi.hThread) == DWORD(-1)) {
+        if (host_process) {
+            TerminateProcess(host_process, 3);
+            CloseHandle(host_process);
+        }
         TerminateProcess(pi.hProcess, 1);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         return 8;
     }
+    if (host_process) CloseHandle(host_process);
+
     // Diagnostic-only Daytona sessions must not launch any FFB editor.
     // Preserve existing behavior when this optional INI key is absent.
     if (GetPrivateProfileIntW(L"probe",L"launch_ffb_control_panel",
                               1,config.c_str()) != 0)
         StartFfbControlPanel(pi.dwProcessId, emulator.parent_path());
-    // Experimental true-eye Daytona renderer consumes the same process PID
-    // already verified by our loader, no window-title guessing or second game.
-    // OpenXR runs out-of-process (x64); never blocks/resets game input or FFB.
-    if (GetPrivateProfileIntW(L"probe",L"launch_openxr_stereo_host",
-                               0,config.c_str()) != 0) {
-        const auto xr=SelfDirectory()/L"Model2VROpenXRHost.exe";
-        if (std::filesystem::exists(xr)) {
-            const std::wstring cmd=QuoteArg(xr.wstring())+L" 0 "+
-                 std::to_wstring(pi.dwProcessId);
-            std::vector<wchar_t> args(cmd.begin(),cmd.end());
-            args.push_back(L'\0');
-            STARTUPINFOW host_si{};host_si.cb=sizeof(host_si);
-            PROCESS_INFORMATION host_pi{};
-            const auto folder=SelfDirectory().wstring();
-            if(CreateProcessW(xr.c_str(),args.data(),nullptr,nullptr,FALSE,0,
-                              nullptr,folder.c_str(),&host_si,&host_pi)){
-                CloseHandle(host_pi.hThread);CloseHandle(host_pi.hProcess);
-            } else {
-                std::wcerr<<L"OpenXR stereo host could not start: "
-                          <<GetLastError()<<L"\n";
-            }
-        }else{
-            std::wcerr<<L"OpenXR stereo host missing beside loader\n";
-        }
-    }
+
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return 0;
