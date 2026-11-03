@@ -43,3 +43,11 @@ add_test(NAME stereo_predicted_pose_ipc_x64 COMMAND model2vr_pose_ipc_x64_test)
 add_executable(model2vr_wizard_health_x64_test ../tests/daytona_wizard_health_test.cpp)
 target_compile_features(model2vr_wizard_health_x64_test PRIVATE cxx_std_20)
 add_test(NAME daytona_vr_wizard_health_x64 COMMAND model2vr_wizard_health_x64_test)
+
+# Same admission contract must compile and behave identically on the
+# 64-bit Quest OpenXR host and 32-bit original Daytona renderer.
+add_executable(daytona_eye_pose_gate_x64_test ../tests/daytona_eye_pose_gate_test.cpp)
+target_compile_features(daytona_eye_pose_gate_x64_test PRIVATE cxx_std_20)
+target_compile_definitions(daytona_eye_pose_gate_x64_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME daytona_live_openxr_binocular_pose_gate_x64
+         COMMAND daytona_eye_pose_gate_x64_test)
