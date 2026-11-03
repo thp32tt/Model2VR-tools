@@ -65,6 +65,36 @@ DirectInput devices and wheel plugin remain separate and unchanged.
 - Stereo D3D9 resources are released ahead of device Reset.
 - Original 60Hz game emulation is not executed twice for headset refresh.
 
+## Runtime safety stabilization (2026-11-03)
+
+The native GPU eye renderer is **admitted only after it receives a recent
+valid OpenXR stereo-pose pair** from the real x64 headset host. The original
+game can keep running without VR if the HMD is disconnected, tracking is
+lost, a pose is older than 250ms, both eye locations are identical, a
+quaternion/FOV is invalid, or headset eye separation is implausible.
+The producer samples the pair once per original game frame; no repeated
+host IPC reads per original Draw call. Actual HMD eye separation scales
+the experimental source-space X offset relative to 64mm, with a bounded
+0.6–1.5 multiplier. This **does not** yet apply head orientation to the
+original Daytona world camera and must not be described as calibrated
+6DoF.
+
+The original colour target, depth/stencil and viewport are restored
+after the separate stereo GPU passes. Auxiliary MRT slots are rejected
+when bound; an **unused MRT slot can correctly return
+`D3DERR_NOTFOUND`** from D3D9 and is not treated as a fatal error.
+The stereo depth buffer uses only the explicitly supported actual game
+depth format (D16, D24S8, D24X8 or D32), exact source dimensions and
+non-multisampled source. It does not guess D24S8 for an unknown format.
+The source never writes to the original vertex buffer, game window,
+input or FFB plugin. Pixel-identical left/right final frames are not
+misrepresented to the OpenXR transport as valid stereo scene output.
+
+All of these behaviours have headless Windows Win32+Win64 regression
+coverage; **Quest 3 in-game visual validity remains UNTESTED** until
+the user actually runs the updated package. No extra CSV capture cycle
+is requested.
+
 ## Performance and next required correction
 
 Each original GPU call is mirrored up to two additional times with a
