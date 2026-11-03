@@ -55,7 +55,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn('L"launch_openxr_stereo_host"',loader)
         self.assertIn("WaitForMultipleObjects",loader)
         self.assertIn("StartOpenXRHostAndWait",loader)
-        self.assertIn("std::to_wstring(pi.dwProcessId)",loader)
+        self.assertIn("std::to_wstring(emulator_pid)",loader)
         self.assertIn("OPENXR_TRACKED_STEREO_READY",loop)
         self.assertIn("hostready::Signal(source_pid_)",loop)
         self.assertIn("Model2VR_OpenXRTrackedReady_v1_",ready)
@@ -92,7 +92,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertLess(launcher.index('for %%I in ("%EMULATOR%")'),
                         launcher.index("daytona_vr_safe_mode.flag"))
         self.assertLess(launcher.index("daytona_vr_safe_mode.flag"),
-                        launcher.index('if not exist "%~dp0Model2VRLoader.exe"'))
+                        launcher.index("for %%F in (Model2VRLoader.exe"))
 
 if __name__=="__main__":
     unittest.main()
