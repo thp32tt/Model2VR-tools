@@ -51,3 +51,16 @@ target_compile_features(daytona_eye_pose_gate_x64_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_eye_pose_gate_x64_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_live_openxr_binocular_pose_gate_x64
          COMMAND daytona_eye_pose_gate_x64_test)
+
+
+# VDXR/OpenXR D3D11 returns typeless swapchain resources. Exercise the exact
+# typed-RTV plus CPU RGBA UpdateSubresource path on the Windows WARP device so
+# CI catches D3D11 contract regressions before an HMD run.
+add_executable(daytona_d3d11_typeless_upload_x64_test
+               ../tests/d3d11_openxr_typeless_upload_test.cpp)
+target_compile_features(daytona_d3d11_typeless_upload_x64_test PRIVATE cxx_std_20)
+target_compile_definitions(daytona_d3d11_typeless_upload_x64_test PRIVATE
+                           NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(daytona_d3d11_typeless_upload_x64_test PRIVATE d3d11)
+add_test(NAME daytona_d3d11_typeless_openxr_upload_x64
+         COMMAND daytona_d3d11_typeless_upload_x64_test)
