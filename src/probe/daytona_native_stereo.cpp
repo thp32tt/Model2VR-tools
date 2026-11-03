@@ -120,9 +120,16 @@ public:
             if(scene) {
                 std::memcpy(scratch_[1].data(),scratch_[0].data(),bytes);
                 for(std::size_t offset=0;offset<bytes;offset+=32u) {
-                    float x=0.f;
+                    float x=0.f,w=0.f;
                     std::memcpy(&x,scratch_[0].data()+offset,sizeof x);
-                    if(!std::isfinite(x)){scene=false;break;}
+                    std::memcpy(&w,scratch_[0].data()+offset+12u,sizeof w);
+                    // Real Daytona v4 traces include negative and mixed W
+                    // triangles. Shifting their clip-like X can reverse
+                    // depth/disparity, so keep the original flat source.
+                    if(!std::isfinite(x) ||
+                       !m2vr::daytona::SafeStereoHomogeneousW(w)){
+                        scene=false;break;
+                    }
                     const float eye_offset=shift_*ipd_scale_;
                     const float left=x+eye_offset,right=x-eye_offset;
                     if(!std::isfinite(left)||!std::isfinite(right)){
