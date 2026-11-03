@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'src/probe/daytona_native_stereo.*'
+      - 'src/probe/daytona_eye_pose_gate.hpp'
+      - 'tests/daytona_eye_pose_gate_test.cpp'
       - 'src/probe/d3d9_probe.cpp'
       - 'src/probe/config.*'
       - 'src/probe/hooks_x86.cpp'
@@ -16,6 +18,7 @@ on:
       - 'tests/test_daytona_native_stereo.py'
       - 'tests/daytona_wizard_health_test.cpp'
       - 'docs/vr_wizard/**'
+      - 'docs/DAYTONA_NATIVE_STEREO.md'
       - '.github/workflows/daytona-native-stereo.yml'
   workflow_dispatch:
 
