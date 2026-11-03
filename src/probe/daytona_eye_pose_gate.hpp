@@ -7,6 +7,13 @@
 #include <cstdint>
 
 namespace m2vr::daytona {
+// Signed/near-zero shader POSITION.W is not a safe source for a
+// simple left/right clip-X translation: it can reverse apparent disparity
+// or magnify it arbitrarily near W=0. Do not modify these triangles.
+// This is an empirical guard, not proof that W is fully calibrated depth.
+inline bool SafeStereoHomogeneousW(float w) noexcept {
+    return std::isfinite(w) && w>=0.05f && w<=65536.f;
+}
 struct EyePoseAdmission {
     bool valid=false;
     float ipd_scale=1.f; // relative to 64mm; used only for experimental disparity
