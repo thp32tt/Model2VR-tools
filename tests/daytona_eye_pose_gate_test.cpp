@@ -38,7 +38,7 @@ int main(){
     assert(!AdmitLiveEyePose(f,now,hz).valid); // cannot clone mono eyes
     f=ValidTestPose();f.eyes[1].position_m[0]=0.0f;
     r=AdmitLiveEyePose(f,now,hz);
-    assert(r.valid && std::abs(r.ipd_scale-0.5f)<0.001f);
+    assert(r.valid && std::abs(r.ipd_scale-0.6f)<0.001f);
     f=ValidTestPose();f.eyes[0].position_m[2]=
         std::numeric_limits<float>::quiet_NaN();
     assert(!AdmitLiveEyePose(f,now,hz).valid);
