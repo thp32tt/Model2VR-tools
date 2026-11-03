@@ -1,0 +1,53 @@
+#pragma once
+// Daytona real OpenXR pose admission for the original game's independent
+// GPU-eye renderer. Does not imply that emulator camera tracking is calibrated.
+#include "../common/stereo_pose_ipc.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
+namespace m2vr::daytona {
+struct EyePoseAdmission {
+    bool valid=false;
+    float ipd_scale=1.f; // relative to 64mm; used only for experimental disparity
+    std::uint64_t sequence=0;
+};
+// Check one coherent, recently published HMD stereo pair exactly once per
+// original game frame. No mono-cloned or stale OpenXR pair may pass.
+inline EyePoseAdmission AdmitLiveEyePose(
+    const pose::Frame& frame,std::uint64_t now_qpc,
+    std::uint64_t qpc_hz) noexcept {
+    EyePoseAdmission out{};
+    if(!frame.sequence || !frame.published_qpc || !qpc_hz ||
+       now_qpc<frame.published_qpc ||
+       now_qpc-frame.published_qpc>qpc_hz/4u ||
+       (frame.view_flags&(pose::kOrientationValid|pose::kPositionValid)) !=
+         (pose::kOrientationValid|pose::kPositionValid))
+        return out;
+    for(const auto& eye:frame.eyes) {
+        float qlen=0.f;
+        for(float q:eye.orientation_xyzw) {
+            if(!std::isfinite(q))return {};
+            qlen+=q*q;
+        }
+        if(!std::isfinite(qlen)||qlen<0.98f||qlen>1.02f)
+            return {};
+        for(float pos:eye.position_m)if(!std::isfinite(pos))return {};
+        const auto& fov=eye.fov_left_right_up_down;
+        for(float angle:fov)
+            if(!std::isfinite(angle) || std::abs(angle)>1.57f)return {};
+        if(fov[1]-fov[0]<0.2f || fov[2]-fov[3]<0.2f)return {};
+    }
+    const auto& l=frame.eyes[0],&r=frame.eyes[1];
+    const float dx=l.position_m[0]-r.position_m[0];
+    const float dy=l.position_m[1]-r.position_m[1];
+    const float dz=l.position_m[2]-r.position_m[2];
+    const float ipd=std::sqrt(dx*dx+dy*dy+dz*dz);
+    if(!std::isfinite(ipd)||ipd<0.02f||ipd>0.11f)
+        return {}; // no bogus stereo with identical eye poses
+    out.valid=true;
+    out.sequence=frame.sequence;
+    out.ipd_scale=(std::clamp)(ipd/0.064f,0.6f,1.5f);
+    return out;
+}
+} // namespace m2vr::daytona
