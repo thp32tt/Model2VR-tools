@@ -225,3 +225,11 @@ add_test(NAME model2_ffb_ini_transaction COMMAND model2vr_ffb_ini_transaction_te
 add_executable(model2vr_wizard_health_x86_test tests/daytona_wizard_health_test.cpp)
 target_compile_features(model2vr_wizard_health_x86_test PRIVATE cxx_std_20)
 add_test(NAME daytona_vr_wizard_health_x86 COMMAND model2vr_wizard_health_x86_test)
+
+# Original-game stereo may render only against a live, coherent, genuinely
+# binocular OpenXR eye-pose pair. Synthetic test, no HMD required.
+add_executable(daytona_eye_pose_gate_x86_test tests/daytona_eye_pose_gate_test.cpp)
+target_compile_features(daytona_eye_pose_gate_x86_test PRIVATE cxx_std_20)
+target_compile_definitions(daytona_eye_pose_gate_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME daytona_live_openxr_binocular_pose_gate_x86
+         COMMAND daytona_eye_pose_gate_x86_test)
