@@ -6,6 +6,7 @@ on:
       - 'src/probe/daytona_native_stereo.*'
       - 'src/probe/daytona_eye_pose_gate.hpp'
       - 'tests/daytona_eye_pose_gate_test.cpp'
+      - 'tests/d3d11_openxr_typeless_upload_test.cpp'
       - 'src/probe/d3d9_probe.cpp'
       - 'src/probe/config.*'
       - 'src/probe/hooks_x86.cpp'
