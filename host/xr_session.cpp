@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 namespace m2vr::host {
