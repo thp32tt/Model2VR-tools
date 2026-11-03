@@ -113,7 +113,13 @@ void XrApp::draw_frame(XrTime display_time){
                 dst.fov_left_right_up_down[2]=views[eye].fov.angleUp;
                 dst.fov_left_right_up_down[3]=views[eye].fov.angleDown;
             }
-            pose_writer_.Publish(predicted);
+            const bool pose_published=pose_writer_.Publish(predicted);
+            if(pose_published && !startup_ready_signaled_ &&
+               hostready::Signal(source_pid_)){
+                startup_ready_signaled_=true;
+                std::cout<<"Daytona VR startup: OPENXR_TRACKED_STEREO_READY emulator_pid="
+                         <<source_pid_<<std::endl;
+            }
         }
     }
     LARGE_INTEGER now_ticks{},qpc_hz{};
