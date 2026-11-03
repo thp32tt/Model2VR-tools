@@ -15,6 +15,8 @@ on:
       - 'CMakeLists.txt'
       - 'config/daytona_native_stereo.ini'
       - 'scripts/Run-Daytona-NativeStereo.cmd'
+      - 'scripts/Run-Daytona-VR.bat'
+      - 'src/common/daytona_host_ready.hpp'
       - 'tests/test_daytona_native_stereo.py'
       - 'tests/daytona_wizard_health_test.cpp'
       - 'docs/vr_wizard/**'
@@ -89,6 +91,7 @@ jobs:
           Copy-Item from-xr/Model2VROpenXRHost.exe stage/
           Copy-Item config/daytona_native_stereo.ini stage/
           Copy-Item scripts/Run-Daytona-NativeStereo.cmd stage/
+          Copy-Item scripts/Run-Daytona-VR.bat stage/
           Copy-Item docs/DAYTONA_NATIVE_STEREO.md stage/README-KO.md
           Copy-Item docs/vr_wizard/PLAYTEST.md stage/PLAYTEST-WIZARD.md
           Copy-Item docs/vr_wizard/PHASE_PLAN.md stage/VR-WIZARD-STATUS.md
