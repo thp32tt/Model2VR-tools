@@ -12,6 +12,7 @@
 #include "../src/common/stereo_frame_policy.hpp"
 #include "../src/common/stereo_pose_ipc.h"
 #include "../src/common/daytona_wizard_health.hpp"
+#include "../src/common/daytona_host_ready.hpp"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -53,6 +54,7 @@ private:
     transport::StereoFrameGate frame_gate_;
     bool saw_diagnostic_=false;
     bool wizard_diag_enabled_=true;
+    bool startup_ready_signaled_=false;
     wizard::RuntimeGate wizard_gate_;
 };
 }  // namespace m2vr::host
