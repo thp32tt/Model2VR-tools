@@ -29,9 +29,48 @@ void XrApp::create_swapchains(){
             reinterpret_cast<XrSwapchainImageBaseHeader*>(chain.images.data())),"images");
         chain.rtvs.resize(image_count);
         chain.uploaded_frame_ids.assign(image_count,0);
-        for(std::size_t i=0;i<image_count;++i)
-            checkhr(device_->CreateRenderTargetView(chain.images[i].texture,nullptr,
-                &chain.rtvs[i]),"render target view");
+        for(std::size_t i=0;i<image_count;++i){
+            auto* texture=chain.images[i].texture;
+            if(!texture)throw std::runtime_error("OpenXR returned null D3D11 swapchain texture");
+            D3D11_TEXTURE2D_DESC texture_desc{};
+            texture->GetDesc(&texture_desc);
+
+            // VDXR can expose a runtime-owned swapchain texture whose resource
+            // format is not suitable for D3D11's implicit/null RTV descriptor.
+            // OpenXR negotiated a concrete typed format above, so create the
+            // RTV explicitly using that format and the actual texture shape.
+            D3D11_RENDER_TARGET_VIEW_DESC rtv_desc{};
+            rtv_desc.Format=static_cast<DXGI_FORMAT>(format);
+            if(texture_desc.SampleDesc.Count>1){
+                if(texture_desc.ArraySize>1){
+                    rtv_desc.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2DMSARRAY;
+                    rtv_desc.Texture2DMSArray.FirstArraySlice=0;
+                    rtv_desc.Texture2DMSArray.ArraySize=1;
+                }else{
+                    rtv_desc.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2DMS;
+                }
+            }else if(texture_desc.ArraySize>1){
+                rtv_desc.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+                rtv_desc.Texture2DArray.MipSlice=0;
+                rtv_desc.Texture2DArray.FirstArraySlice=0;
+                rtv_desc.Texture2DArray.ArraySize=1;
+            }else{
+                rtv_desc.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2D;
+                rtv_desc.Texture2D.MipSlice=0;
+            }
+
+            const HRESULT rtv_hr=device_->CreateRenderTargetView(
+                texture,&rtv_desc,&chain.rtvs[i]);
+            std::cout<<"OpenXR swapchain RTV eye="<<eye
+                     <<" image="<<i
+                     <<" requested_format="<<format
+                     <<" resource_format="<<static_cast<int>(texture_desc.Format)
+                     <<" bind_flags=0x"<<std::hex<<texture_desc.BindFlags<<std::dec
+                     <<" array="<<texture_desc.ArraySize
+                     <<" samples="<<texture_desc.SampleDesc.Count
+                     <<" hr="<<static_cast<long>(rtv_hr)<<std::endl;
+            checkhr(rtv_hr,"render target view");
+        }
     }
 }
 void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
