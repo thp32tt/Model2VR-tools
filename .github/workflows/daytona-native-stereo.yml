@@ -14,6 +14,8 @@ on:
       - 'config/daytona_native_stereo.ini'
       - 'scripts/Run-Daytona-NativeStereo.cmd'
       - 'tests/test_daytona_native_stereo.py'
+      - 'tests/daytona_wizard_health_test.cpp'
+      - 'docs/vr_wizard/**'
       - '.github/workflows/daytona-native-stereo.yml'
   workflow_dispatch:
 
@@ -85,6 +87,8 @@ jobs:
           Copy-Item config/daytona_native_stereo.ini stage/
           Copy-Item scripts/Run-Daytona-NativeStereo.cmd stage/
           Copy-Item docs/DAYTONA_NATIVE_STEREO.md stage/README-KO.md
+          Copy-Item docs/vr_wizard/PLAYTEST.md stage/PLAYTEST-WIZARD.md
+          Copy-Item docs/vr_wizard/PHASE_PLAN.md stage/VR-WIZARD-STATUS.md
           $components=@(
             @("stage/Model2VRProbe.dll",0x14c),
             @("stage/Model2VRLoader.exe",0x14c),

@@ -220,3 +220,8 @@ add_executable(model2vr_ffb_ini_transaction_test tests/ffb_ini_transaction_test.
 target_link_libraries(model2vr_ffb_ini_transaction_test PRIVATE model2vr_ffb_ini)
 target_compile_features(model2vr_ffb_ini_transaction_test PRIVATE cxx_std_20)
 add_test(NAME model2_ffb_ini_transaction COMMAND model2vr_ffb_ini_transaction_test)
+
+# Headless host runtime health state contract, also built for x64 OpenXR host.
+add_executable(model2vr_wizard_health_x86_test tests/daytona_wizard_health_test.cpp)
+target_compile_features(model2vr_wizard_health_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_vr_wizard_health_x86 COMMAND model2vr_wizard_health_x86_test)

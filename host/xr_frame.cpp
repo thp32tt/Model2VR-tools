@@ -1,6 +1,7 @@
 #include "xr_app.h"
 #include <algorithm>
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 namespace m2vr::host {
 void XrApp::create_swapchains(){
@@ -33,6 +34,40 @@ void XrApp::create_swapchains(){
                 &chain.rtvs[i]),"render target view");
     }
 }
+void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
+    if(!wizard_diag_enabled_ || source_pid_==0)return;
+    const auto status=wizard::Classify(
+        tracking_valid,paired_frame_fresh,frame_gate_.id()!=0,
+        frame_gate_.kind()==transport::FrameKind::GameStereo);
+    if(wizard_gate_.Transition(status)){
+        std::cout<<"Daytona VR Wizard: "<<wizard::Name(status)
+                 <<" emulator_pid="<<source_pid_<<" paired_frame_id="<<frame_gate_.id()
+                 <<" camera_6dof=UNVERIFIED\n";
+    }
+    // Desktop keyboard fallback only; no claim of a Quest controller binding.
+    const bool key_down=(GetAsyncKeyState(VK_F9)&0x8000)!=0;
+    if(!wizard_gate_.CaptureEdge(key_down))return;
+    SYSTEMTIME clock{};GetLocalTime(&clock);
+    std::ofstream report("daytona_vr_bug_capture.txt",std::ios::app);
+    if(!report){
+        std::cerr<<"Daytona VR Wizard: could not write local bug capture\n";
+        return;
+    }
+    report<<"[Daytona VR Wizard local capture]\n"
+          <<"time_local="<<clock.wYear<<"-"<<clock.wMonth<<"-"<<clock.wDay
+          <<" "<<clock.wHour<<":"<<clock.wMinute<<":"<<clock.wSecond<<"\n"
+          <<"emulator_pid="<<source_pid_<<"\n"
+          <<"status="<<wizard::Name(status)<<"\n"
+          <<"openxr_tracking_valid="<<(tracking_valid?1:0)<<"\n"
+          <<"paired_frame_fresh="<<(paired_frame_fresh?1:0)<<"\n"
+          <<"last_paired_frame_id="<<frame_gate_.id()<<"\n"
+          <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::GameStereo
+                ?"GameStereo":frame_gate_.kind()==transport::FrameKind::Diagnostic
+                ?"Diagnostic":"Unknown")<<"\n"
+          <<"daytona_head_camera_6dof=UNVERIFIED\n"
+          <<"note=GameStereo transport does not prove calibrated in-game HMD camera\n---\n";
+    std::cout<<"Daytona VR Wizard: captured daytona_vr_bug_capture.txt\n";
+}
 void XrApp::draw_frame(XrTime display_time){
     std::array<XrView,2> views{XrView{XR_TYPE_VIEW},XrView{XR_TYPE_VIEW}};
     XrViewLocateInfo locate{XR_TYPE_VIEW_LOCATE_INFO};
@@ -49,6 +84,7 @@ void XrApp::draw_frame(XrTime display_time){
         // Revoke the previously published pose so game geometry cannot use
         // the old eye views, and submit an empty composition frame.
         if(pose_writer_.Valid())pose_writer_.Invalidate();
+        report_wizard_health(false,false);
         XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
         end.displayTime=display_time;
         end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
@@ -117,6 +153,7 @@ void XrApp::draw_frame(XrTime display_time){
         eye_frame_.frame_id==frame_gate_.id() &&
         eye_frame_.eyes[0].size()==transport::kBytesPerEye &&
         eye_frame_.eyes[1].size()==transport::kBytesPerEye;
+    report_wizard_health(true,usable);
     std::array<XrCompositionLayerProjectionView,2> layer_views{
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}
@@ -172,6 +209,8 @@ void XrApp::draw_frame(XrTime display_time){
     check(xrEndFrame(session_,&end),"end stereo frame");
 }
 void XrApp::run(int max_frames){
+    wizard_diag_enabled_=GetPrivateProfileIntW(L"probe",L"wizard_health_diagnostics",
+                                              1,L".\\model2vr_probe.ini")!=0;
     bool running=false,exit=false;
     int frames=0;
     while(!exit && (max_frames==0 || frames<max_frames)){
@@ -210,6 +249,7 @@ void XrApp::run(int max_frames){
             check(xrEndFrame(session_,&end),"end empty frame");
         }
     }
-    std::cout<<"Rendered stereo test frames: "<<frames<<"\n";
+    std::cout<<"OpenXR submitted projection frames: "<<frames
+             <<" (does not establish calibrated Daytona 6DoF)\n";
 }
 }  // namespace m2vr::host

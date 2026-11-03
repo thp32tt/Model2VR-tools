@@ -49,5 +49,22 @@ class NativeStereoTest(unittest.TestCase):
             self.assertEqual(config[name]["enabled"],"0")
         self.assertEqual(config["probe"]["launch_ffb_control_panel"],"0")
 
+    def test_wizard_host_health_capture_and_safe_mode(self):
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        header=(ROOT/"src/common/daytona_wizard_health.hpp").read_text("utf-8")
+        launcher=(ROOT/"scripts/Run-Daytona-NativeStereo.cmd").read_text("utf-8")
+        config=configparser.ConfigParser()
+        config.read(ROOT/"config/daytona_native_stereo.ini",encoding="utf-8")
+        self.assertIn("report_wizard_health(true,usable)",host)
+        self.assertIn("report_wizard_health(false,false)",host)
+        self.assertIn("GetAsyncKeyState(VK_F9)",host)
+        self.assertIn("daytona_vr_bug_capture.txt",host)
+        self.assertIn("camera_6dof=UNVERIFIED",host)
+        self.assertIn("LIVE_GAME_STEREO",header)
+        self.assertEqual(config["probe"]["wizard_health_diagnostics"],"1")
+        self.assertIn("daytona_vr_safe_mode.flag",launcher)
+        self.assertLess(launcher.index("daytona_vr_safe_mode.flag"),
+                        launcher.index('if not exist "%~dp0Model2VRLoader.exe"'))
+
 if __name__=="__main__":
     unittest.main()
