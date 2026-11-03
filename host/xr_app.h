@@ -11,6 +11,7 @@
 #include "../src/common/stereo_frame_ipc.h"
 #include "../src/common/stereo_frame_policy.hpp"
 #include "../src/common/stereo_pose_ipc.h"
+#include "../src/common/daytona_wizard_health.hpp"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -35,6 +36,7 @@ public:
 private:
     void create_swapchains();
     void draw_frame(XrTime predicted_time);
+    void report_wizard_health(bool tracking_valid, bool paired_frame_fresh);
     XrInstance instance_=XR_NULL_HANDLE;
     XrSystemId system_=XR_NULL_SYSTEM_ID;
     XrSession session_=XR_NULL_HANDLE;
@@ -50,5 +52,7 @@ private:
     transport::Snapshot eye_frame_;
     transport::StereoFrameGate frame_gate_;
     bool saw_diagnostic_=false;
+    bool wizard_diag_enabled_=true;
+    wizard::RuntimeGate wizard_gate_;
 };
 }  // namespace m2vr::host
