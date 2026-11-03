@@ -63,6 +63,9 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("LIVE_GAME_STEREO",header)
         self.assertEqual(config["probe"]["wizard_health_diagnostics"],"1")
         self.assertIn("daytona_vr_safe_mode.flag",launcher)
+        self.assertIn('start "" /D "%EMULATOR_DIR%" "%EMULATOR%"',launcher)
+        self.assertLess(launcher.index('for %%I in ("%EMULATOR%")'),
+                        launcher.index("daytona_vr_safe_mode.flag"))
         self.assertLess(launcher.index("daytona_vr_safe_mode.flag"),
                         launcher.index('if not exist "%~dp0Model2VRLoader.exe"'))
 

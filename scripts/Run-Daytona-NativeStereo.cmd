@@ -11,11 +11,12 @@ if not exist "%EMULATOR%" (
   pause
   exit /b 7
 )
+for %%I in ("%EMULATOR%") do set "EMULATOR_DIR=%%~dpI"
 rem Safe mode: launch the unchanged emulator without any VR DLL injection.
 rem Presence of this local flag never changes ROMs, saves or MOZA FFB.
 if exist "%~dp0daytona_vr_safe_mode.flag" (
   echo Daytona VR SAFE MODE: launching untouched original emulator.
-  start "" "%EMULATOR%"
+  start "" /D "%EMULATOR_DIR%" "%EMULATOR%"
   exit /b %ERRORLEVEL%
 )
 if not exist "%~dp0Model2VRLoader.exe" (
