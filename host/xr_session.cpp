@@ -76,12 +76,43 @@ void XrApp::initialize(){
         }
     }
     if(!adapter)throw std::runtime_error("OpenXR-required GPU adapter not found");
-    constexpr D3D_FEATURE_LEVEL levels[]={D3D_FEATURE_LEVEL_11_1,D3D_FEATURE_LEVEL_11_0};
+    DXGI_ADAPTER_DESC1 selected_desc{};
+    checkhr(adapter->GetDesc1(&selected_desc),"get OpenXR GPU adapter description");
+    std::wcout<<L"OpenXR GPU adapter="<<selected_desc.Description
+              <<L" vendor=0x"<<std::hex<<selected_desc.VendorId
+              <<L" device=0x"<<selected_desc.DeviceId<<std::dec<<std::endl;
+
+    // D3D11 can expose FL12_x on modern Windows/GPU combinations. Ask from
+    // highest to lowest while still accepting the runtime's minimum.
+    constexpr D3D_FEATURE_LEVEL levels[]={
+        D3D_FEATURE_LEVEL_12_1,D3D_FEATURE_LEVEL_12_0,
+        D3D_FEATURE_LEVEL_11_1,D3D_FEATURE_LEVEL_11_0
+    };
     D3D_FEATURE_LEVEL obtained{};
-    checkhr(D3D11CreateDevice(adapter.Get(),D3D_DRIVER_TYPE_UNKNOWN,nullptr,
-        D3D11_CREATE_DEVICE_BGRA_SUPPORT,levels,2,D3D11_SDK_VERSION,
-        &device_,&obtained,&context_),"create GPU device");
+    HRESULT create_device=D3D11CreateDevice(adapter.Get(),D3D_DRIVER_TYPE_UNKNOWN,nullptr,
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT,levels,
+        static_cast<UINT>(std::size(levels)),D3D11_SDK_VERSION,
+        &device_,&obtained,&context_);
+    // Older D3D11 runtimes can reject newer enum values with E_INVALIDARG.
+    if(create_device==E_INVALIDARG){
+        constexpr D3D_FEATURE_LEVEL fallback_levels[]={
+            D3D_FEATURE_LEVEL_11_1,D3D_FEATURE_LEVEL_11_0
+        };
+        create_device=D3D11CreateDevice(adapter.Get(),D3D_DRIVER_TYPE_UNKNOWN,nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,fallback_levels,
+            static_cast<UINT>(std::size(fallback_levels)),D3D11_SDK_VERSION,
+            &device_,&obtained,&context_);
+    }
+    checkhr(create_device,"create GPU device");
     if(obtained<req.minFeatureLevel)throw std::runtime_error("D3D11 feature level too low");
+    UINT rgba_support=0;
+    checkhr(device_->CheckFormatSupport(DXGI_FORMAT_R8G8B8A8_UNORM,&rgba_support),
+            "check RGBA8 D3D11 format support");
+    if((rgba_support&D3D11_FORMAT_SUPPORT_TEXTURE2D)==0 ||
+       (rgba_support&D3D11_FORMAT_SUPPORT_RENDER_TARGET)==0)
+        throw std::runtime_error("OpenXR GPU cannot use RGBA8 as a D3D11 render target");
+    std::cout<<"D3D11 feature_level=0x"<<std::hex<<static_cast<unsigned>(obtained)
+             <<" rgba8_support=0x"<<rgba_support<<std::dec<<std::endl;
     XrGraphicsBindingD3D11KHR binding{XR_TYPE_GRAPHICS_BINDING_D3D11_KHR};
     binding.device=device_.Get();
     XrSessionCreateInfo session_info{XR_TYPE_SESSION_CREATE_INFO};
