@@ -34,15 +34,35 @@ void XrApp::initialize(){
     create.enabledExtensionCount=1;
     create.enabledExtensionNames=names;
     check(xrCreateInstance(&create,&instance_),"create OpenXR instance");
+    XrInstanceProperties instance_props{XR_TYPE_INSTANCE_PROPERTIES};
+    check(xrGetInstanceProperties(instance_,&instance_props),"get OpenXR runtime properties");
+    std::cout<<"OpenXR runtime="<<instance_props.runtimeName
+             <<" version="<<XR_VERSION_MAJOR(instance_props.runtimeVersion)
+             <<"."<<XR_VERSION_MINOR(instance_props.runtimeVersion)
+             <<"."<<XR_VERSION_PATCH(instance_props.runtimeVersion)<<std::endl;
     XrSystemGetInfo system_info{XR_TYPE_SYSTEM_GET_INFO};
     system_info.formFactor=XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
     check(xrGetSystem(instance_,&system_info,&system_),"get HMD");
+    XrSystemProperties system_props{XR_TYPE_SYSTEM_PROPERTIES};
+    check(xrGetSystemProperties(instance_,system_,&system_props),"get HMD system properties");
+    std::cout<<"OpenXR system="<<system_props.systemName
+             <<" max_swapchain="<<system_props.graphicsProperties.maxSwapchainImageWidth
+             <<"x"<<system_props.graphicsProperties.maxSwapchainImageHeight
+             <<" position_tracking="<<(system_props.trackingProperties.positionTracking?1:0)
+             <<" orientation_tracking="<<(system_props.trackingProperties.orientationTracking?1:0)
+             <<std::endl;
+    if(source_pid_ &&
+       (system_props.graphicsProperties.maxSwapchainImageWidth<transport::kWidth ||
+        system_props.graphicsProperties.maxSwapchainImageHeight<transport::kHeight))
+        throw std::runtime_error("OpenXR runtime maximum swapchain size is below 1024x1024 transport");
     PFN_xrGetD3D11GraphicsRequirementsKHR graphics_requirements=nullptr;
     check(xrGetInstanceProcAddr(instance_,"xrGetD3D11GraphicsRequirementsKHR",
         reinterpret_cast<PFN_xrVoidFunction*>(&graphics_requirements)),"D3D11 entrypoint");
     if(!graphics_requirements)throw std::runtime_error("D3D11 requirements unavailable");
     XrGraphicsRequirementsD3D11KHR req{XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR};
     check(graphics_requirements(instance_,system_,&req),"D3D11 requirements");
+    std::cout<<"OpenXR D3D11 minimum_feature_level=0x"<<std::hex
+             <<static_cast<unsigned>(req.minFeatureLevel)<<std::dec<<std::endl;
     ComPtr<IDXGIFactory1> factory;
     checkhr(CreateDXGIFactory1(IID_PPV_ARGS(&factory)),"DXGI factory");
     ComPtr<IDXGIAdapter1> adapter;
