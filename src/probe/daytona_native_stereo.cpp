@@ -5,6 +5,7 @@
 // Source-space shift is not a calibrated physical IPD or head rotation.
 #include "daytona_native_stereo.hpp"
 #include "daytona_up_decl_witness.hpp"
+#include "daytona_eye_pose_gate.hpp"
 #include "../common/stereo_frame_ipc.h"
 #include <algorithm>
 #include <array>
@@ -16,6 +17,8 @@
 #include <vector>
 
 extern "C" BOOL __stdcall Model2VR_OpenStereoWriter();
+extern "C" BOOL __stdcall Model2VR_ReadPredictedEyeViews(
+    m2vr::pose::Frame* output);
 extern "C" BOOL __stdcall Model2VR_SubmitStereoRGBA(
     const unsigned char*,const unsigned char*,unsigned long long,
     unsigned int,unsigned int,unsigned int);
@@ -53,17 +56,34 @@ public:
         if(!enabled_||!d||!source||!original||count==0||count>512||
            stride<16u||stride>256u)return;
         std::lock_guard lock(mu_);
-        // The first mirror draw can occur inside BeginScene. On resource
-        // loss, fail without modifying the original game's RT or input.
-        if(!Ensure(d))return;
+        // The OpenXR host supplies a coherent, fresh two-eye tracking pair.
+        // Never allocate GPU resources, readback, or re-render when the Quest
+        // host is absent, disconnected, stale or returning identical eyes.
+        // Latch once per emulator frame, not every game Draw.
+        if(!LivePoseForGameFrame() || !Ensure(d))return;
         IDirect3DSurface9* target=nullptr;
         if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
         const bool backbuffer=(target==backbuffer_);
         if(!backbuffer){Drop(target);return;}
+        // Original MRT passes require a separate, fully state-captured
+        // renderer. Keep their Draw calls strictly on the original target.
+        D3DCAPS9 caps{};
+        if(FAILED(d->GetDeviceCaps(&caps)) ||
+           caps.NumSimultaneousRTs<1u || caps.NumSimultaneousRTs>4u) {
+            Drop(target);return;
+        }
+        for(DWORD slot=1u;slot<caps.NumSimultaneousRTs;++slot){
+            IDirect3DSurface9* other=nullptr;
+            const HRESULT hr=d->GetRenderTarget(slot,&other);
+            const bool bound=SUCCEEDED(hr)&&other;
+            Drop(other);
+            if(FAILED(hr)||bound){Drop(target);return;}
+        }
         D3DVIEWPORT9 original_vp{};
         if(FAILED(d->GetViewport(&original_vp))){Drop(target);return;}
         IDirect3DSurface9* original_depth=nullptr;
-        d->GetDepthStencilSurface(&original_depth);
+        if(FAILED(d->GetDepthStencilSurface(&original_depth)) ||
+           !original_depth){Drop(target);return;}
         // A camera candidate requires an exact independently observed
         // source callsite and complete original shader-up declaration.
         bool scene=false;
@@ -98,7 +118,8 @@ public:
                     float x=0.f;
                     std::memcpy(&x,scratch_[0].data()+offset,sizeof x);
                     if(!std::isfinite(x)){scene=false;break;}
-                    const float left=x+shift_,right=x-shift_;
+                    const float eye_offset=shift_*ipd_scale_;
+                    const float left=x+eye_offset,right=x-eye_offset;
                     if(!std::isfinite(left)||!std::isfinite(right)){
                         scene=false;break;
                     }
@@ -142,9 +163,9 @@ public:
     void Present(IDirect3DDevice9* d,std::uint64_t frame){
         if(!enabled_||!d)return;
         std::lock_guard lock(mu_);
-        if(!frame_started_ || !scene_draws_ || !frame || d!=device_){
-            frame_started_=false;scene_draws_=0;
-            return;
+        if(!frame_started_ || !scene_draws_ || !frame || d!=device_ ||
+           !pose_admitted_ || !LivePoseNow()){
+            FinishFrame();return;
         }
         bool ready=true;
         for(unsigned eye=0;eye<2;++eye){
@@ -159,6 +180,9 @@ public:
             ConvertBGRA(locked,rgba_[eye]);
             eyes_[eye].staging->UnlockRect();
         }
+        // Do not advertise a pair as real stereo when the original shader
+        // projection quantizes the tiny X-shift to identical eye pixels.
+        if(ready && rgba_[0]==rgba_[1])ready=false;
         if(ready){
             if(!writer_ready_)writer_ready_=Model2VR_OpenStereoWriter()!=FALSE;
             if(writer_ready_)Model2VR_SubmitStereoRGBA(
@@ -166,9 +190,41 @@ public:
                 m2vr::transport::kWidth,m2vr::transport::kHeight,
                 m2vr::transport::kPitch);
         }
-        frame_started_=false;scene_draws_=0;
+        FinishFrame();
     }
 private:
+    bool LivePoseNow()noexcept {
+        m2vr::pose::Frame frame{};
+        if(!Model2VR_ReadPredictedEyeViews(&frame))return false;
+        LARGE_INTEGER ticks{},frequency{};
+        if(!QueryPerformanceCounter(&ticks) ||
+           !QueryPerformanceFrequency(&frequency) ||
+           ticks.QuadPart<=0 || frequency.QuadPart<=0)return false;
+        return m2vr::daytona::AdmitLiveEyePose(
+            frame,static_cast<std::uint64_t>(ticks.QuadPart),
+            static_cast<std::uint64_t>(frequency.QuadPart)).valid;
+    }
+    bool LivePoseForGameFrame()noexcept {
+        if(pose_checked_)return pose_admitted_;
+        pose_checked_=true;
+        pose_admitted_=false;
+        m2vr::pose::Frame frame{};
+        if(!Model2VR_ReadPredictedEyeViews(&frame))return false;
+        LARGE_INTEGER ticks{},frequency{};
+        if(!QueryPerformanceCounter(&ticks) ||
+           !QueryPerformanceFrequency(&frequency) ||
+           ticks.QuadPart<=0 || frequency.QuadPart<=0)return false;
+        const auto admitted=m2vr::daytona::AdmitLiveEyePose(
+            frame,static_cast<std::uint64_t>(ticks.QuadPart),
+            static_cast<std::uint64_t>(frequency.QuadPart));
+        pose_admitted_=admitted.valid;
+        if(admitted.valid)ipd_scale_=admitted.ipd_scale;
+        return pose_admitted_;
+    }
+    void FinishFrame()noexcept{
+        frame_started_=false;scene_draws_=0;
+        pose_checked_=false;pose_admitted_=false;
+    }
     static D3DVIEWPORT9 Clip(D3DVIEWPORT9 vp,UINT w,UINT h)noexcept {
         if(vp.X>=w||vp.Y>=h){vp.X=0;vp.Y=0;vp.Width=w;vp.Height=h;}
         else{
@@ -196,12 +252,18 @@ private:
             Drop(back);return false;
         }
         IDirect3DSurface9* depth=nullptr;
-        D3DFORMAT depth_format=D3DFMT_D24S8;
-        if(SUCCEEDED(d->GetDepthStencilSurface(&depth))&&depth){
-            D3DSURFACE_DESC dd{};
-            if(SUCCEEDED(depth->GetDesc(&dd)) && dd.Format==D3DFMT_D16)
-                depth_format=D3DFMT_D16;
+        if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth) {
+            Drop(back);return false;
         }
+        D3DSURFACE_DESC dd{};
+        if(FAILED(depth->GetDesc(&dd)) ||
+           dd.Width!=desc.Width || dd.Height!=desc.Height ||
+           dd.MultiSampleType!=D3DMULTISAMPLE_NONE ||
+           (dd.Format!=D3DFMT_D16 && dd.Format!=D3DFMT_D24S8 &&
+            dd.Format!=D3DFMT_D24X8 && dd.Format!=D3DFMT_D32)){
+            Drop(depth);Drop(back);return false;
+        }
+        const D3DFORMAT depth_format=dd.Format;
         Drop(depth);
         backbuffer_=back;device_=d;
         width_=desc.Width;height_=desc.Height;
@@ -221,7 +283,7 @@ private:
     void ConvertBGRA(const D3DLOCKED_RECT& source,
                      std::vector<std::uint8_t>& output)noexcept{
         const int side=static_cast<int>(m2vr::transport::kWidth);
-        std::fill(output.begin(),output.end(),0u);
+        std::fill(output.begin(),output.end(),std::uint8_t{0});
         // Preserve Model 2's physical 660:384 image aspect; do not stretch
         // the race view to a square. Black letterbox is flat in both eyes.
         const double scale=(std::min)(double(side)/width_,double(side)/height_);
@@ -247,10 +309,12 @@ private:
         for(auto& eye:eyes_)eye.Clear();
         Drop(backbuffer_);
         device_=nullptr;width_=height_=0u;
-        frame_started_=false;scene_draws_=0;
+        FinishFrame();
     }
     std::mutex mu_;
     bool enabled_=false,frame_started_=false,writer_ready_=false;
+    bool pose_checked_=false,pose_admitted_=false;
+    float ipd_scale_=1.f;
     UINT width_=0,height_=0;
     float shift_=0.10f;
     unsigned scene_draws_=0;
