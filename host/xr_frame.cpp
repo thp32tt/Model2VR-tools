@@ -269,11 +269,26 @@ void XrApp::run(int max_frames){
         while(xrPollEvent(instance_,&event)==XR_SUCCESS){
             if(event.type==XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED){
                 const auto& s=*reinterpret_cast<const XrEventDataSessionStateChanged*>(&event);
+                const char* state_name="UNKNOWN";
+                switch(s.state){
+                case XR_SESSION_STATE_IDLE: state_name="IDLE"; break;
+                case XR_SESSION_STATE_READY: state_name="READY"; break;
+                case XR_SESSION_STATE_SYNCHRONIZED: state_name="SYNCHRONIZED"; break;
+                case XR_SESSION_STATE_VISIBLE: state_name="VISIBLE"; break;
+                case XR_SESSION_STATE_FOCUSED: state_name="FOCUSED"; break;
+                case XR_SESSION_STATE_STOPPING: state_name="STOPPING"; break;
+                case XR_SESSION_STATE_LOSS_PENDING: state_name="LOSS_PENDING"; break;
+                case XR_SESSION_STATE_EXITING: state_name="EXITING"; break;
+                default: break;
+                }
+                std::cout<<"OpenXR session_state="<<state_name
+                         <<" ("<<static_cast<int>(s.state)<<")"<<std::endl;
                 if(s.state==XR_SESSION_STATE_READY){
                     XrSessionBeginInfo begin{XR_TYPE_SESSION_BEGIN_INFO};
                     begin.primaryViewConfigurationType=XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
                     check(xrBeginSession(session_,&begin),"begin XR session");
                     running=true;
+                    std::cout<<"OpenXR session_begin=SUCCESS"<<std::endl;
                 }else if(s.state==XR_SESSION_STATE_STOPPING){
                     if(pose_writer_.Valid())pose_writer_.Invalidate();
                     if(running)check(xrEndSession(session_),"stop XR session");
