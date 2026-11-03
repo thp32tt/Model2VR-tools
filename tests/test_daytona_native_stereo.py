@@ -25,6 +25,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("const float left=x+eye_offset,right=x-eye_offset;",gpu)
         self.assertIn("LivePoseForGameFrame()",gpu)
         self.assertIn("AdmitLiveEyePose(",gpu)
+        self.assertIn("SafeStereoHomogeneousW(w)",gpu)
+        self.assertIn("std::memcpy(&w,scratch_[0].data()+offset+12u",gpu)
         self.assertIn("pose_checked_=false;pose_admitted_=false;",gpu)
         self.assertIn("if(ready && rgba_[0]==rgba_[1])ready=false;",gpu)
         self.assertIn("hr!=D3DERR_NOTFOUND",gpu)
