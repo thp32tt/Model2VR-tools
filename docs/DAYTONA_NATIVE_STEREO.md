@@ -79,6 +79,16 @@ the experimental source-space X offset relative to 64mm, with a bounded
 original Daytona world camera and must not be described as calibrated
 6DoF.
 
+An additional geometry guard is grounded in the existing owner v4
+Daytona source trace: among **9,388** sampled `0x000BABAD` scene
+triangles, **8,240** had all positive W, **950** had all negative W,
+and **198** crossed the W sign. Because the source X shift otherwise
+creates reversed or arbitrarily enlarged apparent disparity around
+W=0, the experiment now shifts only finite homogeneous W in
+`[0.05,65536]`. Negative/mixed/near-zero source-W triangles retain
+their original unshifted geometry in both eyes. This is conservative
+VR safety, **not proof** that signed W is the original camera depth.
+
 The original colour target, depth/stencil and viewport are restored
 after the separate stereo GPU passes. Auxiliary MRT slots are rejected
 when bound; an **unused MRT slot can correctly return
