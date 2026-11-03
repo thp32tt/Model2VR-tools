@@ -77,7 +77,12 @@ public:
             const HRESULT hr=d->GetRenderTarget(slot,&other);
             const bool bound=SUCCEEDED(hr)&&other;
             Drop(other);
-            if(FAILED(hr)||bound){Drop(target);return;}
+            // GetRenderTarget returns D3DERR_NOTFOUND for a normal,
+            // unbound optional MRT slot. Only reject genuinely unknown
+            // errors or a second attached render target.
+            if(bound || (FAILED(hr) && hr!=D3DERR_NOTFOUND)){
+                Drop(target);return;
+            }
         }
         D3DVIEWPORT9 original_vp{};
         if(FAILED(d->GetViewport(&original_vp))){Drop(target);return;}
