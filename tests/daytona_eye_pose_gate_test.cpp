@@ -25,6 +25,15 @@ static m2vr::pose::Frame ValidTestPose(){
     return f;
 }
 int main(){
+    using m2vr::daytona::SafeStereoHomogeneousW;
+    assert(SafeStereoHomogeneousW(98.9f));
+    assert(SafeStereoHomogeneousW(414.78f));
+    assert(!SafeStereoHomogeneousW(-40.f));
+    assert(!SafeStereoHomogeneousW(0.f));
+    assert(!SafeStereoHomogeneousW(0.01f));
+    assert(!SafeStereoHomogeneousW(65537.f));
+    assert(!SafeStereoHomogeneousW(
+        std::numeric_limits<float>::quiet_NaN()));
     constexpr std::uint64_t hz=10000000ull;
     constexpr std::uint64_t now=1000200000ull;
     auto f=ValidTestPose();
