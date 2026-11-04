@@ -31,6 +31,7 @@ NAMES = {
     "model2_d3d9_source_stage0_color",
     "model2_d3d9_source_stage0_alpha",
     "model2_d3d9_source_stage1_specular",
+    "model2_d3d9_source_stage_result",
 }
 
 def number(raw):
@@ -118,7 +119,8 @@ def original_stage_selects_texel_or_diffuse(operation, first, second, diffuse):
 def original_projected_material_candidate(data):
     """Exact observed projected-FVF/stage0 admission ONLY; not world proof."""
     if not all(name in data for name in
-               ("stage_color", "stage_alpha", "stage_extra", "origin")):
+               ("stage_color", "stage_alpha", "stage_extra",
+                "stage_result", "origin")):
         return False
     _, packed_fvf, packed_size = data["origin"]
     _, fvf = halves(packed_fvf)
@@ -130,6 +132,11 @@ def original_projected_material_candidate(data):
         return False
     c, a, e = (data[name] for name in
                ("stage_color", "stage_alpha", "stage_extra"))
+    result_arg, _, result_fvf_stride = data["stage_result"]
+    result_fvf, result_stride = halves(result_fvf_stride)
+    if (result_arg != D3DTA_CURRENT or result_fvf != fvf or
+            result_stride != stride):
+        return False
     c_fvf, c_stride = halves(c[2])
     a_fvf, a_stride = halves(a[2])
     if (c_fvf != fvf or a_fvf != fvf or c_stride != stride or
@@ -208,6 +215,8 @@ def audit_csv(path):
                 fields["stage_alpha"] = values
             elif event == "model2_d3d9_source_stage1_specular":
                 fields["stage_extra"] = values
+            elif event == "model2_d3d9_source_stage_result":
+                fields["stage_result"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -225,6 +234,7 @@ def audit_csv(path):
         "projected_material_correlated_candidates": 0,
         "projected_material_correlated_present_frames": set(),
         "original_material_mismatched_witnesses": 0,
+        "original_material_current_result_witnesses": 0,
         "original_material_present_frames": set(),
         "cpu_projector_correlated_batches": 0,
         "cpu_projector_inspected_triangles": 0,
@@ -262,7 +272,7 @@ def audit_csv(path):
             # carry VB source origin. Those genuine UP witness IDs are
             # analyzed by analyze_probe_log.py, not corrupt VB records.
             if set(data).issubset({"stage_color", "stage_alpha",
-                                   "stage_extra"}):
+                                   "stage_extra", "stage_result"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -331,6 +341,13 @@ def audit_csv(path):
                     e[0], e[1], specular, fog))
                 if present_frame is not None:
                     entry["original_material_present_frames"].add(present_frame)
+                result_record=data.get("stage_result")
+                if result_record is not None:
+                    arg, _, packed=result_record
+                    result_fvf, result_stride=halves(packed)
+                    if (arg==D3DTA_CURRENT and result_fvf==fvf and
+                            result_stride==stride):
+                        entry["original_material_current_result_witnesses"]+=1
         if "stream" in data:
             offset_usage, _, _ = data["stream"]
             _, usage = halves(offset_usage)

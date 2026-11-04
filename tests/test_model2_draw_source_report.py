@@ -50,6 +50,8 @@ class SourceAuditTests(unittest.TestCase):
                  pack(4, 2), 0, pack(0x112, 20)),
                 ("model2_d3d9_source_stage1_specular", 101,
                  1, 1, pack(0, 0)),
+                ("model2_d3d9_source_stage_result", 101,
+                 1, 1, pack(0x112, 20)),
                 ("model2_d3d9_cpu_vb_join_batch", 101,
                  pack(2, 2), pack(0, 0), 0x4567),
                 ("model2_d3d9_cpu_vb_matrix_identity", 101,
@@ -86,6 +88,7 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["raster_modes"], [[3, 4, 1, 0, 0, 0]])
             self.assertEqual(src["color_write_modes"], [[0, 15]])
             self.assertEqual(src["original_material_complete_witnesses"], 1)
+            self.assertEqual(src["original_material_current_result_witnesses"], 1)
             self.assertEqual(src["original_material_mismatched_witnesses"], 0)
             self.assertEqual(src["original_material_stage_states"],
                              [[4, 2, 0, 4, 2, 0, 1, 1, 0, 0]])
@@ -261,6 +264,7 @@ class SourceAuditTests(unittest.TestCase):
             "stage_color": (pack(4, 2), 0, pack(0x144, 28)),
             "stage_alpha": (pack(4, 2), 0, pack(0x144, 28)),
             "stage_extra": (1, 1, pack(0, 0)),
+            "stage_result": (1, 1, pack(0x144, 28)),
         }
         self.assertTrue(REPORT.original_projected_material_candidate(data))
         data["stage_color"] = (pack(4, 2), 1, pack(0x144, 28))
@@ -271,6 +275,7 @@ class SourceAuditTests(unittest.TestCase):
         self.assertFalse(REPORT.original_projected_material_candidate(data))
         data["stage_extra"] = (1, 1, pack(0, 0))
         data["origin"] = (0x44, pack(1, 0x104), pack(2048, 24))
+        data["stage_result"] = (1, 1, pack(0x104, 24))
         data["stage_color"] = (pack(4, 0), 2, pack(0x104, 24))
         data["stage_alpha"] = (pack(4, 2), 0, pack(0x104, 24))
         # Without explicit vertex D3DCOLOR, D3D9 defines diffuse=white.
@@ -286,9 +291,13 @@ class SourceAuditTests(unittest.TestCase):
         # Untextured RGB and alpha DIFFUSE are source-equivalent even when
         # stage-zero has no bound texture. A missing FVF diffuse still fails.
         data["origin"] = (0x44, pack(1, 0x144), pack(2048, 28))
+        data["stage_result"] = (1, 1, pack(0x144, 28))
         data["stage_color"] = (pack(2, 0), 2, pack(0x144, 28))
         data["stage_alpha"] = (pack(3, 2), 0, pack(0x144, 28))
         self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["stage_result"] = (2, 1, pack(0x144, 28)) # TEMP output
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["stage_result"] = (1, 1, pack(0x144, 28))
         data["stage_alpha"] = (pack(3, 2), 0, pack(0x104, 24))
         self.assertFalse(REPORT.original_projected_material_candidate(data))
 
