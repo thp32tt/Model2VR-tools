@@ -214,6 +214,28 @@ int main() {
         1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
         decoded_blend,split));
 
+    // The ORIGINAL source COLORWRITEENABLE_ALPHA mask makes an otherwise
+    // unsupported separate-alpha register inert, but RGB and source Z
+    // still require an exactly supported material. This is not world proof.
+    using m2vr::drawprobe::DecodeMaskedSeparateAlphaPolicy;
+    CHECK(DecodeMaskedSeparateAlphaPolicy(
+        1,D3DBLEND_SRCALPHA,D3DBLEND_INVSRCALPHA,D3DBLENDOP_ADD,
+        1,999u,999u,999u,0x07u,decoded_blend,split));
+    CHECK(decoded_blend==BlendMode::SourceAlphaOver && !split.enabled);
+    CHECK(!DecodeMaskedSeparateAlphaPolicy(
+        1,D3DBLEND_SRCALPHA,D3DBLEND_INVSRCALPHA,D3DBLENDOP_ADD,
+        1,999u,999u,999u,0x0fu,decoded_blend,split));
+    CHECK(!DecodeMaskedSeparateAlphaPolicy(
+        1,D3DBLEND_SRCALPHA,D3DBLEND_INVSRCALPHA,D3DBLENDOP_ADD,
+        1,999u,999u,999u,0x10u,decoded_blend,split));
+    CHECK(!DecodeMaskedSeparateAlphaPolicy(
+        1,D3DBLEND_ONE,D3DBLEND_DESTALPHA,D3DBLENDOP_SUBTRACT,
+        1,999u,999u,999u,0x07u,decoded_blend,split));
+    CHECK(DecodeMaskedSeparateAlphaPolicy(
+        1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        1,999u,999u,999u,0x00u,decoded_blend,split));
+    CHECK(decoded_blend==BlendMode::ReplaceRGBA && !split.enabled);
+
     // Only the original game's compatible main depth-stencil surface
     // may be used as provenance for a projected binocular world draw.
     D3DSURFACE_DESC main_color{}, main_depth{};
