@@ -147,6 +147,7 @@ void XrApp::invalidate_source_session() noexcept {
     staging_frame_.frame_id=0u;
     producer_health_fresh_=false;
     producer_health_last_reason_=0xffffffffu;
+    warned_unmatched_game_pose_=false;
     for(auto& chain:chains_)
         std::fill(chain.uploaded_frame_ids.begin(),
                   chain.uploaded_frame_ids.end(),0u);
@@ -258,6 +259,23 @@ void XrApp::draw_frame(XrTime display_time){
                     stamp.kind,stamp.pose_sequence,
                     stamp.pose_sequence!=0u &&
                         pose_history_.Find(stamp.pose_sequence)!=nullptr);
+                if(!known_pose &&
+                   stamp.kind==transport::FrameKind::GameStereo){
+                    // Log the first rejection until a coherent pair
+                    // recovers. This is actionable in the launcher host
+                    // log without spamming once per 90/120 Hz XR frame.
+                    if(!warned_unmatched_game_pose_){
+                        std::cerr<<"Daytona VR GameStereo REJECTED: "
+                            <<(stamp.pose_sequence==0u
+                               ?"NO_ORIGINAL_EYE_POSE_TAG"
+                               :"POSE_EXPIRED_OR_NOT_IN_HOST_RING")
+                            <<" producer_frame="<<stamp.frame_id
+                            <<" pose_tag="<<stamp.pose_sequence<<std::endl;
+                        warned_unmatched_game_pose_=true;
+                    }
+                }else if(known_pose){
+                    warned_unmatched_game_pose_=false;
+                }
                 if(known_pose && shared_frames_.ReadReusable(staging_frame_)){
                     const auto tag=staging_frame_.pose_sequence;
                     const auto* exact_views=pose_history_.Find(tag);
