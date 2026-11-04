@@ -42,7 +42,9 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
                            m2vr::vr::RasterPolicy& raster,
                            m2vr::drawprobe::FixedStageSource& rgb_source,
                            m2vr::drawprobe::FixedStageSource& alpha_source,
-                           m2vr::vr::BlendMode& blend_mode) {
+                           m2vr::vr::BlendMode& blend_mode,
+                           unsigned int& alpha_compare,
+                           unsigned int& alpha_reference) {
     if(!d)return false;
     IDirect3DVertexShader9* vs=nullptr;
     if(FAILED(d->GetVertexShader(&vs)))return false;
@@ -125,8 +127,9 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        !m2vr::drawprobe::FixedStageOneDisabled(
            stage1_colorop,stage1_alphaop) ||
        stage0_result!=D3DTA_CURRENT ||
-       !m2vr::drawprobe::AlphaCutoffMatches(
-            alpha_test,alpha_func,alpha_ref,cutoff))return false;
+       !m2vr::drawprobe::DecodeOriginalAlphaCompare(
+            alpha_test,alpha_func,alpha_ref,cutoff,
+            alpha_compare,alpha_reference))return false;
     // An original diffuse-only TEX0 Draw cannot sample coordinates or
     // sampler states. Avoid six irrelevant COM queries and never require
     // UV transforms on an input stream without UV. Texture-dependent
@@ -200,11 +203,12 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     m2vr::drawprobe::FixedStageSource alpha_source=
         m2vr::drawprobe::FixedStageSource::Texture;
     m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
+    unsigned int alpha_compare=0u,alpha_reference=0u;
     if(!d || !Model2VR_IsOriginalPrimaryD3D9Device(d) ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        !source || !triangle_indices ||
        !count || count>2048 || !index_count ||
-       index_count%3 || index_count>6144u || alpha_cutoff>255u)
+       index_count%3 || index_count>6144u || alpha_cutoff>256u)
         return FALSE;
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)))return FALSE;
@@ -214,7 +218,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     // Stage0 CURRENT is identical to DIFFUSE; neither requires guessed data.
     if(!layout.eligible ||
        !FixedFunctionMaterial(d,alpha_cutoff,fvf,sampler,raster,
-                              rgb_source,alpha_source,blend_mode) ||
+                              rgb_source,alpha_source,blend_mode,
+                              alpha_compare,alpha_reference) ||
        !m2vr::drawprobe::FixedStageUVAvailableForSources(
            layout.has_uv,rgb_source,alpha_source))
         return FALSE;
@@ -262,10 +267,10 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
             return FALSE;
     }catch(...){return FALSE;}
     // No second haptic owner, no duplicated emulator CPU draw or state.
-    return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskRenderStates(
+    return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates(
         positions.data(),uv.data(),count,safe_indices.data(),index_count,
         texture.rgba.data(),texture.width,texture.height,texture.width*4u,
-        alpha_cutoff,
+        alpha_cutoff==256u?0u:alpha_cutoff,
         static_cast<unsigned int>(sampler.filter),
         static_cast<unsigned int>(sampler.u),
         static_cast<unsigned int>(sampler.v),
@@ -276,7 +281,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
         static_cast<unsigned>(rgb_source),
         static_cast<unsigned>(alpha_source),
         static_cast<unsigned>(blend_mode),
-        static_cast<unsigned>(raster.write_rgba_mask));
+        static_cast<unsigned>(raster.write_rgba_mask),
+        alpha_compare,alpha_reference);
 }
 
 // Actual original x86 D3D9 DrawPrimitiveUP XYZRHW/TEX1 vertices may already
@@ -293,7 +299,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     if(!d || !Model2VR_IsOriginalPrimaryD3D9Device(d) ||
        !original_vertices || !expected_cpu_caller ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
-       triangles<2u || triangles>kMaxTriangles || cutoff>255u)return FALSE;
+       triangles<2u || triangles>kMaxTriangles || cutoff>256u)return FALSE;
     m2vr::vr::SamplerPolicy sampler{};
     m2vr::vr::RasterPolicy raster{};
     m2vr::drawprobe::FixedStageSource rgb_source=
@@ -301,6 +307,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     m2vr::drawprobe::FixedStageSource alpha_source=
         m2vr::drawprobe::FixedStageSource::Texture;
     m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
+    unsigned int alpha_compare=0u,alpha_reference=0u;
     // Original projected D3D9 FVF may carry a packed D3DCOLOR before UV.
     // When source FVF omits DIFFUSE, D3D9 defines opaque-white default
     // rather than an unknown attribute. We preserve exactly that default.
@@ -308,7 +315,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     if(FAILED(d->GetFVF(&fvf)) ||
        !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride) ||
        !FixedFunctionMaterial(d,cutoff,fvf,sampler,raster,
-                              rgb_source,alpha_source,blend_mode) ||
+                              rgb_source,alpha_source,blend_mode,
+                              alpha_compare,alpha_reference) ||
        !m2vr::drawprobe::FixedStageUVAvailableForSources(
            (fvf&D3DFVF_TEXCOUNT_MASK)==D3DFVF_TEX1,
            rgb_source,alpha_source))return FALSE;
@@ -362,11 +370,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             return FALSE;
         // Same authenticated owner and exact existing rasterization/pose
         // contract as the other fixed-function original Draw adapters.
-        return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskRenderStates(
+        return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates(
             positions.data(),uv.data(),static_cast<unsigned>(count),
             indices.data(),static_cast<unsigned>(count),
             texture.rgba.data(),texture.width,texture.height,
-            texture.width*4u,cutoff,
+            texture.width*4u,cutoff==256u?0u:cutoff,
             static_cast<unsigned>(sampler.filter),
             static_cast<unsigned>(sampler.u),
             static_cast<unsigned>(sampler.v),
@@ -377,6 +385,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             static_cast<unsigned>(rgb_source),
         static_cast<unsigned>(alpha_source),
             static_cast<unsigned>(blend_mode),
-            static_cast<unsigned>(raster.write_rgba_mask));
+            static_cast<unsigned>(raster.write_rgba_mask),
+        alpha_compare,alpha_reference);
     }catch(...){return FALSE;}
 }
