@@ -39,6 +39,7 @@ public:
 private:
     void create_swapchains();
     void draw_frame(XrTime predicted_time);
+    void invalidate_source_session() noexcept;
     void report_wizard_health(bool tracking_valid, bool paired_frame_fresh);
     XrInstance instance_=XR_NULL_HANDLE;
     XrSystemId system_=XR_NULL_SYSTEM_ID;

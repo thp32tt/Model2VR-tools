@@ -173,6 +173,17 @@ Presents yield bounded local diagnostic counts. An externally recreated
 device is not silently promoted as a valid calibrated world source;
 runtime HMD hardware validation remains outstanding.
 
+**OpenXR session stop/track-loss eye-cache revocation (2026-11-04):**
+The x64 host now invalidates producer pose, exact source-pose history,
+accepted eye frame and per-XR-swapchain upload identities together
+whenever tracking is lost, the runtime stops/loses its session or OpenXR
+temporarily requests no rendered layer. It retains the last consumed
+original source frame ID across that reset, rejecting reuse of a pre-stop
+IPC stereo frame as if it were a fresh physical game pair. The producer
+continues one original D3D9 Present per emulated frame with no simulation
+or FFB changes; only the headset presentation state resets. Reset for a
+new emulator PID still starts from a fresh zero source frame gate.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

@@ -57,6 +57,18 @@ int main(){
     CHECK(gate.Decide(&invalid,t+138,1000)==FrameUse::HoldCached);
     FrameStamp regressed{1,t+138,FrameKind::GameStereo,123};
     CHECK(gate.Decide(&regressed,t+139,1000)==FrameUse::Missing);
+    gate.ExpireKeepFrameId();
+    CHECK(gate.id()==3);
+    CHECK(gate.kind()==FrameKind::Invalid);
+    CHECK(!gate.Cached(t+140,1000));
+    CHECK(gate.Decide(&diag,t+140,1000)==FrameUse::Missing);
+    CHECK(gate.Decide(&regressed,t+140,1000)==FrameUse::Missing);
+    FrameStamp recovered{4,t+141,FrameKind::GameStereo,123};
+    CHECK(gate.Decide(&recovered,t+142,1000)==FrameUse::ReadNew);
+    snap.frame_id=4;snap.timestamp_qpc=t+141;
+    snap.kind=FrameKind::GameStereo;
+    CHECK(gate.Accept(snap,t+142,1000));
+    CHECK(gate.id()==4);
     gate.Reset();
     CHECK(gate.id()==0);
     CHECK(!gate.Cached(t+140,1000));

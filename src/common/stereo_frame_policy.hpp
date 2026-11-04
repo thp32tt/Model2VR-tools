@@ -45,6 +45,14 @@ public:
     std::uint64_t id()const noexcept{return last_id_;}
     FrameKind kind()const noexcept{return kind_;}
     void Reset()noexcept{last_id_=last_qpc_=0;kind_=FrameKind::Invalid;}
+    // XR session STOPPING or lost tracking must revoke cached eye contents
+    // while keeping the source's monotonically increasing frame high-water
+    // mark. Otherwise a pre-stop IPC image could be accepted a second time
+    // immediately after the headset session resumes.
+    void ExpireKeepFrameId() noexcept {
+        last_qpc_=0u;
+        kind_=FrameKind::Invalid;
+    }
 private:
     static bool HasRecent(std::uint64_t stamp,std::uint64_t now,
                           std::uint64_t hz) noexcept {

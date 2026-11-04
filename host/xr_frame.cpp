@@ -138,6 +138,19 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"note=GameStereo transport does not prove calibrated in-game HMD camera\n---\n";
     std::cout<<"Daytona VR Wizard: captured logs/daytona_vr_bug_capture.txt\n";
 }
+void XrApp::invalidate_source_session() noexcept {
+    if(pose_writer_.Valid())pose_writer_.Invalidate();
+    pose_history_.Clear();
+    frame_gate_.ExpireKeepFrameId();
+    accepted_exact_pose_=false;
+    eye_frame_.frame_id=0u;
+    staging_frame_.frame_id=0u;
+    producer_health_fresh_=false;
+    producer_health_last_reason_=0xffffffffu;
+    for(auto& chain:chains_)
+        std::fill(chain.uploaded_frame_ids.begin(),
+                  chain.uploaded_frame_ids.end(),0u);
+}
 void XrApp::draw_frame(XrTime display_time){
     std::array<XrView,2> views{XrView{XR_TYPE_VIEW},XrView{XR_TYPE_VIEW}};
     XrViewLocateInfo locate{XR_TYPE_VIEW_LOCATE_INFO};
@@ -153,10 +166,7 @@ void XrApp::draw_frame(XrTime display_time){
         // A brief headset-tracking loss is not a fatal OpenXR session error.
         // Revoke the previously published pose so game geometry cannot use
         // the old eye views, and submit an empty composition frame.
-        if(pose_writer_.Valid())pose_writer_.Invalidate();
-        pose_history_.Clear();
-        accepted_exact_pose_=false;
-        frame_gate_.Reset();
+        invalidate_source_session();
         report_wizard_health(false,false);
         XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
         end.displayTime=display_time;
@@ -366,12 +376,18 @@ void XrApp::run(int max_frames){
                     running=true;
                     std::cout<<"OpenXR session_begin=SUCCESS"<<std::endl;
                 }else if(s.state==XR_SESSION_STATE_STOPPING){
-                    if(pose_writer_.Valid())pose_writer_.Invalidate();
+                    invalidate_source_session();
                     if(running)check(xrEndSession(session_),"stop XR session");
                     running=false;
                 }else if(s.state==XR_SESSION_STATE_EXITING ||
-                         s.state==XR_SESSION_STATE_LOSS_PENDING)exit=true;
-            }else if(event.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING)exit=true;
+                         s.state==XR_SESSION_STATE_LOSS_PENDING){
+                    invalidate_source_session();
+                    exit=true;
+                }
+            }else if(event.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING){
+                invalidate_source_session();
+                exit=true;
+            }
             event={XR_TYPE_EVENT_DATA_BUFFER};
         }
         if(!running){Sleep(10);continue;}
@@ -384,7 +400,7 @@ void XrApp::run(int max_frames){
             draw_frame(state.predictedDisplayTime);
             ++frames;
         }else{
-            if(pose_writer_.Valid())pose_writer_.Invalidate();
+            invalidate_source_session();
             XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
             end.displayTime=state.predictedDisplayTime;
             end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
