@@ -9,6 +9,7 @@
 #include "model2_camera_projection_fit.hpp"
 #include "d3d9_primary_device_owner.hpp"
 #include "verified_world_present_gate.hpp"
+#include "original_d3d9_draw_result_gate.hpp"
 #include "d3d9_world_source.hpp"
 #include "d3d9_projected_vb_observer.hpp"
 #include "d3d9_indexed_up_window.hpp"
@@ -87,6 +88,8 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
 extern "C" BOOL __stdcall Model2VR_HasVerifiedWorldPendingForOriginalPresent(
     unsigned long long);
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset();
+extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Draw(
+    std::uint32_t family,std::uint32_t result_bits,std::uint32_t caller_rva);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -105,6 +108,17 @@ std::uint32_t CallerRva(void* ret) {
     const auto raw=reinterpret_cast<std::uintptr_t>(ret);
     if(raw<g_exe_base || raw-g_exe_base>=g_exe_size)return 0;
     return static_cast<std::uint32_t>(raw-g_exe_base);
+}
+// Forward the REAL original COM return before any GPU-eye replay. Only
+// failed original Draws notify an independently authenticated CPU-world
+// transaction, so normal successful Draws incur no extra bridge lock.
+HRESULT TrackOriginalD3D9DrawResult(HRESULT hr,std::uint32_t family,
+                                    void* caller) noexcept {
+    if(m2vr::vrbridge::IsFailedOriginalD3D9Draw(
+        family,static_cast<std::uint32_t>(hr)))
+        Model2VR_RejectFailedOriginalD3D9Draw(
+            family,static_cast<std::uint32_t>(hr),CallerRva(caller));
+    return hr;
 }
 bool Sample(IDirect3DDevice9* dev,unsigned family,
             D3DPRIMITIVETYPE topology,UINT primitive_count,void* caller){
@@ -1014,12 +1028,15 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     // Consume the original CPU projector witnesses once this physical
     // D3D9 Draw completes; no same-Present sample reuse by later Draws.
     const m2vr::drawprobe::ScopedOriginalDrawBoundary draw_boundary;
-    if(!g_primary_device.Owns(d))return g_draw(d,p,start,count);
-    g_draws.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
+    if(!g_primary_device.Owns(d))
+        return TrackOriginalD3D9DrawResult(
+            g_draw(d,p,start,count),1u,caller);
+    g_draws.fetch_add(1,std::memory_order_relaxed);
     if(Sample(d,1,p,count,caller))
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count);
-    const HRESULT hr=g_draw(d,p,start,count);
+    const HRESULT hr=TrackOriginalD3D9DrawResult(
+        g_draw(d,p,start,count),1u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorPrimitive(d,p,start,count,g_draw);
     return hr;
@@ -1029,12 +1046,15 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     // Consume the original CPU projector witnesses once this physical
     // D3D9 Draw completes; no same-Present sample reuse by later Draws.
     const m2vr::drawprobe::ScopedOriginalDrawBoundary draw_boundary;
-    if(!g_primary_device.Owns(d))return g_draw_indexed(d,p,base,min,num,start,count);
-    g_indexed.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
+    if(!g_primary_device.Owns(d))
+        return TrackOriginalD3D9DrawResult(
+            g_draw_indexed(d,p,base,min,num,start,count),2u,caller);
+    g_indexed.fetch_add(1,std::memory_order_relaxed);
     if(Sample(d,2,p,count,caller))
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count);
-    const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
+    const HRESULT hr=TrackOriginalD3D9DrawResult(
+        g_draw_indexed(d,p,base,min,num,start,count),2u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexed(d,p,base,min,num,start,count,g_draw_indexed);
     return hr;
@@ -1044,12 +1064,15 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     // Consume the original CPU projector witnesses once this physical
     // D3D9 Draw completes; no same-Present sample reuse by later Draws.
     const m2vr::drawprobe::ScopedOriginalDrawBoundary draw_boundary;
-    if(!g_primary_device.Owns(d))return g_draw_up(d,p,count,verts,stride);
-    g_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
+    if(!g_primary_device.Owns(d))
+        return TrackOriginalD3D9DrawResult(
+            g_draw_up(d,p,count,verts,stride),3u,caller);
+    g_up.fetch_add(1,std::memory_order_relaxed);
     if(Sample(d,3,p,count,caller))
         ObserveUP(d,3,p,count,caller,verts,stride);
-    const HRESULT hr=g_draw_up(d,p,count,verts,stride);
+    const HRESULT hr=TrackOriginalD3D9DrawResult(
+        g_draw_up(d,p,count,verts,stride),3u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorDraw(d,p,count,verts,stride,CallerRva(caller),g_draw_up);
     return hr;
@@ -1059,12 +1082,15 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     // Consume the original CPU projector witnesses once this physical
     // D3D9 Draw completes; no same-Present sample reuse by later Draws.
     const m2vr::drawprobe::ScopedOriginalDrawBoundary draw_boundary;
-    if(!g_primary_device.Owns(d))return g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
-    g_indexed_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
+    if(!g_primary_device.Owns(d))
+        return TrackOriginalD3D9DrawResult(
+            g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller);
+    g_indexed_up.fetch_add(1,std::memory_order_relaxed);
     if(Sample(d,4,p,count,caller))
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num);
-    const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
+    const HRESULT hr=TrackOriginalD3D9DrawResult(
+        g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexedUP(d,p,min,num,count,idx,fmt,verts,stride,g_draw_indexed_up);
     return hr;
