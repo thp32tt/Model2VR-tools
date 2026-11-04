@@ -33,20 +33,40 @@ inline thread_local OriginalSourceDrawKind g_current_original_source_kind=
 inline std::uint32_t CurrentOriginalSourceDrawKind() noexcept {
     return static_cast<std::uint32_t>(g_current_original_source_kind);
 }
+enum class OriginalSourceFailure : std::uint32_t {
+    Unknown=0u, Device=1u, Shader=2u, VertexPipeline=3u,
+    Raster=4u, BlendAndLighting=5u, StageZero=6u,
+    StageOneAndAlphaTest=7u, Sampler=8u, TargetAndDepth=9u
+};
+inline thread_local OriginalSourceFailure g_current_original_source_failure=
+    OriginalSourceFailure::Unknown;
+inline std::uint32_t CurrentOriginalSourceFailure() noexcept {
+    return static_cast<std::uint32_t>(g_current_original_source_failure);
+}
+inline bool RejectOriginalSourceMaterial(OriginalSourceFailure reason) noexcept {
+    if(g_current_original_source_failure==OriginalSourceFailure::Unknown)
+        g_current_original_source_failure=reason;
+    return false;
+}
 class ScopedOriginalSourceDrawKind final {
 public:
     explicit ScopedOriginalSourceDrawKind(OriginalSourceDrawKind next) noexcept
-        : previous_(g_current_original_source_kind) {
-        if(previous_==OriginalSourceDrawKind::NativeCpuRaster)
+        : previous_(g_current_original_source_kind),
+          previous_failure_(g_current_original_source_failure) {
+        if(previous_==OriginalSourceDrawKind::NativeCpuRaster) {
             g_current_original_source_kind=next;
+            g_current_original_source_failure=OriginalSourceFailure::Unknown;
+        }
     }
     ~ScopedOriginalSourceDrawKind() noexcept {
         g_current_original_source_kind=previous_;
+        g_current_original_source_failure=previous_failure_;
     }
     ScopedOriginalSourceDrawKind(const ScopedOriginalSourceDrawKind&)=delete;
     ScopedOriginalSourceDrawKind& operator=(const ScopedOriginalSourceDrawKind&)=delete;
 private:
     OriginalSourceDrawKind previous_;
+    OriginalSourceFailure previous_failure_;
 };
 class OriginalSourceFrameEpoch {
 public:

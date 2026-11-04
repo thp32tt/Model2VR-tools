@@ -25,6 +25,24 @@ int main() {
         CHECK(CurrentOriginalSourceDrawKind()==7u);
     }
     CHECK(CurrentOriginalSourceDrawKind()==0u);
+    using m2vr::vrbridge::OriginalSourceFailure;
+    using m2vr::vrbridge::CurrentOriginalSourceFailure;
+    using m2vr::vrbridge::RejectOriginalSourceMaterial;
+    CHECK(CurrentOriginalSourceFailure()==0u);
+    {
+        ScopedOriginalSourceDrawKind draw(OriginalSourceDrawKind::IndexedVertexBuffer);
+        CHECK(!RejectOriginalSourceMaterial(OriginalSourceFailure::Sampler));
+        CHECK(CurrentOriginalSourceFailure()==8u);
+        {
+            ScopedOriginalSourceDrawKind inner(OriginalSourceDrawKind::PrimitiveUP);
+            CHECK(CurrentOriginalSourceDrawKind()==8u);
+            CHECK(CurrentOriginalSourceFailure()==8u);
+            CHECK(!RejectOriginalSourceMaterial(OriginalSourceFailure::Shader));
+            CHECK(CurrentOriginalSourceFailure()==8u); // first cause wins
+        }
+        CHECK(CurrentOriginalSourceFailure()==8u);
+    }
+    CHECK(CurrentOriginalSourceFailure()==0u); // no leak across draws
     m2vr::vrbridge::OriginalSourceFrameEpoch epoch;
     CHECK(!epoch.CanBegin(0u,0u));
     CHECK(epoch.CanBegin(13u,12u));

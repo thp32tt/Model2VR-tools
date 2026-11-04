@@ -45,9 +45,15 @@ struct Bridge {
     unsigned draw_count=0,triangle_count=0;
     bool active=false,pending_present=false;
     void Reject(unsigned source_kind)noexcept{
-        if((active || pending_present) && source_epoch.Revoke(frame))
+        if((active || pending_present) && source_epoch.Revoke(frame)) {
             m2vr::LogEvent("model2_vr_cpu_world_source_rejected",
                 frame,source_kind,draw_count,triangle_count);
+            // Same frame/Draw metadata only; no private pixel/ROM payload.
+            const auto detail=m2vr::vrbridge::CurrentOriginalSourceFailure();
+            if(detail!=0u)
+                m2vr::LogEvent("model2_vr_cpu_world_source_failure_detail",
+                    frame,source_kind,detail,0u);
+        }
         Abort();
     }
     void Abort()noexcept{

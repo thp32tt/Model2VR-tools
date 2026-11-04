@@ -12,6 +12,19 @@ from pathlib import Path
 # D3D9 eye-clone bootstrap failures are source-side metadata, NOT private
 # pixel dumps or evidence of an authenticated race-world pass.
 # Source-rejection IDs are DIAGNOSTIC only, not race-world proof.
+# In-source original fixed-function admission failures. Never camera proof.
+CPU_WORLD_SOURCE_FAILURES = {
+    1: "device",
+    2: "shader",
+    3: "vertex_pipeline",
+    4: "raster",
+    5: "blend_and_lighting",
+    6: "stage_zero",
+    7: "stage_one_and_alpha_test",
+    8: "sampler",
+    9: "target_and_depth",
+}
+
 CPU_WORLD_REJECT_KINDS = {
     0: "native_cpu_raster",
     1: "primitive_u_p",
@@ -398,6 +411,25 @@ def analyze(path: Path):
                             "original_source_draw_kind": CPU_WORLD_REJECT_KINDS[a1],
                             "prior_source_draws": a2,
                             "prior_source_triangles": a3,
+                            "hmd_runtime_validation": "UNTESTED",
+                        })
+            elif event == "model2_vr_cpu_world_source_failure_detail":
+                # Read-only reason for the SAME rejected original frame.
+                # a0=original Present ID, a1=source Draw kind,
+                # a2=source-admission stage, a3 reserved zero.
+                if (a0 <= 0 or a1 not in CPU_WORLD_REJECT_KINDS or
+                        a2 not in CPU_WORLD_SOURCE_FAILURES or a3 != 0):
+                    source_route_invalid_records += 1
+                else:
+                    reason=CPU_WORLD_SOURCE_FAILURES[a2]
+                    source_route_counts[f"cpu_world_failed_{reason}"] += 1
+                    if len(source_route_examples)<16:
+                        source_route_examples.append({
+                            "original_present_frame": a0,
+                            "route": "cpu_world_source_failure_detail",
+                            "source_mode": "CPU-world",
+                            "original_source_draw_kind": CPU_WORLD_REJECT_KINDS[a1],
+                            "source_failure_stage": reason,
                             "hmd_runtime_validation": "UNTESTED",
                         })
             elif event == "model2_vr_cpu_world_present_commit":

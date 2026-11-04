@@ -47,13 +47,13 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
                            unsigned int& alpha_compare,
                            unsigned int& alpha_reference,
                            m2vr::vr::SeparateAlphaBlend& separate_policy) {
-    if(!d)return false;
+    if(!d)return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::Device);
     IDirect3DVertexShader9* vs=nullptr;
-    if(FAILED(d->GetVertexShader(&vs)))return false;
-    if(vs){vs->Release();return false;}
+    if(FAILED(d->GetVertexShader(&vs)))return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::Shader);
+    if(vs){vs->Release();return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::Shader);}
     IDirect3DPixelShader9* ps=nullptr;
-    if(FAILED(d->GetPixelShader(&ps)))return false;
-    if(ps){ps->Release();return false;}
+    if(FAILED(d->GetPixelShader(&ps)))return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::Shader);
+    if(ps){ps->Release();return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::Shader);}
     // The original may leave texture slot1 bound after an earlier draw.
     // Both stage1 operations are required DISABLED below, so the binding
     // is inert and must not disqualify an otherwise equivalent world pass.
@@ -72,7 +72,7 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
            D3DRS_INDEXEDVERTEXBLENDENABLE,&indexed_blend)) ||
        !m2vr::drawprobe::OriginalVertexPipelineEquivalent(
            shade,clipping,clip_planes,vertex_blend,indexed_blend))
-        return false;
+        return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::VertexPipeline);
     DWORD zfunc=0,zwrite=0,cull=0,stencil=0,dbias=0,sbias=0;
     DWORD srgb_write=0,color_mask=0;
     if(FAILED(d->GetRenderState(D3DRS_ZFUNC,&zfunc)) ||
@@ -85,7 +85,7 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        FAILED(d->GetRenderState(D3DRS_COLORWRITEENABLE,&color_mask)) ||
        !m2vr::drawprobe::DecodeRasterPolicy(cull,zfunc,zwrite,
           stencil,dbias,sbias,srgb_write,color_mask,raster))
-        return false;
+        return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::Raster);
     DWORD z=0,blend_enable=1,fog=1,lighting=1,specular=1;
     DWORD blend_src=0,blend_dst=0,blend_op=0,separate_alpha=1;
     DWORD alpha_blend_src=0,alpha_blend_dst=0,alpha_blend_op=0;
@@ -109,7 +109,7 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        !m2vr::drawprobe::DecodeMaskedSeparateAlphaPolicy(
             blend_enable,blend_src,blend_dst,blend_op,separate_alpha,
             alpha_blend_src,alpha_blend_dst,alpha_blend_op,color_mask,
-            blend_mode,separate_policy))return false;
+            blend_mode,separate_policy))return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::BlendAndLighting);
     DWORD colorop=0,arg=0,arg2=0,alphaop=0,alphaarg=0,alphaarg2=0;
     if(FAILED(d->GetTextureStageState(0,D3DTSS_COLOROP,&colorop)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_COLORARG1,&arg)) ||
@@ -117,12 +117,12 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        FAILED(d->GetTextureStageState(0,D3DTSS_ALPHAOP,&alphaop)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_ALPHAARG1,&alphaarg)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_ALPHAARG2,&alphaarg2)))
-        return false;
+        return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::StageZero);
     if(!m2vr::drawprobe::DecodeFixedStageSource(
            colorop,arg,arg2,rgb_source) ||
        !m2vr::drawprobe::DecodeFixedStageSource(
            alphaop,alphaarg,alphaarg2,alpha_source))
-        return false;
+        return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::StageZero);
     DWORD address_u=0,address_v=0,min_filter=0,mag_filter=0,mip_filter=0;
     DWORD srgb_texture=0,alpha_test=0,alpha_ref=0,alpha_func=0;
     DWORD stage1_colorop=0,stage1_alphaop=0,stage0_result=0;
@@ -138,7 +138,7 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        stage0_result!=D3DTA_CURRENT ||
        !m2vr::drawprobe::DecodeOriginalAlphaCompare(
             alpha_test,alpha_func,alpha_ref,cutoff,
-            alpha_compare,alpha_reference))return false;
+            alpha_compare,alpha_reference))return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::StageOneAndAlphaTest);
     // An original diffuse-only TEX0 Draw cannot sample coordinates or
     // sampler states. Avoid six irrelevant COM queries and never require
     // UV transforms on an input stream without UV. Texture-dependent
@@ -161,7 +161,7 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
             srgb_texture,sampler,
             mip_filter!=D3DTEXF_NONE &&
                 m2vr::drawprobe::OriginalStage0TextureHasOneMip(d))))
-        return false;
+        return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::Sampler);
     IDirect3DSurface9* current=nullptr;
     IDirect3DSurface9* main=nullptr;
     const bool have_current=SUCCEEDED(d->GetRenderTarget(0,&current))&&current;
@@ -185,18 +185,20 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
             scissor_enabled ? &scissor_rectangle : nullptr);
     if(current)current->Release();
     if(main)main->Release();
-    if(!full_view || !NoAdditionalColorTargets(d))return false;
+    if(!full_view || !NoAdditionalColorTargets(d))return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::TargetAndDepth);
     IDirect3DSurface9* depth=nullptr;
     if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth){
         if(depth)depth->Release();
-        return false;
+        return m2vr::vrbridge::RejectOriginalSourceMaterial(m2vr::vrbridge::OriginalSourceFailure::TargetAndDepth);
     }
     D3DSURFACE_DESC depth_desc{};
     const bool depth_compatible=SUCCEEDED(depth->GetDesc(&depth_desc)) &&
         m2vr::drawprobe::CompatibleOriginalDepthSurface(
             backbuffer_desc,depth_desc);
     depth->Release();
-    return depth_compatible;
+    return depth_compatible ? true :
+        m2vr::vrbridge::RejectOriginalSourceMaterial(
+            m2vr::vrbridge::OriginalSourceFailure::TargetAndDepth);
 }
 } // namespace
 

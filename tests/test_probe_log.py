@@ -53,6 +53,10 @@ class ProbeLogTests(unittest.TestCase):
                                  16,0,0,0])
                 writer.writerow([14,114,7,"model2_vr_cpu_world_source_rejected",
                                  0,99,1,3])
+                writer.writerow([15,115,7,"model2_vr_cpu_world_source_failure_detail",
+                                 15,10,8,0])
+                writer.writerow([16,116,7,"model2_vr_cpu_world_source_failure_detail",
+                                 15,10,99,0])
             report=MODULE.analyze(path)
             routes=report["d3d9"]["native_stereo_source_route_counts"]
             self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
@@ -68,6 +72,7 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(routes["cpu_world_partial_source_revoked"],2)
             self.assertEqual(routes["cpu_world_rejected_source_kind_10"],1)
             self.assertEqual(routes["cpu_world_rejected_projected_indexed_vertex_buffer"],1)
+            self.assertEqual(routes["cpu_world_failed_sampler"],1)
             self.assertEqual(routes["cpu_world_rejected_source_kind_0"],1)
             source_examples=report["d3d9"]["native_stereo_source_route_examples"]
             revoked=[x for x in source_examples
@@ -75,7 +80,7 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(revoked[0]["prior_source_triangles"],48)
             self.assertEqual(revoked[0]["original_source_draw_kind"],"projected_indexed_vertex_buffer")
             self.assertEqual(revoked[0]["original_present_frame"],15)
-            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],3)
+            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],4)
             self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",
                           MODULE.markdown(report))
             self.assertIn("HMD=UNTESTED",MODULE.markdown(report))

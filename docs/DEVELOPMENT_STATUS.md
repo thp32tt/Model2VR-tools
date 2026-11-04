@@ -12,6 +12,12 @@
   CPU-world transaction in that same frame. The next strictly increasing
   original Present can begin normally. A late rejected source call from
   the owning thread also revokes a pending but uncommitted pair.
+- A nested source adapter now preserves the original outermost Draw kind
+  on its render thread even when a lower-level CPU raster rejects first.
+  The first actual fixed-function rejection stage (device, shader,
+  vertex pipeline, raster, blend/lighting, stage 0, stage 1/alpha test,
+  sampler or target/depth) is reported as separate bounded metadata;
+  no framebuffer, vertex, texture or private emulator bytes are recorded.
 - This changes neither the original D3D9 Draw/Present HRESULT nor
   the emulator simulation, wheel/FFB, experimental GPU fallback or
   real backbuffer mono recovery. The single failure event
