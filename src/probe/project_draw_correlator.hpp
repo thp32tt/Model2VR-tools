@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include "model2_camera_projection_fit.hpp"
 
 namespace m2vr::drawprobe {
 struct ProjectedDrawVertex {
@@ -46,6 +47,16 @@ struct ProjectedTriangleBatchJoin {
     std::uint32_t partial=0;
     std::uint32_t ambiguous=0;
     std::uint32_t common_source_caller_rva=0;
+    // Filled only from individually complete original triangles; never
+    // admits a mixed CPU caller as calibrated camera source.
+    std::array<SourceProjectionSample,24> camera_samples{};
+    std::size_t camera_sample_count=0u;
+    bool CompleteSameSource() const noexcept {
+        return inspected>=2u && complete==inspected &&
+            ambiguous==0u && partial==0u &&
+            common_source_caller_rva!=0u &&
+            camera_sample_count==std::size_t(complete)*3u;
+    }
 };
 struct ProjectedSourceJoin {
     std::uint32_t matched=0;
@@ -146,6 +157,11 @@ public:
                     batch.common_source_caller_rva=join.source_caller_rva;
                 else if(batch.common_source_caller_rva!=join.source_caller_rva)
                     batch.common_source_caller_rva=0u;
+                for(std::size_t v=0;v<3u;++v) {
+                    auto& dest=batch.camera_samples[batch.camera_sample_count++];
+                    dest.source_xyz=join.source_xyz[v];
+                    dest.screen_xy={vertices[i+v].x,vertices[i+v].y};
+                }
                 ++batch.complete;
             }else if(join.matched){
                 ++batch.partial;

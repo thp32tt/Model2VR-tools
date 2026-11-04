@@ -4,6 +4,7 @@
 #include "daytona_up_decl_witness.hpp"
 #include "draw_origin_gate.hpp"
 #include "project_draw_correlator.hpp"
+#include "model2_camera_projection_fit.hpp"
 #include "verified_world_present_gate.hpp"
 #include "d3d9_world_source.hpp"
 #include <Windows.h>
@@ -270,6 +271,9 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
         tex->Release();
     }
 }
+// Candidate camera fit is implemented after ObserveUP below.
+void ObserveProjectionFit(IDirect3DDevice9* dev,std::uint64_t witness,
+        const m2vr::drawprobe::ProjectedTriangleBatchJoin& batch);
 // Defined below: bounded original FVF=0 declaration observation.
 void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
                             void* caller,UINT stride,
@@ -369,7 +373,30 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
             (std::uint64_t{batch.inspected}<<32)|batch.complete,
             (std::uint64_t{batch.partial}<<32)|batch.ambiguous,
             batch.common_source_caller_rva);
+        ObserveProjectionFit(dev,sample_id,batch);
     }
+}
+
+// No original D3D9 draw mutation. A candidate affine perspective
+// relationship between SAME source caller's source-XYZ and original screen
+// coordinates provides camera-topology evidence but never world proof.
+void ObserveProjectionFit(IDirect3DDevice9* dev,std::uint64_t witness,
+        const m2vr::drawprobe::ProjectedTriangleBatchJoin& batch){
+    if(!dev || !batch.CompleteSameSource())return;
+    D3DVIEWPORT9 vp{};
+    if(FAILED(dev->GetViewport(&vp)))return;
+    const auto fit=m2vr::drawprobe::FitSourcePerspective(
+        batch.camera_samples.data(),batch.camera_sample_count,
+        vp.X,vp.Y,vp.Width,vp.Height);
+    if(!fit.plausible)return;
+    m2vr::LogEvent("model2_d3d9_cpu_projection_fit",witness,
+        batch.common_source_caller_rva,
+        m2vr::drawprobe::PackPair(fit.center_x,fit.center_y),
+        m2vr::drawprobe::PackPair(fit.scale_x,fit.scale_y));
+    m2vr::LogEvent("model2_d3d9_cpu_projection_fit_quality",witness,
+        fit.accepted_samples,
+        m2vr::drawprobe::PackPair(fit.rms_pixels,
+            fit.depth_positive?1.f:-1.f),0u);
 }
 
 // Observe the original stream-zero D3D9 vertex declaration when GetFVF
@@ -518,6 +545,7 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
                 (std::uint64_t{batch.inspected}<<32)|batch.complete,
                 (std::uint64_t{batch.partial}<<32)|batch.ambiguous,
                 batch.common_source_caller_rva);
+            ObserveProjectionFit(dev,id,batch);
         }
     }
 }

@@ -96,6 +96,18 @@ candidate vertices with a gameplay world proof. The included synthetic
 regression checks shader-UP/XYZRHW batch provenance and invalid/missing
 caller cases. No additional user log collection is required for this change.
 
+**Original CPU projector + native D3D9 candidate camera fit (2026-11-04):**
+Only an unambiguous, same-Present, same-render-thread series of two or more
+original D3D9 triangle-list primitives from the same CPU projection caller
+may enter an independent bounded least-squares camera hypothesis. The
+source XYZ and original screen XY are tested for common depth sign, finite
+coordinates, measurable XY/Z variance, valid viewport and below-1.25px
+projection residual. The inferred source projection center, focal slopes,
+axis sign and residual are local metadata only. All inconclusive data
+fail closed; neither D3D9 gameplay draws nor the OpenXR world adapter are
+automatically enabled. Camera fit cannot establish physical units-per-meter
+or distinguish auxiliary/HUD passes without separate private evidence.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP
