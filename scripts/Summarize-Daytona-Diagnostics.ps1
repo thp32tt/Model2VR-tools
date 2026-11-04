@@ -28,7 +28,7 @@ $reasons=@("NO_EYE_SOURCE","NO_VERIFIED_WORLD_SCENE","INVALID_DEVICE_FRAME","POS
 if($csv){
  $rows=@(Import-Csv -LiteralPath $csv.FullName)
  $lines.Add("csv_rows="+$rows.Count)
- foreach($type in @("probe_ready","model2_d3d9_device_hook_result","model2_vr_original_draw_families","model2_vr_producer_frame","model2_vr_diag_up_source","model2_vr_diag_source_gates","model2_vr_diag_source_drops","model2_vr_scene_gate","model2_vr_scene_reject_reason")){
+ foreach($type in @("probe_ready","model2_d3d9_device_hook_result","model2_vr_original_draw_families","model2_vr_producer_frame","model2_vr_diag_up_source","model2_vr_diag_source_gates","model2_vr_diag_source_drops","model2_vr_scene_gate","model2_vr_scene_reject_reason","model2_vr_diag_first_scene_reject","model2_vr_diag_scene_reject_total")){
    $matches=@($rows|Where-Object {$_.event -eq $type})
    $lines.Add("event="+$type+" count="+$matches.Count)
    foreach($e in @($matches|Select-Object -Last 12)){$lines.Add("  qpc="+$e.qpc+" a0="+$e.a0+" a1="+$e.a1+" a2="+$e.a2+" a3="+$e.a3)}
@@ -47,6 +47,15 @@ if($csv){
    $lines.Add("source_shape/expected_caller="+(Pair $g[0].a1))
    $lines.Add("source_shader/state_pass="+(Pair $g[0].a2))
    $lines.Add("source_stereo_shift/total_draw_attempts="+(Pair $g[0].a3))
+ }
+ $reasonLabels=@("NONE","DEVICE_QUERY","VIEWPORT","DEPTH","BLEND_ALPHA","STENCIL","SCISSOR","WRITE_MASK","BIAS","CLIP_PLANE","CULL","SRGB")
+ $firstFailures=@($rows|Where-Object {$_.event -eq "model2_vr_diag_first_scene_reject"}|Select-Object -Last 12)
+ foreach($failure in $firstFailures){
+   $reasonCode=[int]$failure.a1
+   $reasonLabel=if($reasonCode -ge 0 -and $reasonCode -lt $reasonLabels.Count){$reasonLabels[$reasonCode]}else{"UNKNOWN"}
+   $vpWidth=[UInt64]::Parse($failure.a2) -shr 32
+   $vpHeight=[UInt64]::Parse($failure.a2) -band 4294967295
+   $lines.Add("first_scene_reject_code="+$reasonCode+" reason="+$reasonLabel+" caller_rva="+$failure.a0+" viewport="+$vpWidth+"x"+$vpHeight)
  }
  $drops=@($rows|Where-Object {$_.event -eq "model2_vr_diag_source_drops"}|Select-Object -Last 1)
  if($drops.Count){$lines.Add("draw_reject_pose="+$drops[0].a1+" resource="+$drops[0].a2+" eye="+$drops[0].a3)}

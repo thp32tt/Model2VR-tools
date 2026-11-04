@@ -11,7 +11,8 @@ class DaytonaOneRunDiagnosticTests(unittest.TestCase):
     def test_bounded_source_witness_and_conservative_gate(self):
         native = (ROOT / "src/probe/daytona_native_stereo.cpp").read_text(encoding="utf-8")
         for expected in ("model2_vr_diag_up_source", "model2_vr_diag_source_gates",
-                         "model2_vr_diag_source_drops", "diag_shape_", "diag_caller_",
+                         "model2_vr_diag_source_drops", "model2_vr_diag_first_scene_reject",
+                         "model2_vr_diag_scene_reject_total", "diag_shape_", "diag_caller_",
                          "diag_shader_", "diag_state_", "diag_shift_",
                          "diag_witness_count_<diag_witness_.size()",
                          "caller==0x000BABADu", "(!scene_draws_ ? 2u : 0u)"):
@@ -30,7 +31,8 @@ class DaytonaOneRunDiagnosticTests(unittest.TestCase):
                 "1,1,1,probe_ready,0,0,0,0\n"
                 "2,2,1,model2_vr_producer_frame,120,2,0,8589934592\n"
                 "3,3,1,model2_vr_diag_source_gates,120,4294967296,0,4\n"
-                "4,4,1,model2_vr_diag_source_drops,120,0,0,0\n", encoding="utf-8")
+                "4,4,1,model2_vr_diag_source_drops,120,0,0,0\n"
+                "5,5,1,model2_vr_diag_first_scene_reject,764845,2,2203318223233,2834678415744\n", encoding="utf-8")
             (base / "daytona_vr_host_fixture.log").write_text(
                 "Daytona VR producer health: NO_VERIFIED_WORLD_SCENE\n", encoding="utf-8")
             subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
@@ -44,6 +46,7 @@ class DaytonaOneRunDiagnosticTests(unittest.TestCase):
             self.assertIn("source_shape/expected_caller=1/0", report)
             self.assertIn("source_stereo_shift/total_draw_attempts=0/4", report)
             self.assertIn("daytona_vr_host_fixture.log", report)
+            self.assertIn("reason=VIEWPORT", report)
 
 
 if __name__ == "__main__":
