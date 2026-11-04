@@ -95,6 +95,17 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(got["counts"]["source_identity_or_frame_mismatch"], 1)
         self.assertFalse(got["physically_presented_same_witness_camera_callers"])
 
+    def test_same_witness_fvf_stride_conflict_cannot_fake_world_candidate(self):
+        events = self.projected()
+        events[1] = event("model2_d3d9_up_source_fvf", 21,
+                          0x144, 32, 7)  # source stride contradicts UP meta
+        events.append(event("model2_d3d9_original_present_result",
+                            7, 0, 1, 0))
+        got = self.report(events)
+        self.assertEqual(
+            got["counts"]["source_identity_or_frame_mismatch"], 1)
+        self.assertFalse(got["physically_presented_same_witness_camera_callers"])
+
     def test_original_fixed_world_xyz_and_shader_up_are_distinct(self):
         events = [
             event("model2_d3d9_source_pass_context", 31,

@@ -124,9 +124,20 @@ def audit_csv(path):
         else:
             draw_hresult, result_caller, frame, family = result
             caller = rec.get("caller", 0)
+            kind = rec.get("kind")
+            fvf_data = rec.get("fvf")
+            source_layout_matches = (
+                kind == "shader_decl" or
+                (fvf_data is not None and rec.get("stride") == fvf_data[1] and
+                 (fvf_data[0] & 0x0e) == (
+                     0x02 if kind == "fixed_xyz" else 0x04) and
+                 (kind != "fixed_xyz" or
+                  rec.get("source_fvf") == fvf_data[0]))
+            )
             if (rec.get("source_frame") != frame or
                 rec.get("family") != family or caller != result_caller or
-                not caller or family not in (3, 4)):
+                not caller or family not in (3, 4) or
+                not source_layout_matches):
                 status = "source_identity_or_frame_mismatch"
             elif draw_hresult & 0x80000000:
                 status = "original_draw_failed"
@@ -226,8 +237,9 @@ def audit_csv(path):
                     raise ValueError("invalid original UP caller/family")
                 once(rec, "caller", caller, a0)
                 once(rec, "family", family, a0)
-                if kind == "projected_xyzrhw":
-                    once(rec, "stride", stride, a0)
+                once(rec, "stride", stride, a0)
+                if kind == "fixed_xyz":
+                    once(rec, "source_fvf", a2, a0)
                 continue
             if event == "model2_d3d9_up_original_result":
                 frame, family = halves(a3)

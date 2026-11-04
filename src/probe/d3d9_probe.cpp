@@ -721,7 +721,7 @@ std::uint64_t ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
                             void* caller,UINT stride,
                             D3DPRIMITIVETYPE topology,
                             UINT primitive_count,const void* vertices) {
-    if(!dev || family<3u || family>4u)return id;
+    if(!dev || family<3u || family>4u)return 0u;
     const auto id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
     // 0=unknown/error, 1=shader absent, 2=shader present.
