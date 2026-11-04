@@ -13,6 +13,7 @@
 #include "../src/common/stereo_pose_ipc.h"
 #include "../src/common/daytona_wizard_health.hpp"
 #include "../src/common/daytona_host_ready.hpp"
+#include "../src/common/daytona_producer_health.hpp"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -48,6 +49,10 @@ private:
     std::array<EyeChain,2> chains_;
     std::uint32_t source_pid_=0;
     transport::SharedFrames shared_frames_;
+    producerhealth::Link producer_health_;
+    producerhealth::Snapshot producer_health_status_{};
+    std::uint32_t producer_health_last_reason_=0xffffffffu;
+    bool producer_health_fresh_=false;
     pose::Link pose_writer_;
     std::uint64_t predicted_pose_sequence_=0;
     transport::Snapshot eye_frame_;

@@ -209,3 +209,27 @@ counting a successful mirrored pass.
 No new shader world classification, duplicate original game simulation,
 Force Feedback interception or original emulator modification was
 introduced; Quest 3 runtime is still UNTESTED.
+
+## Live x86 producer -> x64 OpenXR failure diagnostics (2026-11-04)
+
+A new, independent **64-byte**, pointer-free Windows memory mapping
+`Local\\Model2VR_ProducerHealth_v1_<emulator_pid>` carries the
+original game's compact per-frame failure bits and source-render counts
+from the 32-bit D3D9 producer to the 64-bit OpenXR consumer. The
+producer alone writes; the host reads the versioned, seqlock-guarded
+status and rejects samples older than three seconds. This is distinct
+from actual `GameStereo` RGBA pixels and headset predicted-pose IPC.
+It never contains raw game geometry, ROM data, shaders, textures,
+emulator addresses, private logs or decompiler output.
+
+The host logs only state **transitions**:
+`NO_VERIFIED_WORLD_SCENE`, `POSE_NOT_ADMITTED`,
+`D3D9_READBACK_FAILED`, `IDENTICAL_EYE_PIXELS`,
+`IPC_PUBLISH_FAILED`, `PAIR_PUBLISHED`, or
+`STALE_OR_DISCONNECTED`. Source-frame counts and reasons are now
+also included in F9's existing local troubleshooting capture, so a
+single start attempt distinguishes an OpenXR headset connection from
+a truly published stereo game frame. One successful producer publish
+still does not prove calibrated Daytona 6DoF or a tested HMD visual.
+The shared ABI is covered by both Win32 and Win64 native CTests;
+`RUNTIME_VALIDATION=UNTESTED` remains until actual Quest 3 execution.

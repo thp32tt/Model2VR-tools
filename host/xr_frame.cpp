@@ -109,6 +109,12 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::GameStereo
                 ?"GameStereo":frame_gate_.kind()==transport::FrameKind::Diagnostic
                 ?"Diagnostic":"Unknown")<<"\n"
+          <<"producer_health_fresh="<<(producer_health_fresh_?1:0)<<"\n"
+          <<"producer_last_frame_id="<<producer_health_status_.frame_id<<"\n"
+          <<"producer_reason_mask="<<producer_health_status_.reason_mask<<"\n"
+          <<"producer_verified_scene_draws="<<producer_health_status_.verified_scene_draws<<"\n"
+          <<"producer_mirrored_draws="<<producer_health_status_.mirrored_draws<<"\n"
+          <<"producer_mirrored_clears="<<producer_health_status_.mirrored_clears<<"\n"
           <<"daytona_head_camera_6dof=UNVERIFIED\n"
           <<"note=GameStereo transport does not prove calibrated in-game HMD camera\n---\n";
     std::cout<<"Daytona VR Wizard: captured daytona_vr_bug_capture.txt\n";
@@ -175,6 +181,31 @@ void XrApp::draw_frame(XrTime display_time){
     const auto hz=qpc_hz.QuadPart>0 ?
         static_cast<std::uint64_t>(qpc_hz.QuadPart):0ull;
     if(source_pid_!=0){
+        // Read the real x86 D3D9 reason mask; never confuse a tracked
+        // headset with a successfully produced Daytona binocular frame.
+        if(!producer_health_.Valid())producer_health_.Open(source_pid_);
+        producerhealth::Snapshot latest{};
+        const bool fresh=producer_health_.Valid() &&
+            producer_health_.Read(latest) &&
+            producerhealth::Fresh(latest,now,hz);
+        if(fresh){
+            producer_health_status_=latest;
+            if(!producer_health_fresh_ ||
+               latest.reason_mask!=producer_health_last_reason_){
+                std::cout<<"Daytona VR producer health: "
+                         <<producerhealth::ReasonName(latest.reason_mask)
+                         <<" reason_mask="<<latest.reason_mask
+                         <<" frame="<<latest.frame_id
+                         <<" verified_scene="<<latest.verified_scene_draws
+                         <<" mirror_draws="<<latest.mirrored_draws
+                         <<" mirror_clears="<<latest.mirrored_clears
+                         <<std::endl;
+                producer_health_last_reason_=latest.reason_mask;
+            }
+        } else if(producer_health_fresh_){
+            std::cout<<"Daytona VR producer health: STALE_OR_DISCONNECTED"<<std::endl;
+        }
+        producer_health_fresh_=fresh;
         if(!shared_frames_.Valid())shared_frames_.Open(source_pid_);
         if(shared_frames_.Valid()){
             transport::FrameStamp stamp{};

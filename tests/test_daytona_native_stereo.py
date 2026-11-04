@@ -124,6 +124,21 @@ class NativeStereoTest(unittest.TestCase):
         # eye resources, not create an arbitrary guessed depth format.
         self.assertIn("if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth)",gpu)
 
+    def test_live_x86_to_x64_failure_reason_channel(self):
+        producer=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        hdr=(ROOT/"src/common/daytona_producer_health.hpp").read_text("utf-8")
+        self.assertIn("producerhealth::Link health_",producer)
+        self.assertIn("health_.Publish(frame,reason,scene_draws_",producer)
+        self.assertIn("producer_health_.Read(latest)",host)
+        self.assertIn("producerhealth::Fresh(latest,now,hz)",host)
+        self.assertIn("STALE_OR_DISCONNECTED",host)
+        self.assertIn("producer_reason_mask=",host)
+        self.assertIn("producer_health_fresh_=fresh;",host)
+        self.assertIn("static_assert(sizeof(Wire)==64)",hdr)
+        self.assertIn("daytona_producer_health_x86_test",(ROOT/"CMakeLists.txt").read_text("utf-8"))
+        self.assertIn("daytona_producer_health_x64_test",(ROOT/"host/CMakeLists.txt").read_text("utf-8"))
+
     def test_one_click_original_game_and_openxr_host_single_sim_owner(self):
         launcher=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
         legacy=(ROOT/"scripts/Run-Daytona-NativeStereo.cmd").read_text("utf-8")
