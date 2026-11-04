@@ -126,8 +126,11 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"source_pose_rejection="<<static_cast<unsigned>(last_pose_rejection_)<<"\n"
           <<"frame_transport_open="<<(shared_frames_.Valid()?1:0)<<"\n"
           <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::GameStereo
-                ?"GameStereo":frame_gate_.kind()==transport::FrameKind::Diagnostic
+                ?"GameStereo":frame_gate_.kind()==transport::FrameKind::GameMonoFallback
+                ?"OriginalGameMonoFallback":frame_gate_.kind()==transport::FrameKind::Diagnostic
                 ?"Diagnostic":"Unknown")<<"\n"
+          <<"native_stereo_confirmed="<<(paired_frame_fresh &&
+                frame_gate_.kind()==transport::FrameKind::GameStereo?1:0)<<"\n"
           <<"producer_health_fresh="<<(producer_health_fresh_?1:0)<<"\n"
           <<"producer_last_frame_id="<<producer_health_status_.frame_id<<"\n"
           <<"producer_reason_mask="<<producer_health_status_.reason_mask<<"\n"
@@ -332,6 +335,8 @@ void XrApp::draw_frame(XrTime display_time){
     delivery_evidence.paired_frame_fresh=usable;
     delivery_evidence.pair_is_game=
         frame_gate_.kind()==transport::FrameKind::GameStereo;
+    delivery_evidence.pair_is_original_mono=
+        frame_gate_.kind()==transport::FrameKind::GameMonoFallback;
     delivery_evidence.swapchain_compatible=
         chains_[0].width==transport::kWidth &&
         chains_[0].height==transport::kHeight &&
@@ -345,7 +350,9 @@ void XrApp::draw_frame(XrTime display_time){
                  <<delivery::Name(eye_delivery_status_)
                  <<" emulator_pid="<<source_pid_
                  <<" game_frame="<<frame_gate_.id()
-                 <<" game_pixels="<<(usable && delivery_evidence.pair_is_game?1:0)
+                 <<" game_pixels="<<(usable && (delivery_evidence.pair_is_game ||
+                                    delivery_evidence.pair_is_original_mono)?1:0)
+                 <<" native_stereo="<<(usable && delivery_evidence.pair_is_game?1:0)
                  <<" health_fresh="<<(producer_health_fresh_?1:0)
                  <<" producer_reason_mask="
                  <<(producer_health_fresh_?producer_health_status_.reason_mask:0u)

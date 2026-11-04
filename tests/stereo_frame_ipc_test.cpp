@@ -56,6 +56,16 @@ int main(){
     REQUIRE(writer.Publish(a.data(),b.data(),5,FrameKind::Diagnostic));
     REQUIRE(reader.ReadReusable(staging));
     REQUIRE(staging.pose_sequence==0u && staging.kind==FrameKind::Diagnostic);
+    // A real original mono backbuffer is game imagery, NOT independently
+    // projected stereo. It cannot carry an XR source pose sequence.
+    REQUIRE(writer.Publish(a.data(),a.data(),6,FrameKind::GameMonoFallback));
+    REQUIRE(reader.Peek(metadata));
+    REQUIRE(metadata.kind==FrameKind::GameMonoFallback);
+    REQUIRE(metadata.pose_sequence==0u);
+    REQUIRE(reader.ReadReusable(staging));
+    REQUIRE(staging.kind==FrameKind::GameMonoFallback);
+    REQUIRE(staging.eyes[0][0]==staging.eyes[1][0]);
+    REQUIRE(!writer.Publish(a.data(),b.data(),7,FrameKind::GameMonoFallback,117u));
     reader.Close();writer.Close();
     REQUIRE(!reader.Read(snap));
     return 0;

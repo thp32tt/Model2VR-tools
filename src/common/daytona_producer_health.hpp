@@ -14,9 +14,12 @@ enum Reason : std::uint32_t {
     NoMirroredPass=1u, NoVerifiedScene=2u, WrongDevice=4u,
     PoseUnavailable=8u, PoseExpired=16u, ReadbackFailed=32u,
     IdenticalEyes=64u, TransportFailed=128u,
-    OriginalPresentFailed=256u
+    OriginalPresentFailed=256u, OriginalMonoFallback=512u
 };
-constexpr std::uint32_t kKnownReasons=511u;
+constexpr std::uint32_t kKnownReasons=1023u;
+constexpr bool OriginalMonoPublished(std::uint32_t mask) noexcept {
+    return mask==OriginalMonoFallback;
+}
 // Capture the GPU eye targets before the original swap-chain Present, then
 // publish only when the real game's Present HRESULT AND stereo tracking pass.
 constexpr std::uint32_t FinalPresentReason(std::uint32_t prepared,
@@ -59,11 +62,14 @@ constexpr bool Fresh(const Snapshot& s,std::uint64_t now,
 // an earlier successful eye frame as if it were the latest live game.
 constexpr bool InvalidatesCachedPair(const Snapshot& health,bool fresh,
                                       std::uint64_t cached_frame_id)noexcept {
-    return fresh && health.reason_mask!=0u &&
-           health.frame_id>cached_frame_id;
+    // An actually published mono source is not a failed original Present.
+    // The next host frame will consume its higher source frame ID.
+    return fresh && !OriginalMonoPublished(health.reason_mask) &&
+           health.reason_mask!=0u && health.frame_id>cached_frame_id;
 }
 constexpr const char* ReasonName(std::uint32_t mask)noexcept {
     if(!mask)return "PAIR_PUBLISHED";
+    if(OriginalMonoPublished(mask))return "ORIGINAL_GAME_MONO_FALLBACK_PUBLISHED";
     if(mask&OriginalPresentFailed)return "ORIGINAL_D3D9_PRESENT_FAILED";
     if(mask&PoseUnavailable)return "POSE_NOT_ADMITTED";
     if(mask&PoseExpired)return "POSE_STALE";

@@ -40,6 +40,22 @@ extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitStereoRGBA(
                             m2vr::transport::FrameKind::GameStereo)?TRUE:FALSE;
 }
 
+// Present-bound original game backbuffer fallback. Only a real D3D9 capture
+// calls this after the original Present succeeds. Sending one image twice is
+// explicitly marked mono, never mislabeled as GameStereo.
+extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitOriginalGameMonoRGBA(
+    const unsigned char* original_rgba,unsigned long long original_frame,
+    unsigned int width,unsigned int height,unsigned int stride_bytes) {
+    if(width!=m2vr::transport::kWidth ||
+       height!=m2vr::transport::kHeight ||
+       stride_bytes!=m2vr::transport::kPitch ||
+       !original_rgba || !original_frame)return FALSE;
+    std::scoped_lock lock(g_writer_mutex);
+    if(!g_initialized)return FALSE;
+    return g_writer.Publish(original_rgba,original_rgba,original_frame,
+               m2vr::transport::FrameKind::GameMonoFallback)?TRUE:FALSE;
+}
+
 // The proven CPU-world renderer can include the exact predicted pose used
 // for independent eye projection. The legacy API stays untagged.
 extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitStereoRGBAWithPose(

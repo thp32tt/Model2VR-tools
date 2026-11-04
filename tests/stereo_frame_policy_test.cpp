@@ -11,6 +11,8 @@ int main(){
     CHECK(!SourcePoseMatchesFrame(FrameKind::GameStereo,0u,true));
     CHECK(!SourcePoseMatchesFrame(FrameKind::GameStereo,123u,false));
     CHECK(SourcePoseMatchesFrame(FrameKind::Diagnostic,0u,false));
+    CHECK(SourcePoseMatchesFrame(FrameKind::GameMonoFallback,0u,false));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::GameMonoFallback,17u,true));
     CHECK(!SourcePoseMatchesFrame(FrameKind::Diagnostic,123u,true));
     CHECK(!SourcePoseMatchesFrame(FrameKind::Invalid,0u,false));
     CHECK(!SourcePoseMatchesFrame(FrameKind::Invalid,123u,true));
@@ -78,6 +80,14 @@ int main(){
     snap.kind=FrameKind::GameStereo;
     CHECK(gate.Accept(snap,t+142,1000));
     CHECK(gate.id()==4);
+    // Monotonic fallback-to-true-stereo transitions preserve the IPC frame
+    // gate, without treating the cloned 2D image as native binocular.
+    FrameStamp mono{5,t+145,FrameKind::GameMonoFallback,123};
+    CHECK(gate.Decide(&mono,t+146,hz)==FrameUse::ReadNew);
+    snap.frame_id=5;snap.timestamp_qpc=t+145;
+    snap.kind=FrameKind::GameMonoFallback;
+    CHECK(gate.Accept(snap,t+146,hz));
+    CHECK(gate.kind()==FrameKind::GameMonoFallback);
     gate.Reset();
     CHECK(gate.id()==0);
     CHECK(!gate.Cached(t+140,1000));

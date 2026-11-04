@@ -16,7 +16,7 @@ int main(){
  REQUIRE(reader.Open(pid));
  REQUIRE(!reader.Read(got));
  REQUIRE(!writer.Publish(0u,NoVerifiedScene,0,0,0,zero));
- REQUIRE(!writer.Publish(1u,0x200u,0,0,0,zero));
+ REQUIRE(!writer.Publish(1u,0x400u,0,0,0,zero));
  REQUIRE(FinalPresentReason(0u,true,true)==0u);
  REQUIRE(FinalPresentReason(0u,false,true)==OriginalPresentFailed);
  REQUIRE(FinalPresentReason(ReadbackFailed,false,true)==
@@ -41,6 +41,9 @@ int main(){
  REQUIRE(!Fresh(got,got.timestamp_qpc,0u));
  REQUIRE(ReasonName(0u)[0]=='P');
  REQUIRE(ReasonName(NoVerifiedScene)[0]=='N');
+ REQUIRE(OriginalMonoPublished(OriginalMonoFallback));
+ REQUIRE(!OriginalMonoPublished(NoVerifiedScene));
+ REQUIRE(ReasonName(OriginalMonoFallback)[0]=='O');
  REQUIRE(!InvalidatesCachedPair(got,true,1u));
  REQUIRE(InvalidatesCachedPair(got,true,0u));
  REQUIRE(!InvalidatesCachedPair(got,false,0u));
@@ -58,6 +61,8 @@ int main(){
  REQUIRE(!InvalidatesCachedPair(failed,false,2u));
  failed.reason_mask=OriginalPresentFailed;
  REQUIRE(InvalidatesCachedPair(failed,true,2u));
+ failed.reason_mask=OriginalMonoFallback;
+ REQUIRE(!InvalidatesCachedPair(failed,true,2u));
  reader.Close();writer.Close();
  REQUIRE(!reader.Read(got));
  return 0;

@@ -20,7 +20,15 @@ constexpr std::uint32_t kHeight = 1024;
 constexpr std::uint32_t kPitch = 4 * kWidth;
 constexpr std::size_t kBytesPerEye = static_cast<std::size_t>(kPitch) * kHeight;
 constexpr std::uint32_t kPixelRGBA8 = 1;
-enum class FrameKind : std::uint32_t { Invalid=0, GameStereo=1, Diagnostic=2 };
+// GameMonoFallback carries pixels from the ORIGINAL x86 D3D9 game backbuffer.
+// It deliberately has no source-eye pose and is NOT calibrated native stereo.
+enum class FrameKind : std::uint32_t {
+    Invalid=0, GameStereo=1, Diagnostic=2, GameMonoFallback=3
+};
+constexpr bool ValidSourceKind(FrameKind kind) noexcept {
+    return kind==FrameKind::GameStereo || kind==FrameKind::Diagnostic ||
+           kind==FrameKind::GameMonoFallback;
+}
 
 // Non-pointer wire format: identical for 32-bit producer and 64-bit host.
 struct alignas(64) Header {
@@ -110,8 +118,8 @@ public:
                  std::uint64_t frame_id,FrameKind kind,
                  std::uint32_t pose_sequence=0) {
         if(!writable_||!Valid()||!left||!right||frame_id==0||
-           (kind!=FrameKind::GameStereo && kind!=FrameKind::Diagnostic) ||
-           (kind==FrameKind::Diagnostic && pose_sequence!=0u))
+           !ValidSourceKind(kind) ||
+           (kind!=FrameKind::GameStereo && pose_sequence!=0u))
             return false;
         auto* h=reinterpret_cast<Header*>(base_);
         // A writer must not overlap itself. No consumer ever writes.
@@ -149,8 +157,7 @@ public:
         const LONG end=h->sequence;
         if(start!=end || (end&1) || stamp.frame_id==0 ||
            !stamp.writer_pid ||
-           (stamp.kind!=FrameKind::GameStereo &&
-            stamp.kind!=FrameKind::Diagnostic))return false;
+           !ValidSourceKind(stamp.kind))return false;
         out=stamp;
         return true;
     }
@@ -166,7 +173,7 @@ public:
         MemoryBarrier();
         if(start&1)return false;
         const FrameKind kind=static_cast<FrameKind>(h->kind);
-        if(kind!=FrameKind::GameStereo && kind!=FrameKind::Diagnostic)return false;
+        if(!ValidSourceKind(kind))return false;
         const auto frame=h->frame_id, timestamp=h->timestamp_qpc;
         const auto pose_sequence=h->pose_sequence;
         for(auto& eye:staging.eyes)

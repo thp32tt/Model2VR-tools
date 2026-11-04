@@ -11,7 +11,7 @@ namespace m2vr::transport {
 // binocular projection. A diagnostic frame is intentionally untagged.
 inline constexpr bool SourcePoseMatchesFrame(
     FrameKind kind,std::uint32_t pose_tag,bool exact_pose_in_host_ring) noexcept {
-    if(kind==FrameKind::Diagnostic)
+    if(kind==FrameKind::Diagnostic || kind==FrameKind::GameMonoFallback)
         return pose_tag==0u;
     return kind==FrameKind::GameStereo &&
            pose_tag!=0u && exact_pose_in_host_ring;
@@ -30,8 +30,7 @@ public:
         const bool cached = last_id_!=0 && cached_fresh;
         if(!stamp || !HasRecent(stamp->timestamp_qpc,now,ticks_per_second) ||
            stamp->frame_id==0 ||
-           (stamp->kind!=FrameKind::GameStereo &&
-            stamp->kind!=FrameKind::Diagnostic))
+           !ValidSourceKind(stamp->kind))
             return cached ? FrameUse::HoldCached : FrameUse::Missing;
         if(stamp->frame_id>last_id_)return FrameUse::ReadNew;
         return stamp->frame_id==last_id_ && cached
@@ -41,8 +40,7 @@ public:
                 std::uint64_t ticks_per_second) noexcept {
         if(!HasRecent(snapshot.timestamp_qpc,now,ticks_per_second) ||
            snapshot.frame_id==0 || snapshot.frame_id<=last_id_ ||
-           (snapshot.kind!=FrameKind::GameStereo &&
-            snapshot.kind!=FrameKind::Diagnostic) ||
+           !ValidSourceKind(snapshot.kind) ||
            snapshot.eyes[0].size()!=kBytesPerEye ||
            snapshot.eyes[1].size()!=kBytesPerEye)return false;
         last_id_=snapshot.frame_id;

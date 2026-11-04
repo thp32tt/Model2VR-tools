@@ -25,7 +25,9 @@ int main(){
     assert(Classify(e)==Status::HostEyeSizeMismatch);
     e.swapchain_compatible=true;
     assert(Classify(e)==Status::DiagnosticOnly);
-    e.pair_is_game=true;
+    e.pair_is_original_mono=true;
+    assert(Classify(e)==Status::LiveOriginalMonoFallback);
+    e.pair_is_original_mono=false;e.pair_is_game=true;
     assert(Classify(e)==Status::LiveGameStereo);
     // Valid game stereo must not become "live" if producer later rejects
     // newer original Present: the host must set paired_frame_fresh=false.
