@@ -21,7 +21,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("CreateRenderTarget(width_,height_,desc.Format",gpu)
         self.assertIn("d->StretchRect(eyes_[eye].color,nullptr",gpu)
         self.assertIn("readback_source=eyes_[eye].resolve",gpu)
-        self.assertIn("GetRenderTargetData(eyes_[eye].color",gpu)
+        self.assertIn("GetRenderTargetData(readback_source",gpu)
         self.assertIn("Model2VR_SubmitStereoRGBA(",gpu)
         self.assertIn("Model2VR_OpenStereoWriter()",gpu)
         self.assertIn("std::memcpy(scratch_[1].data(),scratch_[0].data(),bytes)",gpu)
