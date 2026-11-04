@@ -72,7 +72,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTopologyTextured(
     unsigned triangles,const void* indices,unsigned format,
     const void* vertices,unsigned stride,unsigned alpha_cutoff) {
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
-       alpha_cutoff>255u)return FALSE;
+       alpha_cutoff>256u)return FALSE;
     try {
         std::vector<std::uint8_t> source;
         std::vector<std::uint32_t> relative;
@@ -96,7 +96,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyT
     const void* vertices,unsigned stride,unsigned cpu_caller,
     unsigned alpha_cutoff) {
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
-       !cpu_caller || alpha_cutoff>255u || triangles<2u ||
+       !cpu_caller || alpha_cutoff>256u || triangles<2u ||
        triangles>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
         return FALSE;
     try {
