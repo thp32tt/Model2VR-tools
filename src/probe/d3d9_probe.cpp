@@ -10,6 +10,7 @@
 #include "d3d9_world_source.hpp"
 #include "d3d9_projected_vb_observer.hpp"
 #include "d3d9_indexed_up_window.hpp"
+#include "d3d9_primitive_topology.hpp"
 #include "projected_up_world_source.hpp"
 #include <Windows.h>
 #include <d3d9.h>
@@ -20,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include <vector>
 
 // Passive Direct3D9 command-boundary instrumentation. This deliberately DOES
 // NOT duplicate draw commands or change render targets. All per-eye replay
@@ -209,7 +211,10 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
                     const void* vertices,UINT stride,const void* indices,
                     D3DFORMAT index_format,UINT first,UINT vertex_count) {
     using namespace m2vr::drawprobe;
-    if(!dev||!vertices||type!=D3DPT_TRIANGLELIST)return;
+    if(!dev || !vertices ||
+       (type!=D3DPT_TRIANGLELIST &&
+        type!=D3DPT_TRIANGLESTRIP &&
+        type!=D3DPT_TRIANGLEFAN))return;
     DWORD fvf=0;
     if(FAILED(dev->GetFVF(&fvf)))return;
     const auto layout=DecodeWorldUpFVF(fvf,stride);
@@ -324,13 +329,22 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
         index_format!=D3DFMT_INDEX32)))return;
 
     struct Observation {std::uint32_t index=0; VertexWitness vertex{};};
-    // Capture at most eight triangle-list primitives in one original Draw.
-    // Leave unrelated topology sampling at the historical three vertices.
-    constexpr unsigned kJoinSampleVertices=
-        3u*m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles;
+    // Capture the first eight original TRIANGLELIST, TRIANGLESTRIP or
+    // TRIANGLEFAN triangles with source winding preserved, without another
+    // original Draw call. Unknown topology stays at three source vertices.
+    constexpr unsigned kJoinTriangles=
+        static_cast<unsigned>(m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles);
+    constexpr unsigned kJoinSampleVertices=3u*kJoinTriangles;
     std::array<Observation,kJoinSampleVertices> observations{};
-    const unsigned limit=type==D3DPT_TRIANGLELIST?
-        kJoinSampleVertices:MaxVertices;
+    const bool triangle_topology=
+        type==D3DPT_TRIANGLELIST ||
+        type==D3DPT_TRIANGLESTRIP ||
+        type==D3DPT_TRIANGLEFAN;
+    const auto sampled_triangles=
+        primitive_count<kJoinTriangles?primitive_count:kJoinTriangles;
+    const auto triangle_elements=triangle_topology?
+        PrimitiveSourceElementCount(type,sampled_triangles):0u;
+    const unsigned limit=triangle_elements?triangle_elements:MaxVertices;
     const unsigned count=elements<limit?elements:limit;
     for(unsigned i=0;i<count;++i){
         std::uint32_t index=i;
@@ -378,23 +392,31 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     // The sampled original UP triangle can now be associated with
     // immediately preceding CPU projector outputs on this SAME thread and
     // Present epoch. Even a full match is a candidate, never world proof.
-    if(type==D3DPT_TRIANGLELIST && count>=3u){
+    if(triangle_elements && count==triangle_elements){
+        std::vector<std::uint32_t> source_ids(count);
+        for(unsigned i=0;i<count;++i)source_ids[i]=i;
+        std::vector<std::uint32_t> triangle_ids;
+        if(!ExpandOriginalTriangles(type,sampled_triangles,
+                                    source_ids,triangle_ids))
+            return;
         std::array<ProjectedDrawVertex,kJoinSampleVertices> screen{};
-        for(unsigned i=0;i<count;++i) {
-            screen[i]={observations[i].vertex.x,observations[i].vertex.y};
+        for(std::size_t i=0;i<triangle_ids.size();++i){
+            const auto& original=observations[triangle_ids[i]].vertex;
+            screen[i]={original.x,original.y};
         }
         const auto epoch=CurrentProjectDrawEpoch();
         const auto& correlator=ThreadProjectDrawCorrelator();
-        // Backward-compatible first-triangle event.
         const auto join=correlator.Match(epoch,screen.data(),3u);
         m2vr::LogEvent("model2_d3d9_cpu_up_join",sample_id,
             join.matched,join.ambiguous,join.source_caller_rva);
         const auto batch=correlator.MatchTriangleList(
-            epoch,screen.data(),count);
+            epoch,screen.data(),triangle_ids.size());
         m2vr::LogEvent("model2_d3d9_cpu_up_join_batch",sample_id,
             (std::uint64_t{batch.inspected}<<32)|batch.complete,
             (std::uint64_t{batch.partial}<<32)|batch.ambiguous,
             batch.common_source_caller_rva);
+        // Evidence-only. A fitted original world camera remains unknown
+        // until separately authenticated by private, real gameplay proof.
         ObserveProjectionFit(dev,sample_id,batch);
     }
 }

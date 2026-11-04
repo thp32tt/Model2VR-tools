@@ -1,4 +1,6 @@
 #include "../src/probe/project_draw_correlator.hpp"
+#include "../src/probe/d3d9_primitive_topology.hpp"
+#include <vector>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -62,6 +64,34 @@ int main(){
     Capture(c,5,0x1234,100.f,150.f,10.f,11.f,12.f);
     const auto ambiguous=c.Match(5,face,3);
     CHECK(!ambiguous.Complete() && ambiguous.ambiguous==1u);
+    // A genuine original UP strip/fan uses shared source vertices and
+    // a non-trivial index order. Reconstruct from the actual original
+    // source topology before comparing to same-thread CPU projections.
+    ProjectDrawCorrelator strip_source{};
+    constexpr ProjectedDrawVertex strip_vertices[5]{
+        {12.f,20.f},{30.f,22.f},{15.f,48.f},{40.f,55.f},{80.f,60.f}};
+    for(unsigned i=0;i<5;++i)
+        Capture(strip_source,61u,0x456u,
+            strip_vertices[i].x,strip_vertices[i].y,
+            float(i+1),float(i+2),float(i+3));
+    std::vector<std::uint32_t> triangle_order;
+    CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLESTRIP,3u,
+        {0u,1u,2u,3u,4u},triangle_order));
+    std::array<ProjectedDrawVertex,9> ordered{};
+    for(std::size_t i=0;i<triangle_order.size();++i)
+        ordered[i]=strip_vertices[triangle_order[i]];
+    const auto strip_join=strip_source.MatchTriangleList(
+        61u,ordered.data(),triangle_order.size());
+    CHECK(strip_join.CompleteSameSource());
+    CHECK(strip_join.complete==3u && strip_join.common_source_caller_rva==0x456u);
+    CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLEFAN,3u,
+        {0u,1u,2u,3u,4u},triangle_order));
+    for(std::size_t i=0;i<triangle_order.size();++i)
+        ordered[i]=strip_vertices[triangle_order[i]];
+    CHECK(strip_source.MatchTriangleList(
+        61u,ordered.data(),triangle_order.size()).CompleteSameSource());
+    CHECK(!strip_source.MatchTriangleList(
+        62u,ordered.data(),triangle_order.size()).CompleteSameSource());
     // A different CPU caller may not be disguised as one proven pass.
     ProjectDrawCorrelator mixed{};
     Capture(mixed,7,0x1,100.f,150.f,1.f,2.f,3.f);
