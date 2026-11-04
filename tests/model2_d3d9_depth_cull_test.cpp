@@ -214,6 +214,38 @@ int main() {
     CHECK(!AlphaCutoffMatches(1u, D3DCMP_EQUAL, 128u, 128u));
     CHECK(!AlphaCutoffMatches(1u, D3DCMP_GREATER, 127u, 127u));
 
+    // Explicit caller opt-in 256 must preserve the ACTUAL original x86
+    // alpha compare + reference, not approximate all functions as >= cutoff.
+    using m2vr::drawprobe::DecodeOriginalAlphaCompare;
+    unsigned int original_compare=0u,original_reference=0u;
+    for(unsigned int original=static_cast<unsigned>(D3DCMP_NEVER);
+        original<=static_cast<unsigned>(D3DCMP_ALWAYS);++original) {
+        CHECK(DecodeOriginalAlphaCompare(
+            1u,original,73u,256u,original_compare,original_reference));
+        CHECK(original_compare==original && original_reference==73u);
+    }
+    CHECK(DecodeOriginalAlphaCompare(
+        0u,D3DCMP_NEVER,11u,256u,original_compare,original_reference));
+    CHECK(original_compare==D3DCMP_ALWAYS && original_reference==0u);
+    CHECK(DecodeOriginalAlphaCompare(
+        1u,D3DCMP_GREATER,127u,128u,
+        original_compare,original_reference));
+    CHECK(original_compare==0u && original_reference==0u);
+    CHECK(!DecodeOriginalAlphaCompare(
+        1u,D3DCMP_EQUAL,128u,128u,
+        original_compare,original_reference));
+    CHECK(!DecodeOriginalAlphaCompare(
+        1u,D3DCMP_EQUAL,128u,257u,
+        original_compare,original_reference));
+    CHECK(!DecodeOriginalAlphaCompare(
+        1u,0u,128u,256u,original_compare,original_reference));
+    CHECK(!DecodeOriginalAlphaCompare(
+        1u,D3DCMP_GREATER,256u,256u,
+        original_compare,original_reference));
+    CHECK(!DecodeOriginalAlphaCompare(
+        2u,D3DCMP_GREATER,128u,256u,
+        original_compare,original_reference));
+
     // The independently rendered game-world target cannot honor an
     // original sub-viewport, cropped scissor or depth-range remap.
     D3DVIEWPORT9 viewport{};
