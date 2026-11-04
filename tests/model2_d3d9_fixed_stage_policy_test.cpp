@@ -33,5 +33,33 @@ int main(){
         D3DTOP_ADD,D3DTA_DIFFUSE,D3DTA_TEXTURE,modulate));
     CHECK(!DecodeFixedTextureDiffuseOp(
         D3DTOP_DISABLE,D3DTA_TEXTURE,D3DTA_DIFFUSE,modulate));
+    // Independently selected stage-0 RGB and alpha may use texture,
+    // original per-vertex diffuse, or original texel*diffuse.
+    FixedStageSource source=FixedStageSource::Modulate;
+    CHECK(DecodeFixedStageSource(
+        D3DTOP_SELECTARG1,D3DTA_DIFFUSE,D3DTA_TEXTURE,source));
+    CHECK(source==FixedStageSource::Diffuse);
+    CHECK(DecodeFixedStageSource(
+        D3DTOP_SELECTARG2,D3DTA_TEXTURE,D3DTA_DIFFUSE,source));
+    CHECK(source==FixedStageSource::Diffuse);
+    CHECK(DecodeFixedStageSource(
+        D3DTOP_SELECTARG2,D3DTA_TFACTOR,D3DTA_TEXTURE,source));
+    CHECK(source==FixedStageSource::Texture);
+    CHECK(DecodeFixedStageSource(
+        D3DTOP_MODULATE,D3DTA_DIFFUSE,D3DTA_TEXTURE,source));
+    CHECK(source==FixedStageSource::Modulate);
+    const auto before=source;
+    CHECK(!DecodeFixedStageSource(
+        D3DTOP_SELECTARG1,D3DTA_DIFFUSE|D3DTA_COMPLEMENT,
+        D3DTA_TEXTURE,source));
+    CHECK(!DecodeFixedStageSource(
+        D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_TFACTOR,source));
+    CHECK(!DecodeFixedStageSource(
+        D3DTOP_SELECTARG1,D3DTA_CURRENT,D3DTA_TEXTURE,source));
+    CHECK(!DecodeFixedStageSource(
+        D3DTOP_ADD,D3DTA_TEXTURE,D3DTA_DIFFUSE,source));
+    CHECK(source==before); // failure never partially mutates policy
+    CHECK(ValidFixedStageSource(FixedStageSource::Diffuse));
+    CHECK(!ValidFixedStageSource(static_cast<FixedStageSource>(5u)));
     return 0;
 }

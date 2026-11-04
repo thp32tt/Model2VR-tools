@@ -3,8 +3,38 @@
 // Unknown operations (TFACTOR, COMPLEMENT, ADD, DOT3, disabled source, etc.)
 // are not approximated inside a calibrated native stereo world pass.
 #include <d3d9.h>
+#include <cstdint>
 
 namespace m2vr::drawprobe {
+// Stage-zero original fixed-function RGB and ALPHA are independent.
+// The three modes require actual source texture and/or D3DCOLOR data.
+// They are not a gameplay-world classification or render permission.
+enum class FixedStageSource : std::uint32_t {
+    Texture=0u, Diffuse=1u, Modulate=2u
+};
+inline constexpr bool ValidFixedStageSource(FixedStageSource s) noexcept {
+    return s==FixedStageSource::Texture ||
+           s==FixedStageSource::Diffuse ||
+           s==FixedStageSource::Modulate;
+}
+inline bool DecodeFixedStageSource(DWORD operation,DWORD first,
+                                   DWORD second,FixedStageSource& out) noexcept {
+    FixedStageSource next{};
+    if(operation==D3DTOP_SELECTARG1 || operation==D3DTOP_SELECTARG2){
+        // The unused argument MUST NOT influence the selected channel.
+        const DWORD selected=operation==D3DTOP_SELECTARG1?first:second;
+        if(selected==D3DTA_TEXTURE)next=FixedStageSource::Texture;
+        else if(selected==D3DTA_DIFFUSE)next=FixedStageSource::Diffuse;
+        else return false; // CURRENT, TFACTOR, flags and unknown source
+    }else if(operation==D3DTOP_MODULATE &&
+       ((first==D3DTA_TEXTURE && second==D3DTA_DIFFUSE) ||
+        (first==D3DTA_DIFFUSE && second==D3DTA_TEXTURE))){
+        next=FixedStageSource::Modulate;
+    }else return false;
+    out=next;
+    return true;
+}
+
 inline bool DecodeFixedTextureDiffuseOp(
     DWORD operation,DWORD first,DWORD second,bool& modulation) noexcept {
     if((operation==D3DTOP_SELECTARG1 && first==D3DTA_TEXTURE) ||
