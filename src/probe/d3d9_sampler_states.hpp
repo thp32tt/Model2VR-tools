@@ -17,9 +17,11 @@ inline bool DecodeSamplerPolicy(DWORD address_u,DWORD address_v,
     using m2vr::vr::TextureAddress;
     using m2vr::vr::TextureFilter;
     if((address_u!=D3DTADDRESS_CLAMP && address_u!=D3DTADDRESS_WRAP &&
-        address_u!=D3DTADDRESS_MIRROR) ||
+        address_u!=D3DTADDRESS_MIRROR &&
+        address_u!=D3DTADDRESS_MIRRORONCE) ||
        (address_v!=D3DTADDRESS_CLAMP && address_v!=D3DTADDRESS_WRAP &&
-        address_v!=D3DTADDRESS_MIRROR) ||
+        address_v!=D3DTADDRESS_MIRROR &&
+        address_v!=D3DTADDRESS_MIRRORONCE) ||
        (min_filter!=D3DTEXF_POINT && min_filter!=D3DTEXF_LINEAR) ||
        (mag_filter!=D3DTEXF_POINT && mag_filter!=D3DTEXF_LINEAR) ||
        min_filter!=mag_filter ||
@@ -27,9 +29,11 @@ inline bool DecodeSamplerPolicy(DWORD address_u,DWORD address_v,
     m2vr::vr::SamplerPolicy value{};
     value.u=address_u==D3DTADDRESS_WRAP ? TextureAddress::Wrap:
             address_u==D3DTADDRESS_MIRROR ? TextureAddress::Mirror:
+            address_u==D3DTADDRESS_MIRRORONCE ? TextureAddress::MirrorOnce:
                                             TextureAddress::Clamp;
     value.v=address_v==D3DTADDRESS_WRAP ? TextureAddress::Wrap:
             address_v==D3DTADDRESS_MIRROR ? TextureAddress::Mirror:
+            address_v==D3DTADDRESS_MIRRORONCE ? TextureAddress::MirrorOnce:
                                             TextureAddress::Clamp;
     value.filter=min_filter==D3DTEXF_LINEAR ? TextureFilter::Linear:
                                                TextureFilter::Point;

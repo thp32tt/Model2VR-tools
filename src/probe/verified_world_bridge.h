@@ -42,7 +42,7 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
     unsigned int texture_pitch, unsigned int alpha_cutoff);
 /* Fully verified source material sampler: 0=clamp/point, 1=wrap/linear.
    Filter argument is 0 for POINT, 1 for LINEAR. U/V arguments are
-   0 for CLAMP, 1 for WRAP and 2 for MIRROR. Other values fail closed.
+   0 for CLAMP, 1 for WRAP, 2 for MIRROR, 3 for MIRRORONCE.
    Existing textured entrypoint retains point/clamp ABI unchanged. */
 __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithSampler(
     const float* view_space_xyz, const float* interleaved_uv,

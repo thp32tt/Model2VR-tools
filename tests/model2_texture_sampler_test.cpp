@@ -58,6 +58,23 @@ int main(){
     CHECK(px.r==255 && px.g==0 && px.b==0 && px.a==255);
     CHECK(SampleTextureRGBA(rgba.data(),2,2,8,-1.,0.25,mirror,px));
     CHECK(px.r==0 && px.g==255 && px.b==0 && px.a==0);
+    // MIRRORONCE reflects negative addresses once and clamps beyond
+    // the first reflection instead of repeating the MIRROR period.
+    SamplerPolicy once{TextureAddress::MirrorOnce,
+        TextureAddress::MirrorOnce,TextureFilter::Point};
+    CHECK(SampleTextureRGBA(rgba.data(),2,2,8,-0.25,0.25,once,px));
+    CHECK(px.r==255 && px.g==0 && px.b==0);
+    CHECK(SampleTextureRGBA(rgba.data(),2,2,8,-0.75,0.25,once,px));
+    CHECK(px.r==0 && px.g==255 && px.b==0);
+    CHECK(SampleTextureRGBA(rgba.data(),2,2,8,-1.75,0.25,once,px));
+    CHECK(px.r==0 && px.g==255 && px.b==0);
+    CHECK(SampleTextureRGBA(rgba.data(),2,2,8,1.75,0.25,once,px));
+    CHECK(px.r==0 && px.g==255 && px.b==0);
+    once.filter=TextureFilter::Linear;
+    CHECK(SampleTextureRGBA(rgba.data(),2,2,8,0.,0.25,once,px));
+    CHECK(px.r==255 && px.g==0 && px.b==0);
+    CHECK(SampleTextureRGBA(rgba.data(),2,2,8,-1.,0.25,once,px));
+    CHECK(px.r==0 && px.g==255 && px.b==0);
     // Default fixed-function point/clamp behavior remains unchanged.
     CHECK(SampleTextureRGBA(rgba.data(),2,2,8,1.,1.,point,px));
     CHECK(px.r==255 && px.a==255);
@@ -81,6 +98,10 @@ int main(){
         D3DTEXF_LINEAR,D3DTEXF_LINEAR,D3DTEXF_NONE,0,converted));
     CHECK(converted.u==TextureAddress::Mirror &&
           converted.v==TextureAddress::Wrap);
+    CHECK(DecodeSamplerPolicy(D3DTADDRESS_MIRRORONCE,D3DTADDRESS_MIRRORONCE,
+        D3DTEXF_LINEAR,D3DTEXF_LINEAR,D3DTEXF_NONE,0,converted));
+    CHECK(converted.u==TextureAddress::MirrorOnce &&
+          converted.v==TextureAddress::MirrorOnce);
     CHECK(!DecodeSamplerPolicy(D3DTADDRESS_BORDER,D3DTADDRESS_WRAP,
         D3DTEXF_LINEAR,D3DTEXF_LINEAR,D3DTEXF_NONE,0,converted));
     CHECK(!DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,

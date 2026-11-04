@@ -12,7 +12,7 @@
 
 namespace m2vr::vr {
 enum class TextureAddress : std::uint32_t {
-    Clamp=0u, Wrap=1u, Mirror=2u
+    Clamp=0u, Wrap=1u, Mirror=2u, MirrorOnce=3u
 };
 enum class TextureFilter : std::uint32_t { Point=0u, Linear=1u };
 struct SamplerPolicy {
@@ -26,7 +26,8 @@ struct SampledRGBA {
 inline bool ValidSampler(SamplerPolicy policy) noexcept {
     const auto address_ok=[](TextureAddress x){
         return x==TextureAddress::Clamp || x==TextureAddress::Wrap ||
-               x==TextureAddress::Mirror;
+               x==TextureAddress::Mirror ||
+               x==TextureAddress::MirrorOnce;
     };
     return address_ok(policy.u) && address_ok(policy.v) &&
         (policy.filter==TextureFilter::Point ||
@@ -40,6 +41,12 @@ inline std::uint32_t MapTexel(std::int64_t n,std::uint32_t size,
         return static_cast<std::uint32_t>(n);
     }
     const auto m=static_cast<std::int64_t>(size);
+    if(address==TextureAddress::MirrorOnce){
+        // Mirror negative texture coordinates once at zero, then clamp
+        // beyond either edge. Bilinear uses the same reflected texel map.
+        const auto mirrored=n<0 ? -n-1 : n;
+        return static_cast<std::uint32_t>(mirrored>=m ? m-1 : mirrored);
+    }
     if(address==TextureAddress::Mirror){
         // Reflect around both texel-edge boundaries. The mirrored
         // 2*size period must work for negative indices too, so bilinear

@@ -276,6 +276,19 @@ int main(){
     CHECK(!raster.DrawTextured(manual,layer));
     CHECK(raster.DrawnPixels()==count_before_invalid);
     CHECK(Pixel(raster,0,512,512)==blended);
+    // Original x86 D3DTADDRESS_MIRRORONCE traverses the real
+    // independent-eye texture path, not only the standalone sampler.
+    raster.Clear();
+    auto once_texture=mirror_texture;
+    once_texture.sampler={
+        TextureAddress::MirrorOnce,TextureAddress::MirrorOnce,
+        TextureFilter::Point};
+    for(auto& eye:mirror_geometry.eyes)
+        for(auto& tri:eye)
+            for(auto& v:tri.vertices){v.u=-1.75f;v.v=0.25f;}
+    CHECK(raster.DrawTextured(mirror_geometry,once_texture));
+    CHECK(Pixel(raster,0,512,512)==0x00ff00u);
+    CHECK(Pixel(raster,1,512,512)==0x00ff00u);
     // Validate the whole batch before either eye can write.
     auto invalid=manual;
     invalid.eyes[1][0].vertices[2].u=
