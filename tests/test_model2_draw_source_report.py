@@ -259,6 +259,11 @@ class SourceAuditTests(unittest.TestCase):
     def test_projected_material_candidates_require_exact_original_stage(self):
         # This is only fixed-function source evidence, never gameplay world
         # authorization; the original CPU camera/pass is still unknown.
+        self.assertEqual(REPORT.original_stage_source(4, 2, 1), "MODULATE")
+        self.assertEqual(REPORT.original_stage_source(2, 1, 2), "DIFFUSE")
+        self.assertEqual(REPORT.original_stage_source(3, 0, 2), "TEXTURE")
+        self.assertIsNone(REPORT.original_stage_source(4, 2, 3))
+        self.assertIsNone(REPORT.original_stage_source(2, 0x11, 2))
         data = {
             "origin": (0x44, pack(1, 0x144), pack(2048, 28)),
             "stage_color": (pack(4, 2), 0, pack(0x144, 28)),
