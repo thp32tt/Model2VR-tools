@@ -18,6 +18,34 @@ def fbits(value):
 
 
 class ProbeLogTests(unittest.TestCase):
+    def test_original_d3d9_eye_bootstrap_source_cause_summary(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/"startup.csv"
+            with path.open("w",newline="",encoding="utf-8") as handle:
+                writer=csv.writer(handle)
+                writer.writerow(["seq","qpc","thread","event",
+                                 "a0","a1","a2","a3"])
+                writer.writerow([1,101,7,"model2_vr_eye_bootstrap_failure",
+                                 3,0,(640<<32)|480,21])
+                writer.writerow([2,102,7,"model2_vr_eye_bootstrap_failure",
+                                 8,0x8876086C,(640<<32)|480,21])
+                writer.writerow([3,103,7,"model2_vr_eye_bootstrap_failure",
+                                 99,0,0,0])
+            result=MODULE.analyze(path)
+            status=result["d3d9"]["original_eye_bootstrap_failure_counts"]
+            self.assertEqual(status["SOURCE_TARGET_DEPTH_INCOMPATIBLE"],1)
+            self.assertEqual(status["EYE_MSAA_RESOLVE_ALLOCATION"],1)
+            self.assertEqual(status["INVALID_RECORD"],1)
+            examples=result["d3d9"]["original_eye_bootstrap_failure_examples"]
+            self.assertEqual(len(examples),2)
+            self.assertEqual(examples[1]["hresult_hex"],"0x8876086C")
+            self.assertEqual(examples[1]["source_width"],640)
+            self.assertEqual(examples[1]["source_height"],480)
+            self.assertEqual(examples[1]["world_pass_proof"],"NOT_ESTABLISHED")
+            rendered=MODULE.markdown(result)
+            self.assertIn("stereo eye-target bootstrap failures",rendered)
+            self.assertIn("WORLD PROOF UNKNOWN",rendered)
+
     def test_summary(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "probe.csv"
