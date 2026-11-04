@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'src/probe/daytona_native_stereo.*'
+      - 'src/probe/daytona_stereo_color_evidence.hpp'
+      - 'tests/daytona_mono_content_evidence_test.cpp'
       - 'src/probe/d3d9_*'
       - 'src/probe/verified_world_bridge.*'
       - 'src/vr/**'
