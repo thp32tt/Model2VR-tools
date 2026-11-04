@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <limits>
 #include "../src/probe/source_matrix_fingerprint.hpp"
+#include "../src/probe/original_cpu_source_draw_gate.hpp"
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"source/draw correlation line %d: %s\n",__LINE__,#x);return 1;}}while(0)
 using namespace m2vr::drawprobe;
 static void Capture(ProjectDrawCorrelator& c,std::uint64_t epoch,
@@ -101,6 +102,26 @@ int main(){
         87u,two_faces,6u);
     CHECK(stable_content.CompleteSameSource());
     CHECK(stable_content.StableOriginalProjectionProvenance());
+    CHECK(SameOriginalCpuSourceAtDraw(
+        0x1000u,0xAABBCCDDu,0x12u,
+        0x1000u,0xAABBCCDDu,true,0x12u));
+    CHECK(!SameOriginalCpuSourceAtDraw(
+        0x1000u,0xAABBCCDDu,0x12u,
+        0x1000u,0xDEADBEEFu,true,0x12u));
+    CHECK(!SameOriginalCpuSourceAtDraw(
+        0x1000u,0xAABBCCDDu,0x12u,
+        0x2000u,0xAABBCCDDu,true,0x12u));
+    CHECK(!SameOriginalCpuSourceAtDraw(
+        0x1000u,0xAABBCCDDu,0x12u,
+        0x1000u,0xAABBCCDDu,true,0x13u));
+    CHECK(!SameOriginalCpuSourceAtDraw(
+        0x1000u,0xAABBCCDDu,0x12u,
+        0x1000u,0xAABBCCDDu,false,0x12u));
+    CHECK(!SameOriginalCpuSourceAtDraw(
+        0u,0xAABBCCDDu,0x12u,
+        0u,0xAABBCCDDu,true,0x12u));
+    CHECK(!SameOriginalCpuSourceAtDraw(
+        0x1000u,0u,0x12u,0x1000u,0u,true,0x12u));
     CHECK(stable_content.common_matrix_fingerprint==0xAABBCCDDu);
     std::array<float,16> original_matrix{};
     original_matrix[0]=1.f;original_matrix[5]=1.f;

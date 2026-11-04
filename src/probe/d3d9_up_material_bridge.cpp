@@ -273,7 +273,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             .MatchTriangleList(m2vr::drawprobe::CurrentProjectDrawEpoch(),
                                screen.data(),count);
         if(!joined.StableOriginalProjectionProvenance() ||
-           joined.common_source_caller_rva!=expected_cpu_caller)
+           joined.common_source_caller_rva!=expected_cpu_caller ||
+           !Model2VR_OriginalCpuProjectionStillMatchesDraw(
+               joined.common_matrix_identity,
+               joined.common_matrix_fingerprint,
+               joined.common_geometry_command))
             return FALSE;
         const auto fit=m2vr::drawprobe::FitSourcePerspective(
             joined.camera_samples.data(),joined.camera_sample_count,

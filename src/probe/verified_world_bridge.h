@@ -111,6 +111,13 @@ __declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentTh
 // as this emulator's world output. No refs acquired and no state changed.
 __declspec(dllexport) BOOL __stdcall Model2VR_IsOriginalPrimaryD3D9Device(
     const void* d3d9_device);
+// Reject CPU projected-screen matches if the ORIGINAL source matrix or
+// geometry command has changed between CPU projection and GPU Draw.
+// This comparison grants NO world-pass proof on its own.
+__declspec(dllexport) BOOL __stdcall Model2VR_OriginalCpuProjectionStillMatchesDraw(
+    unsigned int original_matrix_identity,
+    unsigned int original_matrix_content_fingerprint,
+    unsigned int original_geometry_command_word);
 // The original projected XYZRHW/TEX1 D3D9 UP geometry can be converted to
 // calibrated 6DoF eyes ONLY if a separately proven world transaction is
 // active, at least two same-thread source triangles match the CPU projector

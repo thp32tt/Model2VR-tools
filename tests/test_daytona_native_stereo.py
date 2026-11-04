@@ -17,6 +17,11 @@ class NativeStereoTest(unittest.TestCase):
         # nested VB/IB and topology companions, enter through this gate.
         self.assertGreaterEqual(
             bridge.count("!Model2VR_IsOriginalPrimaryD3D9Device(d)"),2)
+        cpu_hook=(ROOT/"src/probe/hooks_x86.cpp").read_text("utf-8")
+        self.assertIn("Model2VR_OriginalCpuProjectionStillMatchesDraw",cpu_hook)
+        self.assertIn("ReadSourceMatrixFingerprint(current_matrix)",cpu_hook)
+        self.assertIn("SameOriginalCpuSourceAtDraw(",cpu_hook)
+        self.assertIn("!Model2VR_OriginalCpuProjectionStillMatchesDraw(",bridge)
 
     def test_actual_original_d3d9_draw_is_preserved_and_eyes_are_separate(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")

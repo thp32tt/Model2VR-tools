@@ -4,6 +4,7 @@
 #include "project_draw_correlator.hpp"
 #include "project_capture_stack.hpp"
 #include "source_matrix_fingerprint.hpp"
+#include "original_cpu_source_draw_gate.hpp"
 #include <array>
 #include "signature.h"
 
@@ -335,6 +336,28 @@ bool InstallOne(
 }
 
 }  // namespace
+
+// This export can be invoked by a game-specific, independently proven
+// CPU-world adapter at the original render-thread D3D9 Draw boundary.
+// It cannot authorize a world pass; it only rejects stale provenance.
+extern "C" __declspec(dllexport) BOOL __stdcall
+Model2VR_OriginalCpuProjectionStillMatchesDraw(
+    unsigned int matrix_identity,unsigned int matrix_fingerprint,
+    unsigned int geometry_command) {
+    if(!g_config.d3d9_read_only_probe ||
+       !g_config.active_matrix_ptr_rva ||
+       !g_config.geometry_stream_ptr_rva)
+        return FALSE;
+    const auto current_matrix=ReadStateRva(g_config.active_matrix_ptr_rva);
+    const auto current_fingerprint=
+        ReadSourceMatrixFingerprint(current_matrix);
+    const auto current_stream=ReadStateRva(g_config.geometry_stream_ptr_rva);
+    std::uint32_t command=0u;
+    const bool readable=ReadGeometryCommandWord(current_stream,command);
+    return m2vr::drawprobe::SameOriginalCpuSourceAtDraw(
+        matrix_identity,matrix_fingerprint,geometry_command,
+        current_matrix,current_fingerprint,readable,command) ? TRUE : FALSE;
+}
 
 namespace m2vr {
 
