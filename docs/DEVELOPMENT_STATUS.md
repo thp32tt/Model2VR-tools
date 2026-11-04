@@ -1,5 +1,28 @@
 # Development status
 
+## Original CPU-world incomplete-draw fail-closed source transaction — 2026-11-05
+
+- The explicit original x86 D3D9 CPU-world adapters (all 16 UP,
+  indexed-UP, vertex-buffer/index-buffer, and strip/fan exports) now
+  revoke the entire current CPU-world eye pair on any rejected source
+  extraction, world/RT/material gate failure, failed buffer lock, bad
+  projection join or alpha/depth mismatch. Previously some adapters
+  returned FALSE while leaving already accepted earlier Draws publishable.
+- A rejected original physical Present ID cannot reopen a partial
+  CPU-world transaction in that same frame. The next strictly increasing
+  original Present can begin normally. A late rejected source call from
+  the owning thread also revokes a pending but uncommitted pair.
+- This changes neither the original D3D9 Draw/Present HRESULT nor
+  the emulator simulation, wheel/FFB, experimental GPU fallback or
+  real backbuffer mono recovery. The single failure event
+  `model2_vr_cpu_world_source_rejected` records only frame, adapter kind
+  and already accepted draw/triangle counts; private vertex/image payloads
+  are not logged. The public analyzer reports this source-rejection route
+  separately from successful GPU, mono and verified CPU source delivery.
+- Source-only safety and CI tests do not establish race-world Draw caller,
+  camera axes, scene scale or real Quest 3/VDXR visuals:
+  `RUNTIME_VALIDATION=UNTESTED`.
+
 ## Current C-lane source checkpoint — 2026-11-04
 
 Repository SSOT: `thp32tt/Model2VR-tools@main`.

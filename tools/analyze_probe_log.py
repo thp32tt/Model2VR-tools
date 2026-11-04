@@ -355,6 +355,28 @@ def analyze(path: Path):
                             "source_format": a3,
                             "world_pass_proof": "NOT_ESTABLISHED",
                         })
+            elif event == "model2_vr_cpu_world_source_rejected":
+                # a0=physical original Present frame; a1=explicit adapter
+                # kind (0 native CPU raster, 1..16 original D3D9 families);
+                # a2=already appended Draws; a3=already appended triangles.
+                # Rejection revokes ALL partially composed CPU eyes: the
+                # original game and GPU/mono Present fallback still run.
+                if (a0 <= 0 or not 0 <= a1 <= 16 or
+                        not 0 <= a2 <= 2048 or not 0 <= a3 <= 2048):
+                    source_route_invalid_records += 1
+                else:
+                    source_route_counts["cpu_world_partial_source_revoked"] += 1
+                    source_route_counts[f"cpu_world_rejected_source_kind_{a1}"] += 1
+                    if len(source_route_examples) < 16:
+                        source_route_examples.append({
+                            "original_present_frame": a0,
+                            "route": "cpu_world_partial_source_revoked",
+                            "source_mode": "CPU-world",
+                            "reason_mask": a1,
+                            "prior_source_draws": a2,
+                            "prior_source_triangles": a3,
+                            "hmd_runtime_validation": "UNTESTED",
+                        })
             elif event == "model2_vr_cpu_world_present_commit":
                 # a0=original Present, a1=decision 0 NONE,1 WAIT,2 DROP,
                 # 3 PUBLISH; a2=actual IPC result; a3=0 CPU_ONLY,

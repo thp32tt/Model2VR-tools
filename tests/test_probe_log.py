@@ -47,6 +47,12 @@ class ProbeLogTests(unittest.TestCase):
                                  11,2,0,0])
                 writer.writerow([11,111,7,"model2_vr_cpu_world_backup",
                                  12,2,1,0])
+                writer.writerow([12,112,7,"model2_vr_cpu_world_source_rejected",
+                                 15,10,3,48])
+                writer.writerow([13,113,7,"model2_vr_cpu_world_source_rejected",
+                                 16,0,0,0])
+                writer.writerow([14,114,7,"model2_vr_cpu_world_source_rejected",
+                                 0,99,1,3])
             report=MODULE.analyze(path)
             routes=report["d3d9"]["native_stereo_source_route_counts"]
             self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
@@ -59,7 +65,15 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(routes["cpu_world_pose_expired"],1)
             self.assertEqual(routes["cpu_world_original_mono_backup_ready"],1)
             self.assertEqual(routes["cpu_world_mono_failed_gpu_eyes_backup"],1)
-            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],2)
+            self.assertEqual(routes["cpu_world_partial_source_revoked"],2)
+            self.assertEqual(routes["cpu_world_rejected_source_kind_10"],1)
+            self.assertEqual(routes["cpu_world_rejected_source_kind_0"],1)
+            source_examples=report["d3d9"]["native_stereo_source_route_examples"]
+            revoked=[x for x in source_examples
+                     if x["route"]=="cpu_world_partial_source_revoked"]
+            self.assertEqual(revoked[0]["prior_source_triangles"],48)
+            self.assertEqual(revoked[0]["original_present_frame"],15)
+            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],3)
             self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",
                           MODULE.markdown(report))
             self.assertIn("HMD=UNTESTED",MODULE.markdown(report))
