@@ -59,6 +59,34 @@ class SourceAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate original Draw result"):
                 REPORT.audit_csv(path)
 
+    def test_physical_original_present_must_succeed_after_draw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "physical_present.csv"
+            events = []
+            for witness, frame in ((21, 7), (22, 8), (23, 9)):
+                events.extend([
+                    ("model2_d3d9_vb_present_frame", witness, frame, 1, 0),
+                    ("model2_d3d9_vb_source", witness, 0x1234,
+                     pack(1, 0x104), pack(4096, 24)),
+                    ("model2_d3d9_vb_original_result", witness, 0, 0x1234,
+                     pack(frame, 1)),
+                ])
+            events.extend([
+                ("model2_d3d9_original_present_result", 7, 0, 1, 0),
+                ("model2_d3d9_original_present_result", 8, 0x88760868, 1, 0),
+            ])
+            self.write_log(path, events)
+            src = REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(src["original_draw_success_witnesses"], 3)
+            self.assertEqual(src["original_present_success_witnesses"], 1)
+            self.assertEqual(src["original_present_failed_witnesses"], 1)
+            self.assertEqual(src["original_present_missing_witnesses"], 1)
+            self.write_log(path, events + [
+                ("model2_d3d9_original_present_result", 7, 0, 1, 0),
+            ])
+            with self.assertRaisesRegex(ValueError, "duplicate physical Present"):
+                REPORT.audit_csv(path)
+
     def test_join_indexed_stream_camera_and_texture_without_world_proof(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "probe.csv"

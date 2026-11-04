@@ -55,3 +55,15 @@ Prior reports without this post-call evidence intentionally fail closed.
 Collect authorized *private* real Daytona race and nonrace captures using
 matching Win32 probe and report versions. Successful HRESULT alone is still
 not world-camera, HUD/sky/mirror, game-units or 6DoF proof.
+
+## Physical original Present outcome gate (2026-11-05)
+
+The 32-bit D3D9 hook now records the single actual primary-device Present
+HRESULT only on frames with sampled original VB/IB Draw-result witnesses.
+A successfully returned original Draw is insufficient: the private
+cross-phase shortlist also requires a matching successful physical Present
+for at least two distinct race frames in each independent capture. The
+CSV report counts failed/missing physical Present outcomes, rejects
+invalid/duplicate result events and never fills missing outcomes from
+camera-fit or a successful OpenXR host-only colored-eye display.
+The original Present is still called once and its HRESULT is unchanged.

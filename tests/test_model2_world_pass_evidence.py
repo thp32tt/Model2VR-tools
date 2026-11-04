@@ -14,6 +14,9 @@ def witness(cpu="0x004bb400", count=3):
         "original_draw_failure_witnesses": 0,
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
+        "distinct_physically_presented_material_present_frame_count": count,
+        "original_present_failed_witnesses": 0,
+        "original_present_missing_witnesses": 0,
         "distinct_same_witness_joint_present_frame_count": count,
         "distinct_context_present_frame_count": count,
         "original_source_vertex_pipeline_status": ["supported"],
@@ -85,6 +88,9 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             {"original_draw_failure_witnesses": 1},
             {"original_draw_result_missing_witnesses": 1},
             {"original_draw_result_inconsistent_witnesses": 1},
+            {"distinct_physically_presented_material_present_frame_count": 0},
+            {"original_present_failed_witnesses": 1},
+            {"original_present_missing_witnesses": 1},
         ):
             with self.subTest(damaged=damaged):
                 source = witness()

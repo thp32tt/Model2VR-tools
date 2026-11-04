@@ -75,6 +75,7 @@ def _enough_original_source(source):
     for field in (
         "distinct_projected_material_present_frame_count",
         "distinct_successful_projected_material_present_frame_count",
+        "distinct_physically_presented_material_present_frame_count",
         "distinct_same_witness_joint_present_frame_count",
         "distinct_context_present_frame_count",
     ):
@@ -85,6 +86,8 @@ def _enough_original_source(source):
         "original_draw_failure_witnesses",
         "original_draw_result_missing_witnesses",
         "original_draw_result_inconsistent_witnesses",
+        "original_present_failed_witnesses",
+        "original_present_missing_witnesses",
     ):
         if type(source.get(field)) is not int or source[field] != 0:
             return False
@@ -142,6 +145,10 @@ def compare_sessions(race_reports, nonrace_reports):
                 "race_session_count": len(race),
                 "per_race_source_present_counts": [
                     session[key]["distinct_projected_material_present_frame_count"]
+                    for session in race
+                ],
+                "per_race_physically_presented_frame_counts": [
+                    session[key]["distinct_physically_presented_material_present_frame_count"]
                     for session in race
                 ],
                 "evidence": "same_witness_source_candidate_only",

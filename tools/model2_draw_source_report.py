@@ -493,6 +493,7 @@ def store_original_draw_witness_field(fields, name, values, witness):
 
 def audit_csv(path):
     witnesses = {}
+    physical_presents = {}
     ignored = Counter()
     with open(path, "r", encoding="utf-8-sig", newline="") as source:
         reader = csv.DictReader(source)
@@ -502,6 +503,18 @@ def audit_csv(path):
             if count > MAX_ROWS:
                 raise ValueError("CSV row limit exceeded")
             event = row["event"]
+            if event == "model2_d3d9_original_present_result":
+                try:
+                    frame, hresult, sampled, reserved = (
+                        number(row[k]) for k in ("a0", "a1", "a2", "a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(f"invalid original Present row {count}") from exc
+                if (frame == 0 or frame > 0xFFFFFFFF or hresult > 0xFFFFFFFF
+                        or sampled == 0 or sampled > MAX_WITNESSES
+                        or reserved != 0 or frame in physical_presents):
+                    raise ValueError(f"invalid/duplicate physical Present {count}")
+                physical_presents[frame] = hresult
+                continue
             if event not in NAMES:
                 continue
             try:
@@ -641,7 +654,11 @@ def audit_csv(path):
         "original_draw_failure_witnesses": 0,
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
+        "original_present_success_witnesses": 0,
+        "original_present_failed_witnesses": 0,
+        "original_present_missing_witnesses": 0,
         "original_successful_projected_material_present_frames": set(),
+        "original_physically_presented_material_present_frames": set(),
         "same_witness_joint_candidates": 0,
         "same_witness_joint_present_frames": set(),
         "same_witness_joint_cpu_matrix_commands": set(),
@@ -706,6 +723,18 @@ def audit_csv(path):
             else:
                 original_success = True
                 entry["original_draw_success_witnesses"] += 1
+        # Even an authentic successful COM Draw may never reach the screen
+        # if the physical original Present failed (e.g. lost D3D9 device).
+        original_present_success = False
+        if original_success:
+            present_hresult = physical_presents.get(present_frame)
+            if present_hresult is None:
+                entry["original_present_missing_witnesses"] += 1
+            elif present_hresult & 0x80000000:
+                entry["original_present_failed_witnesses"] += 1
+            else:
+                original_present_success = True
+                entry["original_present_success_witnesses"] += 1
         if "source_context" in data:
             ctx_frame, ctx_flags, ctx_size = data["source_context"]
             target = ctx_flags & 3
@@ -936,6 +965,9 @@ def audit_csv(path):
             if original_success:
                 entry["original_successful_projected_material_present_frames"].add(
                     present_frame)
+            if original_present_success:
+                entry["original_physically_presented_material_present_frames"].add(
+                    present_frame)
             # This qualifies a SOURCE MATERIAL candidate only. A private
             # authenticated game-world owner, camera axis/units and HMD test
             # are still all required before enabling actual XR replay.
@@ -983,6 +1015,8 @@ def audit_csv(path):
             value["projected_material_correlated_present_frames"])
         record["distinct_successful_projected_material_present_frame_count"] = len(
             value["original_successful_projected_material_present_frames"])
+        record["distinct_physically_presented_material_present_frame_count"] = len(
+            value["original_physically_presented_material_present_frames"])
         record["distinct_correlated_present_frame_count"] = len(
             value["correlated_present_frames"])
         for key, item in value.items():
@@ -993,6 +1027,7 @@ def audit_csv(path):
                         "original_material_present_frames",
                         "projected_material_correlated_present_frames",
                         "original_successful_projected_material_present_frames",
+                        "original_physically_presented_material_present_frames",
                        "same_witness_joint_present_frames"):
                 continue
             if isinstance(item, set):

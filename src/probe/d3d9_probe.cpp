@@ -76,6 +76,9 @@ std::array<std::atomic<unsigned>,4> g_family_samples{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 std::atomic<std::uint64_t> g_witness_serial{0};
+// Only frames containing a real sampled original VB/IB Draw receive a
+// matching physical original Present outcome. No per-Draw GPU readback.
+std::atomic<unsigned> g_original_vb_result_samples{0u};
 std::uint32_t g_draw_sample_every=1024u;
 std::atomic<bool> g_device_installed{false};
 m2vr::drawprobe::OriginalD3D9DeviceOwner g_primary_device{};
@@ -1033,6 +1036,7 @@ void RecordOriginalVBResult(std::uint64_t witness,HRESULT hr,
     m2vr::LogEvent("model2_d3d9_vb_original_result",witness,
         static_cast<std::uint32_t>(hr),CallerRva(caller),
         (frame<<32)|family);
+    g_original_vb_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     // Consume the original CPU projector witnesses once this physical
@@ -1190,6 +1194,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
+    const auto vb_samples=g_original_vb_result_samples.exchange(
+        0u,std::memory_order_relaxed);
+    if(vb_samples)
+        m2vr::LogEvent("model2_d3d9_original_present_result",frame,
+            static_cast<std::uint32_t>(original_result),vb_samples,0u);
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair
