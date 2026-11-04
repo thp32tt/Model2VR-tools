@@ -516,3 +516,38 @@ establishes coverage. An independently valid full original Z clear remains
 ready and is not overwritten by the first synthetic color initialization.
 Auxiliary full-color admission and individual depth readiness stay
 independent. Runtime headset fidelity is still UNTESTED.
+
+## Original Daytona game-backbuffer HMD visibility fallback (2026-11-05)
+
+When the experimental original D3D9 shader-UP source cannot produce a
+verified distinct binocular frame, the x86 producer now captures the actual
+original game's **pre-Present backbuffer**. Only successful original
+Present may publish the same captured image to both eyes under a **new
+`FrameKind::GameMonoFallback` transport identity**. This is a flat live
+image, **not native stereoscopic geometry**. Genuine independently
+rasterized `GameStereo` retains priority; no original game Draw,
+Present, simulation tick or FFB command is replayed. If neither camera
+nor source capture succeeds, the XR host continues the solid-color
+diagnostic fallback and logs the actual cause.
+
+The original D3D9 source capture supports eligible 32-bit BGRA
+backbuffers including MSAA resolve, reuses system-memory staging
+resources across Presents and converts to fixed 1024x1024 RGBA with
+aspect preservation. F9 and normal host logs distinguish
+`LIVE_ORIGINAL_GAME_2D_FALLBACK` versus
+`LIVE_GAME_STEREO_NOT_CAMERA_VERIFIED`. The producer CSV logs
+`model2_vr_original_mono_capture_failure` with bounded numeric
+stage/HRESULT: 1=GetBackBuffer, 2=layout, 3=scale plan,
+4=staging allocation, 5=MSAA resolve allocation, 6=resolve call,
+7=GPU→CPU readback, 8=LockRect, 9=RGBA conversion. A bounded
+`model2_vr_original_mono_content` grid sample reports only counts
+of non-black and visually varied pixels, never private image data.
+`model2_vr_original_mono_fallback` reports the original stereo
+rejection reason. Host mode labels are evidence of transport, not
+proof of original camera world ownership or physical 6DoF.
+
+**RUNTIME_VALIDATION=UNTESTED**. Source-only Windows CI cannot confirm
+the original emulator renders a readable backbuffer or correct Quest3
+optics. The original game-world CPU/GPU caller, projection matrix A/B
+and units-per-metre are still unproven. No new private game assets or
+reverse engineering dumps are stored in this public repository.

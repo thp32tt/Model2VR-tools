@@ -220,6 +220,13 @@ target_compile_features(daytona_original_mono_fallback_x86_test PRIVATE cxx_std_
 add_test(NAME daytona_original_present_mono_fallback_x86
     COMMAND daytona_original_mono_fallback_x86_test)
 
+# Source-pixel visibility aggregates never publish raw original game pixels.
+add_executable(daytona_mono_content_evidence_x86_test
+    tests/daytona_mono_content_evidence_test.cpp)
+target_compile_features(daytona_mono_content_evidence_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_backbuffer_visibility_evidence_x86
+    COMMAND daytona_mono_content_evidence_x86_test)
+
 # Source D3D9 BGRA eye readback to fixed RGBA OpenXR transport.
 add_executable(daytona_readback_scale_x86_test tests/daytona_readback_scale_test.cpp)
 target_compile_features(daytona_readback_scale_x86_test PRIVATE cxx_std_20)

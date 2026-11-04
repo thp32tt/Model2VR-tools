@@ -10,6 +10,7 @@
 #include "daytona_triangle_eye_shift.hpp"
 #include "daytona_readback_scale.hpp"
 #include "daytona_original_mono_fallback.hpp"
+#include "daytona_mono_content_evidence.hpp"
 #include "daytona_surface_transfer_gate.hpp"
 #include "daytona_auxiliary_surface_gate.hpp"
 #include "logger.h"
@@ -597,10 +598,16 @@ private:
                         m2vr::LogEvent("model2_vr_scene_reject_reason",frame,
                                        reason,scene_rejections_[reason],0u);
             }
-            if(reason==m2vr::producerhealth::OriginalMonoFallback)
+            if(reason==m2vr::producerhealth::OriginalMonoFallback){
                 m2vr::LogEvent("model2_vr_original_mono_fallback",frame,
                                pending_mono_source_reason_,mirrored_draws_,
                                (std::uint64_t{mono_width_}<<32)|mono_height_);
+                // Aggregates alone, not copyrighted game screen pixels:
+                // black/flat original backbuffer versus visible varied game.
+                m2vr::LogEvent("model2_vr_original_mono_content",frame,
+                               mono_evidence_.nonblack,mono_evidence_.varied,
+                               mono_evidence_.sampled);
+            }
             if(first || first_mono)m2vr::FlushLog();
         }
         if(first)first_stereo_published_=true;
@@ -909,14 +916,16 @@ private:
                                       transfer,&desc);
         }
         Drop(source);
+        // Allocate before locking the original staging surface so an
+        // allocation failure cannot strand D3D9's CPU lock.
+        if(mono_rgba_.size()!=m2vr::transport::kBytesPerEye)
+            mono_rgba_.resize(m2vr::transport::kBytesPerEye);
         D3DLOCKED_RECT locked{};
         const HRESULT lock_hr=mono_staging_->LockRect(
             &locked,nullptr,D3DLOCK_READONLY);
         if(FAILED(lock_hr))
             return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Lock,
                                       lock_hr,&desc);
-        if(mono_rgba_.size()!=m2vr::transport::kBytesPerEye)
-            mono_rgba_.resize(m2vr::transport::kBytesPerEye);
         const bool ready=mono_scale_.Convert(
             static_cast<const std::uint8_t*>(locked.pBits),locked.Pitch,
             mono_rgba_.data(),mono_rgba_.size());
@@ -925,6 +934,9 @@ private:
             return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Convert,
                                       S_OK,&desc);
         last_mono_failure_stage_=0u;last_mono_failure_hr_=0u;
+        mono_evidence_=m2vr::daytona::InspectOriginalMonoRGBA(
+            mono_rgba_.data(),mono_rgba_.size(),m2vr::transport::kWidth,
+            m2vr::transport::kHeight,m2vr::transport::kPitch);
         return true;
     }
     bool RejectOriginalMono(m2vr::daytona::OriginalMonoFailure stage,HRESULT hr,
@@ -972,6 +984,7 @@ private:
         mono_width_=mono_height_=0u;
         last_mono_failure_stage_=last_mono_failure_hr_=0u;
         mono_scale_=m2vr::daytona::ReadbackScalePlan{};
+        mono_evidence_={};
         for(auto& eye:aux_eyes_)eye.Clear();
         Drop(aux_original_);Drop(aux_original_depth_);
         for(auto& eye:eyes_)eye.Clear();
@@ -1027,6 +1040,7 @@ private:
     D3DMULTISAMPLE_TYPE mono_sample_=D3DMULTISAMPLE_NONE;
     m2vr::daytona::ReadbackScalePlan mono_scale_{};
     std::vector<std::uint8_t> mono_rgba_;
+    m2vr::daytona::OriginalMonoContentEvidence mono_evidence_{};
 };
 EyeClones g_eye;
 } // namespace

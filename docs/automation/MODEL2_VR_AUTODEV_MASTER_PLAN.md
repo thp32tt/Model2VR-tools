@@ -463,3 +463,28 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
 - **Verification boundary:** source/content wiring was read back from GitHub and native x86/x64 test targets were added. No exact-SHA Windows Actions result or Quest 3+VDXR runtime confirmation is asserted by this note; verify CI on the latest source SHA before marking BUILD_VERIFIED. `RUNTIME_VALIDATION=UNTESTED`. The direct launcher is still a Windows batch with grouped local logs. No original emulator Draw, simulation, FFB ownership or 2D fallback path changed.
 - **Additional original x86 source continuity:** exact native D3D9 eye bootstrap now emits the first distinct failure reason/HRESULT/size/format for nine pre-Draw resource stages (backbuffer, source RT/DS compatibility, MRT caps, scale plan, color/depth/MSAA/CPU-staging allocation). Identical failures do not emit per-Draw spam; the first new failure is flushed even if the process exits immediately. The existing `tools/analyze_probe_log.py` includes a bounded, pointer-free `original_eye_bootstrap_failure_counts` report with private-world proof still explicitly `NOT_ESTABLISHED`. Material commits `7fafcb88`, `488cad56`, `c710d311` and regression commits `14fc54d3` / `e85d3c6d` are part of this connected source-triage work, not new scores per commit. No Win32 CI or HMD success is claimed yet.
 - **NEXT ACTUAL DEV:** use real authorized PRIVATE original Daytona race gameplay to independently authenticate source CPU ProjectVertexToScreen/matrix branch/geometry-command and GPU Draw/RT/Present ownership, then calibrate axes/units-per-meter before enabling only proven-world D3D9 draws through the existing x86-to-x64 independent eye world renderer. The status classifier is diagnostic, not a replacement for true 6DoF scene rendering. Keep unknown HUD/menu/aux/sky on original mono fallback; never infer world proof from a synthetic source test or a host-only colored-eye image.
+
+## 2026-11-05 — original-game 2D backbuffer bridge when native stereo lacks proof
+
+- Connected changes: additional `GameMonoFallback=3` x86/x64 64-byte wire
+  preserving exact original Present frame and original single simulation tick;
+  native x86 CPU-readable original D3D9 backbuffer MSAA resolve/scale and
+  conditional publish only after the original Present succeeds; separate
+  Win64 OpenXR `LIVE_ORIGINAL_GAME_2D_FALLBACK` health/F9 classification;
+  bounded HRESULT-stage capture failures, original backbuffer content
+  visibility *aggregate* and native x86/x64 safety tests. These are one
+  connected original-game pixel delivery milestone, not individual points.
+- Distinct `GameStereo` remains the only true independent-eye stream.
+  Live mono game output **does not** authenticate a stereo game-world
+  camera, gameplay matrix ownership, HUD boundary or per-eye projection.
+  An original-frame capture that fails leaves clear diagnostic host colors
+  with exact stage/error metadata; neither source image nor ROM/source
+  disassembly is copied into GitHub.
+- The original emulator Draw/Present/FFB untouched, source sampler/world
+  proof remains gated; HMD `RUNTIME_VALIDATION=UNTESTED` until the user
+  explicitly confirms a real original Daytona + Quest3/VDXR session.
+  CI evidence must refer to the final exact SHA only, never prior green
+  commits. Next: private authentic race gameplay evidence to authenticate
+  projector caller, matrix geometry command, units/meter and world-only
+  Draw pass; then enable calibrated per-eye game world on the existing
+  x86->x64 bridge while retaining the mono escape hatch.

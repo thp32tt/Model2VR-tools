@@ -23,6 +23,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("CanPublishOriginalMono",source)
         self.assertIn("original_present_ok && !stereo_published",decision)
         self.assertIn("model2_vr_original_mono_capture_failure",source)
+        self.assertIn("InspectOriginalMonoRGBA(",source)
         self.assertNotIn("Model2VR_SubmitStereoRGBAWithPose(\n                    mono_rgba_",source)
 
     def test_original_d3d9_eye_bootstrap_failure_has_one_root_cause(self):
@@ -186,7 +187,11 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("g_native_stereo=native_stereo",hooks)
         self.assertIn("CreateRenderTarget(width_,height_",gpu)
         self.assertIn("CreateDepthStencilSurface(width_,height_",gpu)
-        self.assertIn("desc.MultiSampleType,desc.MultiSampleQuality",gpu)
+        # The actual render target and source framebuffer must preserve
+        # the per-eye MSAA type/quality; formatting or variable renaming
+        # in the adjacent mono fallback must not make this test stale.
+        self.assertIn("color_desc.MultiSampleType,color_desc.MultiSampleQuality",gpu)
+        self.assertIn("desc.MultiSampleType,",gpu)
         self.assertIn("CreateRenderTarget(width_,height_,desc.Format",gpu)
         self.assertIn("d->StretchRect(eyes_[eye].color,nullptr",gpu)
         self.assertIn("readback_source=eyes_[eye].resolve",gpu)
@@ -324,7 +329,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("!fresh_pose ? 16u : 0u",gpu)
         self.assertIn("reason=64u",gpu)
         self.assertIn("reason=128u",gpu)
-        self.assertIn("if(frame==1u || frame%120u==0u || first)",gpu)
+        self.assertIn("if(frame==1u || frame%120u==0u || first || first_mono)",gpu)
+        self.assertIn("model2_vr_original_mono_content",gpu)
         self.assertIn("++mirrored_draws_",gpu)
         self.assertIn("++mirrored_clears_",gpu)
         self.assertIn("mrt_slots_=caps.NumSimultaneousRTs;",gpu)

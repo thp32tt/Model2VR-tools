@@ -34,7 +34,11 @@ constexpr Status Classify(const Evidence& e) noexcept {
         return e.pair_is_original_mono
             ?Status::LiveOriginalMonoFallback:Status::DiagnosticOnly;
     }
-    if(e.producer_health_fresh && e.producer_reason_mask!=0u)
+    // 512 is OriginalMonoFallback, meaning an actual original game mono
+    // frame was published. If it becomes stale, diagnose frame timing,
+    // not an imaginary original D3D9 render failure.
+    if(e.producer_health_fresh && e.producer_reason_mask!=0u &&
+       e.producer_reason_mask!=512u)
         return Status::ProducerRejected;
     if(e.missing_original_pose_tag)return Status::MissingOriginalPoseTag;
     if(e.expired_original_pose_tag)return Status::ExpiredOriginalPoseTag;

@@ -64,6 +64,12 @@ target_compile_features(daytona_original_mono_fallback_x64_test PRIVATE cxx_std_
 add_test(NAME daytona_original_present_mono_fallback_x64
     COMMAND daytona_original_mono_fallback_x64_test)
 
+add_executable(daytona_mono_content_evidence_x64_test
+    ../tests/daytona_mono_content_evidence_test.cpp)
+target_compile_features(daytona_mono_content_evidence_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_backbuffer_visibility_evidence_x64
+    COMMAND daytona_mono_content_evidence_x64_test)
+
 # Same admission contract must compile and behave identically on the
 # 64-bit Quest OpenXR host and 32-bit original Daytona renderer.
 add_executable(daytona_eye_pose_gate_x64_test ../tests/daytona_eye_pose_gate_test.cpp)

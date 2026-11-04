@@ -33,6 +33,8 @@ int main(){
     // newer original Present: the host must set paired_frame_fresh=false.
     e.paired_frame_fresh=false;e.producer_reason_mask=256;
     assert(Classify(e)==Status::ProducerRejected);
+    e.producer_reason_mask=512u;
+    assert(Classify(e)==Status::SourcePairStale);
     TransitionGate gate;
     assert(gate.Changed(Status::NoFrameTransport));
     assert(!gate.Changed(Status::NoFrameTransport));
