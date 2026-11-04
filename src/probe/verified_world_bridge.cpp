@@ -3,6 +3,7 @@
 #include "verified_world_bridge.h"
 #include "../vr/model2_stereo_raster.hpp"
 #include "../vr/model2_head_recenter.hpp"
+#include "../vr/model2_camera_source_contract.hpp"
 #include "daytona_eye_pose_gate.hpp"
 #include <Windows.h>
 #include <algorithm>
@@ -25,6 +26,7 @@ struct Bridge {
     std::unique_ptr<m2vr::vr::StereoWorldRaster> raster;
     m2vr::vr::Model2FramePoseLatch latch;
     m2vr::vr::Model2HeadRecenter head_origin;
+    m2vr::vr::Model2CameraEpochContract camera_epoch;
     m2vr::vr::Model2CameraCalibration calibration{};
     m2vr::vr::DrawEvidence evidence{};
     std::uint64_t frame=0,last_completed=0;
@@ -97,13 +99,16 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         // Source game vertices are in camera view space, not XR LOCAL.
         // Stage new origin until proof, fresh pose and latch all succeed.
         auto next_origin=g.head_origin;
+        auto next_camera=g.camera_epoch;
         m2vr::pose::Frame camera_relative{};
-        if(!next_origin.Rebase(predicted,camera_relative) ||
+        if(!next_camera.Admit(cal) ||
+           !next_origin.Rebase(predicted,camera_relative) ||
            !g.latch.Begin(frame_id,camera_relative))return FALSE;
         if(!g.raster)
             g.raster=std::make_unique<m2vr::vr::StereoWorldRaster>();
         g.raster->Clear();
         g.head_origin=next_origin;
+        g.camera_epoch=next_camera;
         g.frame=frame_id;
         g.owner=GetCurrentThreadId();
         g.calibration=cal;
@@ -281,6 +286,7 @@ extern "C" BOOL __stdcall Model2VR_ResetVerifiedWorldTrackingOrigin() {
     std::scoped_lock lock(g.mutex);
     if(g.active)return FALSE;
     g.head_origin.Reset();
+    g.camera_epoch.Reset();
     g.latch.Reset();
     g.last_completed=0;
     return TRUE;

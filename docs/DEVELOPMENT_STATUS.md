@@ -74,6 +74,24 @@ simulation or FFB is changed. This complements, never replaces, the
 separately verified world/camera proof and valid head-relative OpenXR pose.
 Actual Daytona D3D9 projection and Quest 3 visual correctness remain UNTESTED.
 
+## Camera-epoch calibration consistency and release integration (2026-11-04)
+
+`Model2CameraEpochContract` holds the game-adapter-proven 3x3
+view-axis conversion, units-per-meter and clip near plane within a verified
+world camera epoch. Any sudden source mapping/scale change fails closed
+rather than causing a left/right reversal, shifting apparent world scale
+or restarting tracking origin. The calibration and HMD anchor are staged
+together and committed only after authenticated source, fresh binocular
+pose and a successful game-frame latch. An explicit scene/device reset
+resets both epochs; ordinary failed draws cannot silently rebase. The
+source-unit calibration is still unknown in actual Daytona gameplay.
+
+The Daytona x86/x64 release workflow now observes the source world adapter,
+camera/geometry headers and relevant camera regressions instead of silently
+skipping a release when only these sources are changed. Build/CI remains
+synthetic until original emulator + Quest 3 runtime visual confirmation.
+`RUNTIME_VALIDATION=UNTESTED`.
+
 ## Historical milestone reference
 
 ## Milestone 01 — Read-only runtime probe

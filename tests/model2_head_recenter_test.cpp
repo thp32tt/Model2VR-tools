@@ -1,5 +1,6 @@
 #include "../src/vr/model2_head_recenter.hpp"
 #include "../src/vr/model2_frame_latch.hpp"
+#include "../src/vr/model2_camera_source_contract.hpp"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -83,5 +84,31 @@ int main(){
     CHECK(rebase.Rebase(moved,output));
     CHECK(Near(output.eyes[0].position_m[0],-0.032f));
     CHECK(Near(output.eyes[0].orientation_xyzw[3],1.f));
+    // Source camera-axis and world scale are immutable for an emulated
+    // race camera epoch, not automatically inferred from the headset.
+    Model2CameraEpochContract camera_epoch;
+    Model2CameraCalibration cal{};
+    cal.view_to_xr={1.f,0.f,0.f,0.f,1.f,0.f,0.f,0.f,-1.f};
+    cal.units_per_meter=100.f;
+    cal.min_depth_m=0.05f;
+    cal.runtime_confirmed=true;
+    CHECK(camera_epoch.Admit(cal));
+    CHECK(camera_epoch.Anchored());
+    auto changed=cal;
+    changed.units_per_meter=50.f;
+    CHECK(!camera_epoch.Admit(changed));
+    changed=cal;changed.min_depth_m=0.01f;
+    CHECK(!camera_epoch.Admit(changed));
+    changed=cal;
+    changed.view_to_xr={-1.f,0.f,0.f,0.f,1.f,0.f,0.f,0.f,-1.f};
+    CHECK(!camera_epoch.Admit(changed));
+    changed=cal;changed.runtime_confirmed=false;
+    CHECK(!camera_epoch.Admit(changed));
+    changed=cal;changed.units_per_meter=100.0005f;
+    CHECK(camera_epoch.Admit(changed)); // tolerates numerical roundoff
+    CHECK(camera_epoch.Admit(cal)); // a rejection must not mutate baseline
+    camera_epoch.Reset();
+    CHECK(!camera_epoch.Anchored());
+    CHECK(camera_epoch.Admit(changed)); // explicit new verified epoch
     return 0;
 }
