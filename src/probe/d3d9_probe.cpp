@@ -604,7 +604,18 @@ HRESULT STDMETHODCALLTYPE CreateDeviceHook(IDirect3D9* api,UINT adapter,D3DDEVTY
     if(SUCCEEDED(hr)&&out&&*out){
         m2vr::LogEvent("model2_d3d9_device_created",
             pp?pp->BackBufferWidth:0,pp?pp->BackBufferHeight:0,flags);
-        HookDevice(*out);
+        if(pp){
+            m2vr::LogEvent("model2_d3d9_device_surface",
+                static_cast<std::uint32_t>(pp->BackBufferFormat),
+                static_cast<std::uint32_t>(pp->MultiSampleType),
+                static_cast<std::uint32_t>(pp->AutoDepthStencilFormat),
+                pp->EnableAutoDepthStencil?1u:0u);
+        }
+        const bool hooks_ready=HookDevice(*out);
+        m2vr::LogEvent("model2_d3d9_device_hook_result",hooks_ready?1u:0u);
+        // This is a one-time startup boundary. Flush it immediately so a
+        // later device/render failure cannot hide the exact hook outcome.
+        m2vr::FlushLog();
     }
     return hr;
 }
