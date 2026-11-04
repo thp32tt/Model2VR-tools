@@ -44,6 +44,8 @@ class SourceAuditTests(unittest.TestCase):
                  pack(3, 4), pack(1, 0), pack(0, 0)),
                 ("model2_d3d9_source_depth_cull", 101,
                  pack(1, 4), pack(1, 3), 17),
+                ("model2_d3d9_source_vertex_pipeline",101,
+                 pack(2,1),pack(0,0),pack(0,17)),
                 ("model2_d3d9_vb_write_color", 101,
                  pack(0, 15), 0, 0),
                 ("model2_d3d9_source_color_mask", 101,
@@ -78,6 +80,8 @@ class SourceAuditTests(unittest.TestCase):
                 ("model2_d3d9_vb_camera_unknown", 102, 0, 0, 0),
                 ("model2_d3d9_source_color_mask", 102,
                  0, pack(0x112, 20), 17),
+                ("model2_d3d9_source_vertex_pipeline",102,
+                 pack(2,1),pack(0,0),pack(0,18)),
                 ("model2_d3d9_ib_source", 99, 101, 500, 0),
             ])
             result = REPORT.audit_csv(p)
@@ -98,6 +102,8 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["raster_modes"], [[3, 4, 1, 0, 0, 0]])
             self.assertEqual(src["original_source_depth_cull_status"],
                              ["supported"])
+            self.assertEqual(src["original_source_vertex_pipeline_status"],
+                             ["present_mismatch","supported"])
             self.assertEqual(src["color_write_modes"], [[0, 15]])
             self.assertEqual(src["original_source_color_mask_modes"], [0, 15])
             self.assertEqual(src["original_depth_only_draw_witnesses"], 1)
@@ -242,6 +248,38 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p, bad)
             self.assertEqual(REPORT.audit_csv(p)["sources"][0][
                 "same_witness_joint_candidates"], 0)
+
+    def test_original_vertex_pipeline_same_draw_and_present_only(self):
+        status=REPORT.original_d3d9_vertex_pipeline_status
+        good=(pack(2,1),pack(0,0),pack(0,17))
+        self.assertEqual(status(None,17),"unobserved")
+        self.assertEqual(status(good,17),"supported")
+        self.assertEqual(status(good,18),"present_mismatch")
+        self.assertEqual(status((pack(1,1),pack(0,0),pack(0,17)),17),
+                         "unsupported")  # FLAT shading
+        self.assertEqual(status((pack(2,0),pack(0,0),pack(0,17)),17),
+                         "unsupported")  # original CLIPPING disabled
+        self.assertEqual(status((pack(2,1),pack(1,0),pack(0,17)),17),
+                         "unsupported")  # user clip plane
+        self.assertEqual(status((pack(2,1),pack(0,1),pack(0,17)),17),
+                         "unsupported")  # blended original vertex
+        self.assertEqual(status((pack(2,1),pack(0,0),pack(1,17)),17),
+                         "unsupported")  # indexed matrix blending
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"vertex_stage.csv"
+            self.write_log(p,[
+                ("model2_d3d9_vb_present_frame",301,17,1,0),
+                ("model2_d3d9_vb_source",301,0x44,pack(1,0x144),pack(2048,28)),
+                ("model2_d3d9_source_vertex_pipeline",301,*good),
+                ("model2_d3d9_vb_present_frame",302,17,1,0),
+                ("model2_d3d9_vb_source",302,0x44,pack(1,0x144),pack(2048,28)),
+                ("model2_d3d9_source_vertex_pipeline",302,
+                 pack(2,1),pack(0,0),pack(0,18)),
+            ])
+            src=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["original_source_vertex_pipeline_status"],
+                             ["present_mismatch","supported"])
+            self.assertFalse(src["world_pass_proven"])
 
     def test_original_depth_cull_same_witness_never_world_proof(self):
         check=REPORT.original_d3d9_depth_cull_status
