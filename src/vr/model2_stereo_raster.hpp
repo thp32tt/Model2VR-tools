@@ -146,6 +146,32 @@ private:
                        double x,double y) noexcept {
         return (b.x-a.x)*(y-a.y)-(b.y-a.y)*(x-a.x);
     }
+    // A source pixel on a shared edge belongs to exactly one triangle.
+    // Normalize the winding for the D3D9-style top-left fill convention;
+    // without ownership, translucent triangle strips blend twice on seams.
+    static bool BarycentricTopLeft(const std::array<Vertex,3>& v,
+                                   double signed_area,double px,double py,
+                                   double& a,double& b,double& c) noexcept {
+        const double sign=signed_area>0. ? 1. : -1.;
+        const double wa=sign*Edge(v[1],v[2],px,py);
+        const double wb=sign*Edge(v[2],v[0],px,py);
+        const double wc=sign*Edge(v[0],v[1],px,py);
+        const auto inside=[sign](double weight,const Vertex& start,
+                                 const Vertex& end) noexcept {
+            constexpr double epsilon=1.e-9;
+            if(weight>epsilon)return true;
+            if(weight< -epsilon)return false;
+            const double dx=(end.x-start.x)*sign;
+            const double dy=(end.y-start.y)*sign;
+            return dy<0. || (dy==0. && dx>0.);
+        };
+        if(!inside(wa,v[1],v[2]) ||
+           !inside(wb,v[2],v[0]) ||
+           !inside(wc,v[0],v[1]))return false;
+        const double denominator=std::abs(signed_area);
+        a=wa/denominator;b=wb/denominator;c=wc/denominator;
+        return true;
+    }
     void Triangle(std::size_t eye,const ClippedEyeTriangle& tri,
                   std::uint32_t rgb) noexcept {
         std::array<Vertex,3> v{};
@@ -173,16 +199,17 @@ private:
         for(int y=y0;y<=y1;++y){
             for(int x=x0;x<=x1;++x){
                 const double px=double(x)+0.5,py=double(y)+0.5;
-                const double a=Edge(v[1],v[2],px,py)/signed_area;
-                const double b=Edge(v[2],v[0],px,py)/signed_area;
-                const double c=1.0-a-b;
-                if(a< -1.e-9||b< -1.e-9||c< -1.e-9)continue;
+                double a=0.,b=0.,c=0.;
+                if(!BarycentricTopLeft(v,signed_area,px,py,a,b,c))
+                    continue;
                 // Perspective-correct depth via interpolation of 1/z.
                 const double inverse=a*v[0].inv_z+b*v[1].inv_z+c*v[2].inv_z;
                 if(!(inverse>0.)||!std::isfinite(inverse))continue;
                 const double z=1./inverse;
                 const auto offset=std::size_t(y)*Width+std::size_t(x);
-                if(!(z<double(depth_[eye][offset])))continue;
+                // Quantize source Z before strict LESS as with textured passes.
+                if(!DepthPasses(z,depth_[eye][offset],
+                                DepthCompare::Less))continue;
                 depth_[eye][offset]=static_cast<float>(z);
                 const auto byte=offset*4u;
                 color_[eye][byte]=static_cast<std::uint8_t>((rgb>>16)&255u);
@@ -227,10 +254,9 @@ private:
         for(int y=y0;y<=y1;++y){
             for(int x=x0;x<=x1;++x){
                 const double px=double(x)+0.5,py=double(y)+0.5;
-                const double a=Edge(v[1],v[2],px,py)/signed_area;
-                const double b=Edge(v[2],v[0],px,py)/signed_area;
-                const double c=1.0-a-b;
-                if(a< -1.e-9||b< -1.e-9||c< -1.e-9)continue;
+                double a=0.,b=0.,c=0.;
+                if(!BarycentricTopLeft(v,signed_area,px,py,a,b,c))
+                    continue;
                 const double inv=a*v[0].inv_z+b*v[1].inv_z+c*v[2].inv_z;
                 if(!(inv>0.)||!std::isfinite(inv))continue;
                 const double z=1./inv;

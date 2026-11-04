@@ -48,6 +48,8 @@ int main() {
     CHECK(DepthPasses(source_z,saved_z,DepthCompare::LessEqual));
     CHECK(!DepthPasses(source_z,saved_z,DepthCompare::Less));
     CHECK(!DepthPasses(3.,3.f,DepthCompare::Less));
+    CHECK(DepthPasses(5.,3.f,DepthCompare::Always));
+    CHECK(!DepthPasses(-1.,3.f,DepthCompare::Always));
     CHECK(!DepthPasses(-1.,1.f,DepthCompare::Less));
     CHECK(!ValidRasterPolicy({
         static_cast<FaceCull>(5),DepthCompare::Less,true}));
@@ -62,7 +64,12 @@ int main() {
     CHECK(decoded.cull==FaceCull::Clockwise &&
           decoded.depth==DepthCompare::LessEqual &&
           !decoded.write_depth);
-    CHECK(!DecodeRasterPolicy(D3DCULL_CW,D3DCMP_ALWAYS,1,
+    // D3DCMP_ALWAYS bypasses source depth comparison but still honors
+    // ZWRITEENABLE and the exact original color and cull state.
+    CHECK(DecodeRasterPolicy(D3DCULL_CW,D3DCMP_ALWAYS,1,
+                              0,0,0,0,colors,decoded));
+    CHECK(decoded.depth==DepthCompare::Always && decoded.write_depth);
+    CHECK(!DecodeRasterPolicy(D3DCULL_CW,D3DCMP_NEVER,1,
                               0,0,0,0,colors,decoded));
     CHECK(!DecodeRasterPolicy(D3DCULL_CW,D3DCMP_LESS,1,
                               1,0,0,0,colors,decoded));
@@ -234,6 +241,20 @@ int main() {
     r.raster.cull=FaceCull::None;
     CHECK(raster.DrawTextured(farther,r));
     CheckBoth(raster,0xFF0000u,ok);CHECK(ok);
+    // Authenticated ZFUNC=ALWAYS writes color behind a nearer Z,
+    // independently preserving or updating the source Z-write state.
+    raster.Clear();
+    CHECK(raster.DrawTextured(near_tri,b));
+    r.raster.depth=DepthCompare::Always;
+    r.raster.write_depth=false;
+    CHECK(raster.DrawTextured(farther,r));
+    CheckBoth(raster,0xFF0000u,ok);CHECK(ok);
+    r.raster.write_depth=true;
+    CHECK(raster.DrawTextured(farther,r));
+    b.raster.depth=DepthCompare::Less;
+    CHECK(raster.DrawTextured(near_tri,b));
+    CheckBoth(raster,0x0000FFu,ok);CHECK(ok);
+    r.raster.depth=DepthCompare::Less;
     // Restore depth writes: now a far draw cannot replace the near draw.
     raster.Clear();
     b.raster.write_depth=true;

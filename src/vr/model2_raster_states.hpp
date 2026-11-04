@@ -7,7 +7,7 @@
 #include <cstdint>
 namespace m2vr::vr {
 enum class FaceCull : std::uint32_t { None=0, Clockwise=1, CounterClockwise=2 };
-enum class DepthCompare : std::uint32_t { Less=0, LessEqual=1 };
+enum class DepthCompare : std::uint32_t { Less=0, LessEqual=1, Always=2 };
 struct RasterPolicy {
     FaceCull cull=FaceCull::None;
     DepthCompare depth=DepthCompare::Less;
@@ -19,7 +19,8 @@ inline bool ValidRasterPolicy(const RasterPolicy& p) noexcept {
     return (p.cull==FaceCull::None || p.cull==FaceCull::Clockwise ||
             p.cull==FaceCull::CounterClockwise) &&
            (p.depth==DepthCompare::Less ||
-            p.depth==DepthCompare::LessEqual) &&
+            p.depth==DepthCompare::LessEqual ||
+            p.depth==DepthCompare::Always) &&
            (p.write_rgba_mask&0xf0u)==0u;
 }
 inline bool TriangleSurvivesCull(double area,FaceCull mode) noexcept {
@@ -41,6 +42,7 @@ inline bool DepthPasses(double candidate,float existing,
     // the actual stored representation in both independent eyes.
     const float incoming=static_cast<float>(candidate);
     if(!std::isfinite(incoming))return false;
+    if(func==DepthCompare::Always)return true;
     return func==DepthCompare::Less ?
         incoming<existing : incoming<=existing;
 }

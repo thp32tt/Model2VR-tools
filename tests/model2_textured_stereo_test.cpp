@@ -142,6 +142,46 @@ int main(){
     CHECK(Pixel(raster,0,512,512)==0xFF0000);
     CHECK(Pixel(raster,1,512,512)==0xFF0000);
 
+    // D3D9-style top-left ownership prevents a double-alpha seam where
+    // two source triangles share a diagonal through pixel centers.
+    raster.Clear();
+    ClippedTexturedStereoBatch adjacent{};
+    adjacent.game_frame=100;adjacent.pose_sequence=27;
+    const auto make_vertex=[](float nx,float ny){
+        TexturedEyeVertex point{};
+        point.position={nx,ny,2.f,true};
+        return point;
+    };
+    for(auto& eye:adjacent.eyes){
+        ClippedTexturedEyeTriangle upper{},lower{};
+        upper.vertices={{
+            make_vertex(-0.5f,0.5f),
+            make_vertex(0.5f,0.5f),
+            make_vertex(0.5f,-0.5f)}};
+        lower.vertices={{
+            make_vertex(-0.5f,0.5f),
+            make_vertex(0.5f,-0.5f),
+            make_vertex(-0.5f,-0.5f)}};
+        eye.push_back(upper);eye.push_back(lower);
+    }
+    const std::array<std::uint8_t,4> half_red_edge{255u,0u,0u,128u};
+    StereoWorldRaster::TextureRGBA seam_material{
+        half_red_edge.data(),1u,1u,4u,0u};
+    seam_material.blend=BlendMode::SourceAlphaOver;
+    seam_material.raster.write_depth=false;
+    CHECK(raster.DrawTextured(adjacent,seam_material));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0x800000u);
+        CHECK(Pixel(raster,eye,520,500)==0x800000u);
+        CHECK(Pixel(raster,eye,500,520)==0x800000u);
+    }
+    raster.Clear();
+    for(auto& eye:adjacent.eyes)
+        for(auto& tri:eye)std::swap(tri.vertices[1],tri.vertices[2]);
+    CHECK(raster.DrawTextured(adjacent,seam_material));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0x800000u);
+    raster.Clear();
     // Original D3D9 FVF without a D3DCOLOR field provides opaque white
     // DIFFUSE/CURRENT. The x86 source adapter must never reject an otherwise
     // valid real-world material solely because the vertex has no color.

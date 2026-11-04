@@ -49,7 +49,8 @@ inline bool DecodeRasterPolicy(DWORD cull_mode,DWORD zfunc,
     using m2vr::vr::DepthCompare;
     if((cull_mode!=D3DCULL_NONE && cull_mode!=D3DCULL_CW &&
         cull_mode!=D3DCULL_CCW) ||
-       (zfunc!=D3DCMP_LESS && zfunc!=D3DCMP_LESSEQUAL) ||
+       (zfunc!=D3DCMP_LESS && zfunc!=D3DCMP_LESSEQUAL &&
+        zfunc!=D3DCMP_ALWAYS) ||
        (zwrite!=0u && zwrite!=1u) ||
        stencil_enabled!=0u || depth_bias!=0u || slope_bias!=0u ||
        srgb_write!=0u ||
@@ -63,7 +64,8 @@ inline bool DecodeRasterPolicy(DWORD cull_mode,DWORD zfunc,
                cull_mode==D3DCULL_CCW?FaceCull::CounterClockwise:
                                         FaceCull::None;
     value.depth=zfunc==D3DCMP_LESS?DepthCompare::Less:
-                                      DepthCompare::LessEqual;
+                zfunc==D3DCMP_LESSEQUAL?DepthCompare::LessEqual:
+                                         DepthCompare::Always;
     value.write_depth=(zwrite!=0u);
     value.write_rgba_mask=static_cast<std::uint8_t>(color_mask);
     out=value;

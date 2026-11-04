@@ -73,6 +73,15 @@ int main() {
     CHECK(Scan(surface.Eye(0),blue[0]).count < left.count/2);
     CHECK(surface.AcceptedTriangles()>=4);
     CHECK(surface.DrawnPixels()>2000);
+    // Identical opaque source geometry at the same float-quantized Z
+    // must not replace earlier source color under strict D3D9 LESS.
+    surface.Clear();
+    CHECK(surface.Draw(near_batch,red,1));
+    const auto first_opaque_left=Scan(surface.Eye(0),red[0]).count;
+    const auto first_opaque_right=Scan(surface.Eye(1),red[0]).count;
+    CHECK(surface.Draw(near_batch,blue,1));
+    CHECK(Scan(surface.Eye(0),red[0]).count==first_opaque_left);
+    CHECK(Scan(surface.Eye(1),red[0]).count==first_opaque_right);
     // Original game geometry may clip an entire eye: never publish a
     // black eye or two identical eye buffers as native binocular VR.
     surface.Clear();
