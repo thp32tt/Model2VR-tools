@@ -6,6 +6,20 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_original_stereo_source_pose_stays_live_until_present(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        gate=(ROOT/"src/probe/daytona_source_pose_commit_gate.hpp").read_text("utf-8")
+        self.assertIn("OriginalStereoPoseStillLiveAtPresent(",gate)
+        self.assertIn("pose_published_qpc_=frame.published_qpc;",gpu)
+        self.assertIn("const bool fresh_pose=pose_admitted_ && LatchedStereoPoseStillLive();",gpu)
+        self.assertIn("? LatchedStereoPoseStillLive() : true;",gpu)
+        self.assertIn("g.pose_published_qpc=predicted.published_qpc;",cpu)
+        self.assertIn("!OriginalWorldPoseLive()",cpu)
+        self.assertIn("const bool pose_live=action==",cpu)
+        self.assertIn("model2_vr_cpu_world_source_pose_expired",cpu)
+        self.assertIn("success,pose_live);",cpu)
+
     def test_original_d3d9_mono_pixel_fallback_is_end_to_end_but_not_world_proof(self):
         source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         transport=(ROOT/"src/common/stereo_frame_ipc.h").read_text("utf-8")
