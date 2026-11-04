@@ -31,7 +31,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("g.Reject(FailedOriginalD3D9SourceKind(original_family));",cpu)
         self.assertIn("OriginalSourceFailure::Device",cpu)
         self.assertIn("model2_vr_cpu_world_original_draw_failed",cpu)
-        self.assertIn("g.pending_present=false;",cpu)
+        self.assertIn("active=false;pending_present=false;",cpu)
         self.assertIn("return family>=1u && family<=4u",gate)
         self.assertIn("(result_bits & 0x80000000u)!=0u",gate)
 
