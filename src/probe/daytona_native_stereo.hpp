@@ -16,6 +16,11 @@ using OriginalDrawIndexedUP=HRESULT (STDMETHODCALLTYPE*)(
     D3DFORMAT,const void*,UINT);
 using OriginalClear=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,DWORD,const D3DRECT*,DWORD,D3DCOLOR,float,DWORD);
+using OriginalStretchRect=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,IDirect3DSurface9*,
+    const RECT*,D3DTEXTUREFILTERTYPE);
+using OriginalColorFill=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,D3DCOLOR);
 using OriginalDrawUP=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,const void*,UINT);
 void Configure(bool enabled,std::uint32_t shift_milliunits) noexcept;
@@ -37,6 +42,15 @@ void MirrorIndexedUP(IDirect3DDevice9* device,D3DPRIMITIVETYPE primitive,
 void MirrorClear(IDirect3DDevice9* device,DWORD count,const D3DRECT* rects,
                  DWORD flags,D3DCOLOR color,float z,DWORD stencil,
                  OriginalClear original) noexcept;
+// Preserve completed original backbuffer surface writes in eye order;
+ // initial partial writes and backbuffer self-blits are fail-closed.
+void MirrorStretchRect(IDirect3DDevice9* device,IDirect3DSurface9* source,
+                       const RECT* source_rect,IDirect3DSurface9* destination,
+                       const RECT* destination_rect,D3DTEXTUREFILTERTYPE filter,
+                       OriginalStretchRect original) noexcept;
+void MirrorColorFill(IDirect3DDevice9* device,IDirect3DSurface9* destination,
+                     const RECT* rect,D3DCOLOR color,
+                     OriginalColorFill original) noexcept;
 void PublishFrame(IDirect3DDevice9* device,std::uint64_t frame) noexcept;
 void ResetResources() noexcept;
 }

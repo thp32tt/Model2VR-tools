@@ -7,6 +7,7 @@
 #include "daytona_up_decl_witness.hpp"
 #include "daytona_eye_pose_gate.hpp"
 #include "daytona_triangle_eye_shift.hpp"
+#include "daytona_surface_transfer_gate.hpp"
 #include "logger.h"
 #include "../common/stereo_frame_ipc.h"
 #include "../common/daytona_producer_health.hpp"
@@ -227,6 +228,52 @@ public:
             return original(d,p,min,num,n,indices,format,vertices,stride);
         });
     }
+    // Mirror original offscreen-to-backbuffer GPU copies in exact call order.
+    // Only full writes may seed a fresh eye; never read the original
+    // backbuffer as if it were the earlier independent eye source.
+    void StretchRect(IDirect3DDevice9* d,IDirect3DSurface9* src,
+                     const RECT* src_rect,IDirect3DSurface9* dst,
+                     const RECT* dst_rect,D3DTEXTUREFILTERTYPE filter,
+                     m2vr::daytona::OriginalStretchRect original){
+        if(!enabled_||!d||!src||!dst||!original||g_in_eye_replay)return;
+        std::lock_guard lock(mu_);
+        ScopedEyeReplay recursion_guard;
+        if(!LivePoseForGameFrame() || !Ensure(d) ||
+           !LivePoseForGameFrame())return;
+        if(!m2vr::daytona::CanMirrorSurfaceTransfer(
+               dst==backbuffer_,src!=backbuffer_,
+               m2vr::daytona::FullSurfaceRect(dst_rect,width_,height_),
+               frame_started_))return;
+        bool both=true;
+        for(auto& eye:eyes_){
+            if(FAILED(original(d,src,src_rect,eye.color,dst_rect,filter))){
+                both=false;break;
+            }
+        }
+        if(!both){Reset();return;}
+        frame_started_=true;
+        ++mirrored_stretches_;
+    }
+    void ColorFill(IDirect3DDevice9* d,IDirect3DSurface9* dst,
+                   const RECT* rect,D3DCOLOR color,
+                   m2vr::daytona::OriginalColorFill original){
+        if(!enabled_||!d||!dst||!original||g_in_eye_replay)return;
+        std::lock_guard lock(mu_);
+        ScopedEyeReplay recursion_guard;
+        if(!LivePoseForGameFrame() || !Ensure(d) ||
+           !LivePoseForGameFrame())return;
+        if(!m2vr::daytona::CanMirrorSurfaceTransfer(
+               dst==backbuffer_,true,
+               m2vr::daytona::FullSurfaceRect(rect,width_,height_),
+               frame_started_))return;
+        bool both=true;
+        for(auto& eye:eyes_){
+            if(FAILED(original(d,eye.color,rect,color))){both=false;break;}
+        }
+        if(!both){Reset();return;}
+        frame_started_=true;
+        ++mirrored_fills_;
+    }
     void Clear(IDirect3DDevice9* d,DWORD count,const D3DRECT* rects,
                DWORD flags,D3DCOLOR color,float z,DWORD stencil,
                m2vr::daytona::OriginalClear original){
@@ -356,6 +403,8 @@ private:
                 (std::uint64_t{mirrored_clears_}<<32)|mirrored_draws_;
             m2vr::LogEvent("model2_vr_producer_frame",frame,reason,
                            scene_draws_,replay_count);
+            m2vr::LogEvent("model2_vr_surface_updates",frame,
+                           mirrored_stretches_,mirrored_fills_,0u);
             if(first)m2vr::FlushLog();
         }
         if(first)first_stereo_published_=true;
@@ -391,6 +440,7 @@ private:
     void FinishFrame()noexcept{
         frame_started_=false;scene_draws_=0;
         mirrored_draws_=0;mirrored_clears_=0;
+        mirrored_stretches_=0;mirrored_fills_=0;
         mirrored_family_.fill(0u);
         pose_checked_=false;pose_admitted_=false;
     }
@@ -505,6 +555,7 @@ private:
     UINT width_=0,height_=0;
     DWORD mrt_slots_=0u;
     std::uint32_t mirrored_draws_=0u,mirrored_clears_=0u;
+    std::uint32_t mirrored_stretches_=0u,mirrored_fills_=0u;
     std::array<std::uint32_t,4> mirrored_family_{};
     float shift_=0.10f;
     unsigned scene_draws_=0;
@@ -549,6 +600,19 @@ void MirrorClear(IDirect3DDevice9* d,DWORD count,const D3DRECT* rects,
                  DWORD flags,D3DCOLOR color,float z,DWORD stencil,
                  OriginalClear original)noexcept{
     try{g_eye.Clear(d,count,rects,flags,color,z,stencil,original);}
+    catch(...){g_eye.ResetExternal();}
+}
+void MirrorStretchRect(IDirect3DDevice9* d,IDirect3DSurface9* src,
+                       const RECT* src_rect,IDirect3DSurface9* dst,
+                       const RECT* dst_rect,D3DTEXTUREFILTERTYPE filter,
+                       OriginalStretchRect original)noexcept{
+    try{g_eye.StretchRect(d,src,src_rect,dst,dst_rect,filter,original);}
+    catch(...){g_eye.ResetExternal();}
+}
+void MirrorColorFill(IDirect3DDevice9* d,IDirect3DSurface9* dst,
+                     const RECT* rect,D3DCOLOR color,
+                     OriginalColorFill original)noexcept{
+    try{g_eye.ColorFill(d,dst,rect,color,original);}
     catch(...){g_eye.ResetExternal();}
 }
 void PublishFrame(IDirect3DDevice9* d,std::uint64_t frame)noexcept{

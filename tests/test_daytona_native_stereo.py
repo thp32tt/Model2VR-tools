@@ -72,6 +72,24 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
         self.assertIn("if(!both || !restored){Reset();return;}",gpu)
 
+    def test_native_surface_writes_preserve_original_and_eye_gate(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        policy=(ROOT/"src/probe/daytona_surface_transfer_gate.hpp").read_text("utf-8")
+        for name in ("StretchRect","ColorFill"):
+            self.assertIn("void Mirror"+name+"(",gpu)
+            self.assertIn("m2vr::daytona::Mirror"+name+"(",hooks)
+        self.assertIn("const HRESULT hr=g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);",hooks)
+        self.assertIn("const HRESULT hr=g_color_fill(d,dst,rect,color);",hooks)
+        self.assertIn("Hook(vtable[34]",hooks)
+        self.assertIn("Hook(vtable[35]",hooks)
+        self.assertIn("if(!both){Reset();return;}",gpu)
+        self.assertIn("CanMirrorSurfaceTransfer(",gpu)
+        self.assertIn("FullSurfaceRect(",gpu)
+        self.assertIn("eye_frame_started || full_destination",policy)
+        self.assertIn("model2_vr_surface_updates",gpu)
+        self.assertIn("mirrored_stretches_=0;mirrored_fills_=0;",gpu)
+
     def test_initial_eye_resource_creation_rechecks_pose_after_reset(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         self.assertEqual(gpu.count("!LivePoseForGameFrame())return;"),2)

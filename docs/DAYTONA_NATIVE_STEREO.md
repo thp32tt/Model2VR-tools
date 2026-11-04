@@ -309,3 +309,22 @@ independent left/right X values. New Win32 and Win64 native CTests
 exercise mixed-W batches, bounded byte sizes, invalid offsets and
 preservation of unshifted material bytes. This is still experimental
 source-space stereo, NOT proven calibrated 6DoF or HMD validation.
+
+## D3D9 backbuffer surface transfers (2026-11-04)
+
+The native stereo producer now also mirrors successful original
+`StretchRect` (offscreen source -> original backbuffer) and
+`ColorFill` (original backbuffer) operations into the independent
+left/right GPU eye targets. The original game operation runs exactly
+once and retains its original HRESULT, input, control and FFB behavior.
+
+A full-surface write may begin a new eye frame; a first partial write
+is rejected to avoid displaying undefined surrounding eye pixels.
+Backbuffer-self-source blits are deliberately excluded because the
+original source may already have been overwritten before the eye replay.
+Other surfaces and offscreen passes are not modified. Per-frame counts
+are logged as `model2_vr_surface_updates` separately from original
+Draw-family counts, with Win32/Win64 policy regression tests.
+
+This covers more original D3D9 frame composition. It is not verified
+Daytona Quest 3 runtime or physical 6DoF camera calibration.

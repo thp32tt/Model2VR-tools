@@ -197,6 +197,12 @@ target_compile_features(daytona_triangle_shift_x86_test PRIVATE cxx_std_20)
 add_test(NAME daytona_verified_triangle_eye_shift_x86
          COMMAND daytona_triangle_shift_x86_test)
 
+# Native surface transfer policy contract (x86).
+add_executable(daytona_surface_transfer_x86_test tests/daytona_surface_transfer_gate_test.cpp)
+target_compile_features(daytona_surface_transfer_x86_test PRIVATE cxx_std_20)
+target_compile_definitions(daytona_surface_transfer_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME daytona_surface_transfer_x86 COMMAND daytona_surface_transfer_x86_test)
+
 # Read-only, allocation-free UP vertex witness parser; no emulator runtime.
 add_executable(model2_up_witness_test tests/model2_up_witness_test.cpp)
 target_compile_features(model2_up_witness_test PRIVATE cxx_std_20)

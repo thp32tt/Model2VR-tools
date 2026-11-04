@@ -25,6 +25,11 @@ using CreateDeviceFn=HRESULT (STDMETHODCALLTYPE*)(
 using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,CONST RECT*,CONST RECT*,HWND,CONST RGNDATA*);
 using ResetFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRESENT_PARAMETERS*);
+using StretchRectFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,
+    IDirect3DSurface9*,const RECT*,D3DTEXTUREFILTERTYPE);
+using ColorFillFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,D3DCOLOR);
 using ClearFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,DWORD,const D3DRECT*,DWORD,D3DCOLOR,float,DWORD);
 using PrimitiveFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,UINT);
@@ -40,6 +45,8 @@ CreateDeviceFn g_create_device=nullptr;
 PresentFn g_present=nullptr;
 ResetFn g_reset=nullptr;
 ClearFn g_clear=nullptr;
+StretchRectFn g_stretch_rect=nullptr;
+ColorFillFn g_color_fill=nullptr;
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -568,6 +575,22 @@ HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
         m2vr::daytona::MirrorClear(d,count,rects,flags,color,z,stencil,g_clear);
     return hr;
 }
+HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
+     IDirect3DSurface9* src,const RECT* src_rect,IDirect3DSurface9* dst,
+     const RECT* dst_rect,D3DTEXTUREFILTERTYPE filter){
+    const HRESULT hr=g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
+    if(SUCCEEDED(hr) && g_native_stereo)
+        m2vr::daytona::MirrorStretchRect(
+            d,src,src_rect,dst,dst_rect,filter,g_stretch_rect);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
+     IDirect3DSurface9* dst,const RECT* rect,D3DCOLOR color){
+    const HRESULT hr=g_color_fill(d,dst,rect,color);
+    if(SUCCEEDED(hr) && g_native_stereo)
+        m2vr::daytona::MirrorColorFill(d,dst,rect,color,g_color_fill);
+    return hr;
+}
 HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RECT* b,
                                      HWND w,CONST RGNDATA* dirty){
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
@@ -615,7 +638,11 @@ bool HookDevice(IDirect3DDevice9* dev){
         Hook(vtable[16],reinterpret_cast<void*>(&ResetHook),g_reset);
     const bool clear=!g_native_stereo ||
         Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear);
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear)){
+    const bool stretch=!g_native_stereo ||
+        Hook(vtable[34],reinterpret_cast<void*>(&StretchRectHook),g_stretch_rect);
+    const bool fill=!g_native_stereo ||
+        Hook(vtable[35],reinterpret_cast<void*>(&ColorFillHook),g_color_fill);
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&stretch&&fill)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -625,10 +652,15 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(iu){MH_DisableHook(vtable[84]);MH_RemoveHook(vtable[84]);}
         if(g_native_stereo&&reset){MH_DisableHook(vtable[16]);MH_RemoveHook(vtable[16]);}
         if(g_native_stereo&&clear){MH_DisableHook(vtable[43]);MH_RemoveHook(vtable[43]);}
+        if(g_native_stereo&&stretch){MH_DisableHook(vtable[34]);MH_RemoveHook(vtable[34]);}
+        if(g_native_stereo&&fill){MH_DisableHook(vtable[35]);MH_RemoveHook(vtable[35]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
+        g_stretch_rect=nullptr;g_color_fill=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
+        m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
+                       stretch,fill,reset,clear);
         return false;
     }
     g_device_installed=true;
