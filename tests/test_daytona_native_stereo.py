@@ -11,6 +11,7 @@ class NativeStereoTest(unittest.TestCase):
         source=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")
         raster=(ROOT/"src/vr/model2_stereo_raster.hpp").read_text("utf-8")
         self.assertIn("depth_mode>2u",bridge)
+        self.assertIn("blend_mode>8u",bridge)
         self.assertNotIn("depth_mode>1u",bridge)
         self.assertIn("const bool diffuse_only=rgb_source==1u && alpha_source==1u;",bridge)
         self.assertIn("(!diffuse_only || width || height || pitch)",bridge)

@@ -435,6 +435,59 @@ int main(){
     CHECK(raster.DrawTextured(manual,layer));
     for(int eye=0;eye<2;++eye)
         CHECK(Pixel(raster,eye,512,512)==0x40007fu);
+    // Original Win32 fixed-function multiplication and destination-alpha
+    // blends are applied to the complete independently clipped eye images.
+    // Each channel uses the pre-composite original destination, not the
+    // progressively updated output of a previous channel.
+    raster.Clear();
+    const std::array<std::uint8_t,4> base_multiply{{200,100,50,64}};
+    const std::array<std::uint8_t,4> src_multiply{{128,64,255,128}};
+    layer.raster.depth=DepthCompare::LessEqual;
+    layer.raster.write_depth=true;
+    layer.raster.write_rgba_mask=0x0fu;
+    layer.rgba=base_multiply.data();layer.blend=BlendMode::Opaque;
+    CHECK(raster.DrawTextured(manual,layer));
+    layer.rgba=src_multiply.data();layer.blend=BlendMode::MultiplyColor;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0x641932u);
+        const auto& rgba=raster.Eye(eye);
+        const auto offset=(std::size_t(512)*StereoWorldRaster::Width+
+                           512u)*4u;
+        CHECK(rgba[offset+3u]==32u);
+    }
+    // Destination alpha is read once before RGBA writes and its original
+    // 64/255 factor drives all RGB and destination-alpha blend equations.
+    raster.Clear();
+    const std::array<std::uint8_t,4> dst_alpha{{0,0,255,64}};
+    layer.rgba=dst_alpha.data();layer.blend=BlendMode::Opaque;
+    CHECK(raster.DrawTextured(manual,layer));
+    layer.rgba=half_red.data();
+    layer.blend=BlendMode::DestinationAlphaOver;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0x4000bfu);
+        const auto& rgba=raster.Eye(eye);
+        const auto offset=(std::size_t(512)*StereoWorldRaster::Width+
+                           512u)*4u;
+        CHECK(rgba[offset+3u]==80u);
+    }
+    // D3DBLEND_ZERO/ONE performs no RGBA writes but still honors the
+    // source Z-write bit; it cannot fabricate binocular RGB coverage.
+    raster.Clear();
+    layer.rgba=src_multiply.data();
+    layer.blend=BlendMode::PreserveDestination;
+    const auto prior_pixels=raster.DrawnPixels();
+    CHECK(raster.DrawTextured(manual,layer));
+    CHECK(raster.DrawnPixels()==prior_pixels);
+    layer.rgba=opaque_blue.data();layer.blend=BlendMode::Opaque;
+    layer.raster.depth=DepthCompare::Less;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0u);
+    layer.raster.depth=DepthCompare::LessEqual;
+    raster.Clear();
+
     // Original D3D9 blending DISABLED is still a full RGBA destination
     // write, not an implicit opaque source alpha. This matters when a
     // subsequent independent-eye material blends with DESTALPHA later.

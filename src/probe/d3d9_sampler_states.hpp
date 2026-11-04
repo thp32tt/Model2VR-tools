@@ -137,6 +137,13 @@ inline bool DecodeBlendPolicy(DWORD enable,DWORD src,DWORD dst,
         out=BlendMode::SourceAlphaAdd;
     else if(src==D3DBLEND_ONE && dst==D3DBLEND_INVSRCALPHA)
         out=BlendMode::PremultipliedOver;
+    else if((src==D3DBLEND_DESTCOLOR && dst==D3DBLEND_ZERO) ||
+            (src==D3DBLEND_ZERO && dst==D3DBLEND_SRCCOLOR))
+        out=BlendMode::MultiplyColor;
+    else if(src==D3DBLEND_DESTALPHA && dst==D3DBLEND_INVDESTALPHA)
+        out=BlendMode::DestinationAlphaOver;
+    else if(src==D3DBLEND_ZERO && dst==D3DBLEND_ONE)
+        out=BlendMode::PreserveDestination;
     else return false;
     return true;
 }

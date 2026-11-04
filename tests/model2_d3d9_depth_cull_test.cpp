@@ -106,7 +106,19 @@ int main() {
     CHECK(DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_INVSRCALPHA,
         D3DBLENDOP_ADD,0,decoded_blend));
     CHECK(decoded_blend==BlendMode::PremultipliedOver);
-    CHECK(!DecodeBlendPolicy(1,D3DBLEND_DESTCOLOR,D3DBLEND_ZERO,
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_DESTCOLOR,D3DBLEND_ZERO,
+        D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::MultiplyColor);
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_ZERO,D3DBLEND_SRCCOLOR,
+        D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::MultiplyColor);
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_DESTALPHA,
+        D3DBLEND_INVDESTALPHA,D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::DestinationAlphaOver);
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_ZERO,D3DBLEND_ONE,
+        D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::PreserveDestination);
+    CHECK(!DecodeBlendPolicy(1,D3DBLEND_DESTALPHA,D3DBLEND_ONE,
         D3DBLENDOP_ADD,0,decoded_blend));
     CHECK(!DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ONE,
         D3DBLENDOP_REVSUBTRACT,0,decoded_blend));

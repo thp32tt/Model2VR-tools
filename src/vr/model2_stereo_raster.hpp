@@ -328,7 +328,8 @@ private:
                 // do not establish visible binocular color coverage.
                 CompositeSourceRGBA(color.data()+pixel,src_rgba,
                     texture.blend,texture.raster.write_rgba_mask);
-                if(texture.raster.write_rgba_mask&0x07u) {
+                if((texture.raster.write_rgba_mask&0x07u) &&
+                   BlendProducesColor(texture.blend)) {
                     ++pixels_;
                     ++eye_pixels_[eye];
                 }
