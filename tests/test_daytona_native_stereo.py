@@ -78,6 +78,12 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(loader.count("CREATE_SUSPENDED"),1)
         self.assertLess(loader.index("StartOpenXRHostAndWait(pi.dwProcessId"),
                         loader.index("ResumeThread(pi.hThread)"))
+        self.assertIn("HANDLE waits[2]{pi.hProcess, host_process}",loader)
+        self.assertIn("OpenXR host exited while Daytona was still running",loader)
+        self.assertIn("prevent 2D fallback",loader)
+        self.assertIn("return 10;",loader)
+        self.assertGreater(loader.index("WaitForMultipleObjects(2, waits, FALSE, INFINITE)"),
+                           loader.index("ResumeThread(pi.hThread)"))
         config=configparser.ConfigParser()
         config.read(ROOT/"config/daytona_native_stereo.ini",encoding="utf-8")
         self.assertEqual(config["probe"]["daytona_native_stereo"],"1")
