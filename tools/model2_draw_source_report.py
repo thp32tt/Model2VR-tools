@@ -34,6 +34,7 @@ NAMES = {
     "model2_d3d9_source_stage_result",
     "model2_d3d9_source_color_mask",
     "model2_d3d9_source_blend",
+    "model2_d3d9_source_alpha_compare",
     "model2_d3d9_source_sampler_mip",
     "model2_d3d9_source_depth_cull",
     "model2_d3d9_source_vertex_pipeline",
@@ -177,6 +178,35 @@ def original_main_depth_view_candidate(flags):
     return (flags & 0x3000) == 0
 
 
+def original_d3d9_alpha_compare_status(record, fvf=None, stride=None,
+                                       vb_alpha=None):
+    """Decode authenticated SAME-Draw original alpha mode; no world proof.
+
+    The optional original VB alpha snapshot must agree with this capture;
+    metadata from another FVF/stride or witness never qualifies a source.
+    """
+    if record is None:
+        return "unobserved"
+    enabled, function=halves(record[0])
+    reference=record[1]
+    source_fvf, source_stride=halves(record[2])
+    if ((fvf is not None and source_fvf != fvf) or
+            (stride is not None and source_stride != stride)):
+        return "fvf_stride_mismatch"
+    if vb_alpha is not None and (vb_alpha[0] != record[0] or
+                                 vb_alpha[1] != reference):
+        return "vb_alpha_mismatch"
+    if reference > 255 or enabled not in (0, 1):
+        return "unsupported"
+    if enabled == 0:
+        return "disabled"
+    return {
+        1: "never", 2: "less", 3: "equal", 4: "less_equal",
+        5: "greater", 6: "not_equal", 7: "greater_equal",
+        8: "always",
+    }.get(function, "unsupported")
+
+
 def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
     """Correlate original Draw/CPU/matrix/command/main-Z on ONE witness.
 
@@ -184,6 +214,17 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
     """
     if present_frame is None or not gpu_caller:
         return None
+    if "source_alpha_compare" in data:
+        origin=data.get("origin")
+        if not origin:
+            return None
+        _, fvf=halves(origin[1])
+        _, stride=halves(origin[2])
+        if original_d3d9_alpha_compare_status(
+                data["source_alpha_compare"],fvf,stride,
+                data.get("alpha")) in (
+                    "fvf_stride_mismatch","vb_alpha_mismatch","unsupported"):
+            return None
     if ("source_depth_cull" in data and
             original_d3d9_depth_cull_status(
                 data["source_depth_cull"],present_frame,
@@ -328,6 +369,12 @@ def original_projected_material_candidate(data):
         if (frame is None or original_d3d9_vertex_pipeline_status(
                 data["source_vertex_pipeline"],frame[0]) != "supported"):
             return False
+    if "source_alpha_compare" in data and (
+            original_d3d9_alpha_compare_status(
+                data["source_alpha_compare"],fvf,stride,
+                data.get("alpha")) in (
+                    "fvf_stride_mismatch","vb_alpha_mismatch","unsupported")):
+        return False
     if "source_blend" in data and (
             original_d3d9_blend_mode(data["source_blend"])=="unsupported"):
         return False
@@ -429,6 +476,8 @@ def audit_csv(path):
                 fields["source_mask"] = values
             elif event == "model2_d3d9_source_blend":
                 fields["source_blend"] = values
+            elif event == "model2_d3d9_source_alpha_compare":
+                fields["source_alpha_compare"] = values
             elif event == "model2_d3d9_source_sampler_mip":
                 fields["source_mip"] = values
             elif event == "model2_d3d9_source_depth_cull":
@@ -454,6 +503,8 @@ def audit_csv(path):
         "original_depth_only_draw_witnesses": 0,
         "original_source_blend_modes": set(),
         "original_source_blend_unsupported_witnesses": 0,
+        "original_source_alpha_compare_modes": set(),
+        "original_source_alpha_incompatible_witnesses": 0,
         "original_source_mip_status": set(),
         "original_source_depth_cull_status": set(),
         "original_source_vertex_pipeline_status": set(),
@@ -504,6 +555,7 @@ def audit_csv(path):
             if set(data).issubset({"stage_color", "stage_alpha",
                                    "stage_extra", "stage_result",
                                    "source_mask", "source_blend",
+                                   "source_alpha_compare",
                                    "source_mip",
                                    "source_depth_cull",
                                    "source_vertex_pipeline",
@@ -556,6 +608,14 @@ def audit_csv(path):
                     entry["original_main_full_view_depth_candidates"] += 1
         # Blend evidence belongs to this exact original VB Draw witness.
         # Unknown/unsupported states remain diagnostics only.
+        if "source_alpha_compare" in data:
+            alpha_status=original_d3d9_alpha_compare_status(
+                data["source_alpha_compare"],fvf,stride,data.get("alpha"))
+            if alpha_status in (
+                    "unsupported","fvf_stride_mismatch","vb_alpha_mismatch"):
+                entry["original_source_alpha_incompatible_witnesses"]+=1
+            else:
+                entry["original_source_alpha_compare_modes"].add(alpha_status)
         if "source_blend" in data:
             mode=original_d3d9_blend_mode(data["source_blend"])
             if mode=="unsupported":
