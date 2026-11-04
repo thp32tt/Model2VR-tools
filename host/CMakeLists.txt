@@ -39,6 +39,10 @@ add_test(NAME stereo_frame_rate_gate_x64 COMMAND model2vr_frame_policy_x64_test)
 add_executable(model2vr_pose_ipc_x64_test ../tests/stereo_pose_ipc_test.cpp)
 target_compile_features(model2vr_pose_ipc_x64_test PRIVATE cxx_std_20)
 add_test(NAME stereo_predicted_pose_ipc_x64 COMMAND model2vr_pose_ipc_x64_test)
+add_executable(daytona_producer_health_x64_test ../tests/daytona_producer_health_test.cpp)
+target_compile_features(daytona_producer_health_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_native_producer_health_ipc_x64
+         COMMAND daytona_producer_health_x64_test)
 
 add_executable(model2vr_wizard_health_x64_test ../tests/daytona_wizard_health_test.cpp)
 target_compile_features(model2vr_wizard_health_x64_test PRIVATE cxx_std_20)

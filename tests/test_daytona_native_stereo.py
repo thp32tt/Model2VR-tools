@@ -42,7 +42,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertTrue((ROOT/"tests/daytona_eye_pose_gate_test.cpp").is_file())
         self.assertIn("ExactDaytonaUPDeclaration(",gpu)
         self.assertIn("caller==0x000BABADu",gpu)
-        self.assertIn("if(!both){Reset();return;}",gpu)
+        self.assertIn("if(!both || !restored){Reset();return;}",gpu)
         self.assertIn("d->SetRenderTarget(0,target)",gpu)
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
 
@@ -67,7 +67,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("original(d,p,min,num,n,indices,format,vertices,stride)",gpu)
         self.assertIn("frame_started_=true;",gpu)
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
-        self.assertIn("if(!both){Reset();return;}",gpu)
+        self.assertIn("if(!both || !restored){Reset();return;}",gpu)
 
     def test_initial_eye_resource_creation_rechecks_pose_after_reset(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")

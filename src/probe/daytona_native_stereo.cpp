@@ -8,6 +8,7 @@
 #include "daytona_eye_pose_gate.hpp"
 #include "logger.h"
 #include "../common/stereo_frame_ipc.h"
+#include "../common/daytona_producer_health.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -352,6 +353,9 @@ public:
 private:
     void ReportFrame(std::uint64_t frame,std::uint32_t reason)noexcept{
         if(!frame)return;
+        if(!health_.Valid())health_.Create(GetCurrentProcessId());
+        if(health_.Valid())health_.Publish(frame,reason,scene_draws_,
+                                          mirrored_draws_,mirrored_clears_);
         const bool first=reason==0u && !first_stereo_published_;
         // Every 120 original Presents (roughly 2s at 60 Hz), plus the
         // first successful game source. The launcher keeps the CSV locally.
@@ -500,6 +504,7 @@ private:
         FinishFrame();
     }
     std::mutex mu_;
+    m2vr::producerhealth::Link health_;
     bool enabled_=false,frame_started_=false,writer_ready_=false;
     bool pose_checked_=false,pose_admitted_=false;
     bool first_stereo_published_=false;
