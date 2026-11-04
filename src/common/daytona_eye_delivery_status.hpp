@@ -9,7 +9,8 @@ namespace m2vr::delivery {
 enum class Status : std::uint8_t {
     NoEmulatorPid, NoProducerHealth, NoFrameTransport, AwaitingGameFrame,
     ProducerRejected, MissingOriginalPoseTag, ExpiredOriginalPoseTag,
-    SourcePairStale, DiagnosticOnly, HostEyeSizeMismatch, LiveGameStereo, LiveOriginalMonoFallback
+    SourcePairStale, DiagnosticOnly, HostEyeSizeMismatch, LiveGameStereo, LiveOriginalMonoFallback,
+    MonoQuadAnchorRejected
 };
 struct Evidence {
     bool emulator_selected=false;
@@ -23,6 +24,7 @@ struct Evidence {
     bool swapchain_compatible=false;
     bool missing_original_pose_tag=false;
     bool expired_original_pose_tag=false;
+    bool mono_anchor_rejected=false;
 };
 constexpr Status Classify(const Evidence& e) noexcept {
     if(!e.emulator_selected)return Status::NoEmulatorPid;
@@ -37,6 +39,7 @@ constexpr Status Classify(const Evidence& e) noexcept {
     // 512 is OriginalMonoFallback, meaning an actual original game mono
     // frame was published. If it becomes stale, diagnose frame timing,
     // not an imaginary original D3D9 render failure.
+    if(e.mono_anchor_rejected)return Status::MonoQuadAnchorRejected;
     if(e.producer_health_fresh && e.producer_reason_mask!=0u &&
        e.producer_reason_mask!=512u)
         return Status::ProducerRejected;
@@ -62,6 +65,7 @@ constexpr const char* Name(Status s) noexcept {
     case Status::HostEyeSizeMismatch:return "OPENXR_EYE_SIZE_MISMATCH";
     case Status::LiveGameStereo:return "LIVE_GAME_STEREO_NOT_CAMERA_VERIFIED";
     case Status::LiveOriginalMonoFallback:return "LIVE_ORIGINAL_GAME_2D_FALLBACK";
+    case Status::MonoQuadAnchorRejected:return "ORIGINAL_MONO_QUAD_HEAD_POSE_REJECTED";
     }
     return "UNKNOWN";
 }
@@ -79,6 +83,7 @@ constexpr const char* NextAction(Status s) noexcept {
     case Status::HostEyeSizeMismatch:return "Match OpenXR swapchain to original 1024x1024 eye transport";
     case Status::LiveGameStereo:return "Verify actual Daytona world/camera calibration on HMD";
     case Status::LiveOriginalMonoFallback:return "Original game pixels visible; source VR world pass still unverified";
+    case Status::MonoQuadAnchorRejected:return "Check tracked HMD stereo view positions and orientations";
     }
     return "Inspect host and original x86 producer logs";
 }

@@ -16,6 +16,7 @@
 #include "../src/common/daytona_host_ready.hpp"
 #include "../src/common/daytona_producer_health.hpp"
 #include "../src/common/daytona_eye_delivery_status.hpp"
+#include "../src/common/daytona_mono_quad_anchor.hpp"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -70,6 +71,8 @@ private:
     std::uint8_t last_pose_rejection_=0u; // 1=untagged, 2=expired
     delivery::Status eye_delivery_status_=delivery::Status::NoProducerHealth;
     delivery::TransitionGate eye_delivery_gate_{};
+    monoquad::WorldFixedAnchor mono_quad_anchor_{};
+    bool mono_anchor_warning_=false;
     bool saw_diagnostic_=false;
     bool wizard_diag_enabled_=true;
     bool startup_ready_signaled_=false;

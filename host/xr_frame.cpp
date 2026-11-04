@@ -129,6 +129,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
                 ?"GameStereo":transport::IsMonoGame(frame_gate_.kind())
                 ?"OriginalGameMonoFallback":frame_gate_.kind()==transport::FrameKind::Diagnostic
                 ?"Diagnostic":"Unknown")<<"\n"
+          <<"mono_quad_anchor_valid="<<(mono_quad_anchor_.Valid()?1:0)<<"\n"
           <<"native_stereo_confirmed="<<(paired_frame_fresh &&
                 frame_gate_.kind()==transport::FrameKind::GameStereo?1:0)<<"\n"
           <<"producer_health_fresh="<<(producer_health_fresh_?1:0)<<"\n"
@@ -158,6 +159,8 @@ void XrApp::invalidate_source_session() noexcept {
     last_pose_rejection_=0u;
     eye_delivery_status_=delivery::Status::NoProducerHealth;
     eye_delivery_gate_.Reset();
+    mono_quad_anchor_.Reset();
+    mono_anchor_warning_=false;
     for(auto& chain:chains_)
         std::fill(chain.uploaded_frame_ids.begin(),
                   chain.uploaded_frame_ids.end(),0u);
@@ -316,11 +319,37 @@ void XrApp::draw_frame(XrTime display_time){
     // display tick, but stop presenting it if the producer stalls.
     const bool source_failed_after_pair=producerhealth::InvalidatesCachedPair(
         producer_health_status_,producer_health_fresh_,frame_gate_.id());
-    const bool usable=!source_failed_after_pair &&
+    bool usable=!source_failed_after_pair &&
         frame_gate_.Cached(now,hz) &&
         eye_frame_.frame_id==frame_gate_.id() &&
         transport::ValidEyePayload(eye_frame_.kind,
             eye_frame_.eyes[0].size(),eye_frame_.eyes[1].size());
+    // Establish a genuinely world-fixed cinema screen ONCE from the
+    // headset's actual two view poses. OpenXR LOCAL origin is not
+    // guaranteed to be the seated driver's current head position.
+    // Do not recenter the quad every display frame (head-follow bug).
+    const bool mono_source=transport::IsMonoGame(frame_gate_.kind());
+    if(!mono_source){
+        mono_quad_anchor_.Reset();mono_anchor_warning_=false;
+    }
+    bool mono_anchor_rejected=false;
+    if(usable && mono_source){
+        const auto convert=[](const XrView& view) noexcept {
+            return monoquad::View{
+                {view.pose.position.x,view.pose.position.y,view.pose.position.z},
+                {view.pose.orientation.x,view.pose.orientation.y,
+                 view.pose.orientation.z,view.pose.orientation.w}};
+        };
+        if(!mono_quad_anchor_.CaptureOnce(convert(views[0]),convert(views[1]))){
+            mono_anchor_rejected=true;
+            usable=false;
+            if(!mono_anchor_warning_){
+                std::cerr<<"Daytona VR original mono quad: TRACKED_EYE_POSE_REJECTED"
+                         <<std::endl;
+                mono_anchor_warning_=true;
+            }
+        }else mono_anchor_warning_=false;
+    }
     // A solid left/right fallback color is OpenXR host output, not proof
     // that the original 32-bit Daytona GPU image crossed x86->x64 IPC.
     // Summarize the actual upstream cause on transitions only, independent
@@ -342,6 +371,7 @@ void XrApp::draw_frame(XrTime display_time){
         chains_[0].height==transport::kHeight &&
         chains_[1].width==transport::kWidth &&
         chains_[1].height==transport::kHeight;
+    delivery_evidence.mono_anchor_rejected=mono_anchor_rejected;
     delivery_evidence.missing_original_pose_tag=last_pose_rejection_==1u;
     delivery_evidence.expired_original_pose_tag=last_pose_rejection_==2u;
     eye_delivery_status_=delivery::Classify(delivery_evidence);
@@ -424,10 +454,19 @@ void XrApp::draw_frame(XrTime display_time){
         static_cast<std::int32_t>(chains_[0].width);
     mono_quad.subImage.imageRect.extent.height=
         static_cast<std::int32_t>(chains_[0].height);
-    mono_quad.pose.orientation.w=1.f;
-    mono_quad.pose.position.z=-1.65f;
-    mono_quad.size.width=2.0f;
-    mono_quad.size.height=2.0f;
+    // Never submit an uninitialized or stale local-space quad pose.
+    if(original_mono_quad && mono_quad_anchor_.Valid()){
+        const auto& anchor=mono_quad_anchor_.Get();
+        mono_quad.pose.position.x=anchor.position.x;
+        mono_quad.pose.position.y=anchor.position.y;
+        mono_quad.pose.position.z=anchor.position.z;
+        mono_quad.pose.orientation.x=anchor.orientation.x;
+        mono_quad.pose.orientation.y=anchor.orientation.y;
+        mono_quad.pose.orientation.z=anchor.orientation.z;
+        mono_quad.pose.orientation.w=anchor.orientation.w;
+        mono_quad.size.width=anchor.width;
+        mono_quad.size.height=anchor.height;
+    }
     const XrCompositionLayerBaseHeader* selected_layer=
         original_mono_quad
             ?reinterpret_cast<const XrCompositionLayerBaseHeader*>(&mono_quad)

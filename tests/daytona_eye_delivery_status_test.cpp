@@ -35,6 +35,9 @@ int main(){
     assert(Classify(e)==Status::ProducerRejected);
     e.producer_reason_mask=512u;
     assert(Classify(e)==Status::SourcePairStale);
+    e.mono_anchor_rejected=true;
+    assert(Classify(e)==Status::MonoQuadAnchorRejected);
+    e.mono_anchor_rejected=false;
     TransitionGate gate;
     assert(gate.Changed(Status::NoFrameTransport));
     assert(!gate.Changed(Status::NoFrameTransport));

@@ -25,6 +25,13 @@ if(MSVC)
 endif()
 install(TARGETS Model2VROpenXRHost RUNTIME DESTINATION .)
 
+# Same single fixed original-game cinema quad origin contract in x86/x64.
+add_executable(daytona_mono_quad_anchor_x64_test
+    ../tests/daytona_mono_quad_anchor_test.cpp)
+target_compile_features(daytona_mono_quad_anchor_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_mono_quad_world_anchor_x64
+         COMMAND daytona_mono_quad_anchor_x64_test)
+
 # ABI contract must be identical between the 32-bit emulator producer
 # and the 64-bit HMD consumer; run the same regression in both builds.
 enable_testing()

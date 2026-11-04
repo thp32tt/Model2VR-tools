@@ -117,6 +117,14 @@ add_executable(model2vr_stereo_core_test tests/stereo_core_test.cpp)
 target_link_libraries(model2vr_stereo_core_test PRIVATE model2vr_stereo_core)
 add_test(NAME stereo_geometry_invariants COMMAND model2vr_stereo_core_test)
 
+# A real game mono fallback has one world-fixed OpenXR quad, anchored
+# to the actual HMD's initial tracked two-eye pose and not head-following.
+add_executable(daytona_mono_quad_anchor_x86_test
+    tests/daytona_mono_quad_anchor_test.cpp)
+target_compile_features(daytona_mono_quad_anchor_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_mono_quad_world_anchor_x86
+         COMMAND daytona_mono_quad_anchor_x86_test)
+
 # 32/64-bit ABI-compatible shared stereo transport and diagnostic producer.
 add_executable(model2vr_stereo_ipc_test tests/stereo_frame_ipc_test.cpp)
 target_compile_features(model2vr_stereo_ipc_test PRIVATE cxx_std_20)
