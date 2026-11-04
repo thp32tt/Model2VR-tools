@@ -18,6 +18,11 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("BlendMode::DestinationAlphaOver",blend)
         self.assertIn("BlendMode::MultiplyColor",blend)
         self.assertIn("BlendProducesColor(texture.blend)",raster)
+        sampler=(ROOT/"src/probe/d3d9_sampler_states.hpp").read_text("utf-8")
+        self.assertIn("OriginalStage0TextureHasOneMip",sampler)
+        self.assertIn("source->GetLevelCount()==1u",sampler)
+        self.assertIn("OriginalStage0TextureHasOneMip(d)",
+                      source)
         self.assertNotIn("depth_mode>1u",bridge)
         self.assertIn("const bool diffuse_only=rgb_source==1u && alpha_source==1u;",bridge)
         self.assertIn("(!diffuse_only || width || height || pitch)",bridge)

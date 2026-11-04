@@ -130,7 +130,9 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
         texcoord_index!=0u || transform_flags!=D3DTTFF_DISABLE ||
         !m2vr::drawprobe::DecodeSamplerPolicy(
             address_u,address_v,min_filter,mag_filter,mip_filter,
-            srgb_texture,sampler)))
+            srgb_texture,sampler,
+            mip_filter!=D3DTEXF_NONE &&
+                m2vr::drawprobe::OriginalStage0TextureHasOneMip(d))))
         return false;
     IDirect3DSurface9* current=nullptr;
     IDirect3DSurface9* main=nullptr;

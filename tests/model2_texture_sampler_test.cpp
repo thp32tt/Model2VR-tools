@@ -108,6 +108,22 @@ int main(){
         D3DTEXF_LINEAR,D3DTEXF_POINT,D3DTEXF_NONE,0,converted));
     CHECK(!DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,
         D3DTEXF_LINEAR,D3DTEXF_LINEAR,D3DTEXF_LINEAR,0,converted));
+    // Source has a SINGLE original GPU mip: POINT/LINEAR mip selection
+    // must sample that sole level0, independent of mip filter state.
+    CHECK(DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,
+        D3DTEXF_LINEAR,D3DTEXF_LINEAR,D3DTEXF_LINEAR,0,converted,true));
+    CHECK(converted.filter==TextureFilter::Linear);
+    CHECK(DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,
+        D3DTEXF_POINT,D3DTEXF_POINT,D3DTEXF_POINT,0,converted,true));
+    CHECK(converted.filter==TextureFilter::Point);
+    CHECK(!DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,
+        D3DTEXF_POINT,D3DTEXF_POINT,D3DTEXF_LINEAR,0,converted,false));
+    CHECK(!DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,
+        D3DTEXF_LINEAR,D3DTEXF_POINT,D3DTEXF_LINEAR,0,converted,true));
+    CHECK(!DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,
+        D3DTEXF_POINT,D3DTEXF_POINT,D3DTEXF_ANISOTROPIC,0,converted,true));
+    CHECK(!DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,
+        D3DTEXF_POINT,D3DTEXF_POINT,D3DTEXF_LINEAR,1,converted,true));
     CHECK(!DecodeSamplerPolicy(D3DTADDRESS_WRAP,D3DTADDRESS_WRAP,
         D3DTEXF_LINEAR,D3DTEXF_LINEAR,D3DTEXF_NONE,1,converted));
     using m2vr::drawprobe::AlphaCutoffMatches;

@@ -10,10 +10,27 @@
 #include <cstdint>
 
 namespace m2vr::drawprobe {
+// One-level original D3D9 TEXTURE resources have no other mip to
+// interpolate or select. POINT/LINEAR MIPFILTER is therefore equivalent
+// to NONE, but only after querying the exact bound original resource.
+// The query is read-only and always releases its COM reference.
+inline bool OriginalStage0TextureHasOneMip(IDirect3DDevice9* d) noexcept {
+    if(!d)return false;
+    IDirect3DBaseTexture9* source=nullptr;
+    if(FAILED(d->GetTexture(0,&source)) || !source){
+        if(source)source->Release();
+        return false;
+    }
+    const bool single=source->GetType()==D3DRTYPE_TEXTURE &&
+                      source->GetLevelCount()==1u;
+    source->Release();
+    return single;
+}
 inline bool DecodeSamplerPolicy(DWORD address_u,DWORD address_v,
                                 DWORD min_filter,DWORD mag_filter,
                                 DWORD mip_filter,DWORD srgb_texture,
-                                m2vr::vr::SamplerPolicy& out) noexcept {
+                                m2vr::vr::SamplerPolicy& out,
+                                bool original_single_mip=false) noexcept {
     using m2vr::vr::TextureAddress;
     using m2vr::vr::TextureFilter;
     if((address_u!=D3DTADDRESS_CLAMP && address_u!=D3DTADDRESS_WRAP &&
@@ -25,7 +42,11 @@ inline bool DecodeSamplerPolicy(DWORD address_u,DWORD address_v,
        (min_filter!=D3DTEXF_POINT && min_filter!=D3DTEXF_LINEAR) ||
        (mag_filter!=D3DTEXF_POINT && mag_filter!=D3DTEXF_LINEAR) ||
        min_filter!=mag_filter ||
-       mip_filter!=D3DTEXF_NONE || srgb_texture!=0u)return false;
+       (mip_filter!=D3DTEXF_NONE &&
+        !(original_single_mip &&
+          (mip_filter==D3DTEXF_POINT ||
+           mip_filter==D3DTEXF_LINEAR))) ||
+       srgb_texture!=0u)return false;
     m2vr::vr::SamplerPolicy value{};
     value.u=address_u==D3DTADDRESS_WRAP ? TextureAddress::Wrap:
             address_u==D3DTADDRESS_MIRROR ? TextureAddress::Mirror:
