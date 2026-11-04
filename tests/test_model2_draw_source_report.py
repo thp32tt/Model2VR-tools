@@ -738,8 +738,10 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p, [
                 ("model2_d3d9_vb_source", 1, 5, pack(1, 0x112),
                  pack(2048, 20)),
-                ("model2_d3d9_cpu_vb_matrix_content", 1, 100, 200, 300),
-                ("model2_d3d9_cpu_vb_matrix_content", 1, 100, 200, 300),
+                # A valid matrix witness has mixed=0 or mixed=1; the old
+                # synthetic value 200 violated the real original log ABI.
+                ("model2_d3d9_cpu_vb_matrix_content", 1, 100, 0, 300),
+                ("model2_d3d9_cpu_vb_matrix_content", 1, 100, 0, 300),
             ])
             self.assertEqual(REPORT.audit_csv(p)["caller_count"], 1)
             self.write_log(p, [
