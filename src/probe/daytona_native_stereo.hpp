@@ -57,6 +57,11 @@ void MirrorStretchRect(IDirect3DDevice9* device,IDirect3DSurface9* source,
 void MirrorColorFill(IDirect3DDevice9* device,IDirect3DSurface9* destination,
                      const RECT* rect,D3DCOLOR color,
                      OriginalColorFill original) noexcept;
-void PublishFrame(IDirect3DDevice9* device,std::uint64_t frame) noexcept;
+// Preserve original backbuffer contents by staging before Present; delay
+// x86/x64 GameStereo publication and final health until original HRESULT.
+void PrepareFrameBeforePresent(IDirect3DDevice9* device,
+                               std::uint64_t frame) noexcept;
+void FinishFrameAfterPresent(std::uint64_t frame,
+                             HRESULT original_result) noexcept;
 void ResetResources() noexcept;
 }

@@ -614,7 +614,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     const unsigned dpup=g_up.exchange(0u,std::memory_order_relaxed);
     const unsigned dipup=g_indexed_up.exchange(0u,std::memory_order_relaxed);
     if(g_native_stereo){
-        m2vr::daytona::PublishFrame(d,frame);
+        m2vr::daytona::PrepareFrameBeforePresent(d,frame);
         // Aggregate original draw counts remain available even if the
         // HMD is disconnected, and never log game vertices or shaders.
         if(frame==1u || frame%120u==0u)
@@ -627,8 +627,12 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Snapshot sampling state belongs to a frame, not a process lifetime.
     for(auto& counter:g_family_samples)
         counter.store(0u,std::memory_order_relaxed);
-    // Return the original Present result unchanged; no game GPU replay.
-    return g_present(d,a,b,w,dirty);
+    // Original Present runs exactly once. Preserve its HRESULT and publish
+    // the staged GameStereo pair only if the real source Present succeeded.
+    const HRESULT original_result=g_present(d,a,b,w,dirty);
+    if(g_native_stereo)
+        m2vr::daytona::FinishFrameAfterPresent(frame,original_result);
+    return original_result;
 }
 HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
                                      D3DPRESENT_PARAMETERS* pp){

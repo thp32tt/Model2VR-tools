@@ -16,7 +16,16 @@ int main(){
  REQUIRE(reader.Open(pid));
  REQUIRE(!reader.Read(got));
  REQUIRE(!writer.Publish(0u,NoVerifiedScene,0,0,0,zero));
- REQUIRE(!writer.Publish(1u,0x100u,0,0,0,zero));
+ REQUIRE(!writer.Publish(1u,0x200u,0,0,0,zero));
+ REQUIRE(FinalPresentReason(0u,true,true)==0u);
+ REQUIRE(FinalPresentReason(0u,false,true)==OriginalPresentFailed);
+ REQUIRE(FinalPresentReason(ReadbackFailed,false,true)==
+         (ReadbackFailed|OriginalPresentFailed));
+ REQUIRE(FinalPresentReason(0u,true,false)==PoseExpired);
+ REQUIRE(FinalPresentReason(ReadbackFailed,true,false)==ReadbackFailed);
+ REQUIRE(!MayPublishGameStereo(FinalPresentReason(0u,false,true)));
+ REQUIRE(MayPublishGameStereo(FinalPresentReason(0u,true,true)));
+ REQUIRE(ReasonName(OriginalPresentFailed)[0]=='O');
  REQUIRE(!writer.Publish(1u,NoVerifiedScene,0,11,1,first));
  REQUIRE(writer.Publish(1u,NoVerifiedScene|PoseUnavailable,0,12,1,first));
  REQUIRE(!writer.Publish(1u,0u,1,12,1,first));
@@ -47,6 +56,8 @@ int main(){
  REQUIRE(InvalidatesCachedPair(failed,true,2u));
  REQUIRE(!InvalidatesCachedPair(failed,true,3u));
  REQUIRE(!InvalidatesCachedPair(failed,false,2u));
+ failed.reason_mask=OriginalPresentFailed;
+ REQUIRE(InvalidatesCachedPair(failed,true,2u));
  reader.Close();writer.Close();
  REQUIRE(!reader.Read(got));
  return 0;

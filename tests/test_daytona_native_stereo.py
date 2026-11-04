@@ -12,7 +12,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("const HRESULT hr=g_draw_up(d,p,count,verts,stride);",hooks)
         self.assertIn("if(SUCCEEDED(hr) && g_native_stereo)",hooks)
         self.assertIn("m2vr::daytona::MirrorDraw(",hooks)
-        self.assertIn("m2vr::daytona::PublishFrame(d,frame)",hooks)
+        self.assertIn("m2vr::daytona::PrepareFrameBeforePresent(d,frame)",hooks)
+        self.assertIn("m2vr::daytona::FinishFrameAfterPresent(frame,original_result)",hooks)
         self.assertIn("m2vr::daytona::ResetResources()",hooks)
         self.assertIn("g_native_stereo=native_stereo",hooks)
         self.assertIn("CreateRenderTarget(width_,height_",gpu)
@@ -127,6 +128,9 @@ class NativeStereoTest(unittest.TestCase):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         self.assertIn('#include "logger.h"',gpu)
         self.assertIn("model2_vr_producer_frame",gpu)
+        self.assertIn("pending_present_frame_=frame;",gpu)
+        self.assertIn("FinalPresentReason(",gpu)
+        self.assertIn("MayPublishGameStereo(reason)",gpu)
         self.assertIn("!scene_draws_ ? 2u : 0u",gpu)
         self.assertIn("!fresh_pose ? 16u : 0u",gpu)
         self.assertIn("reason=64u",gpu)
@@ -159,7 +163,32 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("(std::uint64_t{dpup}<<32)|dipup",hooks)
         self.assertIn("if(frame==1u || frame%120u==0u)",hooks)
         self.assertIn('m2vr::LogEvent("model2_d3d9_frame"',hooks)
-        self.assertIn("m2vr::daytona::PublishFrame(d,frame);",hooks)
+        self.assertIn("m2vr::daytona::PrepareFrameBeforePresent(d,frame);",hooks)
+        self.assertIn("m2vr::daytona::FinishFrameAfterPresent(frame,original_result);",hooks)
+
+    def test_original_present_must_succeed_before_x64_eye_publication(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        health=(ROOT/"src/common/daytona_producer_health.hpp").read_text("utf-8")
+        begin=hooks.index("HRESULT STDMETHODCALLTYPE PresentHook(")
+        end=hooks.index("HRESULT STDMETHODCALLTYPE ResetHook(",begin)
+        body=hooks[begin:end]
+        self.assertLess(body.index("PrepareFrameBeforePresent(d,frame)"),
+                        body.index("const HRESULT original_result=g_present("))
+        self.assertLess(body.index("const HRESULT original_result=g_present("),
+                        body.index("FinishFrameAfterPresent(frame,original_result)"))
+        self.assertEqual(body.count("g_present(d,a,b,w,dirty)"),1)
+        self.assertIn("return original_result;",body)
+        pre=gpu.split("void PreparePresent(")[1].split("void FinishPresent(")[0]
+        post=gpu.split("void FinishPresent(")[1].split("private:")[0]
+        self.assertNotIn("Model2VR_SubmitStereoRGBA(",pre)
+        self.assertIn("Model2VR_SubmitStereoRGBA(",post)
+        self.assertLess(post.index("FinalPresentReason("),
+                        post.index("Model2VR_SubmitStereoRGBA("))
+        self.assertLess(post.index("Model2VR_SubmitStereoRGBA("),
+                        post.index("ReportFrame(frame,reason);"))
+        self.assertIn("OriginalPresentFailed=256u",health)
+        self.assertIn("ORIGINAL_D3D9_PRESENT_FAILED",health)
 
     def test_live_x86_to_x64_failure_reason_channel(self):
         producer=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")

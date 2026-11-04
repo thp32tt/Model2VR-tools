@@ -13,9 +13,22 @@ constexpr std::uint32_t kVersion=2u;
 enum Reason : std::uint32_t {
     NoMirroredPass=1u, NoVerifiedScene=2u, WrongDevice=4u,
     PoseUnavailable=8u, PoseExpired=16u, ReadbackFailed=32u,
-    IdenticalEyes=64u, TransportFailed=128u
+    IdenticalEyes=64u, TransportFailed=128u,
+    OriginalPresentFailed=256u
 };
-constexpr std::uint32_t kKnownReasons=255u;
+constexpr std::uint32_t kKnownReasons=511u;
+// Capture the GPU eye targets before the original swap-chain Present, then
+// publish only when the real game's Present HRESULT AND stereo tracking pass.
+constexpr std::uint32_t FinalPresentReason(std::uint32_t prepared,
+                                            bool original_succeeded,
+                                            bool pose_still_live)noexcept{
+    if(!original_succeeded)return prepared|OriginalPresentFailed;
+    if(!prepared && !pose_still_live)return PoseExpired;
+    return prepared;
+}
+constexpr bool MayPublishGameStereo(std::uint32_t reason)noexcept{
+    return reason==0u;
+}
 struct Snapshot {
     std::uint64_t frame_id=0, timestamp_qpc=0;
     std::uint32_t reason_mask=0, verified_scene_draws=0;
@@ -51,6 +64,7 @@ constexpr bool InvalidatesCachedPair(const Snapshot& health,bool fresh,
 }
 constexpr const char* ReasonName(std::uint32_t mask)noexcept {
     if(!mask)return "PAIR_PUBLISHED";
+    if(mask&OriginalPresentFailed)return "ORIGINAL_D3D9_PRESENT_FAILED";
     if(mask&PoseUnavailable)return "POSE_NOT_ADMITTED";
     if(mask&PoseExpired)return "POSE_STALE";
     if(mask&NoVerifiedScene)return "NO_VERIFIED_WORLD_SCENE";

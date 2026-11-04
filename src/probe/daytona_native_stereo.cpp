@@ -360,29 +360,28 @@ public:
         frame_started_=true;
         ++mirrored_clears_;
     }
-    void Present(IDirect3DDevice9* d,std::uint64_t frame){
-        if(!enabled_||!d)return;
+    void PreparePresent(IDirect3DDevice9* d,std::uint64_t frame){
+        if(!enabled_ || !frame)return;
         std::lock_guard lock(mu_);
-        // A compact reason mask explains why a tracked HMD can still display
-        // only fallback colours. No per-Draw dumps, ROM data or private trace.
+        pending_present_frame_=frame;
+        pending_present_reason_=0u;
+        // Read the current game frame before the original Present can flip
+        // its backbuffer. No transport writer or health is touched here.
         const bool fresh_pose=pose_admitted_ && LivePoseNow();
         const std::uint32_t gate=
-            (!frame_started_ ? 1u : 0u) |  // no eligible backbuffer replay
-            (!scene_draws_ ? 2u : 0u) |    // no proven shifted world UP draw
-            (frame==0u || d!=device_ ? 4u : 0u) |
+            (!frame_started_ ? 1u : 0u) |
+            (!scene_draws_ ? 2u : 0u) |
+            (!d || d!=device_ ? 4u : 0u) |
             (!pose_admitted_ ? 8u : 0u) |
             (!fresh_pose ? 16u : 0u);
         if(gate){
-            ReportFrame(frame,gate);
-            FinishFrame();return;
+            pending_present_reason_=gate;
+            return;
         }
         bool ready=true;
         for(unsigned eye=0;eye<2;++eye){
             IDirect3DSurface9* readback_source=eyes_[eye].color;
             if(eyes_[eye].resolve){
-                // GetRenderTargetData rejects multisampled render targets.
-                // Resolve the complete eye RT first, outside the game's
-                // BeginScene/EndScene pair at Present time.
                 if(FAILED(d->StretchRect(eyes_[eye].color,nullptr,
                                          eyes_[eye].resolve,nullptr,
                                          D3DTEXF_NONE))){
@@ -395,26 +394,51 @@ public:
                 ready=false;break;
             }
             D3DLOCKED_RECT locked{};
-            if(FAILED(eyes_[eye].staging->LockRect(&locked,nullptr,D3DLOCK_READONLY))){
+            if(FAILED(eyes_[eye].staging->LockRect(
+                      &locked,nullptr,D3DLOCK_READONLY))){
                 ready=false;break;
             }
             ConvertBGRA(locked,rgba_[eye]);
             eyes_[eye].staging->UnlockRect();
         }
-        // Do not advertise a pair as real stereo when the original shader
-        // projection quantizes the tiny X-shift to identical eye pixels.
-        std::uint32_t reason=ready?0u:32u; // D3D9 resolve/readback failed
+        std::uint32_t reason=ready?0u:32u;
         if(ready && rgba_[0]==rgba_[1]){
             ready=false;
-            reason=64u; // stereo quantized to identical eye images
+            reason=64u;
         }
-        if(ready){
+        pending_present_reason_=reason;
+    }
+    void FinishPresent(std::uint64_t frame,HRESULT original_result)noexcept{
+        if(!enabled_ || !frame)return;
+        std::lock_guard lock(mu_);
+        // A missing/mismatched pre-Present stage cannot publish a previous
+        // frame just because the game completed a later Present.
+        const bool coherent=pending_present_frame_==frame;
+        const std::uint32_t prepared=coherent?pending_present_reason_:4u;
+        const bool original_ok=SUCCEEDED(original_result);
+        const bool pose_live=coherent && prepared==0u && original_ok
+            ? LivePoseNow() : true;
+        std::uint32_t reason=m2vr::producerhealth::FinalPresentReason(
+            prepared,original_ok,pose_live);
+        if(!original_ok){
+            // Log a transition and bounded heartbeat, not a 60fps error
+            // flood on a lost D3D9 device.
+            if(original_result!=last_failed_present_ ||
+               frame==1u || frame%120u==0u)
+                m2vr::LogEvent("model2_vr_original_present_failed",
+                              frame,static_cast<std::uint32_t>(original_result),
+                              prepared,0u);
+            last_failed_present_=original_result;
+        }else last_failed_present_=S_OK;
+        if(m2vr::producerhealth::MayPublishGameStereo(reason)){
             if(!writer_ready_)writer_ready_=Model2VR_OpenStereoWriter()!=FALSE;
             if(!writer_ready_ || !Model2VR_SubmitStereoRGBA(
                 rgba_[0].data(),rgba_[1].data(),frame,
                 m2vr::transport::kWidth,m2vr::transport::kHeight,
-                m2vr::transport::kPitch))reason=128u; // IPC writer/publish failed
+                m2vr::transport::kPitch))reason=128u;
         }
+        // Health is committed after the *actual original* Present outcome.
+        // x64 may revoke a cached older eye frame on a newer game failure.
         ReportFrame(frame,reason);
         FinishFrame();
     }
@@ -468,6 +492,7 @@ private:
         return pose_admitted_;
     }
     void FinishFrame()noexcept{
+        pending_present_frame_=0u;pending_present_reason_=0u;
         frame_started_=false;scene_draws_=0;
         mirrored_draws_=0;mirrored_clears_=0;
         mirrored_stretches_=0;mirrored_fills_=0;mirrored_updates_=0;
@@ -579,6 +604,9 @@ private:
     std::mutex mu_;
     m2vr::producerhealth::Link health_;
     bool enabled_=false,frame_started_=false,writer_ready_=false;
+    std::uint64_t pending_present_frame_=0u;
+    std::uint32_t pending_present_reason_=0u;
+    HRESULT last_failed_present_=S_OK;
     bool pose_checked_=false,pose_admitted_=false;
     bool first_stereo_published_=false;
     float ipd_scale_=1.f;
@@ -653,8 +681,12 @@ void MirrorColorFill(IDirect3DDevice9* d,IDirect3DSurface9* dst,
     try{g_eye.ColorFill(d,dst,rect,color,original);}
     catch(...){g_eye.ResetExternal();}
 }
-void PublishFrame(IDirect3DDevice9* d,std::uint64_t frame)noexcept{
-    try {g_eye.Present(d,frame);}
+void PrepareFrameBeforePresent(IDirect3DDevice9* d,std::uint64_t frame)noexcept{
+    try{g_eye.PreparePresent(d,frame);}
+    catch(...){g_eye.ResetExternal();}
+}
+void FinishFrameAfterPresent(std::uint64_t frame,HRESULT hr)noexcept{
+    try{g_eye.FinishPresent(frame,hr);}
     catch(...){g_eye.ResetExternal();}
 }
 void ResetResources()noexcept{g_eye.ResetExternal();}

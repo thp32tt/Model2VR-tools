@@ -338,3 +338,33 @@ an initial partial write cannot seed a new eye frame. The original
 call runs once with its original HRESULT. The compact
 `model2_vr_surface_updates` event's third count reports these copies;
 they are not falsely counted as verified shifted world geometry.
+
+## Original game's Present now controls stereo publication (2026-11-04)
+
+Previously the x86 native producer submitted both eye frames to its
+shared-memory OpenXR transport **before** the actual emulator D3D9
+`Present` returned. If the original Present failed with device-loss or
+another error, the host could briefly claim an unpresented image was a
+valid Daytona game frame.
+
+The native bridge now stages its two-eye D3D9 GPU readback **before**
+Present (preserving exact backbuffer contents), invokes the original
+Present exactly once and preserves the HRESULT, and publishes the
+coherent GameStereo pair **after** a successful original HRESULT and
+still-fresh OpenXR tracking. The per-frame producer health commits
+only after that decision.
+
+A failed source Present reports `OriginalPresentFailed=256` and
+`ORIGINAL_D3D9_PRESENT_FAILED` through the existing 64-byte v2
+health mapping; the x64 host automatically reflects that reason and
+revokes older frames on a newer failed Present. The x86 CSV also
+records `model2_vr_original_present_failed` with original HRESULT on
+transitions and bounded 120-frame heartbeats (no per-frame log flood).
+This does not change the desktop game's Present, CPU simulation,
+OpenXR pose source or the separate wheel/FFB plugin.
+
+Win32/Win64 native health tests cover success, original failure,
+readback failure and tracking expiry. The Windows static integration
+test checks pre/actual/post call ordering and prevents premature
+`Model2VR_SubmitStereoRGBA`. Quest 3 visual validity and calibrated
+Daytona 6DoF remain RUNTIME_VALIDATION=UNTESTED.
