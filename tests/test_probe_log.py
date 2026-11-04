@@ -98,6 +98,7 @@ class ProbeLogTests(unittest.TestCase):
                      2, 1, 7),
                     ("model2_d3d9_source_vertex_pipeline",22,
                      (2 << 32) | 1, 0, 7),
+                    ("model2_d3d9_source_fill",22,3,7,(0x144<<32)|28),
                     # Wrong original next-Present frame may have identical
                     # caller and material but MUST NOT be correlated.
                     ("model2_d3d9_up_source_fvf", 23, 0x144, 28, 8),
@@ -151,6 +152,20 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(
             examples[0]["original_source_vertex_pipeline_status"],
             "supported")
+        self.assertEqual(
+            material["original_up_material_fill_status"],{"solid":1})
+        self.assertEqual(
+            examples[0]["original_source_fill_status"],"solid")
+
+    def test_original_up_fillmode_strict_source_provenance(self):
+        status=MODULE.original_d3d9_fill_status
+        tag=(0x144<<32)|28
+        self.assertEqual(status(None,17,0x144,28),"unobserved")
+        self.assertEqual(status((3,17,tag),17,0x144,28),"solid")
+        self.assertEqual(status((3,18,tag),17,0x144,28),"present_mismatch")
+        self.assertEqual(status((3,17,tag),17,0x144,24),"source_layout_mismatch")
+        self.assertEqual(status((2,17,tag),17,0x144,28),"unsupported")
+        self.assertEqual(status((1,17,tag),17,0x144,28),"unsupported")
 
     def test_original_up_vertex_pipeline_strict_source_provenance(self):
         status=MODULE.original_d3d9_vertex_pipeline_status
