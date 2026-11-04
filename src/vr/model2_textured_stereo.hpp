@@ -4,6 +4,7 @@
 // division and sampled with perspective correction in the independent eyes.
 // Never modifies D3D9 state, game memory, simulation or FFB.
 #include "model2_eye_clip.hpp"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -16,6 +17,9 @@ namespace m2vr::vr {
 struct TexturedEyeVertex {
     EyeProjection position{};
     float u=0.f,v=0.f;
+    // D3D9 diffuse vertex channels, linear in unprojected camera space.
+    // White is the backwards-compatible SELECTARG1(TEXTURE) default.
+    std::array<float,4> diffuse_rgba{{1.f,1.f,1.f,1.f}};
 };
 struct ClippedTexturedEyeTriangle {
     std::array<TexturedEyeVertex,3> vertices{};
@@ -29,11 +33,15 @@ namespace texclip_detail {
 struct Attributed {
     clip_detail::Vertex clip{};
     double u=0,v=0;
+    std::array<double,4> diffuse{{1.,1.,1.,1.}};
 };
 inline bool Finite(const Attributed& a) noexcept {
     return clip_detail::Finite3(a.clip) &&
            std::isfinite(a.u) && std::isfinite(a.v) &&
-           std::abs(a.u)<=65536. && std::abs(a.v)<=65536.;
+           std::abs(a.u)<=65536. && std::abs(a.v)<=65536. &&
+           std::all_of(a.diffuse.begin(),a.diffuse.end(),[](double c){
+               return std::isfinite(c) && c>=-1.e-6 && c<=1.000001;
+           });
 }
 inline bool Intersect(const Attributed& a,const Attributed& b,
                       double da,double db,Attributed& result) noexcept {
@@ -42,6 +50,8 @@ inline bool Intersect(const Attributed& a,const Attributed& b,
     const double t=da/denom;
     result.u=a.u+t*(b.u-a.u);
     result.v=a.v+t*(b.v-a.v);
+    for(std::size_t i=0;i<4;++i)
+        result.diffuse[i]=a.diffuse[i]+t*(b.diffuse[i]-a.diffuse[i]);
     return Finite(result);
 }
 inline bool Clip(const std::array<Attributed,3>& input,double near_z,
@@ -82,6 +92,9 @@ inline bool Normalize(const Attributed& vertex,double near_z,
        !clip_detail::Normalize(vertex.clip,near_z,output.position))return false;
     output.u=static_cast<float>(vertex.u);
     output.v=static_cast<float>(vertex.v);
+    for(std::size_t i=0;i<4;++i)
+        output.diffuse_rgba[i]=static_cast<float>(std::clamp(
+            vertex.diffuse[i],0.,1.));
     return std::isfinite(output.u)&&std::isfinite(output.v);
 }
 }
@@ -93,7 +106,8 @@ inline bool BuildTexturedStereoBatch(
     const Model2FramePoseLatch& latch,
     const Model2CameraCalibration& cal,
     const DrawEvidence& evidence,
-    ClippedTexturedStereoBatch& output) {
+    ClippedTexturedStereoBatch& output,
+    const std::uint32_t* diffuse_argb=nullptr) {
     if(!positions||!uv_interleaved||!indices||!vertex_count||
        vertex_count>8192 || !index_count||index_count%3||
        index_count/3>8192 ||
@@ -117,6 +131,15 @@ inline bool BuildTexturedStereoBatch(
                     return false;
                 v.u=static_cast<double>(uv_interleaved[index*2]);
                 v.v=static_cast<double>(uv_interleaved[index*2+1]);
+                if(diffuse_argb){
+                    const auto argb=diffuse_argb[index];
+                    v.diffuse={{
+                        double((argb>>16u)&255u)/255.,
+                        double((argb>>8u)&255u)/255.,
+                        double(argb&255u)/255.,
+                        double((argb>>24u)&255u)/255.
+                    }};
+                }
                 if(!texclip_detail::Finite(v))return false;
             }
             std::array<texclip_detail::Attributed,12> clipped{};

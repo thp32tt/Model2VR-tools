@@ -69,6 +69,8 @@ public:
         std::uint8_t alpha_cutoff=128;
         SamplerPolicy sampler{};
         RasterPolicy raster{};
+        bool modulate_rgb=false;
+        bool modulate_alpha=false;
     };
     // Fully clipped and validated beforehand; no half-eye write on a bad
     // texture, stale frame, invalid UV, or unsupported mixed pass.
@@ -94,6 +96,9 @@ public:
                        !std::isfinite(v.u) || !std::isfinite(v.v) ||
                        std::abs(v.u)>65536.f || std::abs(v.v)>65536.f)
                         return false;
+                    for(const float channel:v.diffuse_rgba)
+                        if(!std::isfinite(channel) || channel<0.f ||
+                           channel>1.f)return false;
                 }
             }
         }
@@ -177,6 +182,7 @@ private:
                           const TextureRGBA& texture) noexcept {
         std::array<Vertex,3> v{};
         std::array<double,3> u_over_z{},v_over_z{};
+        std::array<std::array<double,4>,3> diffuse_over_z{};
         for(std::size_t k=0;k<3;++k){
             const auto& p=tri.vertices[k].position;
             v[k]={ (double(p.ndc_x)*0.5+0.5)*Width,
@@ -184,6 +190,9 @@ private:
                    1.0/double(p.depth_m)};
             u_over_z[k]=double(tri.vertices[k].u)*v[k].inv_z;
             v_over_z[k]=double(tri.vertices[k].v)*v[k].inv_z;
+            for(std::size_t c=0;c<4;++c)
+                diffuse_over_z[k][c]=
+                    double(tri.vertices[k].diffuse_rgba[c])*v[k].inv_z;
         }
         const double signed_area=Edge(v[0],v[1],v[2].x,v[2].y);
         if(!TriangleSurvivesCull(signed_area,texture.raster.cull))
@@ -222,14 +231,31 @@ private:
                      texture.sampler,texel))continue;
                 // Bilinear alpha is filtered BEFORE the alpha cutoff,
                 // mirroring the fixed-function texture sample pipeline.
-                if(texel.a<texture.alpha_cutoff)continue;
+                // Source D3D9 COLOROP/ALPHAOP MODULATE(TEXTURE,DIFFUSE):
+                // perspective-correct diffuse color, never NDC-linear.
+                std::array<double,4> diffuse{{1.,1.,1.,1.}};
+                if(texture.modulate_rgb || texture.modulate_alpha){
+                    for(std::size_t channel=0;channel<4;++channel){
+                        const double value=(a*diffuse_over_z[0][channel]+
+                            b*diffuse_over_z[1][channel]+
+                            c*diffuse_over_z[2][channel])/inv;
+                        if(!std::isfinite(value))continue;
+                        diffuse[channel]=std::clamp(value,0.,1.);
+                    }
+                }
+                const auto sampled_alpha=static_cast<unsigned>(
+                    std::lround(double(texel.a)*
+                        (texture.modulate_alpha?diffuse[3]:1.)));
+                if(sampled_alpha<texture.alpha_cutoff)continue;
                 const auto pixel=offset*4u;
                 if(texture.raster.write_depth)
                     depth_[eye][offset]=static_cast<float>(z);
                 auto& color=color_[eye];
-                color[pixel]=texel.r;
-                color[pixel+1]=texel.g;
-                color[pixel+2]=texel.b;
+                const std::array<std::uint8_t,3> rgb{texel.r,texel.g,texel.b};
+                for(std::size_t channel=0;channel<3;++channel)
+                    color[pixel+channel]=static_cast<std::uint8_t>(
+                        std::lround(double(rgb[channel])*
+                            (texture.modulate_rgb?diffuse[channel]:1.)));
                 color[pixel+3]=255u;
                 ++pixels_;
                 ++eye_pixels_[eye];
