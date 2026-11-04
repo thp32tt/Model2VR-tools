@@ -44,6 +44,29 @@ int main(){
     input[4]=0.75f;
     input[3]=70000.f;
     CHECK(!DecodeWorldVertex(input.data(),sizeof(input),plain,world,view,out));
+    // Admit only source-side homogeneous perspective, including genuine
+    // off-axis and either D3D9 handedness. Reject common HUD/menu ortho,
+    // identity, nonfinite, shear and unexpected depth conventions.
+    D3DMATRIX projection{};
+    projection._11=1.2f;projection._22=1.5f;
+    projection._33=1.001f;projection._34=1.f;
+    projection._43=-0.1001f;
+    CHECK(StandardPerspectiveProjection(projection));
+    projection._31=0.22f;projection._32=-0.12f;
+    CHECK(StandardPerspectiveProjection(projection)); // asymmetric frustum
+    projection._34=-1.f;projection._33=-1.001f;
+    CHECK(StandardPerspectiveProjection(projection)); // right handed
+    projection._44=1.f;projection._34=0.f;projection._33=1.f;
+    CHECK(!StandardPerspectiveProjection(projection)); // orthographic
+    projection._44=0.f;projection._34=1.f;projection._33=1.001f;
+    projection._43=0.f;
+    CHECK(!StandardPerspectiveProjection(projection)); // no depth mapping
+    projection._43=-0.1001f;
+    projection._12=0.5f;
+    CHECK(!StandardPerspectiveProjection(projection)); // unsupported shear
+    projection._12=0.f;
+    projection._11=(std::numeric_limits<float>::quiet_NaN)();
+    CHECK(!StandardPerspectiveProjection(projection));
     // D3D9 is little-endian BGRA in A8R8G8B8 / X8R8G8B8.
     std::array<std::uint8_t,8> bgra{3,2,1,128, 40,50,60,0};
     std::array<std::uint8_t,8> result{};

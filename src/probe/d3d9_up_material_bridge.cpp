@@ -115,11 +115,14 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     if(FAILED(d->GetFVF(&fvf)))return FALSE;
     const auto layout=m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride);
     if(!layout.eligible)return FALSE;
-    D3DMATRIX world{},view{};
+    D3DMATRIX world{},view{},projection{};
     if(FAILED(d->GetTransform(D3DTS_WORLD,&world)) ||
        FAILED(d->GetTransform(D3DTS_VIEW,&view)) ||
+       FAILED(d->GetTransform(D3DTS_PROJECTION,&projection)) ||
        !m2vr::drawprobe::AffineMatrix(world) ||
-       !m2vr::drawprobe::AffineMatrix(view))return FALSE;
+       !m2vr::drawprobe::AffineMatrix(view) ||
+       !m2vr::drawprobe::StandardPerspectiveProjection(projection))
+        return FALSE;
     std::vector<std::uint8_t> raw;
     std::vector<std::uint32_t> safe_indices;
     std::vector<float> positions,uv;

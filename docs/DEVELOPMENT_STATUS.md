@@ -61,6 +61,19 @@ automatic conversion is inferred from the HMD. 2D fallback and the separate
 FFB plugin are unchanged. Windows x86/x64 synthetic tests are not Quest 3
 visual confirmation: RUNTIME_VALIDATION=UNTESTED.
 
+## Source perspective/HUD fail-closed gate (2026-11-04)
+
+The optional fixed-function D3D9 verified-world UP/VB/IB source adapter now
+also samples D3DTS_PROJECTION. Source XYZ/TEX1 geometry is only eligible
+when the original D3D9 homogeneous perspective has canonical +/-Z-to-W,
+nonzero perspective depth and finite standard projection coefficients.
+Off-axis LH/RH projection is permitted. Orthographic UI, identity projection,
+unknown projection, shear and reversed/non-standard depth are not
+misclassified as world geometry. No render state, original game call,
+simulation or FFB is changed. This complements, never replaces, the
+separately verified world/camera proof and valid head-relative OpenXR pose.
+Actual Daytona D3D9 projection and Quest 3 visual correctness remain UNTESTED.
+
 ## Historical milestone reference
 
 ## Milestone 01 — Read-only runtime probe

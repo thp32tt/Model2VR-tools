@@ -54,6 +54,30 @@ inline bool AffineMatrix(const D3DMATRIX& m) noexcept {
     return std::abs(m._14)<0.00001f && std::abs(m._24)<0.00001f &&
            std::abs(m._34)<0.00001f && std::abs(m._44-1.f)<0.00001f;
 }
+// The original D3D9 projection must be a conventional homogeneous
+// perspective transform before an XYZ world stream is independently sent to
+// an XR asymmetric projection. FVF XYZ alone also occurs in menu/2D passes.
+// D3D row-vector perspective has w'=+z (LH) or -z (RH), unlike ortho w'=1.
+// Permit off-axis projection terms _31/_32, reject unproven shear/oblique,
+// reversed-Z and non-standard matrix forms rather than label them 3D world.
+inline bool StandardPerspectiveProjection(const D3DMATRIX& m) noexcept {
+    const float all[16]={
+        m._11,m._12,m._13,m._14,m._21,m._22,m._23,m._24,
+        m._31,m._32,m._33,m._34,m._41,m._42,m._43,m._44
+    };
+    for(float v:all)if(!std::isfinite(v))return false;
+    constexpr float epsilon=0.00001f;
+    const bool left_handed=std::abs(m._34-1.f)<0.001f;
+    const bool right_handed=std::abs(m._34+1.f)<0.001f;
+    return (left_handed||right_handed) &&
+           m._11>epsilon && m._22>epsilon &&
+           std::abs(m._12)<epsilon && std::abs(m._13)<epsilon &&
+           std::abs(m._14)<epsilon && std::abs(m._21)<epsilon &&
+           std::abs(m._23)<epsilon && std::abs(m._24)<epsilon &&
+           std::abs(m._41)<epsilon && std::abs(m._42)<epsilon &&
+           std::abs(m._44)<epsilon && m._43< -epsilon &&
+           m._33*m._34>epsilon;
+}
 inline void TransformPoint(const D3DMATRIX& m,const float source[3],
                            float destination[3]) noexcept {
     const double x=source[0],y=source[1],z=source[2];
