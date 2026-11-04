@@ -365,7 +365,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("SourceCompatibleWithMain(",gpu)
         self.assertIn("FullOriginalColorClear(",gpu)
         self.assertIn("FullInitialColorClear(",gate)
-        self.assertIn("FullOriginalViewport(",gpu)
+        self.assertIn("FullOriginalViewport(",gate)
         self.assertIn("RouteOriginalToMain(",gpu)
         self.assertIn("aux_eyes_[eye].color:src",gpu)
         self.assertIn("aux_original_->AddRef()",gpu)
