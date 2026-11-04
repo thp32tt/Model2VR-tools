@@ -5,6 +5,9 @@
 #include "verified_world_bridge.h"
 #include "d3d9_texture_snapshot.hpp"
 #include "d3d9_sampler_states.hpp"
+#include "project_draw_correlator.hpp"
+#include "projected_up_world_source.hpp"
+#include "model2_camera_projection_fit.hpp"
 #include <Windows.h>
 #include <d3d9.h>
 #include <cstdint>
@@ -160,4 +163,75 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
         static_cast<unsigned int>(raster.cull),
         static_cast<unsigned int>(raster.depth),
         raster.write_depth?1u:0u);
+}
+
+// Actual original x86 D3D9 DrawPrimitiveUP XYZRHW/TEX1 vertices may already
+// match the same-thread ProjectVertexToScreen source ring. With a separately
+// authenticated CPU-world transaction, reconstruct ONLY these proven
+// camera-space positions, never rewrite source 2D or call original Draw twice.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+    void* device,const void* original_vertices,unsigned int triangles,
+    unsigned int stride,unsigned int expected_cpu_caller,unsigned int cutoff) {
+    auto* d=static_cast<IDirect3DDevice9*>(device);
+    constexpr std::uint32_t kMaxTriangles=
+        static_cast<std::uint32_t>(
+            m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles);
+    if(!d || !original_vertices || !expected_cpu_caller ||
+       !Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
+       triangles<2u || triangles>kMaxTriangles || cutoff>255u)return FALSE;
+    m2vr::vr::SamplerPolicy sampler{};
+    m2vr::vr::RasterPolicy raster{};
+    if(!FixedFunctionMaterial(d,cutoff,sampler,raster))return FALSE;
+    DWORD fvf=0;
+    if(FAILED(d->GetFVF(&fvf)) ||
+       !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride))
+        return FALSE;
+    D3DVIEWPORT9 viewport{};
+    if(FAILED(d->GetViewport(&viewport)))return FALSE;
+    try {
+        const auto count=std::size_t(triangles)*3u;
+        std::vector<std::uint8_t> raw(count*stride);
+        if(!GuardCopy(raw.data(),original_vertices,raw.size()))return FALSE;
+        std::array<m2vr::drawprobe::ProjectedDrawVertex,24> screen{};
+        std::vector<float> uv(count*2u),positions(count*3u);
+        std::vector<std::uint32_t> indices(count);
+        for(std::size_t i=0;i<count;++i){
+            m2vr::drawprobe::ProjectedUPWorldVertex decoded{};
+            if(!m2vr::drawprobe::DecodeProjectedUPWorldVertex(
+                raw.data()+i*stride,fvf,stride,decoded))return FALSE;
+            screen[i]={decoded.screen_xy[0],decoded.screen_xy[1]};
+            uv[i*2u]=decoded.uv[0];
+            uv[i*2u+1u]=decoded.uv[1];
+            indices[i]=static_cast<std::uint32_t>(i);
+        }
+        const auto joined=m2vr::drawprobe::ThreadProjectDrawCorrelator()
+            .MatchTriangleList(m2vr::drawprobe::CurrentProjectDrawEpoch(),
+                               screen.data(),count);
+        if(!joined.CompleteSameSource() ||
+           joined.common_source_caller_rva!=expected_cpu_caller)
+            return FALSE;
+        const auto fit=m2vr::drawprobe::FitSourcePerspective(
+            joined.camera_samples.data(),joined.camera_sample_count,
+            viewport.X,viewport.Y,viewport.Width,viewport.Height);
+        if(!fit.plausible)return FALSE;
+        for(std::size_t i=0;i<count;++i)
+            for(unsigned k=0;k<3u;++k)
+                positions[i*3u+k]=joined.camera_samples[i].source_xyz[k];
+        m2vr::drawprobe::TextureSnapshot texture{};
+        if(!m2vr::drawprobe::SnapshotCurrentTexture(d,texture))
+            return FALSE;
+        // Same authenticated owner and exact existing rasterization/pose
+        // contract as the other fixed-function original Draw adapters.
+        return Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
+            positions.data(),uv.data(),static_cast<unsigned>(count),
+            indices.data(),static_cast<unsigned>(count),
+            texture.rgba.data(),texture.width,texture.height,
+            texture.width*4u,cutoff,
+            static_cast<unsigned>(sampler.filter),
+            static_cast<unsigned>(sampler.u),
+            static_cast<unsigned>(sampler.v),
+            static_cast<unsigned>(raster.cull),
+            static_cast<unsigned>(raster.depth),
+            raster.write_depth?1u:0u);
+    }catch(...){return FALSE;}
 }

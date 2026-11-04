@@ -147,6 +147,20 @@ outputs enter the existing per-eye depth/texture raster and original
 alpha-test policy. Unsupported D3D9 texture formats and unreadable
 resources remain rejected rather than guessed; no GPU draw is duplicated.
 
+**Original CPU-projected fixed-function D3D9 UP to stereo world geometry (2026-11-04):**
+A new opt-in `Model2VR_AppendVerifiedProjectedD3D9UPTextured` adapter
+consumes the actual original fixed-function XYZRHW/TEX1 triangle-list
+source, validates the 2D vertex bytes, joins at least two triangles
+against distinct same-thread same-Present CPU ProjectVertexToScreen
+candidates with an externally authenticated CPU caller, rejects ambiguous
+or mixed-source geometry, and fits a coherent perspective projection
+before submitting ORIGINAL view-space positions/UV, exact source sampler,
+depth/cull policy and CPU-lockable source texture to the independent
+head-relative OpenXR eye raster. The original Draw remains unchanged.
+**No implicit call or automatic world/HUD promotion**: the game pass and
+camera units/axes must still be independently verified by an authorized
+adapter. Shader-UP and unknown UI sources are not force-converted.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

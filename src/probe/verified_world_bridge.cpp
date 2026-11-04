@@ -73,6 +73,10 @@ m2vr::vr::DrawEvidence EvidenceFromProof(std::uint32_t flags)noexcept{
 }
 bool Owner()noexcept{return g.active && g.owner==GetCurrentThreadId();}
 }
+extern "C" BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread(){
+    std::scoped_lock lock(g.mutex);
+    return Owner()?TRUE:FALSE;
+}
 
 extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
     unsigned long long frame_id,const float* axis,float units,

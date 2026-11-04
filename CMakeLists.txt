@@ -252,6 +252,13 @@ add_executable(model2_project_capture_stack_test
 target_compile_features(model2_project_capture_stack_test PRIVATE cxx_std_20)
 add_test(NAME model2_cpu_project_original_pointer_reentrancy
   COMMAND model2_project_capture_stack_test)
+# Strict source-only XYZRHW/TEX1 decode required by optional actual
+# original DrawPrimitiveUP -> CPU-world -> OpenXR eye renderer route.
+add_executable(model2_projected_up_world_source_test
+  tests/model2_projected_up_world_source_test.cpp)
+target_compile_features(model2_projected_up_world_source_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_projected_up_world_material_source
+  COMMAND model2_projected_up_world_source_test)
 # Original D3D9 Present HRESULT and frame identity guard for opt-in
 # verified CPU-world renderer -> x86 IPC -> x64 OpenXR eye submission.
 add_executable(model2_verified_world_present_gate_test

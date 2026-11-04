@@ -69,6 +69,22 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWit
     unsigned int depth_write);
 
 
+// Return TRUE only during an independently authorized current-thread world
+// transaction. Adapters must fail before reading original D3D9 draw memory.
+__declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread();
+// The original projected XYZRHW/TEX1 D3D9 UP geometry can be converted to
+// calibrated 6DoF eyes ONLY if a separately proven world transaction is
+// active, at least two same-thread source triangles match the CPU projector
+// in the current original Present epoch, source caller RVA is authenticated,
+// the screen projection is consistent and actual fixed-function sampler/
+// raster/texture states pass the existing strict material gate.
+// No implicit hook or unknown shader-UP source is promoted into world.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+    void* d3d9_device,const void* original_projected_vertices,
+    unsigned int original_triangle_count,unsigned int stride_bytes,
+    unsigned int authenticated_cpu_project_caller_rva,
+    unsigned int alpha_cutoff);
 // Reads *actual* fixed-function D3D9 UP XYZ+TEX1 source vertices,
 // original D3DTS_WORLD/VIEW transforms and stage-0 CPU-lockable texture.
 // It is callable only during a proven BeginVerifiedWorldFrame transaction.
