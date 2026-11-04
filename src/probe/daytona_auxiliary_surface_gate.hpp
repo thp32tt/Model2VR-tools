@@ -20,6 +20,23 @@ inline bool SourceCompatibleWithMain(const D3DSURFACE_DESC& source,
            depth.MultiSampleType==source.MultiSampleType &&
            depth.MultiSampleQuality==source.MultiSampleQuality;
 }
+// An original full-size auxiliary render target can be the first source.
+// This gate prevents small HUD/mirror targets from initializing eye clones.
+inline bool BootstrapTargetCompatible(const D3DSURFACE_DESC& active,
+                                      const D3DSURFACE_DESC& depth,
+                                      const D3DSURFACE_DESC& back)noexcept{
+    return SourceCompatibleWithMain(active,depth,back);
+}
+inline bool SameEyeDepthLayout(const D3DSURFACE_DESC& a,
+                               const D3DSURFACE_DESC& b)noexcept{
+    return a.Pool==D3DPOOL_DEFAULT && b.Pool==D3DPOOL_DEFAULT &&
+           (a.Usage&D3DUSAGE_DEPTHSTENCIL)!=0u &&
+           (b.Usage&D3DUSAGE_DEPTHSTENCIL)!=0u &&
+           a.Width==b.Width && a.Height==b.Height &&
+           a.Format==b.Format &&
+           a.MultiSampleType==b.MultiSampleType &&
+           a.MultiSampleQuality==b.MultiSampleQuality;
+}
 inline bool FullOriginalViewport(const D3DVIEWPORT9& viewport,
                                  UINT width,UINT height)noexcept {
     return width>0 && height>0 && viewport.X==0 && viewport.Y==0 &&

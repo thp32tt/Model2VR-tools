@@ -478,3 +478,17 @@ shifting either eye for a particular triangle. Bad triangles remain
 flat without invalidating independent safe source triangles. Original
 D3D9 state/game draw and FFB are unchanged. These safety checks do
 not calibrate the original game's camera or prove Quest visuals.
+
+## Verified offscreen-first bootstrap and source depth parity (2026-11-04)
+
+Original Daytona may begin its 3D render path on a full-size auxiliary
+render target before binding the physical backbuffer. Native eyes can now
+initialize from that original RT/DS only if dimensions, color format, depth
+usage and MSAA layout exactly match the real backbuffer. Small HUD/mirror
+sources still fail closed. Provisional eye depth is shared with that
+auxiliary; the original main DS is adopted only after an actual main-target
+draw or clear proves the same depth identity and eye format. If the game
+switches to a different source DS mid-epoch, the unprovable clone is reset
+instead of mixing independent Z scenes. The original game draws/Present,
+2D fallback and FFB are unchanged. This is source/CI work only;
+RUNTIME_VALIDATION=UNTESTED until Daytona + Quest 3 inspection.

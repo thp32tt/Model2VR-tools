@@ -25,6 +25,16 @@ int main(){
     CHECK(!SourceCompatibleWithMain(offscreen,mismatch,main));
     mismatch=depth;mismatch.Usage=0;
     CHECK(!SourceCompatibleWithMain(offscreen,mismatch,main));
+    // A game frame may begin with a full-size auxiliary 3D render target.
+    CHECK(BootstrapTargetCompatible(offscreen,depth,main));
+    CHECK(BootstrapTargetCompatible(main,depth,main));
+    auto small_aux=offscreen;small_aux.Width=320;
+    CHECK(!BootstrapTargetCompatible(small_aux,depth,main));
+    auto other_depth=depth;other_depth.Format=D3DFMT_D16;
+    CHECK(SameEyeDepthLayout(depth,depth));
+    CHECK(!SameEyeDepthLayout(depth,other_depth));
+    other_depth=depth;other_depth.MultiSampleQuality=1;
+    CHECK(!SameEyeDepthLayout(depth,other_depth));
     D3DRECT full{0,0,800,600},partial{0,0,300,600};
     const D3DVIEWPORT9 view{0,0,800,600,0.f,1.f};
     CHECK(FullOriginalViewport(view,800,600));

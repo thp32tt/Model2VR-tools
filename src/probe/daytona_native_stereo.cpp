@@ -117,6 +117,9 @@ public:
                 Drop(original_depth);Drop(target);return;
             }
         }
+        if(backbuffer && depth_bound && !MainDepthMatches(original_depth)){
+            Drop(original_depth);Drop(target);Reset();return;
+        }
         const bool aux=!backbuffer &&
             target==aux_original_ && aux_eyes_[0].color &&
             (!depth_bound || original_depth==aux_original_depth_);
@@ -380,6 +383,9 @@ public:
            (flags&(D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL))!=0u)){
             Drop(original_depth);Drop(target);return;
         }
+        if(backbuffer && depth_bound && !MainDepthMatches(original_depth)){
+            Drop(original_depth);Drop(target);Reset();return;
+        }
         D3DVIEWPORT9 viewport{};
         if(FAILED(d->GetViewport(&viewport))){
             Drop(original_depth);Drop(target);return;
@@ -590,6 +596,23 @@ private:
     D3DVIEWPORT9 ClippedViewport(D3DVIEWPORT9 vp)const noexcept{
         return Clip(vp,width_,height_);
     }
+    // Admit the physical main depth only when the game actually binds it.
+    // A previously started auxiliary eye frame cannot swap to unrelated Z.
+    bool MainDepthMatches(IDirect3DSurface9* depth)noexcept{
+        if(!depth || !eyes_[0].depth || !eyes_[1].depth)return false;
+        D3DSURFACE_DESC actual{},left{},right{};
+        if(FAILED(depth->GetDesc(&actual)) ||
+           FAILED(eyes_[0].depth->GetDesc(&left)) ||
+           FAILED(eyes_[1].depth->GetDesc(&right)) ||
+           !m2vr::daytona::SameEyeDepthLayout(actual,left) ||
+           !m2vr::daytona::SameEyeDepthLayout(actual,right))return false;
+        if(main_depth_)return main_depth_==depth;
+        if(aux_frame_started_ && aux_original_depth_ &&
+           aux_original_depth_!=depth)return false;
+        main_depth_=depth;
+        main_depth_->AddRef();
+        return true;
+    }
     bool EnsureAuxiliary(IDirect3DDevice9* d,IDirect3DSurface9* target,
                          IDirect3DSurface9* depth){
         if(!target || !depth || target==backbuffer_ || !backbuffer_)
@@ -604,7 +627,7 @@ private:
            !m2vr::daytona::SourceCompatibleWithMain(
                 color_desc,depth_desc,main_desc))return false;
         std::array<Surface,2> created{};
-        const bool shared_depth=depth==main_depth_;
+        const bool shared_depth=depth==main_depth_ || !main_depth_;
         bool ok=true;
         for(unsigned eye=0;eye<2;++eye){
             if(FAILED(d->CreateRenderTarget(width_,height_,color_desc.Format,
@@ -647,38 +670,33 @@ private:
            (desc.Format!=D3DFMT_A8R8G8B8 && desc.Format!=D3DFMT_X8R8G8B8)){
             Drop(back);return false;
         }
-        // When initializing resources, prove the active D3D9 original
-        // depth belongs to the actual backbuffer, not an auxiliary RT.
+        // Original Daytona rendering can start on a full-size auxiliary
+        // render target. Accept its verified format/depth layout; never
+        // mistake a small UI or mirror target for the main scene.
         IDirect3DSurface9* current=nullptr;
-        if(FAILED(d->GetRenderTarget(0,&current)) || !current ||
-           current!=back){
-            Drop(current);Drop(back);return false;
-        }
-        Drop(current);
         IDirect3DSurface9* depth=nullptr;
-        if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth) {
-            Drop(back);return false;
+        D3DSURFACE_DESC source_desc{},dd{};
+        if(FAILED(d->GetRenderTarget(0,&current)) || !current ||
+           FAILED(d->GetDepthStencilSurface(&depth)) || !depth ||
+           FAILED(current->GetDesc(&source_desc)) ||
+           FAILED(depth->GetDesc(&dd)) ||
+           !m2vr::daytona::BootstrapTargetCompatible(
+               source_desc,dd,desc)){
+            Drop(depth);Drop(current);Drop(back);return false;
         }
-        D3DSURFACE_DESC dd{};
-        // GetDepthStencilSurface already proves this is the original game's
-        // active depth/stencil surface. Do not reject valid D3D9 depth formats
-        // (for example D15S1, D24X4S4, D32F_LOCKABLE or D24FS8) with a partial
-        // local whitelist. Clone the exact format and let CreateDepthStencilSurface
-        // perform the authoritative device/format compatibility check.
-        if(FAILED(depth->GetDesc(&dd)) ||
-           dd.Width!=desc.Width || dd.Height!=desc.Height ||
-           dd.MultiSampleType!=desc.MultiSampleType ||
-           dd.MultiSampleQuality!=desc.MultiSampleQuality){
-            Drop(depth);Drop(back);return false;
-        }
+        const bool source_is_main=current==back;
         const D3DFORMAT depth_format=dd.Format;
+        Drop(current);
         D3DCAPS9 caps{};
         if(FAILED(d->GetDeviceCaps(&caps)) || caps.NumSimultaneousRTs<1u ||
            caps.NumSimultaneousRTs>4u){
             Drop(depth);Drop(back);return false;
         }
         mrt_slots_=caps.NumSimultaneousRTs;
-        main_depth_=depth;
+        // If bootstrap began on auxiliary, postpone main DS ownership.
+        // Both provisional eye depths are shared with that auxiliary.
+        if(source_is_main){main_depth_=depth;main_depth_->AddRef();}
+        Drop(depth);
         backbuffer_=back;device_=d;
         width_=desc.Width;height_=desc.Height;
         if(!readback_scale_.Configure(width_,height_)){
