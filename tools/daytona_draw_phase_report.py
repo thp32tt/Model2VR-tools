@@ -50,6 +50,9 @@ def analyze(path):
     source_positions={}
     position_vertices=defaultdict(dict)
     position_uv=defaultdict(dict)
+    indexed_windows={}
+    indexed_sources={}
+    indexed_cpu_batches={}
     with Path(path).open(encoding="utf-8-sig",newline="") as handle:
         reader=csv.DictReader(handle)
         if not REQUIRED.issubset(reader.fieldnames or []):
@@ -67,7 +70,11 @@ def analyze(path):
                              "model2_d3d9_up_decl_element",
                              "model2_d3d9_up_position_source",
                              "model2_d3d9_up_position",
-                             "model2_d3d9_up_uv"):
+                             "model2_d3d9_up_uv",
+                             "model2_d3d9_up_meta",
+                             "model2_world_up_candidate",
+                             "model2_d3d9_cpu_up_join_batch",
+                             "model2_d3d9_indexed_up_window"):
                 continue
             try:
                 a0,a1,a2,a3=(number(row[x]) for x in
@@ -75,7 +82,27 @@ def analyze(path):
             except (TypeError,ValueError) as exc:
                 raise ValueError(f"invalid row {count}") from exc
             thread=row["thread"]
-            if event=="model2_d3d9_up_position_source":
+            if event=="model2_d3d9_indexed_up_window":
+                if (not a0 or a0 in indexed_windows or
+                    a1>0xffffffff or not 1<=a2<=2048 or
+                    a1+a2>0x100000000 or a3 not in (101,102)):
+                    raise ValueError("invalid indexed-UP original source window")
+                indexed_windows[a0]=(a1,a2,a3)
+            elif event=="model2_d3d9_up_meta":
+                family,stride=(a3>>32,a3&0xffffffff)
+                if family==4 and a0 and a2<=0xffffffff:
+                    indexed_sources[a0]=(a2,a1,stride,"projected")
+            elif event=="model2_world_up_candidate":
+                family,stride=(a3>>32,a3&0xffffffff)
+                if family==4 and a0 and a1<=0xffffffff:
+                    indexed_sources[a0]=(a1,0,stride,"xyz")
+            elif event=="model2_d3d9_cpu_up_join_batch":
+                inspected,complete=(a1>>32,a1&0xffffffff)
+                partial,ambiguous=(a2>>32,a2&0xffffffff)
+                if (inspected<=8 and 2<=complete<=inspected and
+                    not partial and not ambiguous and 0<a3<=0xffffffff):
+                    indexed_cpu_batches[a0]=(inspected,complete,a3)
+            elif event=="model2_d3d9_up_position_source":
                 if a0 and a0 not in source_positions and a3==3:
                     source_positions[a0]=a1
             elif event=="model2_d3d9_up_position":
@@ -154,6 +181,42 @@ def analyze(path):
             for i in range(3):
                 per_caller_vertex[(3,caller)].append(
                     position_vertices[wid][i]+position_uv[wid][i])
+    # Analyze existing local evidence, with no new playthrough. A completed
+    # CPU-projector correlation is never game-world permission.
+    indexed_by_caller=defaultdict(lambda:{
+        "observations":0,"nonzero_min_vertex_windows":0,
+        "index_formats":set(),"vertex_ranges":set(),
+        "projected_witnesses":0,"xyz_witnesses":0,
+        "complete_cpu_projector_batches":0,"original_present_frames":set()})
+    for witness,window in indexed_windows.items():
+        meta=indexed_sources.get(witness)
+        if meta is None:
+            continue
+        caller,frame,stride,kind=meta
+        minimum,num,fmt=window
+        entry=indexed_by_caller[caller]
+        entry["observations"]+=1
+        entry["nonzero_min_vertex_windows"]+=int(minimum!=0)
+        entry["index_formats"].add(fmt)
+        entry["vertex_ranges"].add((minimum,num))
+        entry["projected_witnesses"]+=int(kind=="projected")
+        entry["xyz_witnesses"]+=int(kind=="xyz")
+        if frame:
+            entry["original_present_frames"].add(frame)
+        if kind=="projected" and witness in indexed_cpu_batches:
+            entry["complete_cpu_projector_batches"]+=1
+    indexed_up_sources=[{
+        "caller_rva":f"0x{caller:08x}",
+        "world_pass_proof":"NOT_ESTABLISHED",
+        "observations":item["observations"],
+        "nonzero_min_vertex_windows":item["nonzero_min_vertex_windows"],
+        "index_formats":sorted(item["index_formats"]),
+        "vertex_ranges":[list(v) for v in sorted(item["vertex_ranges"])],
+        "projected_witnesses":item["projected_witnesses"],
+        "xyz_witnesses":item["xyz_witnesses"],
+        "complete_cpu_projector_batches":item["complete_cpu_projector_batches"],
+        "distinct_original_present_frames":len(item["original_present_frames"])
+    } for caller,item in sorted(indexed_by_caller.items())]
     sources=[]
     for (family,caller),value in sorted(callers.items(),
           key=lambda it:(-it[1]["draw_samples"],it[0])):
@@ -192,6 +255,9 @@ def analyze(path):
             x["ordinal_bands"].get("128-511",0) or
             x["ordinal_bands"].get("512+",0) for x in sources),
         "sources":sources,
+        "indexed_up_sources":indexed_up_sources,
+        "indexed_up_unassociated_windows":
+            len(indexed_windows)-sum(x["observations"] for x in indexed_up_sources),
     }
 
 def main():

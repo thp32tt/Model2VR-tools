@@ -110,6 +110,40 @@ class DaytonaPhaseTests(unittest.TestCase):
                              {"min":0,"max":0.5})
             self.assertEqual(r["HUD_WORLD_PROOF"],"NOT_ESTABLISHED")
 
+    def test_indexed_up_nonzero_min_and_original_present_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"indexed_up.csv"
+            self.generate(p,[
+                ("model2_d3d9_draw_origin",21,4,0xABC,(2<<32)|4),
+                ("model2_d3d9_up_meta",77,21,0xABC,(4<<32)|24),
+                ("model2_d3d9_indexed_up_window",77,10,4,101),
+                ("model2_d3d9_cpu_up_join_batch",77,(2<<32)|2,0,0xEBA),
+                ("model2_world_up_candidate",78,0xDEF,0x112,(4<<32)|20),
+                ("model2_d3d9_indexed_up_window",78,65536,4,102),
+                ("model2_d3d9_indexed_up_window",79,0,4,101),
+            ])
+            report=phase.analyze(p)
+            self.assertEqual(report["HUD_WORLD_PROOF"],"NOT_ESTABLISHED")
+            self.assertEqual(report["indexed_up_unassociated_windows"],1)
+            self.assertEqual(len(report["indexed_up_sources"]),2)
+            projected=report["indexed_up_sources"][0]
+            self.assertEqual(projected["caller_rva"],"0x00000abc")
+            self.assertEqual(projected["nonzero_min_vertex_windows"],1)
+            self.assertEqual(projected["vertex_ranges"],[[10,4]])
+            self.assertEqual(projected["index_formats"],[101])
+            self.assertEqual(projected["complete_cpu_projector_batches"],1)
+            self.assertEqual(projected["distinct_original_present_frames"],1)
+            self.assertEqual(projected["world_pass_proof"],"NOT_ESTABLISHED")
+            xyz=report["indexed_up_sources"][1]
+            self.assertEqual(xyz["caller_rva"],"0x00000def")
+            self.assertEqual(xyz["xyz_witnesses"],1)
+            self.assertEqual(xyz["index_formats"],[102])
+            self.generate(p,[
+                ("model2_d3d9_indexed_up_window",5,4294967295,4,101),
+            ])
+            with self.assertRaisesRegex(ValueError,"invalid indexed-UP"):
+                phase.analyze(p)
+
     def test_legacy_first_only_log_is_not_world_proof(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"legacy.csv"
