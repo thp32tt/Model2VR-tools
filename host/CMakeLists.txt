@@ -48,6 +48,14 @@ add_executable(model2vr_wizard_health_x64_test ../tests/daytona_wizard_health_te
 target_compile_features(model2vr_wizard_health_x64_test PRIVATE cxx_std_20)
 add_test(NAME daytona_vr_wizard_health_x64 COMMAND model2vr_wizard_health_x64_test)
 
+# The host has a separate game-pixel readiness contract from the
+# tracked-HMD/startup handshake. Validate it on Windows x64 as well.
+add_executable(model2_eye_delivery_x64_test
+    ../tests/daytona_eye_delivery_status_test.cpp)
+target_compile_features(model2_eye_delivery_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_game_eye_delivery_x64
+    COMMAND model2_eye_delivery_x64_test)
+
 # Same admission contract must compile and behave identically on the
 # 64-bit Quest OpenXR host and 32-bit original Daytona renderer.
 add_executable(daytona_eye_pose_gate_x64_test ../tests/daytona_eye_pose_gate_test.cpp)
