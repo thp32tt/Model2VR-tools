@@ -6,6 +6,8 @@ on:
       - 'src/probe/daytona_native_stereo.*'
       - 'src/probe/daytona_triangle_eye_shift.hpp'
       - 'src/probe/daytona_surface_transfer_gate.hpp'
+      - 'src/probe/daytona_readback_scale.hpp'
+      - 'tests/daytona_readback_scale_test.cpp'
       - 'tests/daytona_triangle_eye_shift_test.cpp'
       - 'tests/daytona_surface_transfer_gate_test.cpp'
       - 'src/probe/daytona_eye_pose_gate.hpp'

@@ -368,3 +368,26 @@ readback failure and tracking expiry. The Windows static integration
 test checks pre/actual/post call ordering and prevents premature
 `Model2VR_SubmitStereoRGBA`. Quest 3 visual validity and calibrated
 Daytona 6DoF remain RUNTIME_VALIDATION=UNTESTED.
+
+## MSAA resolve reentrancy and 60Hz eye-readback optimization (2026-11-04)
+
+The native Win32 GPU readback path formerly executed device
+`StretchRect` under the renderer mutex to resolve a multisampled eye
+surface. Since this COM method is itself intercepted for original
+source transfers, the internal resolve could re-enter the same mutex
+and hang the game. A thread-local `ScopedEyeReplay` now protects the
+entire pre-Present GPU readback, allowing the original device resolve
+while preventing the synthetic VR recursion.
+
+The BGRA8->OpenXR RGBA8 resizer now caches integer nearest-neighbor
+lookup coordinates *once per source backbuffer size* and reuses them
+for both eyes every frame. It still letterboxes the source's physical
+image aspect into 1024x1024 transport, sets alpha=255 and leaves
+padding black. It rejects null input, invalid signed pitch and an
+incorrect output size without reading from an untrusted address.
+Both Win32 and Win64 native regression targets test image layout,
+boundary mapping, padded/invalid pitch, and out-of-bounds guards.
+
+This reduces per-pixel scale arithmetic and prevents an MSAA resolve
+hook recursion without changing original game GPU calls. No measured
+Quest performance gain or 6DoF calibration is claimed.

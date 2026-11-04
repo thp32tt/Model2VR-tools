@@ -203,6 +203,11 @@ target_compile_features(daytona_surface_transfer_x86_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_surface_transfer_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_surface_transfer_x86 COMMAND daytona_surface_transfer_x86_test)
 
+# Source D3D9 BGRA eye readback to fixed RGBA OpenXR transport.
+add_executable(daytona_readback_scale_x86_test tests/daytona_readback_scale_test.cpp)
+target_compile_features(daytona_readback_scale_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_native_readback_scale_x86 COMMAND daytona_readback_scale_x86_test)
+
 # Read-only, allocation-free UP vertex witness parser; no emulator runtime.
 add_executable(model2_up_witness_test tests/model2_up_witness_test.cpp)
 target_compile_features(model2_up_witness_test PRIVATE cxx_std_20)

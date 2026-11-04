@@ -66,6 +66,10 @@ target_compile_features(daytona_surface_transfer_x64_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_surface_transfer_x64_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_surface_transfer_x64 COMMAND daytona_surface_transfer_x64_test)
 
+add_executable(daytona_readback_scale_x64_test ../tests/daytona_readback_scale_test.cpp)
+target_compile_features(daytona_readback_scale_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_native_readback_scale_x64 COMMAND daytona_readback_scale_x64_test)
+
 # VDXR/OpenXR D3D11 returns typeless swapchain resources. Exercise the exact
 # typed-RTV plus CPU RGBA UpdateSubresource path on the Windows WARP device so
 # CI catches D3D11 contract regressions before an HMD run.

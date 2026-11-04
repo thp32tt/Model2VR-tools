@@ -7,6 +7,7 @@
 #include "daytona_up_decl_witness.hpp"
 #include "daytona_eye_pose_gate.hpp"
 #include "daytona_triangle_eye_shift.hpp"
+#include "daytona_readback_scale.hpp"
 #include "daytona_surface_transfer_gate.hpp"
 #include "logger.h"
 #include "../common/stereo_frame_ipc.h"
@@ -363,6 +364,10 @@ public:
     void PreparePresent(IDirect3DDevice9* d,std::uint64_t frame){
         if(!enabled_ || !frame)return;
         std::lock_guard lock(mu_);
+        // MSAA resolves call device->StretchRect while this mutex is held.
+        // That COM method is also hooked: its synthetic internal call must
+        // never re-enter MirrorStretchRect and deadlock the render thread.
+        ScopedEyeReplay recursion_guard;
         pending_present_frame_=frame;
         pending_present_reason_=0u;
         // Read the current game frame before the original Present can flip
@@ -398,8 +403,9 @@ public:
                       &locked,nullptr,D3DLOCK_READONLY))){
                 ready=false;break;
             }
-            ConvertBGRA(locked,rgba_[eye]);
+            const bool converted=ConvertBGRA(locked,rgba_[eye]);
             eyes_[eye].staging->UnlockRect();
+            if(!converted){ready=false;break;}
         }
         std::uint32_t reason=ready?0u:32u;
         if(ready && rgba_[0]==rgba_[1]){
@@ -548,6 +554,9 @@ private:
         mrt_slots_=caps.NumSimultaneousRTs;
         backbuffer_=back;device_=d;
         width_=desc.Width;height_=desc.Height;
+        if(!readback_scale_.Configure(width_,height_)){
+            Reset();return false;
+        }
         for(auto& eye:eyes_){
             if(FAILED(d->CreateRenderTarget(width_,height_,desc.Format,
                        desc.MultiSampleType,desc.MultiSampleQuality,
@@ -570,35 +579,20 @@ private:
         for(auto& pixels:rgba_)pixels.resize(m2vr::transport::kBytesPerEye);
         return true;
     }
-    void ConvertBGRA(const D3DLOCKED_RECT& source,
+    bool ConvertBGRA(const D3DLOCKED_RECT& source,
                      std::vector<std::uint8_t>& output)noexcept{
-        const int side=static_cast<int>(m2vr::transport::kWidth);
-        std::fill(output.begin(),output.end(),std::uint8_t{0});
-        // Preserve Model 2's physical 660:384 image aspect; do not stretch
-        // the race view to a square. Black letterbox is flat in both eyes.
-        const double scale=(std::min)(double(side)/width_,double(side)/height_);
-        const int dw=(std::max)(1,int(width_*scale));
-        const int dh=(std::max)(1,int(height_*scale));
-        const int ox=(side-dw)/2,oy=(side-dh)/2;
-        for(int y=0;y<dh;++y){
-            const auto sy=(std::min)(height_-1u,
-                static_cast<UINT>(double(y)*height_/dh));
-            const auto* src=static_cast<const std::uint8_t*>(source.pBits)+
-                            std::size_t(sy)*source.Pitch;
-            auto* dst=output.data()+(std::size_t(oy+y)*side+ox)*4u;
-            for(int x=0;x<dw;++x){
-                const auto sx=(std::min)(width_-1u,
-                    static_cast<UINT>(double(x)*width_/dw));
-                const auto* bgra=src+std::size_t(sx)*4u;
-                dst[x*4+0]=bgra[2];dst[x*4+1]=bgra[1];
-                dst[x*4+2]=bgra[0];dst[x*4+3]=255u;
-            }
-        }
+        // Original D3D9 staging surfaces are BGRA8 and may have padded rows.
+        // Reject an invalid or negative driver pitch rather than treating
+        // it as an enormous positive offset into an unmapped buffer.
+        return readback_scale_.Convert(
+            static_cast<const std::uint8_t*>(source.pBits),
+            source.Pitch,output.data(),output.size());
     }
     void Reset()noexcept{
         for(auto& eye:eyes_)eye.Clear();
         Drop(backbuffer_);
         device_=nullptr;width_=height_=0u;mrt_slots_=0u;
+        readback_scale_=m2vr::daytona::ReadbackScalePlan{};
         FinishFrame();
     }
     std::mutex mu_;
@@ -623,6 +617,7 @@ private:
     std::array<Surface,2> eyes_{};
     std::array<std::vector<std::uint8_t>,2> scratch_{};
     std::array<std::vector<std::uint8_t>,2> rgba_{};
+    m2vr::daytona::ReadbackScalePlan readback_scale_{};
 };
 EyeClones g_eye;
 } // namespace

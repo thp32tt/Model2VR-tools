@@ -113,6 +113,10 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("FAILED(d->Clear(0,nullptr",gpu)
         self.assertIn("Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear)",hooks)
         self.assertIn("m2vr::daytona::MirrorClear(",hooks)
+        prepare=gpu.split("void PreparePresent(")[1].split("void FinishPresent(")[0]
+        self.assertIn("ScopedEyeReplay recursion_guard;",prepare)
+        self.assertLess(prepare.index("ScopedEyeReplay recursion_guard;"),
+                        prepare.index("d->StretchRect(eyes_[eye].color,nullptr"))
 
     def test_direct_launch_reports_intentional_2d_and_dependency_failure(self):
         script=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
@@ -165,6 +169,23 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn('m2vr::LogEvent("model2_d3d9_frame"',hooks)
         self.assertIn("m2vr::daytona::PrepareFrameBeforePresent(d,frame);",hooks)
         self.assertIn("m2vr::daytona::FinishFrameAfterPresent(frame,original_result);",hooks)
+
+    def test_bgra_readback_uses_bounded_cached_nearest_neighbor(self):
+        producer=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        scaler=(ROOT/"src/probe/daytona_readback_scale.hpp").read_text("utf-8")
+        self.assertIn("ReadbackScalePlan readback_scale_",producer)
+        self.assertIn("readback_scale_.Configure(width_,height_)",producer)
+        self.assertIn("readback_scale_.Convert(",producer)
+        self.assertIn("const bool converted=ConvertBGRA(",producer)
+        self.assertIn("if(!converted){ready=false;break;}",producer)
+        self.assertIn("signed_pitch<=0",scaler)
+        self.assertIn("std::uint64_t{x}*width/w",scaler)
+        self.assertIn("std::uint64_t{y}*height/h",scaler)
+        self.assertNotIn("double(y)*height_/dh",producer)
+        self.assertIn("daytona_readback_scale_x86_test",
+                      (ROOT/"CMakeLists.txt").read_text("utf-8"))
+        self.assertIn("daytona_readback_scale_x64_test",
+                      (ROOT/"host/CMakeLists.txt").read_text("utf-8"))
 
     def test_original_present_must_succeed_before_x64_eye_publication(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
