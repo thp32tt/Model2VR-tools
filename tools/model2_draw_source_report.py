@@ -102,6 +102,26 @@ def original_d3d9_mip_status(record, present_frame, original_sampler=None):
     return "mip_unverified"
 
 
+def original_d3d9_vertex_pipeline_status(record, present_frame):
+    """Original SAME-Draw fixed vertex pipeline; no world authorization.
+
+    Event layout: (SHADEMODE|CLIPPING, CLIPPLANEENABLE|VERTEXBLEND,
+    INDEXEDVERTEXBLENDENABLE|original_next_Present). Unknown != supported.
+    """
+    if record is None:
+        return "unobserved"
+    shade, clipping = halves(record[0])
+    planes, blend = halves(record[1])
+    indexed, frame = halves(record[2])
+    if not present_frame or frame != present_frame:
+        return "present_mismatch"
+    # D3DSHADE_GOURAUD=2, TRUE clipping=1, D3DVBF_DISABLE=0.
+    if (shade != 2 or clipping != 1 or planes != 0 or
+            blend != 0 or indexed != 0):
+        return "unsupported"
+    return "supported"
+
+
 def original_d3d9_depth_cull_status(record, present_frame, original_raster=None):
     """Exact same-Draw D3D9 Z/cull source, not gameplay world proof."""
     if record is None:
@@ -152,6 +172,10 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
             original_d3d9_depth_cull_status(
                 data["source_depth_cull"],present_frame,
                 data.get("raster")) != "supported"):
+        return None
+    if ("source_vertex_pipeline" in data and
+            original_d3d9_vertex_pipeline_status(
+                data["source_vertex_pipeline"],present_frame) != "supported"):
         return None
     context = data.get("source_context")
     join = data.get("cpu_join")
@@ -265,6 +289,11 @@ def original_projected_material_candidate(data):
     # original vertex DIFFUSE/CURRENT to preserve exact material source.
     if not has_uv and (rgb != "DIFFUSE" or alpha != "DIFFUSE"):
         return False
+    if "source_vertex_pipeline" in data:
+        frame = data.get("present_frame")
+        if (frame is None or original_d3d9_vertex_pipeline_status(
+                data["source_vertex_pipeline"],frame[0]) != "supported"):
+            return False
     if "source_blend" in data and (
             original_d3d9_blend_mode(data["source_blend"])=="unsupported"):
         return False
@@ -370,6 +399,8 @@ def audit_csv(path):
                 fields["source_mip"] = values
             elif event == "model2_d3d9_source_depth_cull":
                 fields["source_depth_cull"] = values
+            elif event == "model2_d3d9_source_vertex_pipeline":
+                fields["source_vertex_pipeline"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -389,6 +420,7 @@ def audit_csv(path):
         "original_source_blend_unsupported_witnesses": 0,
         "original_source_mip_status": set(),
         "original_source_depth_cull_status": set(),
+        "original_source_vertex_pipeline_status": set(),
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
@@ -436,7 +468,8 @@ def audit_csv(path):
                                    "stage_extra", "stage_result",
                                    "source_mask", "source_blend",
                                    "source_mip",
-                                   "source_depth_cull"}):
+                                   "source_depth_cull",
+                                   "source_vertex_pipeline"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -499,6 +532,11 @@ def audit_csv(path):
             depth_status=original_d3d9_depth_cull_status(
                 data["source_depth_cull"],present_frame,data.get("raster"))
             entry["original_source_depth_cull_status"].add(depth_status)
+        if "source_vertex_pipeline" in data:
+            pipeline_status = original_d3d9_vertex_pipeline_status(
+                data["source_vertex_pipeline"],present_frame)
+            entry["original_source_vertex_pipeline_status"].add(
+                pipeline_status)
         # Do not join independently sampled original D3D9 Draw states.
         if all(name in data for name in ("stage_color", "stage_alpha",
                                         "stage_extra")):
