@@ -85,7 +85,8 @@ bool ReadIndicesTopology(IDirect3DDevice9* device,
                  UINT triangle_count,INT base_vertex,UINT min_vertex,
                  UINT num_vertices,
                  m2vr::drawprobe::VBVertexWindow& out) {
-    if(!device || !triangle_count ||
+    if(!device || !Model2VR_IsOriginalPrimaryD3D9Device(device) ||
+       !triangle_count ||
        triangle_count>m2vr::drawprobe::kMaxVBBridgeTriangles)return false;
     ComOwner<IDirect3DIndexBuffer9> ib;
     if(FAILED(device->GetIndices(&ib.ptr)) || !ib.ptr)return false;
@@ -124,7 +125,8 @@ bool ReadIndices(IDirect3DDevice9* device,UINT start_index,
 BOOL SubmitBufferWindow(IDirect3DDevice9* device,
                         const m2vr::drawprobe::VBVertexWindow& window,
                         UINT alpha_cutoff) {
-    if(!device || window.indices.empty() || alpha_cutoff>256u ||
+    if(!device || !Model2VR_IsOriginalPrimaryD3D9Device(device) ||
+       window.indices.empty() || alpha_cutoff>256u ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
         return FALSE;
     try {
@@ -153,7 +155,8 @@ BOOL SubmitProjectedBufferWindow(
     UINT expected_cpu_caller,UINT alpha_cutoff) {
     constexpr std::size_t max_indices=
         m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles*3u;
-    if(!device || !expected_cpu_caller || alpha_cutoff>256u ||
+    if(!device || !Model2VR_IsOriginalPrimaryD3D9Device(device) ||
+       !expected_cpu_caller || alpha_cutoff>256u ||
        window.indices.size()<6u || window.indices.size()>max_indices ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
         return FALSE;
