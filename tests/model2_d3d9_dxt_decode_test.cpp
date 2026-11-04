@@ -56,7 +56,8 @@ int main(){
     CHECK(DecodeDxtBlockRGBA(red_green.data(),D3DFMT_DXT1,1,1,
                             edge.data(),6,5,24));
     CHECK(edge[(4u*6u+4u)*4u]==255); // clipped (x=4,y=4)
-    CHECK(edge[0]==99u && edge[edge.size()-1]==99u);
+    CHECK(edge[0]==99u && edge[(3u*6u+3u)*4u+3u]==99u);
+    CHECK(edge[edge.size()-1]==255u); // (x=5,y=4) was clipped in-bounds
     CHECK(!DecodeDxtBlockRGBA(red_green.data(),D3DFMT_DXT1,2,0,
                              edge.data(),6,5,24));
     CHECK(!DecodeDxtBlockRGBA(red_green.data(),D3DFMT_DXT1,0,0,
