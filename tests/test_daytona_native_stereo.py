@@ -92,7 +92,9 @@ class NativeStereoTest(unittest.TestCase):
 
     def test_initial_eye_resource_creation_rechecks_pose_after_reset(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
-        self.assertEqual(gpu.count("!LivePoseForGameFrame())return;"),2)
+        # Draw, Clear and both additional surface updates must re-admit
+        # a fresh stereo pose after Ensure() may reset frame state.
+        self.assertEqual(gpu.count("!LivePoseForGameFrame())return;"),4)
         self.assertIn("Reset();\n        IDirect3DSurface9* back=nullptr;",gpu)
         self.assertIn("pose_checked_=false;pose_admitted_=false;",gpu)
 
