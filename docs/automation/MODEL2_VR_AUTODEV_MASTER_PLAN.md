@@ -139,3 +139,50 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
 - Main and auxiliary two-eye surfaces now track **color plane coverage separately from depth readiness**. An initial cropped/partial color Clear is not treated as a complete eye image; Z-only Clear cannot initialize color. Only complete source Z Clear or the guarded synthetic first Draw seeds stereo depth, and a previously verified source Z Clear is not erased on the first color Draw. The original game Draw/Present HRESULT, 2D fallback, input and independent FFB owner remain untouched.
 - **Exact-SHA Windows CI successful**: Public tools `41774272337`, ModDev toolkit `41774272319`, Windows x86 probe `41774272306`, Daytona Win32 producer + Win64 Quest OpenXR + ZIP package `41774272287`. Do **not** re-run these same-SHA checks.
 - **RUNTIME_VALIDATION=UNTESTED**: no real Daytona/Quest 3+VDXR run, no verified camera axis/game-units-per-meter or full HUD/world topology proof. GPU shader-UP X-shift is still experimental, not calibrated headset 6DoF. **NEXT REAL DEVELOPMENT:** privately authenticate CPU TransformPoint/ProjectVertexToScreen → D3D9 Draw source topology and source camera units/pass ownership, then implement the world-only calibrated live renderer with genuine tracked-pose association. Preserve unknown/HUD flat fallback; do not request duplicate passive logs or modify OutRun/UW2.
+
+## Original fixed-function projected VB/IB CPU-to-Draw integration — 2026-11-04
+
+- **Exact source validation SHA:** `2160eb8599efb61215a28ca9111ce5cc790ff802`.
+  Coherent new material source commits: `bfd45a7` (bounded source VB/IB
+  index expansion, explicit verified-world projected VB/IB append adapters,
+  CPU-lockable original D3D9 FVF XYZRHW/TEX1) and `67645c0` (sampled
+  original DrawPrimitive/DrawIndexedPrimitive CPU projector same-thread /
+  same-Present correspondence and offline source report), with corrective
+  Win32 include `3fdc682` and real original Present provenance `2160eb8`.
+  These changes are ONE connected achievement; do not score per commit,
+  repair, test, packaged artifact or repeat report.
+- The genuine original D3D9 VB/IB triangle list is copied read-only,
+  index-remapped (including BaseVertexIndex, MinVertexIndex and StartIndex),
+  expanded in original triangle order, validated against finite XYZRHW
+  source attributes, then passed into the existing SAME-thread bounded
+  CPU-projector caller join, perspective residual fit, strict fixed-function
+  texture/sampler/raster state gate and binocular independently clipped
+  stereo raster. A separately authenticated world adapter must explicitly
+  own the frame and pass its proven source CPU caller before source-read/
+  eye-frame append. No unknown original Draw is automatically relabeled.
+- The original passive D3D9 hook can now sample two-to-eight original
+  projected VB/IB triangles, correlate against the current CPU projector
+  ring and write the `model2_d3d9_cpu_vb_join_batch` witness. The
+  `model2_d3d9_vb_present_frame` witness joins original GPU Draw caller,
+  CPU caller and genuine original Present frame. The public source report
+  counts independently observed and correlated Present frames but keeps
+  `world_pass_proof=NOT_ESTABLISHED`.
+- **Exact-SHA GitHub CI PASS:** Public tools `41789948529`, ModDev toolkit
+  `41789948541`, Windows x86 probe `41789948548`, Daytona Win32
+  original game producer + Win64 Quest OpenXR host packaged build
+  `41789948533` all succeeded on `2160eb8`. The earlier `bfd45a7`
+  had its own four successful jobs; the transient missing-header Win32
+  failure at `67645c0` was fixed in `3fdc682`, not repeatedly re-run.
+- **RUNTIME_VALIDATION=UNTESTED.** Private REA static evidence confirms
+  TransformPoint/ProjectVertexToScreen geometry dispatch but NOT a unique
+  Daytona race-world GPU Draw caller, camera orientation, game-units-per-meter,
+  shader material ownership or main/aux/HUD boundary. No Quest 3+VDXR
+  session has verified actual original game stereoscopy.
+- **NEXT ACTUAL SOURCE:** Privately authenticate original geometry command
+  and active matrix selection versus original D3D9 render caller and
+  gameplay phase, then provide only proven world-pass bits and calibrated
+  camera units/axes to the source adapter. Maintain conservative 2D fallback,
+  original HRESULT, one gameplay tick and independent FFB. Extend the
+  other original shader-UP and indexed-UP material classes only after their
+  exact per-draw vertex provenance and CPU camera math have been proven.
+
