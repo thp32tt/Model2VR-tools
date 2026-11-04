@@ -17,6 +17,16 @@ inline constexpr bool ValidFixedStageSource(FixedStageSource s) noexcept {
            s==FixedStageSource::Diffuse ||
            s==FixedStageSource::Modulate;
 }
+inline constexpr bool FixedStageUsesTexture(FixedStageSource s) noexcept {
+    return s==FixedStageSource::Texture || s==FixedStageSource::Modulate;
+}
+inline constexpr bool FixedStageUsesDiffuse(FixedStageSource s) noexcept {
+    return s==FixedStageSource::Diffuse || s==FixedStageSource::Modulate;
+}
+inline constexpr bool FixedStagePairIsDiffuseOnly(
+    FixedStageSource rgb,FixedStageSource alpha) noexcept {
+    return rgb==FixedStageSource::Diffuse && alpha==FixedStageSource::Diffuse;
+}
 inline bool DecodeFixedStageSource(DWORD operation,DWORD first,
                                    DWORD second,FixedStageSource& out) noexcept {
     FixedStageSource next{};
