@@ -273,7 +273,13 @@ class SourceAuditTests(unittest.TestCase):
         data["origin"] = (0x44, pack(1, 0x104), pack(2048, 24))
         data["stage_color"] = (pack(4, 0), 2, pack(0x104, 24))
         data["stage_alpha"] = (pack(4, 2), 0, pack(0x104, 24))
+        # Without explicit vertex D3DCOLOR, D3D9 defines diffuse=white.
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(4, 2), 1, pack(0x104, 24))
         self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(4, 2), 0, pack(0x104, 24))
+        data["stage_alpha"] = (pack(4, 1), 2, pack(0x104, 24))
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
         data["stage_color"] = (pack(2, 2), 0, pack(0x104, 24))
         data["stage_alpha"] = (pack(2, 2), 0, pack(0x104, 24))
         self.assertTrue(REPORT.original_projected_material_candidate(data))

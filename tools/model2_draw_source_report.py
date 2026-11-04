@@ -97,17 +97,22 @@ D3DTOP_SELECTARG1 = 2
 D3DTOP_SELECTARG2 = 3
 D3DTOP_MODULATE = 4
 D3DTA_DIFFUSE = 0
+D3DTA_CURRENT = 1  # documented D3D9 stage-zero == DIFFUSE
 D3DTA_TEXTURE = 2
 
 
 def original_stage_selects_texel_or_diffuse(operation, first, second, diffuse):
+    # D3D9 source contract: CURRENT at stage 0 is DIFFUSE. FVF can omit
+    # D3DCOLOR; its default then is opaque white (no guessed game pixel).
+    # Unknown modifiers and operation types remain unsupported.
+    diffuse_args = (D3DTA_DIFFUSE, D3DTA_CURRENT)
     if operation == D3DTOP_SELECTARG1:
-        return first == D3DTA_TEXTURE or (diffuse and first == D3DTA_DIFFUSE)
+        return first == D3DTA_TEXTURE or first in diffuse_args
     if operation == D3DTOP_SELECTARG2:
-        return second == D3DTA_TEXTURE or (diffuse and second == D3DTA_DIFFUSE)
-    return (operation == D3DTOP_MODULATE and diffuse and
-            ((first, second) in ((D3DTA_TEXTURE, D3DTA_DIFFUSE),
-                                 (D3DTA_DIFFUSE, D3DTA_TEXTURE))))
+        return second == D3DTA_TEXTURE or second in diffuse_args
+    return (operation == D3DTOP_MODULATE and
+            ((first == D3DTA_TEXTURE and second in diffuse_args) or
+             (first in diffuse_args and second == D3DTA_TEXTURE)))
 
 
 def original_projected_material_candidate(data):
