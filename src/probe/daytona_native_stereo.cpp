@@ -85,6 +85,18 @@ public:
         last_bootstrap_reason_=0u;
         last_bootstrap_hr_=0u;
     }
+    void MarkFailedOriginalScene(std::uint32_t transition,
+                                 std::uint32_t original_hresult)noexcept{
+        if((transition!=1u && transition!=2u) ||
+           !(original_hresult&0x80000000u))return;
+        std::lock_guard lock(mu_);
+        if(!enabled_ || source_scene_failed_)return;
+        // Never mutate the original game backbuffer or reuse two partial
+        // GPU-eye images after a failed original Begin/EndScene.
+        source_scene_failed_=true;
+        m2vr::LogEvent("model2_vr_gpu_original_scene_failed",
+            transition,original_hresult,scene_draws_,mirrored_draws_);
+    }
     template<class Replay>
     void DrawAny(IDirect3DDevice9* d,D3DPRIMITIVETYPE primitive,UINT count,
                  const void* source,UINT stride,std::uint32_t caller,
@@ -95,6 +107,8 @@ public:
         if(!enabled_||!d||count==0||count>8192u||g_in_eye_replay)return;
         std::lock_guard lock(mu_);
         ScopedEyeReplay recursion_guard;
+        if(source_scene_failed_)return;
+        if(source_scene_failed_)return;
         // The OpenXR host supplies a coherent, fresh two-eye tracking pair.
         // Never allocate GPU resources, readback, or re-render when the Quest
         // host is absent, disconnected, stale or returning identical eyes.
@@ -287,6 +301,7 @@ public:
         if(!enabled_||!d||!src||!dst||!original||g_in_eye_replay)return;
         std::lock_guard lock(mu_);
         ScopedEyeReplay recursion_guard;
+        if(source_scene_failed_)return;
         if(!LivePoseForGameFrame() || !Ensure(d) ||
            !LivePoseForGameFrame())return;
         const bool to_main=dst==backbuffer_;
@@ -323,6 +338,7 @@ public:
         if(!enabled_||!d||!src||!dst||!original||g_in_eye_replay)return;
         std::lock_guard lock(mu_);
         ScopedEyeReplay recursion_guard;
+        if(source_scene_failed_)return;
         if(!LivePoseForGameFrame() || !Ensure(d) ||
            !LivePoseForGameFrame())return;
         const bool to_main=dst==backbuffer_;
@@ -361,6 +377,7 @@ public:
         if(!enabled_||!d||!dst||!original||g_in_eye_replay)return;
         std::lock_guard lock(mu_);
         ScopedEyeReplay recursion_guard;
+        if(source_scene_failed_)return;
         if(!LivePoseForGameFrame() || !Ensure(d) ||
            !LivePoseForGameFrame())return;
         const bool to_main=dst==backbuffer_;
@@ -471,6 +488,13 @@ public:
         ScopedEyeReplay recursion_guard;
         pending_present_frame_=frame;
         pending_present_reason_=0u;
+        if(source_scene_failed_){
+            // Original game pixels remain valid as a flat/mono fallback;
+            // never publish either speculative eye after scene COM failure.
+            pending_present_reason_=m2vr::producerhealth::NoVerifiedScene;
+            PrepareOriginalMono(d,frame,pending_present_reason_);
+            return;
+        }
         if(verified_cpu_world_pending){
             // A complete separately proven CPU pair is ready but can still
             // fail Present/pose. Prefer ONE real game-mono rollback image.
@@ -712,6 +736,7 @@ private:
     }
     void FinishFrame()noexcept{
         pending_present_frame_=0u;pending_present_reason_=0u;
+        source_scene_failed_=false;
         pending_mono_ready_=false;pending_mono_source_reason_=0u;
         frame_started_=false;scene_draws_=0;
         main_depth_ready_=false;aux_depth_ready_=false;
@@ -1102,6 +1127,7 @@ private:
     std::mutex mu_;
     m2vr::producerhealth::Link health_;
     bool enabled_=false,frame_started_=false,writer_ready_=false;
+    bool source_scene_failed_=false;
     std::uint64_t pending_present_frame_=0u;
     std::uint32_t pending_present_reason_=0u;
     HRESULT last_failed_present_=S_OK;
@@ -1222,6 +1248,10 @@ void ReportVerifiedCpuWorldPresent(std::uint64_t frame,std::uint32_t reason,
                                    std::uint32_t draw_count)noexcept{
     try{g_eye.ReportVerifiedCpuWorld(frame,reason,draw_count);}
     catch(...){g_eye.ResetExternal();}
+}
+void MarkFailedOriginalScene(std::uint32_t transition,
+                             std::uint32_t original_hresult) noexcept{
+    g_eye.MarkFailedOriginalScene(transition,original_hresult);
 }
 void ResetResources()noexcept{g_eye.ResetExternal();}
 }

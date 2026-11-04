@@ -117,9 +117,29 @@ int main(){
     CHECK(family.Admit(77u,OriginalCameraSourceFamily::OriginalCPUProjected));
     CHECK(family.Admit(77u,OriginalCameraSourceFamily::OriginalCPUProjected));
     CHECK(!family.Admit(77u,OriginalCameraSourceFamily::FixedFunctionD3D9));
+    CHECK(family.Rejected());
+    // A mixed-camera Draw must NOT be able to resume the old family and
+    // leave a partial left/right frame that looks fully authenticated.
+    CHECK(!family.Admit(77u,OriginalCameraSourceFamily::OriginalCPUProjected));
     CHECK(!family.Admit(78u,OriginalCameraSourceFamily::OriginalCPUProjected));
     family.Reset();
+    CHECK(!family.Rejected());
+    CHECK(family.Admit(78u,OriginalCameraSourceFamily::FixedFunctionD3D9));
     CHECK(family.Admit(78u,OriginalCameraSourceFamily::FixedFunctionD3D9));
     CHECK(!family.Admit(78u,OriginalCameraSourceFamily::Native));
+    CHECK(!family.Admit(78u,OriginalCameraSourceFamily::FixedFunctionD3D9));
+    family.Reset();
+    CHECK(!family.Admit(0u,OriginalCameraSourceFamily::Native));
+    CHECK(!family.Admit(79u,OriginalCameraSourceFamily::Native));
+    family.Reset();
+    CHECK(!family.Admit(79u,static_cast<OriginalCameraSourceFamily>(0u)));
+    CHECK(!family.Admit(79u,OriginalCameraSourceFamily::Native));
+    family.Reset();
+    CHECK(family.Admit(80u,OriginalCameraSourceFamily::Native));
+    CHECK(family.Admit(80u,OriginalCameraSourceFamily::Native));
+    CHECK(!family.Admit(80u,OriginalCameraSourceFamily::OriginalCPUProjected));
+    CHECK(!family.Admit(80u,OriginalCameraSourceFamily::Native));
+    family.Reset();
+    CHECK(family.Admit(81u,OriginalCameraSourceFamily::OriginalCPUProjected));
     return 0;
 }

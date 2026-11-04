@@ -192,6 +192,37 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                 event("model2_d3d9_original_present_result", 7, 0, 1, 0),
             ])
 
+    def test_late_failed_original_scene_revokes_previously_successful_draw(self):
+        events = self.projected() + [
+            # Original Draw succeeded, but the same genuine original scene
+            # fails after that Draw and before physical original Present.
+            event("model2_d3d9_original_scene_failed", 7,
+                  2, 0x8876086C, 0x4321),
+            event("model2_d3d9_original_present_result", 7, 0, 1, 0),
+        ]
+        got = self.report(events)
+        self.assertEqual(
+            got["counts"]["original_scene_transition_failed"], 1)
+        self.assertNotIn(
+            "original_source_draw_and_present_succeeded", got["counts"])
+        self.assertFalse(
+            got["physically_presented_same_witness_camera_callers"])
+        with self.assertRaisesRegex(ValueError, "invalid original scene failure"):
+            self.report(self.projected() + [
+                event("model2_d3d9_original_scene_failed", 7,
+                      2, 0, 0x4321)])
+        # The following physical Present may re-establish an independent
+        # actual scene. Old failed frame must not contaminate fresh source.
+        next_frame = self.projected(witness=22,frame=8)
+        got = self.report(events + next_frame + [
+            event("model2_d3d9_original_present_result", 8, 0, 1, 0)])
+        self.assertEqual(
+            got["counts"]["original_scene_transition_failed"], 1)
+        self.assertEqual(
+            got["counts"]["original_source_draw_and_present_succeeded"], 1)
+        self.assertEqual(
+            got["counts"]["same_witness_cpu_camera_present_candidate"], 1)
+
     def test_missing_or_inactive_original_scene_cannot_claim_camera(self):
         original = self.projected()
         got = self.report([e for e in original

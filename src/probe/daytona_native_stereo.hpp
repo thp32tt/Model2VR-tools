@@ -75,5 +75,10 @@ void DiscardPreparedFrameAfterCpuWorld(std::uint64_t frame) noexcept;
 void ReportVerifiedCpuWorldPresent(std::uint64_t frame,
                                    std::uint32_t reason,
                                    std::uint32_t draw_count) noexcept;
+// An authentic primary-device game EXE BeginScene/EndScene HRESULT failure
+// revokes this original Present's speculative GPU eyes. The one unchanged
+// original backbuffer remains eligible for clearly tagged MONO fallback.
+void MarkFailedOriginalScene(std::uint32_t transition,
+                             std::uint32_t original_hresult) noexcept;
 void ResetResources() noexcept;
 }

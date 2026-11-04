@@ -77,15 +77,33 @@ enum class OriginalCameraSourceFamily : std::uint32_t {
 };
 class OriginalCameraFamilyEpoch final {
 public:
-    void Reset() noexcept { frame_=0u;family_=OriginalCameraSourceFamily::Native; }
-    bool Admit(std::uint64_t frame,OriginalCameraSourceFamily family) noexcept {
-        if(!frame)return false;
-        if(!frame_){ frame_=frame;family_=family;return true; }
-        return frame==frame_ && family==family_;
+    void Reset() noexcept {
+        frame_=0u;
+        family_=OriginalCameraSourceFamily::Native;
+        rejected_=false;
     }
+    bool Admit(std::uint64_t frame,OriginalCameraSourceFamily family) noexcept {
+        // A single rejected family transition or stale original Present
+        // poisons this epoch until the owning world transaction resets it.
+        // Never accept a later "correct" family after a mixed-source Draw.
+        if(rejected_ || !frame || (family!=OriginalCameraSourceFamily::Native &&
+            family!=OriginalCameraSourceFamily::FixedFunctionD3D9 &&
+            family!=OriginalCameraSourceFamily::OriginalCPUProjected)) {
+            rejected_=true;
+            return false;
+        }
+        if(!frame_){frame_=frame;family_=family;return true;}
+        if(frame!=frame_ || family!=family_){
+            rejected_=true;
+            return false;
+        }
+        return true;
+    }
+    bool Rejected()const noexcept{return rejected_;}
 private:
     std::uint64_t frame_=0;
     OriginalCameraSourceFamily family_=OriginalCameraSourceFamily::Native;
+    bool rejected_=false;
 };
 // Preserve only D3D9 VIEW and PROJECTION throughout a frame; WORLD is the
 // object's own matrix and is deliberately free to change per original Draw.

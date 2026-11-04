@@ -496,6 +496,7 @@ def store_original_draw_witness_field(fields, name, values, witness):
 def audit_csv(path):
     witnesses = {}
     physical_presents = {}
+    original_scene_failures = set()
     # All four physical Draw families share one ordinal space. Even UP
     # phases are observed here to detect a counterfeited duplicate VB phase.
     physical_draw_phase_owners = {}
@@ -508,6 +509,21 @@ def audit_csv(path):
             if count > MAX_ROWS:
                 raise ValueError("CSV row limit exceeded")
             event = row["event"]
+            if event == "model2_d3d9_original_scene_failed":
+                try:
+                    frame, transition, result, caller = (
+                        number(row[k]) for k in ("a0", "a1", "a2", "a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original scene failure row") from exc
+                if (not 0 < frame <= 0xffffffff or
+                        transition not in (1, 2) or
+                        result > 0xffffffff or (result & 0x80000000) == 0 or
+                        not 0 < caller <= 0xffffffff):
+                    raise ValueError("invalid original scene failure")
+                original_scene_failures.add(frame)
+                if len(original_scene_failures) > MAX_WITNESSES:
+                    raise ValueError("original scene failures exceeded limit")
+                continue
             if event == "model2_d3d9_original_present_result":
                 try:
                     frame, hresult, sampled, reserved = (
@@ -685,6 +701,7 @@ def audit_csv(path):
         "original_scene_phase_missing_witnesses": 0,
         "original_scene_phase_inactive_witnesses": 0,
         "original_scene_phase_inconsistent_witnesses": 0,
+        "original_scene_transition_failure_witnesses": 0,
         "original_scene_ordinals": set(),
         "original_scene_attested_physical_material_present_frames": set(),
         "original_draw_phase_attested_witnesses": 0,
@@ -776,6 +793,12 @@ def audit_csv(path):
                 scene_attested = True
                 entry["original_scene_phase_attested_witnesses"] += 1
                 entry["original_scene_ordinals"].add(scene_index)
+        # A late failed original Begin/EndScene can occur after a successful
+        # source Draw but BEFORE its physical Present. It invalidates the
+        # entire candidate scene on that physical frame, not the real Draw.
+        scene_transition_failed = present_frame in original_scene_failures
+        if scene_transition_failed:
+            entry["original_scene_transition_failure_witnesses"] += 1
         # A pre-Draw CPU projector match is not evidence of a successfully
         # executed original COM Draw until its post-call HRESULT matches.
         original_success = False
@@ -1042,7 +1065,7 @@ def audit_csv(path):
                 if phase_attested:
                     entry["original_phase_attested_physical_material_present_frames"].add(
                         present_frame)
-                    if scene_attested:
+                    if scene_attested and not scene_transition_failed:
                         entry["original_scene_attested_physical_material_present_frames"].add(
                             present_frame)
             # This qualifies a SOURCE MATERIAL candidate only. A private

@@ -85,6 +85,9 @@ std::atomic<std::uint64_t> g_original_frame_draw_ordinal{0u};
 // substitute for independently authenticated race-world/HUD ownership.
 std::atomic<unsigned> g_original_scene_ordinal{0u};
 std::atomic<bool> g_original_scene_open{false};
+// A failed genuine original scene COM transition invalidates later scene
+// provenance until physical Present / Reset; do not reopen in this epoch.
+std::atomic<bool> g_original_scene_poisoned{false};
 std::atomic<DWORD> g_original_scene_owner_thread{0u};
 std::atomic<bool> g_original_scene_hooks_ready{false};
 std::atomic<std::uint64_t> g_witness_serial{0};
@@ -105,6 +108,9 @@ extern "C" BOOL __stdcall Model2VR_HasVerifiedWorldPendingForOriginalPresent(
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset();
 extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Draw(
     std::uint32_t family,std::uint32_t result_bits,std::uint32_t caller_rva);
+extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Scene(
+    std::uint32_t transition,std::uint32_t result_bits,
+    std::uint32_t caller_rva);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -127,6 +133,23 @@ std::uint32_t CallerRva(void* ret) {
 // Forward the REAL original COM return before any GPU-eye replay. Only
 // failed original Draws notify an independently authenticated CPU-world
 // transaction, so normal successful Draws incur no extra bridge lock.
+void TrackFailedOriginalD3D9Scene(HRESULT hr,std::uint32_t transition,
+                                  std::uint32_t original_caller_rva) noexcept {
+    if(SUCCEEDED(hr) || !original_caller_rva)return;
+    g_original_scene_poisoned.store(true,std::memory_order_release);
+    g_original_scene_open.store(false,std::memory_order_release);
+    g_original_scene_owner_thread.store(0u,std::memory_order_release);
+    m2vr::LogEvent("model2_d3d9_original_scene_failed",
+        g_present_count.load(std::memory_order_relaxed)+1u,
+        transition,static_cast<std::uint32_t>(hr),original_caller_rva);
+    Model2VR_RejectFailedOriginalD3D9Scene(
+        transition,static_cast<std::uint32_t>(hr),original_caller_rva);
+    // Drop the optional speculative native GPU stereo pair too. Keep the
+    // actual original game mono backbuffer for the next physical Present.
+    if(g_native_stereo)
+        m2vr::daytona::MarkFailedOriginalScene(
+            transition,static_cast<std::uint32_t>(hr));
+}
 HRESULT TrackOriginalD3D9DrawResult(HRESULT hr,std::uint32_t family,
                                     void* caller) noexcept {
     if(m2vr::vrbridge::IsFailedOriginalD3D9Draw(
@@ -1182,24 +1205,32 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
 // Optional read-only scene boundary hooks: never add a scene or change
 // an original COM HRESULT. A failed original scene call is not admitted.
 HRESULT STDMETHODCALLTYPE BeginSceneHook(IDirect3DDevice9* d){
+    void* const caller=_ReturnAddress();
     const HRESULT hr=g_begin_scene(d);
-    // The original game EXE owns the scene; a diagnostic or replay DLL
-    // cannot manufacture a native source scene boundary.
-    if(g_primary_device.Owns(d) && CallerRva(_ReturnAddress()) &&
-       SUCCEEDED(hr)){
-        g_original_scene_ordinal.fetch_add(1u,std::memory_order_relaxed);
-        g_original_scene_owner_thread.store(
-            GetCurrentThreadId(),std::memory_order_release);
-        g_original_scene_open.store(true,std::memory_order_release);
+    // The game EXE must own the REAL source scene. Mirror/overlay DLL
+    // transitions never assert original-scene provenance or poison it.
+    const auto caller_rva=CallerRva(caller);
+    if(g_primary_device.Owns(d) && caller_rva){
+        if(FAILED(hr))TrackFailedOriginalD3D9Scene(hr,1u,caller_rva);
+        else if(!g_original_scene_poisoned.load(std::memory_order_acquire)){
+            g_original_scene_ordinal.fetch_add(1u,std::memory_order_relaxed);
+            g_original_scene_owner_thread.store(
+                GetCurrentThreadId(),std::memory_order_release);
+            g_original_scene_open.store(true,std::memory_order_release);
+        }
     }
     return hr;
 }
 HRESULT STDMETHODCALLTYPE EndSceneHook(IDirect3DDevice9* d){
+    void* const caller=_ReturnAddress();
     const HRESULT hr=g_end_scene(d);
-    if(g_primary_device.Owns(d) && CallerRva(_ReturnAddress()) &&
-       SUCCEEDED(hr)){
-        g_original_scene_open.store(false,std::memory_order_release);
-        g_original_scene_owner_thread.store(0u,std::memory_order_release);
+    const auto caller_rva=CallerRva(caller);
+    if(g_primary_device.Owns(d) && caller_rva){
+        if(FAILED(hr))TrackFailedOriginalD3D9Scene(hr,2u,caller_rva);
+        else {
+            g_original_scene_open.store(false,std::memory_order_release);
+            g_original_scene_owner_thread.store(0u,std::memory_order_release);
+        }
     }
     return hr;
 }
@@ -1259,6 +1290,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
     g_original_frame_draw_ordinal.exchange(0u,std::memory_order_relaxed);
     g_original_scene_ordinal.exchange(0u,std::memory_order_relaxed);
+    g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
     // Native replay must also drain the *original* source-family counters.
@@ -1325,6 +1357,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     if(!g_primary_device.Owns(d))return g_reset(d,pp);
     g_original_frame_draw_ordinal.store(0u,std::memory_order_relaxed);
     g_original_scene_ordinal.store(0u,std::memory_order_relaxed);
+    g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
     m2vr::drawprobe::NextProjectDrawEpoch();

@@ -272,6 +272,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
         if(Owner())g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
+    // Native camera-space triangles are not interchangeable with an
+    // original CPU-projected or fixed D3D9 WVP source in this XR frame.
+    // A mixed family poisons the entire in-flight binocular transaction.
+    if(!NativeCameraFamilyAccepted()){
+        g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
+        return FALSE;
+    }
     try {
         std::vector<m2vr::vr::CpuPoint> vertices(vertex_count);
         std::vector<std::uint32_t> safe_indices(index_count);
@@ -343,10 +350,6 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
        write_rgba_mask>15u ||
        ((rgb_source!=0u || alpha_source!=0u) && !diffuse_argb)) {
         if(Owner())g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
-        return FALSE;
-    }
-    if(!NativeCameraFamilyAccepted()){
-        g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
     if(!NativeCameraFamilyAccepted()){
@@ -697,6 +700,27 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Draw(
     // no scene vertices, source game pixels or private matrix contents.
     m2vr::LogEvent("model2_vr_cpu_world_original_draw_failed",
         rejected_frame,original_family,result_bits,original_caller_rva);
+}
+// A failed authentic primary-device BeginScene or EndScene cannot be
+// part of a fully composited original-world eye pair for this same thread.
+// Preserve the original COM HRESULT; revoke only the pending CPU pair.
+extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Scene(
+    std::uint32_t transition,std::uint32_t result_bits,
+    std::uint32_t original_caller_rva){
+    using namespace m2vr::vrbridge;
+    if((transition!=1u && transition!=2u) ||
+       (result_bits&0x80000000u)==0u || !original_caller_rva)return;
+    std::scoped_lock lock(g.mutex);
+    if(g.owner!=GetCurrentThreadId() || !(g.active||g.pending_present))
+        return;
+    const auto rejected_frame=g.frame;
+    const auto old_reason=g_current_original_source_failure;
+    g_current_original_source_failure=OriginalSourceFailure::OriginalSceneFailed;
+    g.Reject(CurrentOriginalSourceDrawKind());
+    g_current_original_source_failure=old_reason;
+    // No game textures/ROM bytes or world transforms are recorded.
+    m2vr::LogEvent("model2_vr_cpu_world_original_scene_failed",
+        rejected_frame,transition,result_bits,original_caller_rva);
 }
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);

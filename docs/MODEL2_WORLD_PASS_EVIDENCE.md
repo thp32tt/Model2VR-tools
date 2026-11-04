@@ -162,3 +162,36 @@ ordinary COM outcome diagnostics, but cannot qualify scene-attested
 candidate admission. Neither an original BeginScene nor a stable scene
 ordinal proves a specific race World3D pass, camera axes, HUD boundary,
 physical scale or Quest3 HMD success. Keep source logs and REA private.
+
+## Original-world render transaction failure closure (2026-11-05)
+
+Source hardening extends beyond passive inspection. In the 32-bit native
+CPU-world raster entrypoints, *both* opaque triangle batches and textured
+triangle batches now admit the same camera-family epoch exactly once. A
+mixture of unprojected camera-space CPU vertices, original D3D9
+fixed-function WVP, and source `ProjectVertexToScreen` camera families
+poisons that verified stereo transaction through the original Present.
+Retrying the previous family within the same epoch cannot rehabilitate
+the partially composed left/right images. This rejects both eyes before
+the native x64 OpenXR producer receives them; it never alters original
+Draw/Present, FFB or game camera.
+
+A genuine failed original primary-device `BeginScene` or `EndScene`
+HRESULT with an in-executable caller makes the rest of that physical
+Present's source scene ineligible, revokes the same-render-thread armed
+CPU-world stereo packet, and marks speculative original GPU eye replay
+unusable. **The real game backbuffer remains eligible for MONO fallback**
+through its existing pre-Present readback/after-successful-Present commit.
+The runtime reports `model2_d3d9_original_scene_failed`,
+`model2_vr_cpu_world_original_scene_failed` and
+`model2_vr_gpu_original_scene_failed` without game pixels. A successful
+next original Present/Reset begins a clean source-scene epoch.
+
+Private `model2_up_draw_outcomes.py` and `model2_draw_source_report.py`
+reject late failed source-scene transitions even when an earlier original
+Draw and the actual physical Present succeeded in the same frame. The
+independent two-race/nonrace candidate gate excludes these frames. This
+does not identify race geometry, HUD, sky, real 6DoF camera basis or
+units-per-meter, and no sample automatically enables World3D. Only
+original runtime captures in the user's private workspace can establish
+those facts. Quest 3/VDXR `RUNTIME_VALIDATION=UNTESTED`.

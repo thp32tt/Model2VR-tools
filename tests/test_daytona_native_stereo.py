@@ -6,6 +6,36 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_native_untextured_and_textured_world_share_poisoned_camera_epoch(self):
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        gate=(ROOT/"src/probe/verified_world_projection_epoch.hpp").read_text("utf-8")
+        plain=bridge.split("Model2VR_AppendVerifiedWorldTriangles(")[1].split(
+            "// Optional texture source path")[0]
+        textured=bridge.split(
+            "Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates(")[1].split(
+            "// Preserve the exact previous alpha-compare/material ABI")[0]
+        # One explicit current-frame camera-family check before touching
+        # either native CPU-world buffer. A failing one discards BOTH eyes.
+        for section in (plain,textured):
+            self.assertEqual(section.count("if(!NativeCameraFamilyAccepted())"),1)
+            self.assertLess(section.index("if(!NativeCameraFamilyAccepted())"),
+                            section.index("    try {"))
+            self.assertIn("g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());",
+                          section)
+        self.assertIn("OriginalCameraSourceFamily::Native",bridge)
+        self.assertIn("bool rejected_=false;",gate)
+        self.assertIn("if(rejected_ || !frame",gate)
+        self.assertIn("rejected_=true;",gate)
+        self.assertIn("bool Rejected()const noexcept",gate)
+        self.assertIn("!NativeCameraFamilyAccepted()",plain)
+        # A source-family mismatch must never silently regenerate an
+        # earlier camera type in the same physical original Present.
+        projection_test=(ROOT/"tests/model2_camera_projection_fit_test.cpp").read_text(
+            "utf-8")
+        self.assertIn("CHECK(family.Rejected());",projection_test)
+        self.assertIn("CHECK(!family.Admit(80u,OriginalCameraSourceFamily::Native));",
+                      projection_test)
+
     def test_original_failed_d3d9_draw_revokes_only_owned_cpu_eye_frame(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
@@ -82,7 +112,28 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("vtable[42],reinterpret_cast<void*>(&EndSceneHook)", hooks)
         self.assertEqual(hooks.count("const HRESULT hr=g_begin_scene(d);"),1)
         self.assertEqual(hooks.count("const HRESULT hr=g_end_scene(d);"),1)
-        self.assertEqual(hooks.count("CallerRva(_ReturnAddress())"),2)
+        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),2)
+        self.assertEqual(hooks.count("TrackFailedOriginalD3D9Scene(hr,"),2)
+        self.assertIn("g_original_scene_poisoned.store(true",hooks)
+        self.assertEqual(hooks.count("g_original_scene_poisoned.store(false"),2)
+        self.assertIn("Model2VR_RejectFailedOriginalD3D9Scene(",hooks)
+        cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        source=(ROOT/"src/probe/verified_world_source_epoch.hpp").read_text("utf-8")
+        self.assertIn("OriginalSourceFailure::OriginalSceneFailed",cpu)
+        self.assertIn("g.Reject(CurrentOriginalSourceDrawKind());",cpu)
+        self.assertIn("model2_vr_cpu_world_original_scene_failed",cpu)
+        self.assertIn("OriginalSceneFailed=16u",source)
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        gpu_api=(ROOT/"src/probe/daytona_native_stereo.hpp").read_text("utf-8")
+        self.assertIn("MarkFailedOriginalScene",gpu_api)
+        self.assertIn("m2vr::daytona::MarkFailedOriginalScene(",hooks)
+        self.assertIn("source_scene_failed_=true;",gpu)
+        self.assertIn("source_scene_failed_=false;",gpu)
+        self.assertGreaterEqual(gpu.count("if(source_scene_failed_)return;"),6)
+        self.assertIn("if(source_scene_failed_){",gpu)
+        self.assertIn("pending_present_reason_=m2vr::producerhealth::NoVerifiedScene;",gpu)
+        self.assertIn("PrepareOriginalMono(d,frame,pending_present_reason_);",gpu)
+        self.assertIn("model2_vr_gpu_original_scene_failed",gpu)
         self.assertIn("g_original_scene_hooks_ready.store(sb&&se", hooks)
         self.assertIn('m2vr::LogEvent("model2_d3d9_source_scene_phase"', hooks)
         self.assertIn("if(!(sb&&se)){", hooks)
