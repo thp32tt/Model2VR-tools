@@ -477,6 +477,10 @@ def audit_csv(path):
             elif event == "model2_d3d9_source_blend":
                 fields["source_blend"] = values
             elif event == "model2_d3d9_source_alpha_compare":
+                old=fields.get("source_alpha_compare")
+                if old is not None and old != values:
+                    raise ValueError(
+                        f"conflicting original alpha witness {witness}")
                 fields["source_alpha_compare"] = values
             elif event == "model2_d3d9_source_sampler_mip":
                 fields["source_mip"] = values
