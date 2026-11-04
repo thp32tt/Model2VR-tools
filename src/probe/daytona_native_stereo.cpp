@@ -268,11 +268,14 @@ private:
             Drop(back);return false;
         }
         D3DSURFACE_DESC dd{};
+        // GetDepthStencilSurface already proves this is the original game's
+        // active depth/stencil surface. Do not reject valid D3D9 depth formats
+        // (for example D15S1, D24X4S4, D32F_LOCKABLE or D24FS8) with a partial
+        // local whitelist. Clone the exact format and let CreateDepthStencilSurface
+        // perform the authoritative device/format compatibility check.
         if(FAILED(depth->GetDesc(&dd)) ||
            dd.Width!=desc.Width || dd.Height!=desc.Height ||
-           dd.MultiSampleType!=D3DMULTISAMPLE_NONE ||
-           (dd.Format!=D3DFMT_D16 && dd.Format!=D3DFMT_D24S8 &&
-            dd.Format!=D3DFMT_D24X8 && dd.Format!=D3DFMT_D32)){
+           dd.MultiSampleType!=D3DMULTISAMPLE_NONE){
             Drop(depth);Drop(back);return false;
         }
         const D3DFORMAT depth_format=dd.Format;
