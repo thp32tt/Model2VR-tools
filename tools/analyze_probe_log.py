@@ -96,6 +96,20 @@ def original_d3d9_depth_cull_status(record, present_frame):
     return "supported"
 
 
+def original_d3d9_vertex_pipeline_status(record, present_frame):
+    """D3D9 vertex-stage witness only; no independently proven world pass."""
+    if record is None:
+        return "unobserved"
+    shade, clip = record[0] >> 32, record[0] & 0xFFFFFFFF
+    planes, blend = record[1] >> 32, record[1] & 0xFFFFFFFF
+    indexed, frame = record[2] >> 32, record[2] & 0xFFFFFFFF
+    if not present_frame or frame != present_frame:
+        return "present_mismatch"
+    if shade != 2 or clip != 1 or planes or blend or indexed:
+        return "unsupported"
+    return "supported"
+
+
 def original_up_source_pass_status(context, original_present_frame):
     """Evaluate a same-witness original D3D9 main-Z pass, not world proof.
 
@@ -263,7 +277,8 @@ def analyze(path: Path):
                            "model2_d3d9_source_color_mask",
                            "model2_d3d9_source_blend",
                            "model2_d3d9_source_sampler_mip",
-                           "model2_d3d9_source_depth_cull"):
+                           "model2_d3d9_source_depth_cull",
+                           "model2_d3d9_source_vertex_pipeline"):
                 if a0 not in up_fixed_stage:
                     if len(up_fixed_stage) >= 4096:
                         up_fixed_stage.clear()
@@ -560,6 +575,7 @@ def analyze(path: Path):
     up_material_blend_status = Counter()
     up_material_mip_status = Counter()
     up_material_depth_cull_status = Counter()
+    up_material_vertex_pipeline_status = Counter()
     up_material_examples = []
     for witness, (frame, caller, family, stride) in up_meta.items():
         source = up_source_fvf.get(witness)
@@ -662,6 +678,9 @@ def analyze(path: Path):
         depth_cull_status=original_d3d9_depth_cull_status(
             stage.get("model2_d3d9_source_depth_cull"),frame)
         up_material_depth_cull_status[depth_cull_status] += 1
+        vertex_pipeline_status=original_d3d9_vertex_pipeline_status(
+            stage.get("model2_d3d9_source_vertex_pipeline"),frame)
+        up_material_vertex_pipeline_status[vertex_pipeline_status] += 1
         if len(up_material_examples) < 48:
             up_material_examples.append({
                 "witness_id": witness,
@@ -691,6 +710,7 @@ def analyze(path: Path):
                 "specular_and_fog": [(extra[2] >> 32) & 0xFFFFFFFF,
                                      extra[2] & 0xFFFFFFFF],
                 "original_source_depth_cull_status": depth_cull_status,
+                "original_source_vertex_pipeline_status": vertex_pipeline_status,
                 "world_pass_proof": "NOT_ESTABLISHED",
             })
 
@@ -734,6 +754,8 @@ def analyze(path: Path):
                 dict(up_material_mip_status.most_common()),
             "original_up_material_depth_cull_status":
                 dict(up_material_depth_cull_status.most_common()),
+            "original_up_material_vertex_pipeline_status":
+                dict(up_material_vertex_pipeline_status.most_common()),
             "original_up_material_stage_examples": up_material_examples,
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,
