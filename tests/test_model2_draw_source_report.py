@@ -317,6 +317,27 @@ class SourceAuditTests(unittest.TestCase):
         data["stage_result"] = (1, 1, pack(0x144, 28))
         data["stage_alpha"] = (pack(3, 2), 0, pack(0x104, 24))
         self.assertFalse(REPORT.original_projected_material_candidate(data))
+        # Real projected TEX0 packed DIFFUSE: exactly 20 bytes, no UV.
+        data["origin"] = (0x44, pack(1, 0x44), pack(2048, 20))
+        data["stage_result"] = (1, 1, pack(0x44, 20))
+        data["stage_color"] = (pack(2, 0), 2, pack(0x44, 20))
+        data["stage_alpha"] = (pack(2, 1), 0, pack(0x44, 20))
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(2, 2), 0, pack(0x44, 20))
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(2, 0), 2, pack(0x44, 20))
+        data["present_frame"] = (22, 1, 0)
+        data["source_mask"] = (10, pack(0x44, 20), 22)
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["source_mask"] = (0, pack(0x44, 20), 22)
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["source_mask"] = (10, pack(0x44, 20), 23)
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["source_mask"] = (10, pack(0x44, 20), 22)
+        data["write_color"] = (pack(0, 1), 0, 0)
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["write_color"] = (pack(0, 10), 0, 0)
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
