@@ -2,6 +2,13 @@
 
 Updated: 2026-11-05 KST
 
+## 2026-11-05 original D3D9 Draw HRESULT to CPU stereo integrity (in progress)
+
+- **One connected source milestone:** material C++/CTest source commit `cd5a1cf18d5a77499ccc26674c473baff9cfc8ba`; preceding source changes `36c95e9`, `4b2d3d7`, `ca8f2ca`, `cf49b41` form the same cohesive feature. Documentation commits are not additional features or score events. Exact source-SHA x86/x64 Windows, Public, ModDev and Daytona package outcomes must be checked independently before calling BUILD_VERIFIED or awarding any point. No duplicate runs for any already green source SHA.
+- **Real original COM outcome:** All four 32-bit IDirect3DDevice9 Draw family hooks now observe the **unchanged physical original HRESULT** on primary AND secondary devices. A failed original Draw can revoke an in-flight or already armed same-render-thread CPU-world two-eye pair; a successful Draw never authorizes any world/HUD pass. It stores failure family/HRESULT/in-EXE return RVA as bounded logging but no private emulator pixels or matrices. Original Draw, Present, game simulation, FFB and native GPU/mono fallback remain once-only/unmodified.
+- **Next unfinished real implementation:** Authentic Daytona race gameplay CPU projector caller/geometry command-vs-menu/HUD pass ownership remains unproven. Runtime captures from independently verified original EXE race runs vs attract/menu and camera axis/units-per-meter calibration must be validated PRIVATELY, then wire only proven source passes through the existing explicit original-D3D9 CPU-world Begin/Append/Present adapter. Static REA refs and matching source FVF/camera fits never grant permission. Quest 3 + VDXR gameplay `RUNTIME_VALIDATION=UNTESTED`; no OutRun/web changes.
+
+
 ## Latest 2026-11-05 original x86 projector geometry capacity + native-only source + real eye RGB
 
 - **New cohesive source-bearing validation target:** `d37cfcb1a5f03a1181908cc13f847fd9043d1aef`; material continuation commits `d4f87ecd56be26a3dc322512c7fdfb6a406ec37c`, `d3756511bbf024916a5aa2c55dd3e940f2d81635`, `0bfca4562723e2fffde0b04b047957675b2c1121` and dependent C++/static test repair `12bb0fcd`, `a46c90e`, native release workflow path integration `64b70a7` and original GPU-eye diagnostic `d37cfcb` belong to **ONE independent connected feature milestone**. Do not score each CI/commit separately. Exact-SHA x86 + x64 Windows, Public tools, ModDev and Daytona release must all succeed before marking build verified.
