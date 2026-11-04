@@ -28,6 +28,9 @@ NAMES = {
     "model2_d3d9_cpu_vb_geometry_command",
     "model2_d3d9_source_pass_context",
     "model2_d3d9_vb_present_frame",
+    "model2_d3d9_source_stage0_color",
+    "model2_d3d9_source_stage0_alpha",
+    "model2_d3d9_source_stage1_specular",
 }
 
 def number(raw):
@@ -140,6 +143,12 @@ def audit_csv(path):
                 fields["source_context"] = values
             elif event == "model2_d3d9_vb_present_frame":
                 fields["present_frame"] = values
+            elif event == "model2_d3d9_source_stage0_color":
+                fields["stage_color"] = values
+            elif event == "model2_d3d9_source_stage0_alpha":
+                fields["stage_alpha"] = values
+            elif event == "model2_d3d9_source_stage1_specular":
+                fields["stage_extra"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -152,6 +161,10 @@ def audit_csv(path):
         "has_camera_matrix": False,
         "sampler_modes": set(), "alpha_test_modes": set(),
         "raster_modes": set(), "color_write_modes": set(),
+        "original_material_stage_states": set(),
+        "original_material_complete_witnesses": 0,
+        "original_material_mismatched_witnesses": 0,
+        "original_material_present_frames": set(),
         "cpu_projector_correlated_batches": 0,
         "cpu_projector_inspected_triangles": 0,
         "cpu_projector_complete_triangles": 0,
@@ -228,6 +241,28 @@ def audit_csv(path):
                     # depth-stencil surface and confirmed disabled scissor.
                     # None of these constitutes gameplay-world proof.
                     entry["original_main_full_view_depth_candidates"] += 1
+        # Do not join independently sampled original D3D9 Draw states.
+        if all(name in data for name in ("stage_color", "stage_alpha",
+                                        "stage_extra")):
+            c, a, e = (data[name] for name in
+                       ("stage_color", "stage_alpha", "stage_extra"))
+            c_op, c_arg1 = halves(c[0])
+            a_op, a_arg1 = halves(a[0])
+            c_fvf, c_stride = halves(c[2])
+            a_fvf, a_stride = halves(a[2])
+            specular, fog = halves(e[2])
+            if (c_fvf != fvf or a_fvf != fvf or c_stride != stride or
+                    a_stride != stride or c[1] > 0xFFFFFFFF or
+                    a[1] > 0xFFFFFFFF or e[0] > 0xFFFFFFFF or
+                    e[1] > 0xFFFFFFFF):
+                entry["original_material_mismatched_witnesses"] += 1
+            else:
+                entry["original_material_complete_witnesses"] += 1
+                entry["original_material_stage_states"].add((
+                    c_op, c_arg1, c[1], a_op, a_arg1, a[1],
+                    e[0], e[1], specular, fog))
+                if present_frame is not None:
+                    entry["original_material_present_frames"].add(present_frame)
         if "stream" in data:
             offset_usage, _, _ = data["stream"]
             _, usage = halves(offset_usage)
@@ -367,6 +402,8 @@ def audit_csv(path):
             value["geometry_command_present_frames"])
         record["distinct_context_present_frame_count"] = len(
             value["context_present_frames"])
+        record["distinct_original_material_present_frame_count"] = len(
+            value["original_material_present_frames"])
         record["distinct_correlated_present_frame_count"] = len(
             value["correlated_present_frames"])
         for key, item in value.items():
@@ -374,6 +411,7 @@ def audit_csv(path):
                        "matrix_consistent_present_frames",
                        "geometry_command_present_frames",
                        "context_present_frames",
+                        "original_material_present_frames",
                        "same_witness_joint_present_frames"):
                 continue
             if isinstance(item, set):
