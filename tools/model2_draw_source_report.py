@@ -22,6 +22,7 @@ NAMES = {
     "model2_d3d9_vb_texture",
     "model2_d3d9_vb_sampler", "model2_d3d9_vb_alpha",
     "model2_d3d9_vb_raster", "model2_d3d9_vb_write_color",
+    "model2_d3d9_cpu_vb_join_batch",
 }
 
 def number(raw):
@@ -82,6 +83,8 @@ def audit_csv(path):
                 fields["raster"] = values
             elif event == "model2_d3d9_vb_write_color":
                 fields["write_color"] = values
+            elif event == "model2_d3d9_cpu_vb_join_batch":
+                fields["cpu_join"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -94,6 +97,12 @@ def audit_csv(path):
         "has_camera_matrix": False,
         "sampler_modes": set(), "alpha_test_modes": set(),
         "raster_modes": set(), "color_write_modes": set(),
+        "cpu_projector_correlated_batches": 0,
+        "cpu_projector_inspected_triangles": 0,
+        "cpu_projector_complete_triangles": 0,
+        "cpu_projector_partial_triangles": 0,
+        "cpu_projector_ambiguous_triangles": 0,
+        "cpu_projector_source_callers": set(),
         "candidate_only": True,
         "world_pass_proven": False
     })
@@ -146,6 +155,24 @@ def audit_csv(path):
             write_mode, _, _ = data["write_color"]
             srgb_write, color_mask = halves(write_mode)
             entry["color_write_modes"].add((srgb_write, color_mask))
+        if "cpu_join" in data:
+            inspected_complete, partial_ambiguous, cpu_caller = data["cpu_join"]
+            inspected, complete = halves(inspected_complete)
+            partial, ambiguous = halves(partial_ambiguous)
+            if (inspected > 8 or complete > inspected or
+                    partial > inspected or ambiguous > inspected or
+                    complete + partial > inspected or
+                    cpu_caller > 0xFFFFFFFF):
+                raise ValueError("invalid projected VB CPU join record")
+            entry["cpu_projector_inspected_triangles"] += inspected
+            entry["cpu_projector_complete_triangles"] += complete
+            entry["cpu_projector_partial_triangles"] += partial
+            entry["cpu_projector_ambiguous_triangles"] += ambiguous
+            if (inspected >= 2 and complete == inspected and
+                    not partial and not ambiguous and cpu_caller):
+                entry["cpu_projector_correlated_batches"] += 1
+                entry["cpu_projector_source_callers"].add(
+                    f"0x{cpu_caller:08x}")
         if "texture" in data:
             fmt, width, height = data["texture"]
             entry["texture_formats"].add(fmt)

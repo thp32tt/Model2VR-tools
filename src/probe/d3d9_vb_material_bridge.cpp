@@ -6,6 +6,7 @@
 #include "d3d9_world_source.hpp"
 #include "projected_up_world_source.hpp"
 #include "project_draw_correlator.hpp"
+#include "d3d9_projected_vb_observer.hpp"
 #include "d3d9_vb_index_window.hpp"
 #include <Windows.h>
 #include <d3d9.h>
@@ -233,3 +234,49 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
             expected_cpu_caller,alpha_cutoff);
     }catch(...){return FALSE;}
 }
+
+// Observe a sampled actual D3D9 projected fixed-function VB/IB Draw. This
+// function never enables world proof, touches emulator state or renders an
+// extra Draw. A failed LOCK is an ordinary unsupported source, not an error.
+namespace m2vr::drawprobe {
+bool InspectProjectedD3D9VBJoin(
+    IDirect3DDevice9* device,bool indexed,
+    UINT start_vertex,INT base_vertex,
+    UINT min_vertex,UINT num_vertices,
+    UINT start_index,UINT primitive_count,
+    ProjectedTriangleBatchJoin& output) noexcept {
+    if(!device || primitive_count<2u ||
+       primitive_count>ProjectDrawCorrelator::kMaxJoinTriangles)return false;
+    try {
+        VBVertexWindow window{};
+        if(indexed){
+            if(!ReadIndices(device,start_index,primitive_count,
+                            base_vertex,min_vertex,num_vertices,window))
+                return false;
+        }else if(!RemapSequentialTriangleList(
+                    start_vertex,primitive_count,window))return false;
+        std::vector<std::uint8_t> vertices,ordered;
+        UINT stride=0;
+        if(!CopyVBWindow(device,window,vertices,stride,true))
+            return false;
+        DWORD fvf=0;
+        if(FAILED(device->GetFVF(&fvf)) ||
+           !ExpandProjectedVBWindow(vertices.data(),vertices.size(),
+                                    fvf,stride,window,ordered))
+            return false;
+        std::array<ProjectedDrawVertex,
+                   ProjectDrawCorrelator::kMaxJoinTriangles*3u> screen{};
+        const std::size_t count=window.indices.size();
+        for(std::size_t i=0;i<count;++i){
+            ProjectedUPWorldVertex decoded{};
+            if(!DecodeProjectedUPWorldVertex(ordered.data()+i*stride,
+                                             fvf,stride,decoded))
+                return false;
+            screen[i]={decoded.screen_xy[0],decoded.screen_xy[1]};
+        }
+        output=ThreadProjectDrawCorrelator().MatchTriangleList(
+            CurrentProjectDrawEpoch(),screen.data(),count);
+        return true;
+    }catch(...){return false;}
+}
+} // namespace m2vr::drawprobe

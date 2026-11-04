@@ -8,6 +8,7 @@
 #include "d3d9_primary_device_owner.hpp"
 #include "verified_world_present_gate.hpp"
 #include "d3d9_world_source.hpp"
+#include "d3d9_projected_vb_observer.hpp"
 #include <Windows.h>
 #include <d3d9.h>
 #include <MinHook.h>
@@ -576,7 +577,8 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
     vb->Release();
     if(!desc_ok)return;
     const auto layout=DecodeWorldUpFVF(fvf,stride);
-    if(!layout.eligible)return; // unknown vertex declaration: no guessing
+    const bool projected=ExactProjectedUPWorldFVF(fvf,stride);
+    if(!layout.eligible && !projected)return; // no guessed declarations
     D3DMATRIX world{},view{};
     const bool transforms_ok=
         SUCCEEDED(dev->GetTransform(D3DTS_WORLD,&world)) &&
@@ -589,7 +591,22 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
         (std::uint64_t{vdesc.Size}<<32)|stride);
     m2vr::LogEvent("model2_d3d9_vb_stream",id,
         (std::uint64_t{offset}<<32)|vdesc.Usage,
-        vdesc.Pool,layout.uv_offset);
+        vdesc.Pool,projected?16u:layout.uv_offset);
+    if(projected){
+        // The source XYZRHW screen position can be matched against this
+        // thread's original CPU projected points, unlike raw XYZ stream.
+        // Still only candidate evidence: never authorizes stereo rendering.
+        ProjectedTriangleBatchJoin joined{};
+        if(InspectProjectedD3D9VBJoin(dev,family==2u,
+                start_vertex,base_vertex,min_vertex,num_vertices,
+                start_index,primitive_count,joined)){
+            m2vr::LogEvent("model2_d3d9_cpu_vb_join_batch",id,
+                (std::uint64_t{joined.inspected}<<32)|joined.complete,
+                (std::uint64_t{joined.partial}<<32)|joined.ambiguous,
+                joined.common_source_caller_rva);
+            ObserveProjectionFit(dev,id,joined);
+        }
+    }
     if(family==1u){
         m2vr::LogEvent("model2_d3d9_vb_draw_args",id,family,
             start_vertex,primitive_count);
@@ -607,7 +624,7 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
             ib->Release();
         }
     }
-    if(transforms_ok){
+    if(transforms_ok && !projected){
         m2vr::LogEvent("model2_d3d9_vb_camera",id,
             PackPair(world._41,world._42),
             PackPair(world._43,view._41),

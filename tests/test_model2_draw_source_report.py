@@ -43,6 +43,8 @@ class SourceAuditTests(unittest.TestCase):
                  pack(3, 4), pack(1, 0), pack(0, 0)),
                 ("model2_d3d9_vb_write_color", 101,
                  pack(0, 15), 0, 0),
+                ("model2_d3d9_cpu_vb_join_batch", 101,
+                 pack(2, 2), pack(0, 0), 0x4567),
                 ("model2_d3d9_vb_source", 102, 0x1234,
                  pack(2, 0x112), pack(65536, 20)),
                 ("model2_d3d9_vb_stream", 102, pack(8, 8), 0, 12),
@@ -69,6 +71,9 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["color_write_modes"], [[0, 15]])
             self.assertTrue(src["has_camera_matrix"])
             self.assertTrue(src["writeonly_vb_seen"])
+            self.assertEqual(src["cpu_projector_correlated_batches"], 1)
+            self.assertEqual(src["cpu_projector_source_callers"], ["0x00004567"])
+            self.assertEqual(src["cpu_projector_complete_triangles"], 2)
             self.assertFalse(src["world_pass_proven"])
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):

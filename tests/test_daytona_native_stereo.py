@@ -378,5 +378,17 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("D3DUSAGE_RENDERTARGET",gate)
         self.assertIn("D3DUSAGE_DEPTHSTENCIL",gate)
 
+    def test_cpu_projected_vb_source_join_keeps_world_unproven(self):
+        probe=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        vb=(ROOT/"src/probe/d3d9_vb_material_bridge.cpp").read_text("utf-8")
+        report=(ROOT/"tools/model2_draw_source_report.py").read_text("utf-8")
+        self.assertIn("InspectProjectedD3D9VBJoin(",probe)
+        self.assertIn("model2_d3d9_cpu_vb_join_batch",probe)
+        self.assertIn("ExactProjectedUPWorldFVF(fvf,stride)",probe)
+        self.assertIn("ExpandProjectedVBWindow(",vb)
+        self.assertIn("ThreadProjectDrawCorrelator().MatchTriangleList(",vb)
+        self.assertIn("world_pass_proven",report)
+        self.assertIn('"world_pass_proof": "NOT_ESTABLISHED"',report)
+
 if __name__=="__main__":
     unittest.main()
