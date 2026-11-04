@@ -22,32 +22,42 @@ inline bool IndexedUPRelativeIndex(std::uint32_t original,
     relative=original-min_vertex;
     return true;
 }
-inline bool RemapIndexedUPTriangleList(
+// Copy only the original index sequence for list/strip/fan, never infer
+// source-world proof. The D3D9 UP pointer addresses MinVertexIndex.
+inline bool RemapIndexedUPSourceElements(
     const std::uint8_t* data,std::size_t available,D3DFORMAT format,
     std::uint32_t min_vertex,std::uint32_t vertex_count,
-    std::uint32_t triangles,std::vector<std::uint32_t>& output) {
-    if(!data || !triangles || triangles>kMaxIndexedUPTriangles ||
-       vertex_count>kMaxIndexedUPDeclaredVertices ||
+    std::uint32_t source_count,std::vector<std::uint32_t>& output) {
+    if(!data || source_count<3u ||
+       source_count>kMaxIndexedUPTriangles*3u ||
+       !vertex_count || vertex_count>kMaxIndexedUPDeclaredVertices ||
        (format!=D3DFMT_INDEX16 && format!=D3DFMT_INDEX32))
         return false;
     const std::size_t width=format==D3DFMT_INDEX16?2u:4u;
-    const std::size_t count=std::size_t(triangles)*3u;
-    if(count*width>available)return false;
+    if(std::size_t(source_count)*width>available)return false;
     std::vector<std::uint32_t> next;
-    next.reserve(count);
-    for(std::size_t i=0;i<count;++i){
+    next.reserve(source_count);
+    for(std::uint32_t i=0u;i<source_count;++i){
         std::uint32_t absolute=0u,relative=0u;
         if(width==2u){
-            std::uint16_t short_index=0u;
-            std::memcpy(&short_index,data+i*width,width);
-            absolute=short_index;
-        }else std::memcpy(&absolute,data+i*width,width);
+            std::uint16_t idx=0u;
+            std::memcpy(&idx,data+std::size_t(i)*width,width);
+            absolute=idx;
+        }else std::memcpy(&absolute,data+std::size_t(i)*width,width);
         if(!IndexedUPRelativeIndex(absolute,min_vertex,vertex_count,relative))
             return false;
         next.push_back(relative);
     }
     output=std::move(next);
     return true;
+}
+inline bool RemapIndexedUPTriangleList(
+    const std::uint8_t* data,std::size_t available,D3DFORMAT format,
+    std::uint32_t min_vertex,std::uint32_t vertex_count,
+    std::uint32_t triangles,std::vector<std::uint32_t>& output) {
+    return triangles && triangles<=kMaxIndexedUPTriangles &&
+        RemapIndexedUPSourceElements(data,available,format,
+            min_vertex,vertex_count,triangles*3u,output);
 }
 // Extract the smallest contiguous source span actually referenced by this
 // original Draw. The user's UP memory still starts at MinVertexIndex.

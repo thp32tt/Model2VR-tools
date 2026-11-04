@@ -162,6 +162,22 @@ Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopologyTextured(
     unsigned int primitive_count,const void* original_vertices,
     unsigned int stride_bytes,unsigned int authenticated_cpu_project_caller_rva,
     unsigned int alpha_cutoff);
+// Original DrawIndexedPrimitiveUP TRIANGLESTRIP/FAN/LIST route. Strictly
+// explicit world-only source adapters; existing TRIANGLELIST ABI retained.
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTopologyTextured(
+    void* d3d9_device,unsigned int original_primitive_type,
+    unsigned int min_vertex_index,unsigned int num_vertices,
+    unsigned int primitive_count,const void* original_indices,
+    unsigned int index_format,const void* original_vertices,
+    unsigned int stride_bytes,unsigned int alpha_cutoff);
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyTextured(
+    void* d3d9_device,unsigned int original_primitive_type,
+    unsigned int min_vertex_index,unsigned int num_vertices,
+    unsigned int primitive_count,const void* original_indices,
+    unsigned int index_format,const void* original_vertices,
+    unsigned int stride_bytes,unsigned int authenticated_cpu_project_caller_rva,
+    unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 // Source-owned upcoming original D3D9 Present frame ID (nonzero only
 // after real device hooks are installed and GPU-replay mode is disabled).

@@ -1,5 +1,6 @@
 #include "../src/probe/d3d9_indexed_up_window.hpp"
 #include "../src/probe/d3d9_vb_index_window.hpp"
+#include "../src/probe/d3d9_primitive_topology.hpp"
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -80,5 +81,26 @@ int main(){
     CHECK(!CompactIndexedUPIndexWindow(sparse,0u,compact));
     CHECK(!CompactIndexedUPIndexWindow(
         std::vector<std::uint32_t>{1u,2u},50000u,compact));
+    // Indexed-UP strip/fan source indices are absolute while the copied
+    // vertex memory starts at MinVertexIndex; triangulate before compaction.
+    const std::array<std::uint16_t,4> strip{501u,502u,503u,504u};
+    std::vector<std::uint32_t> ordered_source,topology;
+    CHECK(RemapIndexedUPSourceElements(
+        reinterpret_cast<const std::uint8_t*>(strip.data()),
+        sizeof(strip),D3DFMT_INDEX16,500u,10000u,4u,ordered_source));
+    CHECK(ordered_source==std::vector<std::uint32_t>({1,2,3,4}));
+    CHECK(ExpandOriginalTriangles(
+        D3DPT_TRIANGLESTRIP,2u,ordered_source,topology));
+    CHECK(topology==std::vector<std::uint32_t>({1,2,3,3,2,4}));
+    CHECK(CompactIndexedUPIndexWindow(topology,10000u,compact));
+    CHECK(compact.source_offset==1u && compact.count==4u);
+    CHECK(compact.indices==std::vector<std::uint32_t>({0,1,2,2,1,3}));
+    CHECK(ExpandOriginalTriangles(
+        D3DPT_TRIANGLEFAN,2u,ordered_source,topology));
+    CHECK(topology==std::vector<std::uint32_t>({1,2,3,1,3,4}));
+    CHECK(!RemapIndexedUPSourceElements(
+        reinterpret_cast<const std::uint8_t*>(strip.data()),
+        sizeof(strip)-1u,D3DFMT_INDEX16,500u,10000u,4u,ordered_source));
+    CHECK(ordered_source==std::vector<std::uint32_t>({1,2,3,4}));
     return 0;
 }
