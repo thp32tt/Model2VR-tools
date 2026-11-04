@@ -12,6 +12,32 @@ enum class DepthCompare : std::uint32_t {
     Less=0, LessEqual=1, Always=2, Equal=3,
     Greater=4, GreaterEqual=5, NotEqual=6
 };
+// Pixel alpha comparisons use the D3D9 D3DCMPFUNC numeric values 1..8.
+// Legacy zero preserves the established 8-bit >= alpha_cutoff ABI.
+enum class AlphaCompare : std::uint8_t {
+    LegacyCutoff=0, Never=1, Less=2, Equal=3, LessEqual=4,
+    Greater=5, NotEqual=6, GreaterEqual=7, Always=8
+};
+inline constexpr bool ValidAlphaCompare(AlphaCompare mode) noexcept {
+    return static_cast<unsigned>(mode)<=8u;
+}
+inline constexpr bool AlphaPasses(std::uint8_t sample,
+                                  std::uint8_t cutoff,
+                                  AlphaCompare mode,
+                                  std::uint8_t reference) noexcept {
+    switch(mode) {
+    case AlphaCompare::LegacyCutoff:return sample>=cutoff;
+    case AlphaCompare::Never:return false;
+    case AlphaCompare::Less:return sample<reference;
+    case AlphaCompare::Equal:return sample==reference;
+    case AlphaCompare::LessEqual:return sample<=reference;
+    case AlphaCompare::Greater:return sample>reference;
+    case AlphaCompare::NotEqual:return sample!=reference;
+    case AlphaCompare::GreaterEqual:return sample>=reference;
+    case AlphaCompare::Always:return true;
+    }
+    return false;
+}
 struct RasterPolicy {
     FaceCull cull=FaceCull::None;
     DepthCompare depth=DepthCompare::Less;
