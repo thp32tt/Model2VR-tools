@@ -42,7 +42,9 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("const D3DFORMAT depth_format=dd.Format;",gpu)
         self.assertNotIn("dd.Format!=D3DFMT_D16",gpu)
         self.assertIn("CreateDepthStencilSurface(width_,height_,depth_format",gpu)
-        self.assertIn("dd.Width!=desc.Width",gpu)
+        self.assertIn("FAILED(depth->GetDesc(&dd))",gpu)
+        self.assertIn("BootstrapTargetCompatible(",gpu)
+        self.assertIn("const bool source_is_main=current==back;",gpu)
         self.assertTrue((ROOT/"tests/daytona_eye_pose_gate_test.cpp").is_file())
         self.assertIn("ExactDaytonaUPDeclaration(",gpu)
         self.assertIn("caller==0x000BABADu",gpu)
@@ -167,7 +169,9 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(gpu.count("if(!both || !restored){Reset();return;}"),2)
         # A depthless UI may only overlay an already proven original game's
         # eye resources, not create an arbitrary guessed depth format.
-        self.assertIn("if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth)",gpu)
+        self.assertIn("FAILED(d->GetDepthStencilSurface(&depth)) || !depth ||",gpu)
+        self.assertIn("SourceCompatibleWithMain(",
+                      (ROOT/"src/probe/daytona_auxiliary_surface_gate.hpp").read_text("utf-8"))
 
     def test_original_draw_counters_reset_in_native_mode(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
