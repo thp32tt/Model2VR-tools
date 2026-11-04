@@ -176,12 +176,12 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)))return FALSE;
     const auto layout=m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride);
+    // D3D9 missing FVF DIFFUSE has an exact source-defined value:
+    // opaque white 0xffffffff, already produced by DecodeWorldVertex.
+    // Stage0 CURRENT is identical to DIFFUSE; neither requires guessed data.
     if(!layout.eligible ||
        !FixedFunctionMaterial(d,alpha_cutoff,sampler,raster,
-                              rgb_source,alpha_source,blend_mode) ||
-       ((rgb_source!=m2vr::drawprobe::FixedStageSource::Texture ||
-         alpha_source!=m2vr::drawprobe::FixedStageSource::Texture) &&
-        !layout.has_diffuse))
+                              rgb_source,alpha_source,blend_mode))
         return FALSE;
     D3DMATRIX world{},view{},projection{};
     if(FAILED(d->GetTransform(D3DTS_WORLD,&world)) ||
@@ -270,16 +270,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         m2vr::drawprobe::FixedStageSource::Texture;
     m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
     // Original projected D3D9 FVF may carry a packed D3DCOLOR before UV.
-    // A MODULATE source requires this exact color attribute; no fabricated
-    // white diffuse is allowed to change the game's per-pixel material.
+    // When source FVF omits DIFFUSE, D3D9 defines opaque-white default
+    // rather than an unknown attribute. We preserve exactly that default.
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)) ||
        !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride) ||
        !FixedFunctionMaterial(d,cutoff,sampler,raster,
-                              rgb_source,alpha_source,blend_mode) ||
-       ((rgb_source!=m2vr::drawprobe::FixedStageSource::Texture ||
-         alpha_source!=m2vr::drawprobe::FixedStageSource::Texture) &&
-        (fvf&D3DFVF_DIFFUSE)==0u))return FALSE;
+                              rgb_source,alpha_source,blend_mode))return FALSE;
     D3DVIEWPORT9 viewport{};
     if(FAILED(d->GetViewport(&viewport)))return FALSE;
     try {
@@ -300,10 +297,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             screen[i]={decoded.screen_xy[0],decoded.screen_xy[1]};
             uv[i*2u]=decoded.uv[0];
             uv[i*2u+1u]=decoded.uv[1];
-            if(!diffuse.empty()){
-                if(!decoded.has_diffuse)return FALSE;
-                diffuse[i]=decoded.diffuse_argb;
-            }
+            if(!diffuse.empty())
+                diffuse[i]=decoded.diffuse_argb; // exact FVF default white
             indices[i]=static_cast<std::uint32_t>(i);
         }
         const auto joined=m2vr::drawprobe::ThreadProjectDrawCorrelator()
