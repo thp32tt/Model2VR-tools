@@ -128,6 +128,12 @@ public:
         }
         auto& active_eyes=backbuffer?eyes_:aux_eyes_;
         bool& active_started=backbuffer?frame_started_:aux_frame_started_;
+        bool& depth_ready=backbuffer?main_depth_ready_:aux_depth_ready_;
+        // A prior color-only Clear may have initialized pixels but not Z.
+        // Do not rasterize an uninitialized clone depth surface.
+        if(depth_bound && active_started && !depth_ready){
+            Drop(original_depth);Drop(target);return;
+        }
         // A camera candidate requires an exact independently observed
         // source callsite and complete original shader-up declaration.
         bool scene=false;
@@ -212,6 +218,8 @@ public:
             SUCCEEDED(depth_restore)&&SUCCEEDED(viewport_restore);
         Drop(original_depth);Drop(target);
         if(!both || !restored){Reset();return;}
+        // The synthetic first-draw clear initializes both color and Z.
+        if(depth_bound && !active_started)depth_ready=true;
         active_started=true;
         if(aux)++mirrored_aux_draws_;
         ++mirrored_draws_;
@@ -403,6 +411,10 @@ public:
         }
         auto& active_eyes=backbuffer?eyes_:aux_eyes_;
         bool& active_started=backbuffer?frame_started_:aux_frame_started_;
+        bool& depth_ready=backbuffer?main_depth_ready_:aux_depth_ready_;
+        const bool full_depth_clear=depth_bound &&
+            m2vr::daytona::FullOriginalDepthClear(
+                count,rects,flags,viewport,width_,height_);
         bool both=true;
         for(unsigned eye=0;eye<2;++eye){
             if(FAILED(d->SetDepthStencilSurface(nullptr)) ||
@@ -424,6 +436,7 @@ public:
         // A real original Clear can occur before any Draw; preserve the
         // source clear on both eyes instead of replacing it with black.
         active_started=true;
+        if(full_depth_clear)depth_ready=true;
         ++mirrored_clears_;
     }
     void PreparePresent(IDirect3DDevice9* d,std::uint64_t frame){
@@ -575,6 +588,7 @@ private:
     void FinishFrame()noexcept{
         pending_present_frame_=0u;pending_present_reason_=0u;
         frame_started_=false;scene_draws_=0;
+        main_depth_ready_=false;aux_depth_ready_=false;
         mirrored_draws_=0;mirrored_clears_=0;
         mirrored_stretches_=0;mirrored_fills_=0;mirrored_updates_=0;
         mirrored_aux_draws_=0;mirrored_aux_blits_=0;
@@ -758,6 +772,7 @@ private:
     std::uint32_t mirrored_updates_=0u;
     std::uint32_t mirrored_aux_draws_=0u,mirrored_aux_blits_=0u;
     bool aux_frame_started_=false;
+    bool main_depth_ready_=false,aux_depth_ready_=false;
     std::array<std::uint32_t,4> mirrored_family_{};
     float shift_=0.10f;
     unsigned scene_draws_=0,scene_candidates_=0;

@@ -492,3 +492,15 @@ switches to a different source DS mid-epoch, the unprovable clone is reset
 instead of mixing independent Z scenes. The original game draws/Present,
 2D fallback and FFB are unchanged. This is source/CI work only;
 RUNTIME_VALIDATION=UNTESTED until Daytona + Quest 3 inspection.
+
+## Depth initialization across separate color and Z clears (2026-11-04)
+
+A first full color Clear may initialize the new offscreen or main eye
+textures without initializing their independently created Z surfaces.
+Each source now tracks per-frame depth readiness separately from color
+readiness. It admits a complete original Z clear (including a later
+Z-only clear) or the existing first-draw synthetic full color/Z clear.
+Depth-tested replay is held if an original color-only clear left the
+stereo depth undefined. Cropped viewport/partial depth clears do not
+implicitly mark the whole target ready. No original game draw, timer,
+steering or FFB is rerun. RUNTIME_VALIDATION=UNTESTED.

@@ -51,6 +51,16 @@ inline bool FullInitialColorClear(DWORD count,const D3DRECT* rects,
     return count==1 && rects && rects[0].x1==0u && rects[0].y1==0u &&
            rects[0].x2==width && rects[0].y2==height;
 }
+// Color-only initial Clears never seed a new depth surface. A source Z clear
+// is safe evidence only when its original viewport and rectangles cover the
+// complete eye target. This also admits a separate Z-only Clear after color.
+inline bool FullOriginalDepthClear(DWORD count,const D3DRECT* rects,
+                                   DWORD flags,const D3DVIEWPORT9& vp,
+                                   UINT width,UINT height)noexcept{
+    return (flags&D3DCLEAR_ZBUFFER)!=0u &&
+           FullOriginalViewport(vp,width,height) &&
+           FullInitialColorClear(count,rects,D3DCLEAR_TARGET,width,height);
+}
 enum class MainBlitSource:std::uint8_t {
     Skip, FlatSource, StereoAuxiliary
 };
