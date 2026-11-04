@@ -1,6 +1,6 @@
 #pragma once
 // Source-state admission for the verified D3D9 fixed-function texture path.
-// Only representable POINT/LINEAR + CLAMP/WRAP combinations are permitted.
+// Only POINT/LINEAR + CLAMP/WRAP/MIRROR are representable.
 // Mipmap, sRGB sampling, texture-coordinate transforms and unmodelled
 // alpha compares must never be silently approximated in stereo output.
 #include <d3d9.h>
@@ -15,17 +15,21 @@ inline bool DecodeSamplerPolicy(DWORD address_u,DWORD address_v,
                                 m2vr::vr::SamplerPolicy& out) noexcept {
     using m2vr::vr::TextureAddress;
     using m2vr::vr::TextureFilter;
-    if((address_u!=D3DTADDRESS_CLAMP && address_u!=D3DTADDRESS_WRAP) ||
-       (address_v!=D3DTADDRESS_CLAMP && address_v!=D3DTADDRESS_WRAP) ||
+    if((address_u!=D3DTADDRESS_CLAMP && address_u!=D3DTADDRESS_WRAP &&
+        address_u!=D3DTADDRESS_MIRROR) ||
+       (address_v!=D3DTADDRESS_CLAMP && address_v!=D3DTADDRESS_WRAP &&
+        address_v!=D3DTADDRESS_MIRROR) ||
        (min_filter!=D3DTEXF_POINT && min_filter!=D3DTEXF_LINEAR) ||
        (mag_filter!=D3DTEXF_POINT && mag_filter!=D3DTEXF_LINEAR) ||
        min_filter!=mag_filter ||
        mip_filter!=D3DTEXF_NONE || srgb_texture!=0u)return false;
     m2vr::vr::SamplerPolicy value{};
     value.u=address_u==D3DTADDRESS_WRAP ? TextureAddress::Wrap:
-                                             TextureAddress::Clamp;
+            address_u==D3DTADDRESS_MIRROR ? TextureAddress::Mirror:
+                                            TextureAddress::Clamp;
     value.v=address_v==D3DTADDRESS_WRAP ? TextureAddress::Wrap:
-                                             TextureAddress::Clamp;
+            address_v==D3DTADDRESS_MIRROR ? TextureAddress::Mirror:
+                                            TextureAddress::Clamp;
     value.filter=min_filter==D3DTEXF_LINEAR ? TextureFilter::Linear:
                                                TextureFilter::Point;
     out=value;

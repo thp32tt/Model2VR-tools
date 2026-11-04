@@ -196,7 +196,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRen
        g.draw_count>=2048u ||
        !width || !height || width>1024u || height>1024u ||
        pitch!=width*4u || alpha_cutoff>255u ||
-       filter_mode>1u || address_u>1u || address_v>1u ||
+       filter_mode>1u || address_u>2u || address_v>2u ||
        cull_mode>2u || depth_mode>1u || depth_write>1u ||
        modulate_rgb>1u || modulate_alpha>1u ||
        ((modulate_rgb || modulate_alpha) && !diffuse_argb)) {

@@ -2,7 +2,8 @@
 // Bounded software texture sampling for verified Model 2 stereo geometry.
 // D3D9 normalized coordinates: POINT uses floor(u * size); LINEAR samples
 // around texel centers at u * size - 0.5. Coordinates can clamp or wrap
-// independently per axis. No mip/anisotropic/border or blend emulation.
+// independently per axis, including mirrored repeat. No mip/anisotropic,
+// border or blending emulation.
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -10,7 +11,9 @@
 #include <limits>
 
 namespace m2vr::vr {
-enum class TextureAddress : std::uint32_t { Clamp=0u, Wrap=1u };
+enum class TextureAddress : std::uint32_t {
+    Clamp=0u, Wrap=1u, Mirror=2u
+};
 enum class TextureFilter : std::uint32_t { Point=0u, Linear=1u };
 struct SamplerPolicy {
     TextureAddress u=TextureAddress::Clamp;
@@ -22,7 +25,8 @@ struct SampledRGBA {
 };
 inline bool ValidSampler(SamplerPolicy policy) noexcept {
     const auto address_ok=[](TextureAddress x){
-        return x==TextureAddress::Clamp || x==TextureAddress::Wrap;
+        return x==TextureAddress::Clamp || x==TextureAddress::Wrap ||
+               x==TextureAddress::Mirror;
     };
     return address_ok(policy.u) && address_ok(policy.v) &&
         (policy.filter==TextureFilter::Point ||
@@ -36,6 +40,15 @@ inline std::uint32_t MapTexel(std::int64_t n,std::uint32_t size,
         return static_cast<std::uint32_t>(n);
     }
     const auto m=static_cast<std::int64_t>(size);
+    if(address==TextureAddress::Mirror){
+        // Reflect around both texel-edge boundaries. The mirrored
+        // 2*size period must work for negative indices too, so bilinear
+        // footprints do not sample the opposite edge at a reflection seam.
+        const auto period=m*2;
+        const auto wrapped=((n%period)+period)%period;
+        return static_cast<std::uint32_t>(
+            wrapped<m ? wrapped : (period-1-wrapped));
+    }
     return static_cast<std::uint32_t>(((n%m)+m)%m);
 }
 inline bool SampleTextureRGBA(const std::uint8_t* pixels,

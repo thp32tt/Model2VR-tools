@@ -218,6 +218,21 @@ int main(){
     CHECK(!raster.DrawTextured(seam,invalid_sampler));
     CHECK(raster.DrawnPixels()==0u);
 
+    // The x86 D3D9 MIRROR sampler reaches the same independent-eye
+    // color/alpha renderer; both eyes must use a reflected edge texel.
+    raster.Clear();
+    auto mirror_geometry=seam;
+    for(auto& eye:mirror_geometry.eyes)
+        for(auto& tri:eye)for(auto& vert:tri.vertices){
+            vert.u=1.25f;vert.v=0.25f;
+        }
+    auto mirror_texture=wrap_image;
+    mirror_texture.sampler={
+        TextureAddress::Mirror,TextureAddress::Mirror,TextureFilter::Point};
+    CHECK(raster.DrawTextured(mirror_geometry,mirror_texture));
+    CHECK(Pixel(raster,0,512,512)==0x00ff00);
+    CHECK(Pixel(raster,1,512,512)==0x00ff00);
+
     // Validate the whole batch before either eye can write.
     auto invalid=manual;
     invalid.eyes[1][0].vertices[2].u=
