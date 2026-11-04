@@ -115,3 +115,25 @@ ranges support local comparison of gameplay race versus title/HUD/sky and
 auxiliary passes. Ordinal alone is not proof of world ownership, calibrated
 axes/units-per-meter or real Quest3 6DoF vision. Never upload raw logs or
 original game assets to this public repository.
+
+## Same-phase VB/IB cross-session candidate gate (2026-11-05)
+
+The offline `model2_draw_source_report.py` now reads the SAME original
+`model2_d3d9_source_draw_phase` witness as the UP analyzer and verifies the
+native pre-call original Present ID, in-EXE Draw caller, draw family and
+one-based absolute all-family Draw ordinal. Duplicate ordinals across VB,
+IB, UP or IndexedUP witnesses within the same physical frame are rejected.
+The report retains historical source/COM-result diagnostics but separates
+phase-attested physical original material Present frames from mere original
+HRESULT success, without guessing World3D ownership.
+
+`model2_world_pass_evidence.py` requires the independent two-race plus
+nonrace captures to contain **at least two phase-attested, physically
+presented, same-witness material/CPU-projector candidate frames per race**.
+Unknown or inconsistent original Draw phase, missing real physical Present,
+wrong caller, missing original material or unbounded ordinal ranges all
+fail closed. Earlier report JSON without physical Draw phase evidence no
+longer qualifies cross-session candidate lists. The report exposes only
+bounded local Draw ordinal ranges; even consistent race-only phase order
+is not proof of gameplay world/HUD, camera axes, units-per-meter or Quest 3
+runtime. Preserve original mono fallback, real simulation and wheel FFB.

@@ -18,6 +18,7 @@ PREFIX = "model2_d3d9_"
 NAMES = {
     "model2_d3d9_vb_source", "model2_d3d9_vb_stream",
     "model2_d3d9_vb_original_result",
+    "model2_d3d9_source_draw_phase",
     "model2_d3d9_vb_draw_args", "model2_d3d9_ib_source",
     "model2_d3d9_vb_camera", "model2_d3d9_vb_camera_unknown",
     "model2_d3d9_vb_texture",
@@ -494,6 +495,9 @@ def store_original_draw_witness_field(fields, name, values, witness):
 def audit_csv(path):
     witnesses = {}
     physical_presents = {}
+    # All four physical Draw families share one ordinal space. Even UP
+    # phases are observed here to detect a counterfeited duplicate VB phase.
+    physical_draw_phase_owners = {}
     ignored = Counter()
     with open(path, "r", encoding="utf-8-sig", newline="") as source:
         reader = csv.DictReader(source)
@@ -529,7 +533,21 @@ def audit_csv(path):
                     raise ValueError("witness limit exceeded")
                 witnesses[witness] = {}
             fields = witnesses[witness]
-            if event == "model2_d3d9_vb_source":
+            if event == "model2_d3d9_source_draw_phase":
+                frame, ordinal, packed = values
+                phase_caller, phase_family = halves(packed)
+                if (not 0 < frame <= 0xFFFFFFFF or
+                        not 0 < ordinal <= 10_000_000 or
+                        phase_family not in (1, 2, 3, 4)):
+                    raise ValueError("invalid physical original Draw phase")
+                prior = physical_draw_phase_owners.setdefault(
+                    (frame, ordinal), witness)
+                if prior != witness:
+                    raise ValueError("duplicate all-family original Draw phase")
+                if "source_phase" in fields:
+                    raise ValueError("duplicate source Draw phase")
+                fields["source_phase"] = values
+            elif event == "model2_d3d9_vb_source":
                 if "origin" in fields:
                     raise ValueError(f"duplicate source witness {witness}")
                 fields["origin"] = values
@@ -654,6 +672,11 @@ def audit_csv(path):
         "original_draw_failure_witnesses": 0,
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
+        "original_draw_phase_attested_witnesses": 0,
+        "original_draw_phase_missing_witnesses": 0,
+        "original_draw_phase_inconsistent_witnesses": 0,
+        "original_draw_phase_ordinals": set(),
+        "original_phase_attested_physical_material_present_frames": set(),
         "original_present_success_witnesses": 0,
         "original_present_failed_witnesses": 0,
         "original_present_missing_witnesses": 0,
@@ -682,7 +705,8 @@ def audit_csv(path):
                                    "source_mip",
                                    "source_depth_cull",
                                    "source_vertex_pipeline",
-                                   "source_fill"}):
+                                   "source_fill",
+                                   "source_phase"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -706,6 +730,22 @@ def audit_csv(path):
                 raise ValueError("invalid original VB Present frame")
             present_frame = frame
             entry["present_frames"].add(frame)
+        # The physical Draw ordinal is independently recorded on the exact
+        # witness, not guessed from the 1/1024 sampling cadence.
+        phase = data.get("source_phase")
+        phase_attested = False
+        if phase is None:
+            entry["original_draw_phase_missing_witnesses"] += 1
+        else:
+            phase_frame, ordinal, packed_origin = phase
+            phase_caller, phase_family = halves(packed_origin)
+            if (phase_frame != present_frame or phase_caller != caller or
+                    phase_family != family):
+                entry["original_draw_phase_inconsistent_witnesses"] += 1
+            else:
+                phase_attested = True
+                entry["original_draw_phase_attested_witnesses"] += 1
+                entry["original_draw_phase_ordinals"].add(ordinal)
         # A pre-Draw CPU projector match is not evidence of a successfully
         # executed original COM Draw until its post-call HRESULT matches.
         original_success = False
@@ -716,7 +756,8 @@ def audit_csv(path):
             result_bits, result_caller, packed_frame_family = result
             result_frame, result_family = halves(packed_frame_family)
             if (result_bits > 0xFFFFFFFF or result_caller != caller or
-                    result_frame != present_frame or result_family != family):
+                    result_frame != present_frame or result_family != family or
+                    (phase is not None and not phase_attested)):
                 entry["original_draw_result_inconsistent_witnesses"] += 1
             elif result_bits & 0x80000000:
                 entry["original_draw_failure_witnesses"] += 1
@@ -968,6 +1009,9 @@ def audit_csv(path):
             if original_present_success:
                 entry["original_physically_presented_material_present_frames"].add(
                     present_frame)
+                if phase_attested:
+                    entry["original_phase_attested_physical_material_present_frames"].add(
+                        present_frame)
             # This qualifies a SOURCE MATERIAL candidate only. A private
             # authenticated game-world owner, camera axis/units and HMD test
             # are still all required before enabling actual XR replay.
@@ -1017,6 +1061,12 @@ def audit_csv(path):
             value["original_successful_projected_material_present_frames"])
         record["distinct_physically_presented_material_present_frame_count"] = len(
             value["original_physically_presented_material_present_frames"])
+        record["distinct_phase_attested_physically_presented_material_present_frame_count"] = len(
+            value["original_phase_attested_physical_material_present_frames"])
+        ordinals = value["original_draw_phase_ordinals"]
+        record["original_draw_ordinal_min"] = min(ordinals) if ordinals else None
+        record["original_draw_ordinal_max"] = max(ordinals) if ordinals else None
+        record["distinct_original_draw_ordinals"] = len(ordinals)
         record["distinct_correlated_present_frame_count"] = len(
             value["correlated_present_frames"])
         for key, item in value.items():
@@ -1028,6 +1078,8 @@ def audit_csv(path):
                         "projected_material_correlated_present_frames",
                         "original_successful_projected_material_present_frames",
                         "original_physically_presented_material_present_frames",
+                        "original_phase_attested_physical_material_present_frames",
+                        "original_draw_phase_ordinals",
                        "same_witness_joint_present_frames"):
                 continue
             if isinstance(item, set):

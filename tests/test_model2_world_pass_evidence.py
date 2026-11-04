@@ -15,6 +15,12 @@ def witness(cpu="0x004bb400", count=3):
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
         "distinct_physically_presented_material_present_frame_count": count,
+        "distinct_phase_attested_physically_presented_material_present_frame_count": count,
+        "original_draw_phase_missing_witnesses": 0,
+        "original_draw_phase_inconsistent_witnesses": 0,
+        "original_draw_ordinal_min": 12,
+        "original_draw_ordinal_max": 20,
+        "distinct_original_draw_ordinals": 3,
         "original_present_failed_witnesses": 0,
         "original_present_missing_witnesses": 0,
         "distinct_same_witness_joint_present_frame_count": count,
@@ -49,6 +55,9 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         self.assertEqual(len(got["candidates"]), 1)
         self.assertFalse(got["adapter_auto_enable"])
         self.assertFalse(got["candidates"][0]["world_pass_authorized"])
+        self.assertEqual(got["candidates"][0]
+                         ["per_race_original_draw_ordinal_ranges"],
+                         [[12, 20], [12, 20]])
         self.assertEqual(got["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(got["hmd_runtime_validation"], "UNTESTED")
 
@@ -91,6 +100,13 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             {"distinct_physically_presented_material_present_frame_count": 0},
             {"original_present_failed_witnesses": 1},
             {"original_present_missing_witnesses": 1},
+            {"distinct_phase_attested_physically_presented_material_present_frame_count": 0},
+            {"original_draw_phase_missing_witnesses": 1},
+            {"original_draw_phase_inconsistent_witnesses": 1},
+            {"original_draw_ordinal_min": None},
+            {"original_draw_ordinal_max": 10},
+            {"original_draw_ordinal_max": 10, "original_draw_ordinal_min": 20},
+            {"distinct_original_draw_ordinals": 0},
         ):
             with self.subTest(damaged=damaged):
                 source = witness()

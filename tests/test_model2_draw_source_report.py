@@ -22,6 +22,59 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_all_family_physical_draw_phase_is_witness_bound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "physical_phase.csv"
+            events = [
+                ("model2_d3d9_vb_present_frame", 201, 7, 1, 0),
+                ("model2_d3d9_vb_source", 201, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_source_draw_phase", 201, 7, 12,
+                 pack(0x1234, 1)),
+                ("model2_d3d9_vb_original_result", 201, 0, 0x1234,
+                 pack(7, 1)),
+                ("model2_d3d9_original_present_result", 7, 0, 1, 0),
+            ]
+            self.write_log(p, events)
+            src = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["original_draw_phase_attested_witnesses"], 1)
+            self.assertEqual(src["original_draw_phase_missing_witnesses"], 0)
+            self.assertEqual(src["original_draw_ordinal_min"], 12)
+            self.assertEqual(src["original_draw_ordinal_max"], 12)
+            self.assertEqual(src["distinct_original_draw_ordinals"], 1)
+            # Historic files still report physical Draw outcomes, but
+            # cannot pass the new phase-attested source gate.
+            self.write_log(p, [e for e in events
+                               if e[0] != "model2_d3d9_source_draw_phase"])
+            src = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["original_draw_success_witnesses"], 1)
+            self.assertEqual(src["original_draw_phase_missing_witnesses"], 1)
+            self.assertEqual(src["distinct_original_draw_ordinals"], 0)
+            for bad in ((7, 12, pack(0x4321, 1)),
+                        (7, 12, pack(0x1234, 2)),
+                        (8, 12, pack(0x1234, 1))):
+                changed = list(events)
+                changed[2] = ("model2_d3d9_source_draw_phase", 201, *bad)
+                self.write_log(p, changed)
+                src = REPORT.audit_csv(p)["sources"][0]
+                self.assertEqual(
+                    src["original_draw_phase_inconsistent_witnesses"], 1)
+                self.assertEqual(
+                    src["original_draw_result_inconsistent_witnesses"], 1)
+
+    def test_up_and_vb_cannot_reuse_same_original_draw_ordinal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "all_family_order.csv"
+            self.write_log(p, [
+                ("model2_d3d9_source_draw_phase", 3, 7, 12, pack(0x4321, 3)),
+                ("model2_d3d9_vb_source", 4, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_source_draw_phase", 4, 7, 12, pack(0x1234, 1)),
+            ])
+            with self.assertRaisesRegex(
+                    ValueError, "duplicate all-family original Draw phase"):
+                REPORT.audit_csv(p)
+
     def test_original_com_draw_result_binds_to_exact_source_witness(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "results.csv"

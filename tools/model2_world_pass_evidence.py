@@ -76,6 +76,7 @@ def _enough_original_source(source):
         "distinct_projected_material_present_frame_count",
         "distinct_successful_projected_material_present_frame_count",
         "distinct_physically_presented_material_present_frame_count",
+        "distinct_phase_attested_physically_presented_material_present_frame_count",
         "distinct_same_witness_joint_present_frame_count",
         "distinct_context_present_frame_count",
     ):
@@ -86,11 +87,24 @@ def _enough_original_source(source):
         "original_draw_failure_witnesses",
         "original_draw_result_missing_witnesses",
         "original_draw_result_inconsistent_witnesses",
+        "original_draw_phase_missing_witnesses",
+        "original_draw_phase_inconsistent_witnesses",
         "original_present_failed_witnesses",
         "original_present_missing_witnesses",
     ):
         if type(source.get(field)) is not int or source[field] != 0:
             return False
+    # Phase order is the real all-family original Draw ordinal, not the
+    # sampling ordinal. A JSON report without its new source evidence cannot
+    # elevate an older static caller match into a gameplay race candidate.
+    lo = source.get("original_draw_ordinal_min")
+    hi = source.get("original_draw_ordinal_max")
+    distinct = source.get("distinct_original_draw_ordinals")
+    if (type(lo) is not int or type(hi) is not int or
+            type(distinct) is not int or
+            not 0 < lo <= hi <= 10_000_000 or
+            not 0 < distinct <= hi - lo + 1):
+        return False
     for key, allowed in (
         ("original_source_vertex_pipeline_status", {"supported"}),
         ("original_source_fill_status", {"solid"}),
@@ -151,7 +165,12 @@ def compare_sessions(race_reports, nonrace_reports):
                     session[key]["distinct_physically_presented_material_present_frame_count"]
                     for session in race
                 ],
-                "evidence": "same_witness_source_candidate_only",
+                "per_race_original_draw_ordinal_ranges": [
+                    [session[key]["original_draw_ordinal_min"],
+                     session[key]["original_draw_ordinal_max"]]
+                    for session in race
+                ],
+                "evidence": "phase_attested_same_witness_source_candidate_only",
                 "world_pass_authorized": False,
             })
     return {
