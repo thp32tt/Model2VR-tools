@@ -73,6 +73,24 @@ DirectInput devices and wheel plugin remain separate and unchanged.
 - Stereo D3D9 resources are released ahead of device Reset.
 - Original 60Hz game emulation is not executed twice for headset refresh.
 
+## Original D3D9 physical Draw HRESULT atomicity (2026-11-05)
+
+The four intercepted original 32-bit D3D9 Draw families now forward
+their **unchanged physical Draw HRESULT** to the independently
+authenticated CPU-world transaction. A genuine failed DrawPrimitive,
+DrawIndexedPrimitive, DrawPrimitiveUP or DrawIndexedPrimitiveUP from the
+current render thread revokes an active or already-Present-armed CPU eye
+pair, including a failed Draw on a secondary device sharing the hook.
+The first rejection records the original method family, HRESULT and
+in-EXE return RVA (0 if unknown); it does not log pixels or matrices.
+The original game calls each Draw and Present once, and no CPU world eye
+packet survives a failed original draw; GPU/original-mono fallback and
+FFB are preserved. A successful Draw never claims world/HUD ownership.
+
+This protects the genuine source-to-eye chain, but **does not yet prove
+Daytona race-world caller ownership or camera calibration**. Original
+gameplay and Quest 3 / VDXR VR visuals remain untested.
+
 ## Runtime safety stabilization (2026-11-03)
 
 The native GPU eye renderer is **admitted only after it receives a recent
