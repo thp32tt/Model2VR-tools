@@ -9,7 +9,15 @@ int main(){
     ReadbackScalePlan plan{};
     REQUIRE(!plan.Configure(0,480));
     REQUIRE(!plan.Configure(640,0));
-    REQUIRE(!plan.Configure(2049,480));
+    REQUIRE(!plan.Configure(4097,480));
+    REQUIRE(!plan.Configure(4096,4096)); // bounded source GPU readback
+    REQUIRE(plan.Configure(3440,1440));
+    REQUIRE(plan.dst_w==1024u && plan.dst_h==428u);
+    REQUIRE(plan.sx[1023u]<3440u && plan.sy[427u]<1440u);
+    REQUIRE(plan.Configure(3840,2160));
+    REQUIRE(plan.dst_w==1024u && plan.dst_h==576u);
+    REQUIRE(plan.Configure(4096,2160));
+    REQUIRE(plan.dst_w==1024u && plan.dst_h==540u);
     REQUIRE(plan.Configure(4,2));
     REQUIRE(plan.dst_w==1024u && plan.dst_h==512u &&
             plan.left==0u && plan.top==256u);

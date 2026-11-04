@@ -21,6 +21,11 @@ enum class OriginalAlternate32Layout : std::uint8_t {
 };
 struct ReadbackScalePlan {
     static constexpr std::uint32_t kSide=1024u;
+    // Source dimensions may follow the actual desktop backbuffer (e.g.,
+    // 3440x1440 or 3840x2160), not the fixed 1024-pixel XR transport.
+    // Keep system-memory D3D9 staging bounded to <36 MiB per surface.
+    static constexpr std::uint32_t kMaxSourceSide=4096u;
+    static constexpr std::uint64_t kMaxSourcePixels=4096ull*2160ull;
     static constexpr std::size_t kOutputBytes=
         std::size_t{kSide}*kSide*4u;
     std::uint32_t src_w=0u,src_h=0u;
@@ -28,7 +33,9 @@ struct ReadbackScalePlan {
     std::array<std::uint16_t,kSide> sx{},sy{};
     bool Configure(std::uint32_t width,std::uint32_t height)noexcept{
         src_w=src_h=dst_w=dst_h=left=top=0u;
-        if(!width||!height||width>2048u||height>2048u)return false;
+        if(!width||!height||
+           width>kMaxSourceSide||height>kMaxSourceSide||
+           std::uint64_t{width}*height>kMaxSourcePixels)return false;
         std::uint32_t w=kSide,h=kSide;
         if(width>=height){
             h=(std::max)(1u,static_cast<std::uint32_t>(

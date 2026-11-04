@@ -363,3 +363,11 @@ This never authenticates world vs HUD, enables no new world draw, does not
 replay game simulation or FFB, and does not change original Draw/Present.
 Windows x86/x64 and Quest3 runtime require exact post-change verification;
 RUNTIME_VALIDATION=UNTESTED.
+
+The original D3D9 fallback readback geometry additionally supports
+common 3440x1440, 3840x2160 and 4096x2160 game backbuffers instead of
+silently excluding all desktop modes wider than 2048 pixels. Both source
+side lengths and total pixel count are bounded (4096 max side, 4096x2160
+max pixels) before D3D9 SYSTEMMEM allocation. The transport remains
+1024x1024, and tests confirm wide-screen aspect/coordinate mapping;
+no extra compositor allocation or stereo world authorization is added.

@@ -865,8 +865,12 @@ private:
                                desc.Format==D3DFMT_X8B8G8R8 ||
                                desc.Format==D3DFMT_A2R10G10B10 ||
                                desc.Format==D3DFMT_A2B10G10R10;
-        if(FAILED(desc_hr) || desc.Width<320u || desc.Width>2048u ||
-           desc.Height<200u || desc.Height>2048u ||
+        if(FAILED(desc_hr) || desc.Width<320u ||
+           desc.Width>m2vr::daytona::ReadbackScalePlan::kMaxSourceSide ||
+           desc.Height<200u ||
+           desc.Height>m2vr::daytona::ReadbackScalePlan::kMaxSourceSide ||
+           std::uint64_t{desc.Width}*desc.Height>
+               m2vr::daytona::ReadbackScalePlan::kMaxSourcePixels ||
            (!packed16 && !alternate32 &&
             desc.Format!=D3DFMT_A8R8G8B8 &&
             desc.Format!=D3DFMT_X8R8G8B8)){
