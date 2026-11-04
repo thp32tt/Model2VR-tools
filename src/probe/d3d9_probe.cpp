@@ -215,7 +215,7 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
     const auto layout=DecodeWorldUpFVF(fvf,stride);
     if(!layout.eligible)return;
     if(family==4u && (!indices||!vertex_count||
-       vertex_count>m2vr::drawprobe::kMaxIndexedUPVertices ||
+       vertex_count>m2vr::drawprobe::kMaxIndexedUPDeclaredVertices ||
        (index_format!=D3DFMT_INDEX16 &&
         index_format!=D3DFMT_INDEX32)))return;
     D3DMATRIX world{},view{};
@@ -319,7 +319,7 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     // Nonzero MinVertexIndex is legal: resolve original absolute index
     // against the declared UP span before reading its local memory.
     if(family==4u && (!indices||!vertex_count||
-       vertex_count>m2vr::drawprobe::kMaxIndexedUPVertices ||
+       vertex_count>m2vr::drawprobe::kMaxIndexedUPDeclaredVertices ||
        (index_format!=D3DFMT_INDEX16 &&
         index_format!=D3DFMT_INDEX32)))return;
 

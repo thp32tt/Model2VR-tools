@@ -21,24 +21,38 @@ bool CaptureIndexedUP(
     unsigned triangle_count,const void* indices,D3DFORMAT format,
     const void* vertices,unsigned stride,
     std::vector<std::uint8_t>& source,
-    std::vector<std::uint32_t>& relative) {
+    std::vector<std::uint32_t>& relative,unsigned& copied_count) {
     using namespace m2vr::drawprobe;
     if(!device || !indices || !vertices || !stride || stride>256u ||
-       !vertex_count || vertex_count>kMaxIndexedUPVertices ||
+       !vertex_count || vertex_count>kMaxIndexedUPDeclaredVertices ||
        !triangle_count || triangle_count>kMaxIndexedUPTriangles ||
        (format!=D3DFMT_INDEX16 && format!=D3DFMT_INDEX32))
         return false;
     const std::size_t width=format==D3DFMT_INDEX16?2u:4u;
     const std::size_t index_bytes=std::size_t(triangle_count)*3u*width;
-    const std::size_t vertex_bytes=std::size_t(vertex_count)*stride;
-    if(vertex_bytes>512u*1024u)return false;
     std::vector<std::uint8_t> original_indices(index_bytes);
-    std::vector<std::uint8_t> original_vertices(vertex_bytes);
-    if(!ProtectedCopy(original_indices.data(),indices,index_bytes) ||
-       !ProtectedCopy(original_vertices.data(),vertices,vertex_bytes) ||
-       !RemapIndexedUPTriangleList(original_indices.data(),index_bytes,
-           format,min_vertex,vertex_count,triangle_count,relative))
+    if(!ProtectedCopy(original_indices.data(),indices,index_bytes))
         return false;
+    std::vector<std::uint32_t> original_order;
+    if(!RemapIndexedUPTriangleList(original_indices.data(),index_bytes,
+        format,min_vertex,vertex_count,triangle_count,original_order))
+        return false;
+    IndexedUPCopiedWindow window{};
+    if(!CompactIndexedUPIndexWindow(original_order,vertex_count,window))
+        return false;
+    const std::size_t offset=std::size_t(window.source_offset)*stride;
+    const std::size_t vertex_bytes=std::size_t(window.count)*stride;
+    if(vertex_bytes>512u*1024u)return false;
+    const auto address=reinterpret_cast<std::uintptr_t>(vertices);
+    if(std::uint64_t(address)+offset>UINTPTR_MAX)return false;
+    std::vector<std::uint8_t> original_vertices(vertex_bytes);
+    if(!ProtectedCopy(original_vertices.data(),
+        reinterpret_cast<const void*>(address+offset),vertex_bytes))
+        return false;
+    // Even if the D3D9 call declares 65K vertices, a two-triangle
+    // sample now copies ONLY its referenced span. All indices are local.
+    relative=std::move(window.indices);
+    copied_count=window.count;
     source=std::move(original_vertices);
     return true;
 }
@@ -53,14 +67,16 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTextured(
     try {
         std::vector<std::uint8_t> source;
         std::vector<std::uint32_t> relative;
+        unsigned copied_count=0u;
         if(!CaptureIndexedUP(static_cast<IDirect3DDevice9*>(device),
             min_vertex,vertex_count,triangles,indices,
-            static_cast<D3DFORMAT>(format),vertices,stride,source,relative))
+            static_cast<D3DFORMAT>(format),vertices,stride,
+            source,relative,copied_count))
             return FALSE;
         // Existing UP route verifies XYZ/TEX1, world/view/projection,
         // original texture/sampler/Z state and owned stereo frame.
         return Model2VR_AppendVerifiedD3D9UPTextured(
-            device,source.data(),vertex_count,stride,relative.data(),
+            device,source.data(),copied_count,stride,relative.data(),
             static_cast<unsigned>(relative.size()),alpha_cutoff);
     }catch(...){return FALSE;}
 }
@@ -77,14 +93,15 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTextured(
     try {
         std::vector<std::uint8_t> source,expanded;
         std::vector<std::uint32_t> relative;
+        unsigned copied_count=0u;
         auto* d=static_cast<IDirect3DDevice9*>(device);
         if(!CaptureIndexedUP(d,min_vertex,vertex_count,triangles,
             indices,static_cast<D3DFORMAT>(format),vertices,stride,
-            source,relative))return FALSE;
+            source,relative,copied_count))return FALSE;
         DWORD fvf=0;
         if(FAILED(d->GetFVF(&fvf)))return FALSE;
         m2vr::drawprobe::VBVertexWindow window{};
-        window.first=0u;window.count=vertex_count;
+        window.first=0u;window.count=copied_count;
         window.indices=std::move(relative);
         if(!m2vr::drawprobe::ExpandProjectedVBWindow(
             source.data(),source.size(),fvf,stride,window,expanded))

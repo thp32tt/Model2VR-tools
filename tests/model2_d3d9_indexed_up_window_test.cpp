@@ -13,7 +13,7 @@ int main(){
     CHECK(!IndexedUPRelativeIndex(9u,10u,4u,relative)&&relative==2u);
     CHECK(!IndexedUPRelativeIndex(14u,10u,4u,relative));
     CHECK(!IndexedUPRelativeIndex(0u,0u,0u,relative));
-    CHECK(!IndexedUPRelativeIndex(0u,0u,2049u,relative));
+    CHECK(!IndexedUPRelativeIndex(0u,0u,65537u,relative));
     CHECK(IndexedUPRelativeIndex(UINT32_MAX,UINT32_MAX-2u,3u,relative));
     CHECK(relative==2u);
     CHECK(!IndexedUPRelativeIndex(0u,UINT32_MAX,3u,relative));
@@ -65,5 +65,20 @@ int main(){
         reinterpret_cast<const std::uint8_t*>(projected.data()),
         sizeof(projected),fvf,24u,window,expanded));
     CHECK(expanded==previous);
+    // Legal large declared source windows can hold small, sparse
+    // original triangle ranges. Only referenced original bytes are read.
+    const std::vector<std::uint32_t> sparse{200u,201u,202u,202u,201u,203u};
+    IndexedUPCopiedWindow compact{};
+    CHECK(CompactIndexedUPIndexWindow(sparse,50000u,compact));
+    CHECK(compact.source_offset==200u && compact.count==4u);
+    CHECK(compact.indices==expected);
+    const auto old=compact.indices;
+    CHECK(!CompactIndexedUPIndexWindow(
+        std::vector<std::uint32_t>{0u,3000u,1u},50000u,compact));
+    CHECK(compact.indices==old);
+    CHECK(!CompactIndexedUPIndexWindow(sparse,203u,compact));
+    CHECK(!CompactIndexedUPIndexWindow(sparse,0u,compact));
+    CHECK(!CompactIndexedUPIndexWindow(
+        std::vector<std::uint32_t>{1u,2u},50000u,compact));
     return 0;
 }
