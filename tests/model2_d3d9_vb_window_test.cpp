@@ -161,5 +161,37 @@ int main(){
     CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
         raw,sizeof(projected_vertices),projected_fvf,24u,
         projected,ordered));
+    // Indexed VB/IB expansion must preserve the exact original D3DCOLOR
+    // source per triangle corner before both-eye source material modulation.
+    std::array<std::array<std::uint8_t,28>,4> colored{};
+    constexpr auto colored_fvf=projected_fvf|D3DFVF_DIFFUSE;
+    const std::uint32_t argb[]={0xff123456u,0x80335577u,
+                                 0x40336699u,0x00112233u};
+    for(std::size_t i=0;i<colored.size();++i){
+        const float position[4]={120.f+float(i)*30.f,150.f,0.4f,0.5f};
+        const float coord[2]={float(i)*0.25f,0.75f};
+        std::memcpy(colored[i].data(),position,sizeof(position));
+        std::memcpy(colored[i].data()+16u,&argb[i],4u);
+        std::memcpy(colored[i].data()+20u,coord,sizeof(coord));
+    }
+    projected.indices={0u,1u,2u,2u,1u,3u};
+    CHECK(m2vr::drawprobe::ExpandProjectedVBWindow(
+        reinterpret_cast<const std::uint8_t*>(colored.data()),
+        sizeof(colored),colored_fvf,28u,projected,ordered));
+    CHECK(ordered.size()==6u*28u);
+    const std::uint32_t expected_colors[]={argb[0],argb[1],argb[2],
+                                           argb[2],argb[1],argb[3]};
+    for(std::size_t i=0;i<6u;++i){
+        m2vr::drawprobe::ProjectedUPWorldVertex decoded{};
+        CHECK(m2vr::drawprobe::DecodeProjectedUPWorldVertex(
+            ordered.data()+i*28u,colored_fvf,28u,decoded));
+        CHECK(decoded.has_diffuse &&
+              decoded.diffuse_argb==expected_colors[i]);
+    }
+    const auto valid_colored=ordered;
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        reinterpret_cast<const std::uint8_t*>(colored.data()),
+        sizeof(colored),colored_fvf,24u,projected,ordered));
+    CHECK(ordered==valid_colored);
     return 0;
 }

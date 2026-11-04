@@ -241,16 +241,16 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     m2vr::vr::RasterPolicy raster{};
     bool modulate_rgb=false,modulate_alpha=false;
     m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
-    // The currently authenticated projected XYZRHW/TEX1 source has no
-    // diffuse vertex attribute. Reject material MODULATE until that exact
-    // original GPU layout is independently proven.
-    if(!FixedFunctionMaterial(d,cutoff,sampler,raster,
-                              modulate_rgb,modulate_alpha,blend_mode) ||
-       modulate_rgb || modulate_alpha)return FALSE;
+    // Original projected D3D9 FVF may carry a packed D3DCOLOR before UV.
+    // A MODULATE source requires this exact color attribute; no fabricated
+    // white diffuse is allowed to change the game's per-pixel material.
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)) ||
-       !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride))
-        return FALSE;
+       !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride) ||
+       !FixedFunctionMaterial(d,cutoff,sampler,raster,
+                              modulate_rgb,modulate_alpha,blend_mode) ||
+       ((modulate_rgb || modulate_alpha) &&
+        (fvf&D3DFVF_DIFFUSE)==0u))return FALSE;
     D3DVIEWPORT9 viewport{};
     if(FAILED(d->GetViewport(&viewport)))return FALSE;
     try {
@@ -260,6 +260,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         std::array<m2vr::drawprobe::ProjectedDrawVertex,24> screen{};
         std::vector<float> uv(count*2u),positions(count*3u);
         std::vector<std::uint32_t> indices(count);
+        std::vector<std::uint32_t> diffuse;
+        if(modulate_rgb || modulate_alpha)diffuse.resize(count);
         for(std::size_t i=0;i<count;++i){
             m2vr::drawprobe::ProjectedUPWorldVertex decoded{};
             if(!m2vr::drawprobe::DecodeProjectedUPWorldVertex(
@@ -267,6 +269,10 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             screen[i]={decoded.screen_xy[0],decoded.screen_xy[1]};
             uv[i*2u]=decoded.uv[0];
             uv[i*2u+1u]=decoded.uv[1];
+            if(!diffuse.empty()){
+                if(!decoded.has_diffuse)return FALSE;
+                diffuse[i]=decoded.diffuse_argb;
+            }
             indices[i]=static_cast<std::uint32_t>(i);
         }
         const auto joined=m2vr::drawprobe::ThreadProjectDrawCorrelator()
@@ -301,7 +307,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             static_cast<unsigned>(sampler.v),
             static_cast<unsigned>(raster.cull),
             static_cast<unsigned>(raster.depth),
-            raster.write_depth?1u:0u,nullptr,0u,0u,
+            raster.write_depth?1u:0u,
+            diffuse.empty()?nullptr:diffuse.data(),
+            modulate_rgb?1u:0u,modulate_alpha?1u:0u,
             static_cast<unsigned>(blend_mode));
     }catch(...){return FALSE;}
 }
