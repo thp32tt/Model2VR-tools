@@ -14,6 +14,11 @@ namespace m2vr::daytona {
 inline bool SafeStereoHomogeneousW(float w) noexcept {
     return std::isfinite(w) && w>=0.05f && w<=65536.f;
 }
+// The Win32 source-to-Win64 GameStereo IPC carries a bounded uint32 pose
+// tag. Never wrap a 64-bit HMD sequence into a different earlier pose.
+inline constexpr bool CanTagGameStereoPose(std::uint64_t sequence) noexcept {
+    return sequence!=0 && sequence<=0xffffffffull;
+}
 struct EyePoseAdmission {
     bool valid=false;
     float ipd_scale=1.f; // relative to 64mm; used only for experimental disparity
