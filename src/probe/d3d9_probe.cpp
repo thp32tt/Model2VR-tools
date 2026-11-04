@@ -4,6 +4,7 @@
 #include "daytona_up_decl_witness.hpp"
 #include "draw_origin_gate.hpp"
 #include "project_draw_correlator.hpp"
+#include "d3d9_source_pass_context.hpp"
 #include "model2_camera_projection_fit.hpp"
 #include "d3d9_primary_device_owner.hpp"
 #include "verified_world_present_gate.hpp"
@@ -186,6 +187,55 @@ bool Sample(IDirect3DDevice9* dev,unsigned family,
     return true;
 }
 
+// Each independently sampled original Draw witness retains the original
+// source RT/viewport/depth context and the *upcoming* original Present id.
+// This records evidence only: unknown/aux/HUD never becomes world proof.
+void LogOriginalSourcePassContext(IDirect3DDevice9* dev,
+                                  std::uint64_t witness) {
+    if(!dev || !witness)return;
+    using namespace m2vr::drawprobe;
+    OriginalDrawSourceContext c{};
+    IDirect3DSurface9* source=nullptr;
+    IDirect3DSurface9* backbuffer=nullptr;
+    const bool have_source=SUCCEEDED(dev->GetRenderTarget(0,&source))&&source;
+    const bool have_backbuffer=SUCCEEDED(dev->GetBackBuffer(
+        0,0,D3DBACKBUFFER_TYPE_MONO,&backbuffer))&&backbuffer;
+    D3DSURFACE_DESC source_desc{};
+    D3DSURFACE_DESC backbuffer_desc{};
+    c.target_desc_known=have_source &&
+        SUCCEEDED(source->GetDesc(&source_desc));
+    const bool backbuffer_desc_known=have_backbuffer &&
+        SUCCEEDED(backbuffer->GetDesc(&backbuffer_desc));
+    if(c.target_desc_known){
+        c.source_width=source_desc.Width;
+        c.source_height=source_desc.Height;
+    }
+    if(have_source && have_backbuffer)
+        c.target=source==backbuffer?
+            OriginalTargetClass::MainBackbuffer:
+            OriginalTargetClass::Auxiliary;
+    if(source)source->Release();
+    if(backbuffer)backbuffer->Release();
+    D3DVIEWPORT9 vp{};
+    c.viewport_known=SUCCEEDED(dev->GetViewport(&vp));
+    c.viewport_full=c.viewport_known && backbuffer_desc_known &&
+        vp.X==0u && vp.Y==0u &&
+        vp.Width==backbuffer_desc.Width &&
+        vp.Height==backbuffer_desc.Height;
+    DWORD z=0u,write=0u,scissor=0u;
+    c.depth_known=SUCCEEDED(dev->GetRenderState(D3DRS_ZENABLE,&z)) &&
+        SUCCEEDED(dev->GetRenderState(D3DRS_ZWRITEENABLE,&write));
+    c.depth_enabled=c.depth_known && z==D3DZB_TRUE;
+    c.depth_write=c.depth_known && write!=0u;
+    c.scissor_known=SUCCEEDED(
+        dev->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor));
+    c.scissor_enabled=c.scissor_known && scissor!=0u;
+    m2vr::LogEvent("model2_d3d9_source_pass_context",witness,
+        g_present_count.load(std::memory_order_relaxed)+1u,
+        EncodeOriginalDrawSourceContext(c),
+        (std::uint64_t{c.source_width}<<32)|c.source_height);
+}
+
 // Read at most 16 guarded bytes at a time from game-owned UP pointers.
 // The small SEH helper contains no C++ objects requiring unwinding.
 bool SafeReadBytes(const void* source,std::size_t offset,
@@ -264,6 +314,7 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
     }
     const auto id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    LogOriginalSourcePassContext(dev,id);
     m2vr::LogEvent("model2_world_up_candidate",id,
          CallerRva(caller),fvf,
          (std::uint64_t{family}<<32)|stride);
@@ -380,6 +431,7 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
 
     const auto sample_id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    LogOriginalSourcePassContext(dev,sample_id);
     m2vr::LogEvent("model2_d3d9_up_meta",sample_id,
         g_present_count.load(std::memory_order_relaxed)+1u,
         CallerRva(caller),(std::uint64_t{family}<<32)|stride);
@@ -496,6 +548,7 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
            elements[count-1u].Stream!=0xffu)count=0u;
     }
     if(declaration)declaration->Release();
+    LogOriginalSourcePassContext(dev,id);
     m2vr::LogEvent("model2_d3d9_up_layout",id,CallerRva(caller),
         (std::uint64_t{family}<<32)|stride,
         (std::uint64_t{vs_status}<<40)|
@@ -662,6 +715,7 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
     // Exact upcoming original main-device Present, never simulation tick.
     // This distinguishes independent scene passes from repeated calls
     // within one frame when validating original world/HUD ownership.
+    LogOriginalSourcePassContext(dev,id);
     m2vr::LogEvent("model2_d3d9_vb_present_frame",id,
         g_present_count.load(std::memory_order_relaxed)+1u,
         family,0u);

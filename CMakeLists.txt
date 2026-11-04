@@ -324,6 +324,12 @@ target_compile_definitions(model2_d3d9_primitive_topology_test PRIVATE
 add_test(NAME model2_d3d9_original_up_topology_winding
     COMMAND model2_d3d9_primitive_topology_test)
 # Verify per-family first-seen caller evidence and low-overhead periodic probe.
+add_executable(model2_d3d9_source_pass_context_test
+    tests/model2_d3d9_source_pass_context_test.cpp)
+target_compile_features(model2_d3d9_source_pass_context_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_d3d9_draw_source_pass_context
+    COMMAND model2_d3d9_source_pass_context_test)
+
 add_executable(model2_draw_origin_gate_test tests/draw_origin_gate_test.cpp)
 target_compile_features(model2_draw_origin_gate_test PRIVATE cxx_std_20)
 add_test(NAME model2_real_d3d9_caller_coverage COMMAND model2_draw_origin_gate_test)
