@@ -95,7 +95,7 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
         return false;
     DWORD address_u=0,address_v=0,min_filter=0,mag_filter=0,mip_filter=0;
     DWORD srgb_texture=0,alpha_test=0,alpha_ref=0,alpha_func=0;
-    DWORD stage1_colorop=0,stage1_alphaop=0;
+    DWORD stage1_colorop=0,stage1_alphaop=0,stage0_result=0;
     DWORD texcoord_index=0,transform_flags=0;
     if(FAILED(d->GetSamplerState(0,D3DSAMP_ADDRESSU,&address_u)) ||
        FAILED(d->GetSamplerState(0,D3DSAMP_ADDRESSV,&address_v)) ||
@@ -108,11 +108,13 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        FAILED(d->GetRenderState(D3DRS_ALPHAFUNC,&alpha_func)) ||
        FAILED(d->GetTextureStageState(1,D3DTSS_COLOROP,&stage1_colorop)) ||
        FAILED(d->GetTextureStageState(1,D3DTSS_ALPHAOP,&stage1_alphaop)) ||
+       FAILED(d->GetTextureStageState(0,D3DTSS_RESULTARG,&stage0_result)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_TEXCOORDINDEX,&texcoord_index)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_TEXTURETRANSFORMFLAGS,
                                      &transform_flags)) ||
        stage1_colorop!=D3DTOP_DISABLE ||
        stage1_alphaop!=D3DTOP_DISABLE ||
+       stage0_result!=D3DTA_CURRENT ||
        texcoord_index!=0u || transform_flags!=D3DTTFF_DISABLE ||
        (!m2vr::drawprobe::FixedStagePairIsDiffuseOnly(
             rgb_source,alpha_source) &&
