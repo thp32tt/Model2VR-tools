@@ -139,6 +139,14 @@ known valid pose cannot masquerade as a live head-relative game camera.
 The experimental GPU X-only source shift retains its existing legacy
 compatibility path and the original simulation/FFB is unaffected.
 
+**D3D9 16-bit source texture color/alpha fidelity (2026-11-04):**
+The verified source-only material snapshot also supports native R5G6B5,
+X1R5G5B5, A1R5G5B5 and A4R4G4B4 CPU-lockable textures, expanding exact
+5/6/4-bit channels and preserving 1-bit or 4-bit alpha. Their RGBA8
+outputs enter the existing per-eye depth/texture raster and original
+alpha-test policy. Unsupported D3D9 texture formats and unreadable
+resources remain rejected rather than guessed; no GPU draw is duplicated.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

@@ -5,6 +5,7 @@
 // DEFAULT-pool inaccessible textures fail closed instead of inventing pixels.
 #include "d3d9_world_source.hpp"
 #include "d3d9_dxt_decode.hpp"
+#include "d3d9_rgb16_decode.hpp"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -43,7 +44,8 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
        desc.Width>1024u || desc.Height>1024u ||
        (desc.Format!=D3DFMT_A8R8G8B8 &&
         desc.Format!=D3DFMT_X8R8G8B8 &&
-        !DxtBytesPerBlock(desc.Format)))return false;
+        !DxtBytesPerBlock(desc.Format) &&
+        !Supported16BitColor(desc.Format)))return false;
     D3DLOCKED_RECT locked{};
     if(FAILED(tex->LockRect(0,&locked,nullptr,D3DLOCK_READONLY)))
         return false;
@@ -53,7 +55,8 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
     } unlock{tex};
     const std::uint32_t dxt_bytes=DxtBytesPerBlock(desc.Format);
     const std::uint32_t row_bytes=dxt_bytes?
-        ((desc.Width+3u)/4u)*dxt_bytes : desc.Width*4u;
+        ((desc.Width+3u)/4u)*dxt_bytes :
+        desc.Width*(Supported16BitColor(desc.Format)?2u:4u);
     if(!locked.pBits || locked.Pitch<0 ||
        std::uint32_t(locked.Pitch)<row_bytes)return false;
     TextureSnapshot temp{};
@@ -79,6 +82,10 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
                     desc.Format,x,y,temp.rgba.data(),
                     desc.Width,desc.Height,desc.Width*4u))return false;
             }
+        }else if(Supported16BitColor(desc.Format)){
+            if(!Decode16BitColorRowRGBA(
+                row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
+                desc.Width,desc.Format))return false;
         }else{
             if(!DecodeTextureRowRGBA(
                     row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
