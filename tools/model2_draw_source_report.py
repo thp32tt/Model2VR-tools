@@ -35,6 +35,7 @@ NAMES = {
     "model2_d3d9_source_color_mask",
     "model2_d3d9_source_blend",
     "model2_d3d9_source_sampler_mip",
+    "model2_d3d9_source_depth_cull",
 }
 
 def number(raw):
@@ -99,6 +100,27 @@ def original_d3d9_mip_status(record, present_frame, original_sampler=None):
     if mip in (1, 2) and levels == 1:
         return "single_level_equivalent"
     return "mip_unverified"
+
+
+def original_d3d9_depth_cull_status(record, present_frame, original_raster=None):
+    """Exact same-Draw D3D9 Z/cull source, not gameplay world proof."""
+    if record is None:
+        return "unobserved"
+    enabled, zfunc = halves(record[0])
+    write, cull = halves(record[1])
+    if not present_frame or record[2] != present_frame:
+        return "present_mismatch"
+    # TRUE Z, supported original D3DCMP values, CULL NONE/CW/CCW.
+    # W-buffer or NEVER cannot be approximated as verified binocular Z.
+    if (enabled != 1 or zfunc not in (2, 3, 4, 5, 6, 7, 8) or
+            write not in (0, 1) or cull not in (1, 2, 3)):
+        return "unsupported"
+    if original_raster is not None:
+        old_cull, old_zfunc = halves(original_raster[0])
+        old_write, _ = halves(original_raster[1])
+        if (cull, zfunc, write) != (old_cull, old_zfunc, old_write):
+            return "source_raster_mismatch"
+    return "supported"
 
 
 def original_main_depth_view_candidate(flags):
@@ -249,6 +271,12 @@ def original_projected_material_candidate(data):
                 data.get("sampler")) not in
                 ("mip_disabled","single_level_equivalent")):
             return False
+    if "source_depth_cull" in data:
+        frame=data.get("present_frame")
+        if (frame is None or original_d3d9_depth_cull_status(
+                data["source_depth_cull"],frame[0],
+                data.get("raster")) != "supported"):
+            return False
     if "source_mask" in data:
         mask,tag,mask_frame=data["source_mask"]
         tagged_fvf,tagged_stride=halves(tag)
@@ -335,6 +363,8 @@ def audit_csv(path):
                 fields["source_blend"] = values
             elif event == "model2_d3d9_source_sampler_mip":
                 fields["source_mip"] = values
+            elif event == "model2_d3d9_source_depth_cull":
+                fields["source_depth_cull"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -353,6 +383,7 @@ def audit_csv(path):
         "original_source_blend_modes": set(),
         "original_source_blend_unsupported_witnesses": 0,
         "original_source_mip_status": set(),
+        "original_source_depth_cull_status": set(),
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
@@ -399,7 +430,8 @@ def audit_csv(path):
             if set(data).issubset({"stage_color", "stage_alpha",
                                    "stage_extra", "stage_result",
                                    "source_mask", "source_blend",
-                                   "source_mip"}):
+                                   "source_mip",
+                                   "source_depth_cull"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -458,6 +490,10 @@ def audit_csv(path):
             mip_status=original_d3d9_mip_status(
                 data["source_mip"],present_frame,data.get("sampler"))
             entry["original_source_mip_status"].add(mip_status)
+        if "source_depth_cull" in data:
+            depth_status=original_d3d9_depth_cull_status(
+                data["source_depth_cull"],present_frame,data.get("raster"))
+            entry["original_source_depth_cull_status"].add(depth_status)
         # Do not join independently sampled original D3D9 Draw states.
         if all(name in data for name in ("stage_color", "stage_alpha",
                                         "stage_extra")):

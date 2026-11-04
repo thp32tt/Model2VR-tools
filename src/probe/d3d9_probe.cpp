@@ -250,10 +250,20 @@ void LogOriginalSourcePassContext(IDirect3DDevice9* dev,
             CompatibleOriginalDepthSurface(source_desc,depth_desc);
     }
     if(depth)depth->Release();
+    const auto original_frame=g_present_count.load(
+        std::memory_order_relaxed)+1u;
     m2vr::LogEvent("model2_d3d9_source_pass_context",witness,
-        g_present_count.load(std::memory_order_relaxed)+1u,
-        EncodeOriginalDrawSourceContext(c),
+        original_frame,EncodeOriginalDrawSourceContext(c),
         (std::uint64_t{c.source_width}<<32)|c.source_height);
+    // Same original Draw/Present ZFUNC and CULLMODE provenance, never
+    // automatic world-pass authorization or a duplicate game Draw.
+    DWORD zfunc=0u,cull=0u;
+    if(c.depth_known &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_ZFUNC,&zfunc)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_CULLMODE,&cull)))
+        m2vr::LogEvent("model2_d3d9_source_depth_cull",witness,
+            (std::uint64_t{z}<<32)|zfunc,
+            (std::uint64_t{write}<<32)|cull,original_frame);
 }
 
 // Read-only fixed-function material state belongs to its exact original
