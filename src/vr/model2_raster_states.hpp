@@ -31,8 +31,14 @@ inline bool DepthPasses(double candidate,float existing,
                         DepthCompare func) noexcept {
     if(!std::isfinite(candidate) || !(candidate>0.) ||
        !ValidRasterPolicy({FaceCull::None,func,true}))return false;
+    // The stereo Z buffer stores float, not double. Comparing a freshly
+    // recomputed double against its previous float-rounded value can reject
+    // the *same* projected triangle under LEQUAL when rounding goes down.
+    // Quantize before both strict-less and equal-depth comparison, matching
+    // the actual stored representation in both independent eyes.
+    const float incoming=static_cast<float>(candidate);
+    if(!std::isfinite(incoming))return false;
     return func==DepthCompare::Less ?
-        candidate<double(existing) :
-        candidate<=double(existing);
+        incoming<existing : incoming<=existing;
 }
 } // namespace m2vr::vr

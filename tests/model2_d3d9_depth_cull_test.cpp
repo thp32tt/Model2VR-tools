@@ -39,6 +39,14 @@ int main() {
     CHECK(!TriangleSurvivesCull(1.,FaceCull::Clockwise));
     CHECK(!TriangleSurvivesCull(0.,FaceCull::None));
     CHECK(DepthPasses(3.,3.f,DepthCompare::LessEqual));
+    // Real perspective interpolation often gives a double that rounds
+    // DOWN when stored in our float depth surface. LEQUAL must still
+    // accept the identical next pass; LESS must reject it.
+    const double source_z=1.0/(0.24951171875+0.75048828125/16.0);
+    const float saved_z=static_cast<float>(source_z);
+    CHECK(source_z>double(saved_z));
+    CHECK(DepthPasses(source_z,saved_z,DepthCompare::LessEqual));
+    CHECK(!DepthPasses(source_z,saved_z,DepthCompare::Less));
     CHECK(!DepthPasses(3.,3.f,DepthCompare::Less));
     CHECK(!DepthPasses(-1.,1.f,DepthCompare::Less));
     CHECK(!ValidRasterPolicy({
