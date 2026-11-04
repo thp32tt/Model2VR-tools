@@ -44,6 +44,8 @@ class SourceAuditTests(unittest.TestCase):
                  pack(3, 4), pack(1, 0), pack(0, 0)),
                 ("model2_d3d9_vb_write_color", 101,
                  pack(0, 15), 0, 0),
+                ("model2_d3d9_source_color_mask", 101,
+                 15, pack(0x112, 20), 17),
                 ("model2_d3d9_source_stage0_color", 101,
                  pack(4, 2), 0, pack(0x112, 20)),
                 ("model2_d3d9_source_stage0_alpha", 101,
@@ -68,6 +70,8 @@ class SourceAuditTests(unittest.TestCase):
                 ("model2_d3d9_vb_stream", 102, pack(8, 8), 0, 12),
                 ("model2_d3d9_vb_texture", 102, 21, 64, 128),
                 ("model2_d3d9_vb_camera_unknown", 102, 0, 0, 0),
+                ("model2_d3d9_source_color_mask", 102,
+                 0, pack(0x112, 20), 17),
                 ("model2_d3d9_ib_source", 99, 101, 500, 0),
             ])
             result = REPORT.audit_csv(p)
@@ -87,6 +91,9 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["alpha_test_modes"], [[1, 7, 128]])
             self.assertEqual(src["raster_modes"], [[3, 4, 1, 0, 0, 0]])
             self.assertEqual(src["color_write_modes"], [[0, 15]])
+            self.assertEqual(src["original_source_color_mask_modes"], [0, 15])
+            self.assertEqual(src["original_depth_only_draw_witnesses"], 1)
+            self.assertEqual(src["original_source_color_mask_mismatch_witnesses"], 0)
             self.assertEqual(src["original_material_complete_witnesses"], 1)
             self.assertEqual(src["original_material_current_result_witnesses"], 1)
             self.assertEqual(src["original_material_mismatched_witnesses"], 0)
