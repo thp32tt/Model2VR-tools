@@ -290,6 +290,7 @@ extern "C" BOOL __stdcall Model2VR_ResetVerifiedWorldTrackingOrigin() {
     g.head_origin.Reset();
     g.camera_epoch.Reset();
     g.latch.Reset();
-    g.last_completed=0;
+    // Keep game-frame IDs monotonic: the shared stereo writer cannot
+    // rewind its own frame ID in this process. Recenter only the pose.
     return TRUE;
 }

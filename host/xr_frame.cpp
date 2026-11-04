@@ -146,7 +146,7 @@ void XrApp::draw_frame(XrTime display_time){
         // Revoke the previously published pose so game geometry cannot use
         // the old eye views, and submit an empty composition frame.
         if(pose_writer_.Valid())pose_writer_.Invalidate();
-        for(auto& entry:pose_history_)entry.sequence=0;
+        pose_history_.Clear();
         accepted_exact_pose_=false;
         frame_gate_.Reset();
         report_wizard_health(false,false);
@@ -179,13 +179,7 @@ void XrApp::draw_frame(XrTime display_time){
                 dst.fov_left_right_up_down[3]=views[eye].fov.angleDown;
             }
             const bool pose_published=pose_writer_.Publish(predicted);
-            if(pose_published && predicted.sequence<=0xffffffffull){
-                auto& entry=pose_history_[
-                    static_cast<std::size_t>(predicted.sequence)%
-                    pose_history_.size()];
-                entry.sequence=static_cast<std::uint32_t>(predicted.sequence);
-                entry.views=views;
-            }
+            if(pose_published)pose_history_.Record(predicted.sequence,views);
             if(pose_published && !startup_ready_signaled_ &&
                hostready::Signal(source_pid_)){
                 startup_ready_signaled_=true;
@@ -241,14 +235,13 @@ void XrApp::draw_frame(XrTime display_time){
                 // view pair has already fallen out of the host's pose ring.
                 const bool known_pose=!stamp.pose_sequence ||
                     (stamp.kind==transport::FrameKind::GameStereo &&
-                     pose_history_[stamp.pose_sequence%
-                         pose_history_.size()].sequence==stamp.pose_sequence);
+                     pose_history_.Find(stamp.pose_sequence)!=nullptr);
                 if(known_pose && shared_frames_.ReadReusable(staging_frame_)){
                     const auto tag=staging_frame_.pose_sequence;
-                    const auto& pose_entry=pose_history_[tag%pose_history_.size()];
+                    const auto* exact_views=pose_history_.Find(tag);
                     const bool matched=!tag ||
                        (staging_frame_.kind==transport::FrameKind::GameStereo &&
-                        pose_entry.sequence==tag);
+                        exact_views!=nullptr);
                     if(matched && frame_gate_.Accept(staging_frame_,now,hz)){
                     if(staging_frame_.kind==transport::FrameKind::Diagnostic &&
                        !saw_diagnostic_){
@@ -261,7 +254,7 @@ void XrApp::draw_frame(XrTime display_time){
                     // for the next IPC read (no 8-MiB allocation per frame).
                     std::swap(eye_frame_,staging_frame_);
                     accepted_exact_pose_=tag!=0;
-                    if(accepted_exact_pose_)accepted_render_pose_=pose_entry.views;
+                    if(accepted_exact_pose_)accepted_render_pose_=*exact_views;
                     }
                 }
             }

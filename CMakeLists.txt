@@ -260,3 +260,9 @@ target_compile_features(model2_head_recenter_x86_test PRIVATE cxx_std_20)
 target_compile_definitions(model2_head_recenter_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME model2_verified_camera_head_recenter_x86
          COMMAND model2_head_recenter_x86_test)
+
+# Deterministic source OpenXR view-pose tag matching (source camera only).
+add_executable(model2_pose_history_x86_test tests/stereo_pose_history_test.cpp)
+target_compile_features(model2_pose_history_x86_test PRIVATE cxx_std_20)
+add_test(NAME model2_exact_source_pose_history_x86
+         COMMAND model2_pose_history_x86_test)

@@ -332,3 +332,13 @@ remain atomically staged. OpenXR runtime reprojection applies normally.
 This does not calibrate the existing Daytona shader-UP pixel-shift
 GPU mirror, infer game-world/HUD pass identity, or prove Quest visuals.
 RUNTIME_VALIDATION=UNTESTED.
+
+
+The pose-to-view mapping uses a bounded 32-entry typed ring instead of
+ad-hoc modulo indexing; exact source sequence lookup cannot accidentally
+reuse an overwritten older slot. Tracking loss clears all tags. Distinct
+Win32/Win64 CTest targets test exact matches, eviction, zero legacy tag,
+invalid sequence overflow, and reset. Recentring a verified camera after
+a scene transition does not rewind the producer's monotonically increasing
+frame ID; otherwise the still-active shared-memory writer would reject all
+subsequent frames.

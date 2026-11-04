@@ -88,3 +88,8 @@ target_compile_features(model2_head_recenter_x64_test PRIVATE cxx_std_20)
 target_compile_definitions(model2_head_recenter_x64_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME model2_verified_camera_head_recenter_x64
          COMMAND model2_head_recenter_x64_test)
+
+add_executable(model2_pose_history_x64_test ../tests/stereo_pose_history_test.cpp)
+target_compile_features(model2_pose_history_x64_test PRIVATE cxx_std_20)
+add_test(NAME model2_exact_source_pose_history_x64
+         COMMAND model2_pose_history_x64_test)
