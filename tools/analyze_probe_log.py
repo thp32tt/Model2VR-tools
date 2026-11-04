@@ -319,6 +319,11 @@ def analyze(path: Path):
                     if len(up_fixed_stage) >= 4096:
                         up_fixed_stage.clear()
                     up_fixed_stage[a0] = {}
+                prior=up_fixed_stage[a0].get(event)
+                if (event=="model2_d3d9_source_alpha_compare" and
+                        prior is not None and prior!=(a1,a2,a3)):
+                    raise ValueError(
+                        f"conflicting original D3D9 alpha witness {a0}")
                 up_fixed_stage[a0][event] = (a1, a2, a3)
             elif event == "model2_d3d9_source_pass_context":
                 # Read-only source state from exactly this original Draw ID.
