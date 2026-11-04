@@ -472,6 +472,62 @@ int main(){
                            512u)*4u;
         CHECK(rgba[offset+3u]==80u);
     }
+    // Original separate-alpha changes only the source ALPHA equation.
+    // RGB still uses authentic SRCALPHA/INVSRCALPHA, and masked alpha
+    // must be retained independently for BOTH OpenXR eye images.
+    raster.Clear();
+    layer.rgba=dst_alpha.data();layer.blend=BlendMode::Opaque;
+    layer.separate_alpha={};
+    CHECK(raster.DrawTextured(manual,layer));
+    layer.rgba=half_red.data();layer.blend=BlendMode::SourceAlphaOver;
+    layer.separate_alpha={true,AlphaBlendFactor::One,AlphaBlendFactor::Zero};
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0x80007fu);
+        const auto& eye_rgba=raster.Eye(eye);
+        const auto center=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
+        CHECK(eye_rgba[center+3u]==128u); // not blended legacy ~96
+    }
+    // A later independent source sees the alpha that the separate-alpha
+    // pass WROTE, not the original blue target's alpha.
+    layer.separate_alpha={true,AlphaBlendFactor::DestinationAlpha,
+                         AlphaBlendFactor::InverseDestinationAlpha};
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye){
+        const auto center=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
+        CHECK(raster.Eye(eye)[center+3u]==128u);
+    }
+    // An RGB ZERO/ONE pass may still update destination alpha in D3D9.
+    // It must not manufacture stereo RGB coverage from this alpha change.
+    raster.Clear();
+    layer.rgba=half_red.data();
+    layer.blend=BlendMode::PreserveDestination;
+    layer.separate_alpha={true,AlphaBlendFactor::One,AlphaBlendFactor::Zero};
+    const auto alpha_only_count=raster.DrawnPixels();
+    CHECK(raster.DrawTextured(manual,layer));
+    CHECK(raster.DrawnPixels()==alpha_only_count);
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0u);
+        const auto center=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
+        CHECK(raster.Eye(eye)[center+3u]==128u);
+    }
+    // Reject invalid source factors, stale disabled-policy values and
+    // disabled RGB blending with separate alpha BEFORE either-eye writes.
+    const auto before_bad_alpha=raster.DrawnPixels();
+    const auto before_bad_color=Pixel(raster,0,512,512);
+    layer.separate_alpha={true,static_cast<AlphaBlendFactor>(8u),
+                         AlphaBlendFactor::Zero};
+    CHECK(!raster.DrawTextured(manual,layer));
+    layer.separate_alpha={false,AlphaBlendFactor::Zero,
+                         AlphaBlendFactor::Zero};
+    CHECK(!raster.DrawTextured(manual,layer));
+    layer.blend=BlendMode::Opaque;
+    layer.separate_alpha={true,AlphaBlendFactor::One,AlphaBlendFactor::Zero};
+    CHECK(!raster.DrawTextured(manual,layer));
+    CHECK(raster.DrawnPixels()==before_bad_alpha);
+    CHECK(Pixel(raster,0,512,512)==before_bad_color);
+    layer.separate_alpha={};
+
     // D3DBLEND_ZERO/ONE performs no RGBA writes but still honors the
     // source Z-write bit; it cannot fabricate binocular RGB coverage.
     raster.Clear();
