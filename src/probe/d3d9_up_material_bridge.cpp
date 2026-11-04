@@ -114,8 +114,10 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        stage1_colorop!=D3DTOP_DISABLE ||
        stage1_alphaop!=D3DTOP_DISABLE ||
        texcoord_index!=0u || transform_flags!=D3DTTFF_DISABLE ||
-       !m2vr::drawprobe::DecodeSamplerPolicy(address_u,address_v,
-            min_filter,mag_filter,mip_filter,srgb_texture,sampler) ||
+       (!m2vr::drawprobe::FixedStagePairIsDiffuseOnly(
+            rgb_source,alpha_source) &&
+        !m2vr::drawprobe::DecodeSamplerPolicy(address_u,address_v,
+            min_filter,mag_filter,mip_filter,srgb_texture,sampler)) ||
        !m2vr::drawprobe::AlphaCutoffMatches(
             alpha_test,alpha_func,alpha_ref,cutoff))return false;
     IDirect3DSurface9* current=nullptr;
@@ -215,7 +217,15 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
                 uv[std::size_t(i)*2u+k]=vertex.uv[k];
             if(!diffuse.empty())diffuse[i]=vertex.diffuse_argb;
         }
-        if(!m2vr::drawprobe::SnapshotCurrentTexture(d,texture))
+        // When BOTH D3D9 stage-zero channels select actual vertex DIFFUSE,
+        // bound texture contents are semantically unused. Feed the existing
+        // calibrated two-eye raster a harmless 1x1 staging placeholder;
+        // neither RGB nor alpha can sample it in this admitted material.
+        if(m2vr::drawprobe::FixedStagePairIsDiffuseOnly(
+            rgb_source,alpha_source)){
+            texture.width=1u;texture.height=1u;
+            texture.rgba.assign(4u,255u);
+        }else if(!m2vr::drawprobe::SnapshotCurrentTexture(d,texture))
             return FALSE;
     }catch(...){return FALSE;}
     // No second haptic owner, no duplicated emulator CPU draw or state.
@@ -312,7 +322,15 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             for(unsigned k=0;k<3u;++k)
                 positions[i*3u+k]=joined.camera_samples[i].source_xyz[k];
         m2vr::drawprobe::TextureSnapshot texture{};
-        if(!m2vr::drawprobe::SnapshotCurrentTexture(d,texture))
+        // When BOTH D3D9 stage-zero channels select actual vertex DIFFUSE,
+        // bound texture contents are semantically unused. Feed the existing
+        // calibrated two-eye raster a harmless 1x1 staging placeholder;
+        // neither RGB nor alpha can sample it in this admitted material.
+        if(m2vr::drawprobe::FixedStagePairIsDiffuseOnly(
+            rgb_source,alpha_source)){
+            texture.width=1u;texture.height=1u;
+            texture.rgba.assign(4u,255u);
+        }else if(!m2vr::drawprobe::SnapshotCurrentTexture(d,texture))
             return FALSE;
         // Same authenticated owner and exact existing rasterization/pose
         // contract as the other fixed-function original Draw adapters.
