@@ -5,6 +5,7 @@ Run locally on PRIVATE race/menu captures. This never approves a world pass,
 infers game camera calibration, emits source binaries, or enables stereo.
 """
 import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -16,13 +17,12 @@ except ImportError:  # direct invocation: python tools/model2_world_pass_evidenc
 
 SOURCE_KIND = "real_d3d9_command_boundary_readonly_metadata"
 RVA = re.compile(r"0x[0-9a-fA-F]{8}\Z")
-SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
 MIN_PRESENTS = 2
 MAX_SOURCES = 100_000
 
 
 def _validate_report(report):
-    if not isinstance(report, dict) or report.get("schema") != 1 or (
+    if not isinstance(report, dict) or type(report.get("schema")) is not int or report["schema"] != 1 or (
         report.get("source_kind") != SOURCE_KIND or
         report.get("world_pass_proof") != "NOT_ESTABLISHED" or
         report.get("hmd_runtime_validation") != "UNTESTED"
@@ -42,6 +42,9 @@ def _validate_report(report):
         ):
             raise ValueError("invalid real Draw family or caller RVA")
         key = (family, caller.lower())
+        # Caller provenance must agree with the native executable RVA.
+        if source.get("caller_is_in_executable") is not (int(caller, 16) != 0):
+            raise ValueError("inconsistent original executable caller ownership")
         if key in result:
             raise ValueError("duplicate original Draw caller in a capture")
         result[key] = source
@@ -83,7 +86,9 @@ def _enough_original_source(source):
         ("original_source_depth_cull_status", {"supported"}),
     ):
         status = source.get(key)
-        if not isinstance(status, list) or not status or set(status) != allowed:
+        if (not isinstance(status, list) or not status or
+                any(not isinstance(s, str) for s in status) or
+                set(status) != allowed):
             return False
     return _cpu_callers(source) is not None
 
@@ -148,6 +153,16 @@ def compare_sessions(race_reports, nonrace_reports):
     }
 
 
+def _capture_digest(path):
+    # Duplicate bytes under distinct filenames are NOT independent sessions.
+    # Stream large private CSV logs without retaining them in memory.
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.digest()
+
+
 def _load_report(path):
     if path.suffix.lower() == ".csv":
         return audit_csv(path)
@@ -167,6 +182,9 @@ def main():
     if len(args.race) < 2 or len(set(p.resolve() for p in paths)) != len(paths):
         parser.error("two independent race files and distinct capture paths required")
     try:
+        fingerprints = [_capture_digest(path) for path in paths]
+        if len(set(fingerprints)) != len(fingerprints):
+            parser.error("reused identical race/menu log bytes are not independent sessions")
         result = compare_sessions(
             [_load_report(path) for path in args.race],
             [_load_report(path) for path in args.nonrace],

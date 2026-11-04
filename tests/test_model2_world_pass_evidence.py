@@ -7,6 +7,7 @@ def witness(cpu="0x004bb400", count=3):
     return {
         "draw_family": "DrawIndexedPrimitive",
         "caller_rva_hex": "0x004a1234",
+        "caller_is_in_executable": True,
         "distinct_projected_material_present_frame_count": count,
         "distinct_same_witness_joint_present_frame_count": count,
         "distinct_context_present_frame_count": count,
@@ -46,7 +47,8 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
     def test_menu_reuse_blocks_promotion_even_if_joined_only_in_race(self):
         candidate = witness()
         neg = {"draw_family": candidate["draw_family"],
-               "caller_rva_hex": candidate["caller_rva_hex"]}
+               "caller_rva_hex": candidate["caller_rva_hex"],
+               "caller_is_in_executable": True}
         result = compare_sessions([report(candidate), report(candidate)],
                                   [report(neg)])
         self.assertFalse(result["candidates"])
@@ -89,8 +91,19 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                          "missing_in_race_capture")
         unknown = witness()
         unknown["caller_rva_hex"] = "0x00000000"
+        unknown["caller_is_in_executable"] = False
         got = compare_sessions([report(unknown), report(unknown)], [report()])
         self.assertEqual(got["rejected"][0]["reason"], "unknown_gpu_caller")
+
+    def test_spoofed_original_caller_and_malformed_states_rejected(self):
+        bad = witness()
+        bad["caller_is_in_executable"] = False
+        with self.assertRaises(ValueError):
+            compare_sessions([report(bad), report(witness())], [report()])
+        bad = witness()
+        bad["original_source_fill_status"] = [["solid"]]
+        got = compare_sessions([report(bad), report(witness())], [report()])
+        self.assertFalse(got["candidates"])
 
     def test_bad_source_kind_or_claimed_proof_rejected(self):
         good = report(witness())

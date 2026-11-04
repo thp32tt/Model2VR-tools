@@ -34,3 +34,8 @@ any live World3D release. Keep **all CSV/JSON outputs PRIVATE**: do not
 commit proprietary ROM/EXE, REA code, original game data, or gameplay
 traces into the public tools repository. The original 2D fallback and FFB
 must remain unchanged.
+
+Different paths containing identical capture bytes are rejected. The
+original-executable caller ownership flag must match the caller RVA;
+malformed material status lists fail closed. SHA-256 uniqueness is a
+replay safeguard, **not** proof that two gameplay runs were independent.
