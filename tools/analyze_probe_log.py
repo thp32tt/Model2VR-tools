@@ -40,7 +40,8 @@ def original_stage_source(op: int, first: int, second: int):
     return None
 
 
-def original_d3d9_separate_alpha_status(blend, separate, fvf, stride):
+def original_d3d9_separate_alpha_status(
+        blend, separate, fvf, stride, color_write_mask=None):
     """Same-Draw original RGB/alpha split evidence; NEVER world proof."""
     if blend is None:
         return "orphan" if separate is not None else "unobserved"
@@ -52,6 +53,13 @@ def original_d3d9_separate_alpha_status(blend, separate, fvf, stride):
         return "unsupported"
     if separate_enabled==0:
         return "unexpected_alpha" if separate is not None else "inactive"
+    if separate is not None:
+        tag=separate[2]
+        if (tag >> 32)!=fvf or (tag & 0xFFFFFFFF)!=stride:
+            return "fvf_stride_mismatch"
+    if color_write_mask is not None and (
+            color_write_mask & 0x08)==0:
+        return "masked_inert"
     if separate is None:
         return "missing_source"
     source=(separate[0] >> 32)
@@ -66,7 +74,9 @@ def original_d3d9_separate_alpha_status(blend, separate, fvf, stride):
     return "supported"
 
 
-def original_d3d9_blend_mode(record, separate=None, fvf=None, stride=None):
+def original_d3d9_blend_mode(
+        record, separate=None, fvf=None, stride=None,
+        color_write_mask=None):
     """Original RGB/alpha ADD sample; separate requires same FVF/stride."""
     if record is None:
         return "unobserved"
@@ -75,10 +85,11 @@ def original_d3d9_blend_mode(record, separate=None, fvf=None, stride=None):
     dst=(record[1] >> 32)
     op=(record[1] & 0xFFFFFFFF)
     state=original_d3d9_separate_alpha_status(
-        record,separate,fvf,stride)
+        record,separate,fvf,stride,color_write_mask)
     if enabled==0:
         return "opaque" if state=="inert" else "unsupported"
-    if enabled!=1 or op!=1 or state not in ("inactive","supported"):
+    if enabled!=1 or op!=1 or state not in (
+            "inactive","supported","masked_inert"):
         return "unsupported"
     rgb={
         (2,1):"replace_rgba", (5,6):"source_alpha_over",
@@ -746,10 +757,10 @@ def analyze(path: Path):
         separate_record=stage.get(
             "model2_d3d9_source_separate_alpha_blend")
         separate_status=original_d3d9_separate_alpha_status(
-            blend_record,separate_record,fvf,stride)
+            blend_record,separate_record,fvf,stride,mask_value)
         up_material_separate_alpha_status[separate_status] += 1
         blend_status=original_d3d9_blend_mode(
-            blend_record,separate_record,fvf,stride)
+            blend_record,separate_record,fvf,stride,mask_value)
         up_material_blend_status[blend_status] += 1
         alpha_compare_status=original_d3d9_alpha_compare_status(
             stage.get("model2_d3d9_source_alpha_compare"),fvf,stride)
