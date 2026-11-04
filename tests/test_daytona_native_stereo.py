@@ -40,6 +40,35 @@ class NativeStereoTest(unittest.TestCase):
         self.assertGreaterEqual(
             source.count("!m2vr::drawprobe::FixedStagePairIsDiffuseOnly("),2)
 
+    def test_original_alpha_compare_crosses_source_and_eye_abi_without_auto_world(self):
+        gpu=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        adapter=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")
+        old_new=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        public=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
+        fixed=(ROOT/"src/probe/d3d9_sampler_states.hpp").read_text("utf-8")
+        eye=(ROOT/"src/vr/model2_stereo_raster.hpp").read_text("utf-8")
+        for family in ("src/probe/d3d9_vb_material_bridge.cpp",
+                       "src/probe/d3d9_indexed_up_material_bridge.cpp"):
+            self.assertIn("alpha_cutoff>256u",
+                          (ROOT/family).read_text("utf-8"))
+        self.assertIn('"model2_d3d9_source_alpha_compare"',gpu)
+        self.assertIn("DecodeOriginalAlphaCompare(",fixed)
+        self.assertIn("requested_cutoff!=256u",fixed)
+        self.assertIn("alpha_cutoff>256u",adapter)
+        self.assertIn("cutoff>256u",adapter)
+        self.assertEqual(adapter.count(
+            "Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates("),
+            2)
+        self.assertIn("!Model2VR_VerifiedWorldFrameOwnedByCurrentThread()",adapter)
+        self.assertIn("!Model2VR_IsOriginalPrimaryD3D9Device(d)",adapter)
+        api="Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates("
+        self.assertIn(api,public)
+        self.assertIn(api,old_new)
+        self.assertIn("blend_mode,write_rgba_mask,0u,0u);",old_new)
+        self.assertIn("texture.alpha_compare",eye)
+        self.assertIn("AlphaPasses(",eye)
+        self.assertIn("if(texture.raster.write_depth)",eye)
+
     def test_verified_cpu_world_source_uses_the_original_primary_device(self):
         original=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         bridge=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")
