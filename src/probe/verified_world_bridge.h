@@ -106,6 +106,11 @@ Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBlendRenderStates(
 // Return TRUE only during an independently authorized current-thread world
 // transaction. Adapters must fail before reading original D3D9 draw memory.
 __declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread();
+// The exact D3D9 COM device whose original Draw/Present epochs are hooked.
+// Secondary devices, overlays and swap-in replacements must never masquerade
+// as this emulator's world output. No refs acquired and no state changed.
+__declspec(dllexport) BOOL __stdcall Model2VR_IsOriginalPrimaryD3D9Device(
+    const void* d3d9_device);
 // The original projected XYZRHW/TEX1 D3D9 UP geometry can be converted to
 // calibrated 6DoF eyes ONLY if a separately proven world transaction is
 // active, at least two same-thread source triangles match the CPU projector

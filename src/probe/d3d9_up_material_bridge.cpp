@@ -155,7 +155,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     m2vr::vr::RasterPolicy raster{};
     bool modulate_rgb=false,modulate_alpha=false;
     m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
-    if(!d || !source || !triangle_indices ||
+    if(!d || !Model2VR_IsOriginalPrimaryD3D9Device(d) ||
+       !Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
+       !source || !triangle_indices ||
        !count || count>2048 || !index_count ||
        index_count%3 || index_count>6144u || alpha_cutoff>255u)
         return FALSE;
@@ -231,7 +233,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     constexpr std::uint32_t kMaxTriangles=
         static_cast<std::uint32_t>(
             m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles);
-    if(!d || !original_vertices || !expected_cpu_caller ||
+    if(!d || !Model2VR_IsOriginalPrimaryD3D9Device(d) ||
+       !original_vertices || !expected_cpu_caller ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        triangles<2u || triangles>kMaxTriangles || cutoff>255u)return FALSE;
     m2vr::vr::SamplerPolicy sampler{};

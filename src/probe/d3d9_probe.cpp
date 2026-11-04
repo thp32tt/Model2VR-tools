@@ -1076,6 +1076,11 @@ IDirect3D9* WINAPI Create9Hook(UINT sdk){
 // frame identifier instead of assuming its emulator simulation frame index
 // equals a real device Present. Never activate CPU-world submission when
 // the separate GPU shader-UP replay already owns the transport.
+extern "C" __declspec(dllexport) BOOL __stdcall
+Model2VR_IsOriginalPrimaryD3D9Device(const void* device){
+    return g_device_installed.load(std::memory_order_acquire) &&
+           g_primary_device.Owns(device) ? TRUE : FALSE;
+}
 extern "C" __declspec(dllexport) unsigned long long __stdcall
 Model2VR_NextOriginalD3D9PresentFrameId(){
     return m2vr::vrbridge::NextOriginalPresentFrameId(

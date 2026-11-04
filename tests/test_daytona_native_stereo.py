@@ -6,6 +6,18 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_verified_cpu_world_source_uses_the_original_primary_device(self):
+        original=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")
+        header=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
+        self.assertIn("Model2VR_IsOriginalPrimaryD3D9Device",header)
+        self.assertIn("g_primary_device.Owns(device)",original)
+        self.assertIn("g_device_installed.load(std::memory_order_acquire)",original)
+        # Both XYZ and CPU-projected source entrypoints, including their
+        # nested VB/IB and topology companions, enter through this gate.
+        self.assertGreaterEqual(
+            bridge.count("!Model2VR_IsOriginalPrimaryD3D9Device(d)"),2)
+
     def test_actual_original_d3d9_draw_is_preserved_and_eyes_are_separate(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
