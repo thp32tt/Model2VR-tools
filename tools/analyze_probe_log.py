@@ -64,6 +64,28 @@ def original_d3d9_blend_mode(record):
     }.get((source, destination), "unsupported")
 
 
+def original_d3d9_alpha_compare_status(record, fvf, stride):
+    """Original fixed-function byte-alpha test, same Draw/FVF only.
+
+    This is observational D3D9 state and never certifies gameplay world.
+    """
+    if record is None:
+        return "unobserved"
+    enabled, func = (record[0] >> 32), (record[0] & 0xFFFFFFFF)
+    reference, tag = record[1], record[2]
+    if (tag >> 32) != fvf or (tag & 0xFFFFFFFF) != stride:
+        return "fvf_stride_mismatch"
+    if enabled not in (0, 1) or reference > 255:
+        return "unsupported"
+    if enabled == 0:
+        return "disabled"
+    return {
+        1: "never", 2: "less", 3: "equal", 4: "less_equal",
+        5: "greater", 6: "not_equal", 7: "greater_equal",
+        8: "always",
+    }.get(func, "unsupported")
+
+
 def original_d3d9_mip_status(record, present_frame):
     """Only MIPFILTER NONE or a verified single original texture level.
 
@@ -288,6 +310,7 @@ def analyze(path: Path):
                            "model2_d3d9_source_lighting",
                            "model2_d3d9_source_color_mask",
                            "model2_d3d9_source_blend",
+                           "model2_d3d9_source_alpha_compare",
                            "model2_d3d9_source_sampler_mip",
                            "model2_d3d9_source_depth_cull",
                            "model2_d3d9_source_vertex_pipeline",
@@ -586,6 +609,7 @@ def analyze(path: Path):
     up_material_color_mask_status = Counter()
     up_material_context_status = Counter()
     up_material_blend_status = Counter()
+    up_material_alpha_compare_status = Counter()
     up_material_mip_status = Counter()
     up_material_depth_cull_status = Counter()
     up_material_vertex_pipeline_status = Counter()
@@ -683,6 +707,9 @@ def analyze(path: Path):
         blend_status=original_d3d9_blend_mode(
             stage.get("model2_d3d9_source_blend"))
         up_material_blend_status[blend_status] += 1
+        alpha_compare_status=original_d3d9_alpha_compare_status(
+            stage.get("model2_d3d9_source_alpha_compare"),fvf,stride)
+        up_material_alpha_compare_status[alpha_compare_status] += 1
         mip_status=original_d3d9_mip_status(
             stage.get("model2_d3d9_source_sampler_mip"),frame)
         # Stage-zero DIFFUSE-only material never samples source texture.
@@ -717,6 +744,7 @@ def analyze(path: Path):
                 "original_source_scissor_full": (
                     context_status == "full_backbuffer_scissor_candidate"),
                 "original_source_blend_mode": blend_status,
+                "original_source_alpha_compare_status": alpha_compare_status,
                 "original_source_mip_status": mip_status,
                 "color_stage": [(c[0] >> 32) & 0xFFFFFFFF,
                                 c[0] & 0xFFFFFFFF, c[1]],
@@ -768,6 +796,8 @@ def analyze(path: Path):
                 dict(up_material_context_status.most_common()),
             "original_up_material_blend_status":
                 dict(up_material_blend_status.most_common()),
+            "original_up_material_alpha_compare_status":
+                dict(up_material_alpha_compare_status.most_common()),
             "original_up_material_mip_status":
                 dict(up_material_mip_status.most_common()),
             "original_up_material_depth_cull_status":
