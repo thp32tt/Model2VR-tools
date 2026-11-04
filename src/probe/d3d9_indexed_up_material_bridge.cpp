@@ -25,7 +25,8 @@ bool CaptureIndexedUP(
     std::vector<std::uint8_t>& source,
     std::vector<std::uint32_t>& relative,unsigned& copied_count) {
     using namespace m2vr::drawprobe;
-    if(!device || !indices || !vertices || !stride || stride>256u ||
+    if(!device || !Model2VR_IsOriginalPrimaryD3D9Device(device) ||
+       !indices || !vertices || !stride || stride>256u ||
        !vertex_count || vertex_count>kMaxIndexedUPDeclaredVertices ||
        !triangle_count || triangle_count>kMaxIndexedUPTriangles ||
        (format!=D3DFMT_INDEX16 && format!=D3DFMT_INDEX32))
