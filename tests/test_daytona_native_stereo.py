@@ -6,6 +6,35 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_original_failed_d3d9_draw_revokes_only_owned_cpu_eye_frame(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        gate=(ROOT/"src/probe/original_d3d9_draw_result_gate.hpp").read_text("utf-8")
+        original_calls=(
+            ("g_draw(d,p,start,count)",1),
+            ("g_draw_indexed(d,p,base,min,num,start,count)",2),
+            ("g_draw_up(d,p,count,verts,stride)",3),
+            ("g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride)",4),
+        )
+        # The original COM calls remain the authoritative source, exactly
+        # once per hook, and are never issued a second time for CPU eyes.
+        for original,family in original_calls:
+            self.assertIn(f"const HRESULT hr={original};",hooks)
+            self.assertIn(
+                f"TrackOriginalD3D9DrawResult(hr,{family}u,caller);",hooks)
+            self.assertIn(f"IsFailedOriginalD3D9Draw(",gate)
+            self.assertIn(
+                f"FailedOriginalD3D9SourceKind(original_family)",cpu)
+        self.assertEqual(hooks.count("TrackOriginalD3D9DrawResult(hr,"),4)
+        self.assertIn("Model2VR_RejectFailedOriginalD3D9Draw(",hooks)
+        self.assertIn("if(g.owner!=GetCurrentThreadId() || !(g.active||g.pending_present))",cpu)
+        self.assertIn("g.Reject(FailedOriginalD3D9SourceKind(original_family));",cpu)
+        self.assertIn("OriginalSourceFailure::Device",cpu)
+        self.assertIn("model2_vr_cpu_world_original_draw_failed",cpu)
+        self.assertIn("g.pending_present=false;",cpu)
+        self.assertIn("return family>=1u && family<=4u",gate)
+        self.assertIn("(result_bits & 0x80000000u)!=0u",gate)
+
     def test_primary_d3d9_owner_precedes_world_source_extraction(self):
         for file in ("d3d9_vb_material_bridge.cpp",
                      "d3d9_indexed_up_material_bridge.cpp",
