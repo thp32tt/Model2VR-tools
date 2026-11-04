@@ -115,20 +115,48 @@ inline bool DecodeWorldVertex(const void* data,std::size_t bytes,
         output.diffuse_argb=0xffffffffu;
     return FiniteVertex(output);
 }
-// D3D9 A8R8G8B8 and X8R8G8B8 CPU-row color unpack (little-endian BGRA).
+// CPU-lockable 32-bit original D3D9 texel formats. Integer 10-bit formats
+// are quantized to the RGBA8 staging IPC before independent-eye sampling.
+inline constexpr bool SupportedTrueColor32(D3DFORMAT format) noexcept {
+    return format==D3DFMT_A8R8G8B8 || format==D3DFMT_X8R8G8B8 ||
+        format==D3DFMT_A8B8G8R8 || format==D3DFMT_X8B8G8R8 ||
+        format==D3DFMT_A2R10G10B10 || format==D3DFMT_A2B10G10R10;
+}
+inline constexpr std::uint8_t Quantize10To8(std::uint32_t v) noexcept {
+    return static_cast<std::uint8_t>((v*255u+511u)/1023u);
+}
+// Decode original little-endian memory order, not the symbolic enum order.
 inline bool DecodeTextureRowRGBA(const std::uint8_t* src,
                                  std::uint8_t* dst,
                                  std::uint32_t width,
                                  D3DFORMAT format) noexcept {
     if(!src || !dst || !width || width>1024u ||
-       (format!=D3DFMT_A8R8G8B8 && format!=D3DFMT_X8R8G8B8))
-        return false;
+       !SupportedTrueColor32(format))return false;
     for(std::uint32_t x=0;x<width;++x){
-        const auto i=std::size_t(x)*4;
-        dst[i]=src[i+2];
-        dst[i+1]=src[i+1];
-        dst[i+2]=src[i];
-        dst[i+3]=format==D3DFMT_X8R8G8B8?255:src[i+3];
+        const auto i=std::size_t(x)*4u;
+        if(format==D3DFMT_A8B8G8R8 || format==D3DFMT_X8B8G8R8){
+            dst[i]=src[i];dst[i+1u]=src[i+1u];dst[i+2u]=src[i+2u];
+            dst[i+3u]=format==D3DFMT_X8B8G8R8?255u:src[i+3u];
+        }else if(format==D3DFMT_A2R10G10B10 ||
+                 format==D3DFMT_A2B10G10R10){
+            const std::uint32_t packed=std::uint32_t(src[i]) |
+                (std::uint32_t(src[i+1u])<<8u) |
+                (std::uint32_t(src[i+2u])<<16u) |
+                (std::uint32_t(src[i+3u])<<24u);
+            const std::uint32_t low=packed&1023u;
+            const std::uint32_t mid=(packed>>10u)&1023u;
+            const std::uint32_t high=(packed>>20u)&1023u;
+            dst[i]=Quantize10To8(
+                format==D3DFMT_A2R10G10B10?high:low);
+            dst[i+1u]=Quantize10To8(mid);
+            dst[i+2u]=Quantize10To8(
+                format==D3DFMT_A2R10G10B10?low:high);
+            dst[i+3u]=static_cast<std::uint8_t>(
+                ((packed>>30u)&3u)*85u);
+        }else{
+            dst[i]=src[i+2u];dst[i+1u]=src[i+1u];dst[i+2u]=src[i];
+            dst[i+3u]=format==D3DFMT_X8R8G8B8?255u:src[i+3u];
+        }
     }
     return true;
 }

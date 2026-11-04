@@ -93,6 +93,32 @@ int main(){
     CHECK(DecodeTextureRowRGBA(bgra.data(),result.data(),2,
                                D3DFMT_X8R8G8B8));
     CHECK(result[3]==255 && result[7]==255);
+    CHECK(SupportedTrueColor32(D3DFMT_A8B8G8R8));
+    CHECK(SupportedTrueColor32(D3DFMT_A2R10G10B10));
+    CHECK(!SupportedTrueColor32(D3DFMT_DXT1));
+    std::array<std::uint8_t,8> rgba32{1,2,3,128, 4,5,6,0};
+    CHECK(DecodeTextureRowRGBA(rgba32.data(),result.data(),2,
+                               D3DFMT_A8B8G8R8));
+    CHECK(result==rgba32);
+    CHECK(DecodeTextureRowRGBA(rgba32.data(),result.data(),2,
+                               D3DFMT_X8B8G8R8));
+    CHECK(result[0]==1 && result[1]==2 && result[2]==3 &&
+          result[3]==255 && result[4]==4 && result[7]==255);
+    auto word=[&](std::uint32_t value){
+        for(unsigned b=0;b<4;++b)
+            rgba32[b]=static_cast<std::uint8_t>((value>>(8u*b))&255u);
+    };
+    word((2u<<30u)|(1023u<<20u)|(512u<<10u));
+    CHECK(DecodeTextureRowRGBA(rgba32.data(),result.data(),1,
+                               D3DFMT_A2R10G10B10));
+    CHECK(result[0]==255u && result[1]==128u &&
+          result[2]==0u && result[3]==170u);
+    word((1u<<30u)|(1023u<<20u)|1023u);
+    CHECK(DecodeTextureRowRGBA(rgba32.data(),result.data(),1,
+                               D3DFMT_A2B10G10R10));
+    CHECK(result[0]==255u && result[1]==0u &&
+          result[2]==255u && result[3]==85u);
+    CHECK(Quantize10To8(0u)==0u && Quantize10To8(1023u)==255u);
     CHECK(!DecodeTextureRowRGBA(bgra.data(),result.data(),2,
                                 D3DFMT_DXT1));
     CHECK(!DecodeTextureRowRGBA(bgra.data(),result.data(),0,

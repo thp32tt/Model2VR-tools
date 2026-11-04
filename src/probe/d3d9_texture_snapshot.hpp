@@ -45,8 +45,7 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
     if(FAILED(tex->GetLevelDesc(0,&desc)) ||
        !desc.Width || !desc.Height ||
        desc.Width>1024u || desc.Height>1024u ||
-       (desc.Format!=D3DFMT_A8R8G8B8 &&
-        desc.Format!=D3DFMT_X8R8G8B8 &&
+       (!SupportedTrueColor32(desc.Format) &&
         !DxtBytesPerBlock(desc.Format) &&
         !Supported16BitColor(desc.Format) &&
         !LuminancePixelBytes(desc.Format) &&
