@@ -356,6 +356,10 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
         1u,std::memory_order_relaxed)+1u;
     LogOriginalSourcePassContext(dev,id);
     LogOriginalFixedStageEvidence(dev,id,fvf,stride);
+    // Source FVF, stride and upcoming original Present are pinned to
+    // this SAME original world-UP sample, never inferred from other Draws.
+    m2vr::LogEvent("model2_d3d9_up_source_fvf",id,fvf,stride,
+        g_present_count.load(std::memory_order_relaxed)+1u);
     m2vr::LogEvent("model2_world_up_candidate",id,
          CallerRva(caller),fvf,
          (std::uint64_t{family}<<32)|stride);
@@ -474,6 +478,8 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
         1u,std::memory_order_relaxed)+1u;
     LogOriginalSourcePassContext(dev,sample_id);
     LogOriginalFixedStageEvidence(dev,sample_id,fvf,stride);
+    m2vr::LogEvent("model2_d3d9_up_source_fvf",sample_id,fvf,stride,
+        g_present_count.load(std::memory_order_relaxed)+1u);
     m2vr::LogEvent("model2_d3d9_up_meta",sample_id,
         g_present_count.load(std::memory_order_relaxed)+1u,
         CallerRva(caller),(std::uint64_t{family}<<32)|stride);
