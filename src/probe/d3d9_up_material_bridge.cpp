@@ -115,11 +115,11 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        stage1_colorop!=D3DTOP_DISABLE ||
        stage1_alphaop!=D3DTOP_DISABLE ||
        stage0_result!=D3DTA_CURRENT ||
-       texcoord_index!=0u || transform_flags!=D3DTTFF_DISABLE ||
-       (!m2vr::drawprobe::FixedStagePairIsDiffuseOnly(
+       (m2vr::drawprobe::FixedStagePairUsesTexture(
             rgb_source,alpha_source) &&
-        !m2vr::drawprobe::DecodeSamplerPolicy(address_u,address_v,
-            min_filter,mag_filter,mip_filter,srgb_texture,sampler)) ||
+        (texcoord_index!=0u || transform_flags!=D3DTTFF_DISABLE ||
+         !m2vr::drawprobe::DecodeSamplerPolicy(address_u,address_v,
+            min_filter,mag_filter,mip_filter,srgb_texture,sampler))) ||
        !m2vr::drawprobe::AlphaCutoffMatches(
             alpha_test,alpha_func,alpha_ref,cutoff))return false;
     IDirect3DSurface9* current=nullptr;

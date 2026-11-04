@@ -27,6 +27,10 @@ inline constexpr bool FixedStagePairIsDiffuseOnly(
     FixedStageSource rgb,FixedStageSource alpha) noexcept {
     return rgb==FixedStageSource::Diffuse && alpha==FixedStageSource::Diffuse;
 }
+inline constexpr bool FixedStagePairUsesTexture(
+    FixedStageSource rgb,FixedStageSource alpha) noexcept {
+    return FixedStageUsesTexture(rgb) || FixedStageUsesTexture(alpha);
+}
 inline bool DecodeFixedStageSource(DWORD operation,DWORD first,
                                    DWORD second,FixedStageSource& out) noexcept {
     FixedStageSource next{};

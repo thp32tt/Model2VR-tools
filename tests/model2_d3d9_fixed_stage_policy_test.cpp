@@ -71,6 +71,12 @@ int main(){
     CHECK(source==before); // failure never partially mutates policy
     CHECK(FixedStagePairIsDiffuseOnly(
         FixedStageSource::Diffuse,FixedStageSource::Diffuse));
+    CHECK(!FixedStagePairUsesTexture(
+        FixedStageSource::Diffuse,FixedStageSource::Diffuse));
+    CHECK(FixedStagePairUsesTexture(
+        FixedStageSource::Texture,FixedStageSource::Diffuse));
+    CHECK(FixedStagePairUsesTexture(
+        FixedStageSource::Diffuse,FixedStageSource::Modulate));
     CHECK(!FixedStagePairIsDiffuseOnly(
         FixedStageSource::Diffuse,FixedStageSource::Texture));
     CHECK(!FixedStageUsesTexture(FixedStageSource::Diffuse));
