@@ -121,6 +121,10 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"openxr_tracking_valid="<<(tracking_valid?1:0)<<"\n"
           <<"paired_frame_fresh="<<(paired_frame_fresh?1:0)<<"\n"
           <<"last_paired_frame_id="<<frame_gate_.id()<<"\n"
+          <<"eye_delivery_status="<<delivery::Name(eye_delivery_status_)<<"\n"
+          <<"eye_delivery_action="<<delivery::NextAction(eye_delivery_status_)<<"\n"
+          <<"source_pose_rejection="<<static_cast<unsigned>(last_pose_rejection_)<<"\n"
+          <<"frame_transport_open="<<(shared_frames_.Valid()?1:0)<<"\n"
           <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::GameStereo
                 ?"GameStereo":frame_gate_.kind()==transport::FrameKind::Diagnostic
                 ?"Diagnostic":"Unknown")<<"\n"
@@ -148,6 +152,9 @@ void XrApp::invalidate_source_session() noexcept {
     producer_health_fresh_=false;
     producer_health_last_reason_=0xffffffffu;
     warned_unmatched_game_pose_=false;
+    last_pose_rejection_=0u;
+    eye_delivery_status_=delivery::Status::NoProducerHealth;
+    eye_delivery_gate_.Reset();
     for(auto& chain:chains_)
         std::fill(chain.uploaded_frame_ids.begin(),
                   chain.uploaded_frame_ids.end(),0u);
@@ -261,6 +268,7 @@ void XrApp::draw_frame(XrTime display_time){
                         pose_history_.Find(stamp.pose_sequence)!=nullptr);
                 if(!known_pose &&
                    stamp.kind==transport::FrameKind::GameStereo){
+                    last_pose_rejection_=stamp.pose_sequence==0u?1u:2u;
                     // Log the first rejection until a coherent pair
                     // recovers. This is actionable in the launcher host
                     // log without spamming once per 90/120 Hz XR frame.
@@ -274,6 +282,7 @@ void XrApp::draw_frame(XrTime display_time){
                         warned_unmatched_game_pose_=true;
                     }
                 }else if(known_pose){
+                    last_pose_rejection_=0u;
                     warned_unmatched_game_pose_=false;
                 }
                 if(known_pose && shared_frames_.ReadReusable(staging_frame_)){
@@ -309,6 +318,40 @@ void XrApp::draw_frame(XrTime display_time){
         eye_frame_.frame_id==frame_gate_.id() &&
         eye_frame_.eyes[0].size()==transport::kBytesPerEye &&
         eye_frame_.eyes[1].size()==transport::kBytesPerEye;
+    // A solid left/right fallback color is OpenXR host output, not proof
+    // that the original 32-bit Daytona GPU image crossed x86->x64 IPC.
+    // Summarize the actual upstream cause on transitions only, independent
+    // of OpenXR display cadence and without requesting another probe run.
+    delivery::Evidence delivery_evidence{};
+    delivery_evidence.emulator_selected=source_pid_!=0u;
+    delivery_evidence.producer_health_fresh=producer_health_fresh_;
+    delivery_evidence.producer_reason_mask=
+        producer_health_fresh_?producer_health_status_.reason_mask:0u;
+    delivery_evidence.frame_transport_open=shared_frames_.Valid();
+    delivery_evidence.ever_accepted_pair=frame_gate_.id()!=0u;
+    delivery_evidence.paired_frame_fresh=usable;
+    delivery_evidence.pair_is_game=
+        frame_gate_.kind()==transport::FrameKind::GameStereo;
+    delivery_evidence.swapchain_compatible=
+        chains_[0].width==transport::kWidth &&
+        chains_[0].height==transport::kHeight &&
+        chains_[1].width==transport::kWidth &&
+        chains_[1].height==transport::kHeight;
+    delivery_evidence.missing_original_pose_tag=last_pose_rejection_==1u;
+    delivery_evidence.expired_original_pose_tag=last_pose_rejection_==2u;
+    eye_delivery_status_=delivery::Classify(delivery_evidence);
+    if(eye_delivery_gate_.Changed(eye_delivery_status_)){
+        std::cout<<"Daytona VR eye delivery: "
+                 <<delivery::Name(eye_delivery_status_)
+                 <<" emulator_pid="<<source_pid_
+                 <<" game_frame="<<frame_gate_.id()
+                 <<" game_pixels="<<(usable && delivery_evidence.pair_is_game?1:0)
+                 <<" health_fresh="<<(producer_health_fresh_?1:0)
+                 <<" producer_reason_mask="
+                 <<(producer_health_fresh_?producer_health_status_.reason_mask:0u)
+                 <<" action="<<delivery::NextAction(eye_delivery_status_)
+                 <<std::endl;
+    }
     report_wizard_health(true,usable);
     std::array<XrCompositionLayerProjectionView,2> layer_views{
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
