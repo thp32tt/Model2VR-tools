@@ -38,12 +38,16 @@ int main(){
     D3DRECT full{0,0,800,600},partial{0,0,300,600};
     const D3DVIEWPORT9 view{0,0,800,600,0.f,1.f};
     CHECK(FullOriginalViewport(view,800,600));
+    CHECK(FullOriginalColorClear(0,nullptr,D3DCLEAR_TARGET,view,800,600));
+    CHECK(!FullOriginalColorClear(0,nullptr,D3DCLEAR_ZBUFFER,view,800,600));
+    CHECK(!FullOriginalColorClear(1,&partial,D3DCLEAR_TARGET,view,800,600));
     CHECK(FullOriginalDepthClear(0,nullptr,D3DCLEAR_ZBUFFER,view,800,600));
     CHECK(FullOriginalDepthClear(1,&full,D3DCLEAR_ZBUFFER,view,800,600));
     CHECK(!FullOriginalDepthClear(1,&partial,D3DCLEAR_ZBUFFER,view,800,600));
     CHECK(!FullOriginalDepthClear(0,nullptr,D3DCLEAR_TARGET,view,800,600));
     auto subview=view;subview.Width=400;
     CHECK(!FullOriginalViewport(subview,800,600));
+    CHECK(!FullOriginalColorClear(0,nullptr,D3DCLEAR_TARGET,subview,800,600));
     CHECK(!FullOriginalDepthClear(0,nullptr,D3DCLEAR_ZBUFFER,subview,800,600));
     subview=view;subview.Y=50;
     CHECK(!FullOriginalViewport(subview,800,600));

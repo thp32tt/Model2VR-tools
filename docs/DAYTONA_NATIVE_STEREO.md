@@ -504,3 +504,15 @@ Depth-tested replay is held if an original color-only clear left the
 stereo depth undefined. Cropped viewport/partial depth clears do not
 implicitly mark the whole target ready. No original game draw, timer,
 steering or FFB is rerun. RUNTIME_VALIDATION=UNTESTED.
+
+## First-frame color-plane completeness and Z-only preservation (2026-11-04)
+
+A depth-only original Clear must not mark the independent stereo color
+plane as complete. Likewise, an initial color Clear with a restricted
+viewport or partial rectangle cannot initialize the full main eye image.
+The main backbuffer now rejects these initial partial color writes until
+an actual complete color clear or a synthetic first-draw full color clear
+establishes coverage. An independently valid full original Z clear remains
+ready and is not overwritten by the first synthetic color initialization.
+Auxiliary full-color admission and individual depth readiness stay
+independent. Runtime headset fidelity is still UNTESTED.

@@ -197,8 +197,10 @@ public:
                 both=false;break;
             }
             if(!active_started) {
+                // Preserve an actual source Z-only Clear already mirrored
+                // before the first color draw. Only seed Z if still unknown.
                 const DWORD clear_flags=D3DCLEAR_TARGET|
-                    (depth_bound?D3DCLEAR_ZBUFFER:0u);
+                    (depth_bound && !depth_ready?D3DCLEAR_ZBUFFER:0u);
                 if(FAILED(d->Clear(0,nullptr,clear_flags,
                                    D3DCOLOR_XRGB(0,0,0),1.f,0))){
                     both=false;break;
@@ -398,12 +400,16 @@ public:
         if(FAILED(d->GetViewport(&viewport))){
             Drop(original_depth);Drop(target);return;
         }
+        const bool full_color_clear=m2vr::daytona::FullOriginalColorClear(
+            count,rects,flags,viewport,width_,height_);
+        // A partial initial color clear cannot initialize the remainder of
+        // a new eye surface. Depth-only clears remain independent of color.
+        if(backbuffer && !frame_started_ &&
+           (flags&D3DCLEAR_TARGET)!=0u && !full_color_clear){
+            Drop(original_depth);Drop(target);return;
+        }
         if(!backbuffer){
-            const bool initialized=aux_frame_started_ ||
-                (m2vr::daytona::FullOriginalViewport(
-                     viewport,width_,height_) &&
-                 m2vr::daytona::FullInitialColorClear(
-                     count,rects,flags,width_,height_));
+            const bool initialized=aux_frame_started_ || full_color_clear;
             if(!depth_bound || !initialized ||
                !EnsureAuxiliary(d,target,original_depth)){
                 Drop(original_depth);Drop(target);return;
@@ -433,9 +439,9 @@ public:
             SUCCEEDED(depth_restore)&&SUCCEEDED(viewport_restore);
         Drop(original_depth);Drop(target);
         if(!both || !restored){Reset();return;}
-        // A real original Clear can occur before any Draw; preserve the
-        // source clear on both eyes instead of replacing it with black.
-        active_started=true;
+        // A Z-only original Clear does not initialize the color plane;
+        // a full-screen original color clear does. Preserve both separately.
+        if(full_color_clear)active_started=true;
         if(full_depth_clear)depth_ready=true;
         ++mirrored_clears_;
     }

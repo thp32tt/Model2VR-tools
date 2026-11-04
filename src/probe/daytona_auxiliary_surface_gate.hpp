@@ -54,6 +54,12 @@ inline bool FullInitialColorClear(DWORD count,const D3DRECT* rects,
 // Color-only initial Clears never seed a new depth surface. A source Z clear
 // is safe evidence only when its original viewport and rectangles cover the
 // complete eye target. This also admits a separate Z-only Clear after color.
+inline bool FullOriginalColorClear(DWORD count,const D3DRECT* rects,
+                                   DWORD flags,const D3DVIEWPORT9& vp,
+                                   UINT width,UINT height)noexcept{
+    return FullOriginalViewport(vp,width,height) &&
+           FullInitialColorClear(count,rects,flags,width,height);
+}
 inline bool FullOriginalDepthClear(DWORD count,const D3DRECT* rects,
                                    DWORD flags,const D3DVIEWPORT9& vp,
                                    UINT width,UINT height)noexcept{
