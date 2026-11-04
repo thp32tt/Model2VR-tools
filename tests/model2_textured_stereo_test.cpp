@@ -564,6 +564,7 @@ int main(){
         CHECK(Pixel(raster,eye,512,512)==0xff0000u);
     raster.Clear();
     exact_alpha.alpha_compare=AlphaCompare::LegacyCutoff;
+    exact_alpha.alpha_reference=0u; // reset original-compare-only test state
     exact_alpha.alpha_cutoff=129u;
     CHECK(raster.DrawTextured(manual,exact_alpha));
     CHECK(raster.WrittenEyePixels(0)==0u);
