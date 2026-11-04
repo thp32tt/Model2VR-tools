@@ -163,3 +163,14 @@ A reason mask of **0** proves an x86 pair was published and can be received
 by the x64 OpenXR host. It does not establish a calibrated physical 6DoF
 Daytona camera or a Quest 3 test. The producer calls GetDeviceCaps once per
 resource lifetime instead of once per primitive and clear.
+
+## Eye-clear reentrancy guard
+
+The original D3D9 Clear hook is intentionally installed only in native
+stereo mode. The stereo renderer's own first-eye `device->Clear` passes
+through that hook; re-entering the same eye-clone mutex would deadlock the
+emulator render thread. A scoped thread-local eye replay guard now blocks
+nested mirror calls while still allowing the original GPU Clear trampoline
+to execute normally. This prevents an internally cleared eye from being
+misclassified as a new original game Clear, and prevents a silent frozen
+startup. A regression contract covers this exact hook/mutex relationship.

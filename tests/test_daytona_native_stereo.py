@@ -68,6 +68,18 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
         self.assertIn("if(!both){Reset();return;}",gpu)
 
+    def test_clear_and_gpu_replay_cannot_recursively_take_eye_mutex(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        self.assertIn("thread_local bool g_in_eye_replay=false;",gpu)
+        self.assertIn("struct ScopedEyeReplay final",gpu)
+        self.assertIn("ScopedEyeReplay recursion_guard;",gpu)
+        self.assertIn("count>8192u||g_in_eye_replay",gpu)
+        self.assertIn("|| g_in_eye_replay ||",gpu)
+        self.assertIn("FAILED(d->Clear(0,nullptr",gpu)
+        self.assertIn("Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear)",hooks)
+        self.assertIn("m2vr::daytona::MirrorClear(",hooks)
+
     def test_compact_native_transport_reason_counters(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         self.assertIn('#include "logger.h"',gpu)

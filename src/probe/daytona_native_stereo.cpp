@@ -25,6 +25,16 @@ extern "C" BOOL __stdcall Model2VR_SubmitStereoRGBA(
     unsigned int,unsigned int,unsigned int);
 
 namespace {
+// The game hooks D3D9::Clear. Initializing an eye target calls Clear
+// through the device vtable while the eye mutex is held; do NOT recurse into
+// MirrorClear or try to acquire the same mutex again on this render thread.
+thread_local bool g_in_eye_replay=false;
+struct ScopedEyeReplay final {
+    ScopedEyeReplay()noexcept {g_in_eye_replay=true;}
+    ~ScopedEyeReplay(){g_in_eye_replay=false;}
+    ScopedEyeReplay(const ScopedEyeReplay&)=delete;
+    ScopedEyeReplay& operator=(const ScopedEyeReplay&)=delete;
+};
 template<class T> void Drop(T*& p) noexcept {
     if(p){p->Release();p=nullptr;}
 }
@@ -60,8 +70,9 @@ public:
         // An ordinary source-backed VB/IB Draw is replayed without modifying
         // game-managed VB/IB data. Only the separately proven Daytona UP
         // shader scene may receive the experimental two-eye X adjustment.
-        if(!enabled_||!d||count==0||count>8192u)return;
+        if(!enabled_||!d||count==0||count>8192u||g_in_eye_replay)return;
         std::lock_guard lock(mu_);
+        ScopedEyeReplay recursion_guard;
         // The OpenXR host supplies a coherent, fresh two-eye tracking pair.
         // Never allocate GPU resources, readback, or re-render when the Quest
         // host is absent, disconnected, stale or returning identical eyes.
@@ -212,9 +223,10 @@ public:
     void Clear(IDirect3DDevice9* d,DWORD count,const D3DRECT* rects,
                DWORD flags,D3DCOLOR color,float z,DWORD stencil,
                m2vr::daytona::OriginalClear original){
-        if(!enabled_||!d||!original||!flags ||
+        if(!enabled_||!d||!original||!flags || g_in_eye_replay ||
            (flags&~(D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL)))return;
         std::lock_guard lock(mu_);
+        ScopedEyeReplay recursion_guard;
         if(!LivePoseForGameFrame() || !Ensure(d))return;
         IDirect3DSurface9* target=nullptr;
         if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
