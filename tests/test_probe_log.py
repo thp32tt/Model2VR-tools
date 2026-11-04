@@ -176,6 +176,10 @@ class ProbeLogTests(unittest.TestCase):
                         ("model2_d3d9_source_lighting", witness,
                          lighting, 1, ((0x144 if witness == 32
                                        else fvf) << 32) | stride),
+                        ("model2_d3d9_source_color_mask", witness,
+                         10 if witness == 30 else 0,
+                         ((0x144 if witness == 32 else fvf) << 32)
+                         | stride, frame),
                     ])
                 for seq, values in enumerate(rows, 1):
                     writer.writerow([seq, 100 + seq, 7, *values])
@@ -188,7 +192,14 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(status["texture_source_without_uv"], 1)
         self.assertEqual(status["pretransformed_lighting_ignored"], 2)
         self.assertEqual(status["lighting_witness_mismatch"], 1)
+        masks = d3d9["original_up_material_color_mask_status"]
+        self.assertEqual(masks["partial_rgba"], 1)
+        self.assertEqual(masks["depth_only"], 1)
+        self.assertEqual(masks["mask_witness_or_present_mismatch"], 1)
         examples = d3d9["original_up_material_stage_examples"]
+        self.assertEqual(examples[0]["original_rgba_mask"], 10)
+        self.assertEqual(examples[1]["original_rgba_mask"], 0)
+        self.assertIsNone(examples[2]["original_rgba_mask"])
         self.assertTrue(all(not x["source_has_uv"] for x in examples))
         self.assertTrue(all(
             x["world_pass_proof"] == "NOT_ESTABLISHED" for x in examples))
