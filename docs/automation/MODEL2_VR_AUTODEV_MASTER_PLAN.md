@@ -344,3 +344,13 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
   the already exported world-only source adapters for those *proven* Draws
   with source exact Present-frame and tracked OpenXR pose. Preserve unknown
   HUD/aux/menu as 2D, original HRESULT and independent FFB.
+
+
+## 2026-11-04 exact D3D9 CPU projector / OpenXR binocular draw source checkpoint
+
+- Final validated material source `6096bf19091e53896f77216eff0fa2db8e7e491b`. Connected source commits `e54740f`, `acb79db`, `8e3fbcd`, `bd1af7a`, `b9180fc`, `6096bf1` count as ONE coherent implementation, not six score events.
+- Original x86 ProjectVertexToScreen now compares before/after original source matrix and geometry-command content; a verified projected-world adapter additionally revalidates both at the original D3D9 Draw boundary. Rewritten commands and stale matrix state fail closed.
+- The original verified-world D3D9 adapter admits exact known stage/alpha equivalences; rejects non-main/backbuffer, partial depth viewport, mismatched original depth-stencil sizes/MSAA, active additional MRT, or a secondary D3D9 device. Original Draw and FFB execute only once.
+- The offline original Draw source report requires the CPU source caller, stable matrix, geometry command, original main RT depth and Present to correlate on the SAME witness, never aggregate unrelated Draws into fake evidence.
+- Exact source SHA CI: Public tools `41809347791` SUCCESS; ModDev `41809347839` SUCCESS; Windows x86/CTest `41809347786` SUCCESS; Daytona Win32 producer / Win64 OpenXR / experimental bundle `41809347817` SUCCESS. Do not rerun these exact-SHA validations. A docs-only bookkeeping commit does not change material validation.
+- `RUNTIME_VALIDATION=UNTESTED`. Genuine Daytona race-world/HUD caller ownership, camera axes/units and Quest 3/VDXR appearance are **NOT PROVEN**. Do not promote unverified FVF/projection matches to actual gameplay world. Keep private reverse-engineering material in `thp32tt/Model2VR-analysis-private`; leave OutRun/UW2 untouched.
