@@ -30,6 +30,13 @@ class NativeStereoTest(unittest.TestCase):
         self.assertLess(cpu_commit,gpu_finish)
         self.assertIn("g_native_stereo && !verified_cpu_pending ? 1u : 0u",section)
         self.assertIn("DiscardPreparedFrameAfterCpuWorld(frame);",section)
+        self.assertIn("verified_cpu_pending_pre",section)
+        self.assertIn("PrepareFrameBeforePresent(d,frame,verified_cpu_pending_pre)",section)
+        self.assertLess(section.index("Model2VR_HasVerifiedWorldPendingForOriginalPresent(frame)"),
+                        section.index("PrepareFrameBeforePresent(d,frame,verified_cpu_pending_pre)"))
+        self.assertIn("CpuWorldDeferredGpuReadback",
+                      (ROOT/"src/common/daytona_producer_health.hpp").read_text("utf-8"))
+        self.assertIn("PrepareOriginalMono(d,frame,pending_present_reason_);",gpu)
         self.assertIn("PreferPendingCpuWorld(",world)
         self.assertIn("g.owner==GetCurrentThreadId()",world)
         self.assertIn("pending_present_frame_==frame)FinishFrame();",gpu)
@@ -433,7 +440,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("(std::uint64_t{dpup}<<32)|dipup",hooks)
         self.assertIn("if(frame==1u || frame%120u==0u)",hooks)
         self.assertIn('m2vr::LogEvent("model2_d3d9_frame"',hooks)
-        self.assertIn("m2vr::daytona::PrepareFrameBeforePresent(d,frame);",hooks)
+        self.assertIn("m2vr::daytona::PrepareFrameBeforePresent(d,frame,verified_cpu_pending_pre);",hooks)
         self.assertIn("m2vr::daytona::FinishFrameAfterPresent(frame,original_result);",hooks)
 
     def test_bgra_readback_uses_bounded_cached_nearest_neighbor(self):

@@ -14,9 +14,12 @@ enum Reason : std::uint32_t {
     NoMirroredPass=1u, NoVerifiedScene=2u, WrongDevice=4u,
     PoseUnavailable=8u, PoseExpired=16u, ReadbackFailed=32u,
     IdenticalEyes=64u, TransportFailed=128u,
-    OriginalPresentFailed=256u, OriginalMonoFallback=512u
+    OriginalPresentFailed=256u, OriginalMonoFallback=512u,
+    // Verified CPU-world pair was prepared for the physical original
+    // Present, so speculative GPU two-eye readback was not performed.
+    CpuWorldDeferredGpuReadback=1024u
 };
-constexpr std::uint32_t kKnownReasons=1023u;
+constexpr std::uint32_t kKnownReasons=2047u;
 constexpr bool OriginalMonoPublished(std::uint32_t mask) noexcept {
     return mask==OriginalMonoFallback;
 }
@@ -85,6 +88,8 @@ constexpr const char* ReasonName(std::uint32_t mask)noexcept {
     if(mask&ReadbackFailed)return "D3D9_READBACK_FAILED";
     if(mask&IdenticalEyes)return "IDENTICAL_EYE_PIXELS";
     if(mask&TransportFailed)return "IPC_PUBLISH_FAILED";
+    if(mask&CpuWorldDeferredGpuReadback)
+        return "VERIFIED_WORLD_FAILED_OR_ORIGINAL_MONO_UNAVAILABLE";
     return "UNKNOWN";
 }
 class Link {

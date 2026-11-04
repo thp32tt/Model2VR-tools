@@ -16,7 +16,11 @@ int main(){
  REQUIRE(reader.Open(pid));
  REQUIRE(!reader.Read(got));
  REQUIRE(!writer.Publish(0u,NoVerifiedScene,0,0,0,zero));
- REQUIRE(!writer.Publish(1u,0x400u,0,0,0,zero));
+ REQUIRE(!writer.Publish(1u,0x800u,0,0,0,zero));
+ REQUIRE(ReasonName(CpuWorldDeferredGpuReadback)[0]=='V');
+ REQUIRE(FinalPresentReason(CpuWorldDeferredGpuReadback,true,true)==
+         CpuWorldDeferredGpuReadback);
+ REQUIRE(!MayPublishGameStereo(CpuWorldDeferredGpuReadback));
  REQUIRE(FinalPresentReason(0u,true,true)==0u);
  REQUIRE(FinalPresentReason(0u,false,true)==OriginalPresentFailed);
  REQUIRE(FinalPresentReason(ReadbackFailed,false,true)==

@@ -460,7 +460,8 @@ public:
         if(full_depth_clear)depth_ready=true;
         ++mirrored_clears_;
     }
-    void PreparePresent(IDirect3DDevice9* d,std::uint64_t frame){
+    void PreparePresent(IDirect3DDevice9* d,std::uint64_t frame,
+                        bool verified_cpu_world_pending){
         if(!enabled_ || !frame)return;
         std::lock_guard lock(mu_);
         // MSAA resolves call device->StretchRect while this mutex is held.
@@ -469,6 +470,16 @@ public:
         ScopedEyeReplay recursion_guard;
         pending_present_frame_=frame;
         pending_present_reason_=0u;
+        if(verified_cpu_world_pending){
+            // A complete separately proven CPU world pair is already
+            // staged, but could still lose its tracked pose or Present.
+            // Capture ONE original mono backbuffer as fail-safe, not two
+            // redundant GPU replay eye readbacks on this same game frame.
+            pending_present_reason_=
+                m2vr::producerhealth::CpuWorldDeferredGpuReadback;
+            PrepareOriginalMono(d,frame,pending_present_reason_);
+            return;
+        }
         // Read the current game frame before the original Present can flip
         // its backbuffer. No transport writer or health is touched here.
         const bool fresh_pose=pose_admitted_ && LatchedStereoPoseStillLive();
@@ -1162,8 +1173,9 @@ void MirrorColorFill(IDirect3DDevice9* d,IDirect3DSurface9* dst,
     try{g_eye.ColorFill(d,dst,rect,color,original);}
     catch(...){g_eye.ResetExternal();}
 }
-void PrepareFrameBeforePresent(IDirect3DDevice9* d,std::uint64_t frame)noexcept{
-    try{g_eye.PreparePresent(d,frame);}
+void PrepareFrameBeforePresent(IDirect3DDevice9* d,std::uint64_t frame,
+                               bool verified_cpu_world_pending)noexcept{
+    try{g_eye.PreparePresent(d,frame,verified_cpu_world_pending);}
     catch(...){g_eye.ResetExternal();}
 }
 void FinishFrameAfterPresent(std::uint64_t frame,HRESULT hr)noexcept{

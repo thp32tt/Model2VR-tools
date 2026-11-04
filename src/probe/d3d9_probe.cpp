@@ -1118,8 +1118,13 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     const unsigned dip=g_indexed.exchange(0u,std::memory_order_relaxed);
     const unsigned dpup=g_up.exchange(0u,std::memory_order_relaxed);
     const unsigned dipup=g_indexed_up.exchange(0u,std::memory_order_relaxed);
+    // Query the authenticated source before the physical Present; this
+    // permits staging original mono as backup instead of forcing two
+    // speculative GPU eye readbacks that cannot win the frame arbitration.
+    const bool verified_cpu_pending_pre=
+        Model2VR_HasVerifiedWorldPendingForOriginalPresent(frame)!=FALSE;
     if(g_native_stereo){
-        m2vr::daytona::PrepareFrameBeforePresent(d,frame);
+        m2vr::daytona::PrepareFrameBeforePresent(d,frame,verified_cpu_pending_pre);
         // Aggregate original draw counts remain available even if the
         // HMD is disconnected, and never log game vertices or shaders.
         if(frame==1u || frame%120u==0u)
@@ -1139,7 +1144,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair
     // wins only after its original HRESULT succeeds and pose stays live.
-    const bool verified_cpu_pending=
+    const bool verified_cpu_pending=verified_cpu_pending_pre &&
         Model2VR_HasVerifiedWorldPendingForOriginalPresent(frame)!=FALSE;
     const bool verified_cpu_published=
         Model2VR_CompleteVerifiedWorldOriginalPresent(

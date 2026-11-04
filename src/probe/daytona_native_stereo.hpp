@@ -63,7 +63,8 @@ void MirrorColorFill(IDirect3DDevice9* device,IDirect3DSurface9* destination,
 // Preserve original backbuffer contents by staging before Present; delay
 // x86/x64 GameStereo publication and final health until original HRESULT.
 void PrepareFrameBeforePresent(IDirect3DDevice9* device,
-                               std::uint64_t frame) noexcept;
+                               std::uint64_t frame,
+                               bool verified_cpu_world_pending=false) noexcept;
 void FinishFrameAfterPresent(std::uint64_t frame,
                              HRESULT original_result) noexcept;
 // Drop only the matching staged experimental GPU eye data when the
