@@ -92,6 +92,8 @@ class ProbeLogTests(unittest.TestCase):
                     # disabled. The same Draw witness is required.
                     ("model2_d3d9_source_pass_context", 22,
                      7, 0x3FFD, (640 << 32) | 480),
+                    ("model2_d3d9_source_blend", 22,
+                     (1 << 32) | 9, (1 << 32) | 1, 0),
                     # Wrong original next-Present frame may have identical
                     # caller and material but MUST NOT be correlated.
                     ("model2_d3d9_up_source_fvf", 23, 0x144, 28, 8),
@@ -129,12 +131,32 @@ class ProbeLogTests(unittest.TestCase):
             material["original_up_material_context_status"]
             ["full_backbuffer_scissor_candidate"], 1)
         self.assertTrue(examples[0]["original_source_scissor_full"])
+        self.assertEqual(examples[0]["original_source_blend_mode"],
+                         "multiply_color")
+        self.assertEqual(
+            material["original_up_material_blend_status"]["multiply_color"],1)
         self.assertEqual(examples[0]["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(examples[0]["original_fvf"], "0x00000144")
         self.assertEqual(examples[0]["original_stride"], 28)
         self.assertEqual(examples[0]["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(examples[0]["color_stage"], [4, 2, 0])
         self.assertEqual(examples[0]["source_stage0_result"], 1)
+
+    def test_original_up_source_blend_capability_is_fail_closed(self):
+        classify=MODULE.original_d3d9_blend_mode
+        self.assertEqual(classify(None),"unobserved")
+        self.assertEqual(classify(((1 << 32)|9,(1 << 32)|1,0)),
+                         "multiply_color")
+        self.assertEqual(classify(((1 << 32)|1,(3 << 32)|1,0)),
+                         "multiply_color")
+        self.assertEqual(classify(((1 << 32)|7,(8 << 32)|1,0)),
+                         "destination_alpha_over")
+        self.assertEqual(classify(((1 << 32)|1,(2 << 32)|1,0)),
+                         "preserve_destination")
+        self.assertEqual(classify(((1 << 32)|9,(1 << 32)|1,1)),
+                         "unsupported")
+        self.assertEqual(classify(((1 << 32)|9,(1 << 32)|2,0)),
+                         "unsupported")
 
     def test_original_up_scissor_present_and_bounds_are_not_world_proof(self):
         classify=MODULE.original_up_source_pass_status

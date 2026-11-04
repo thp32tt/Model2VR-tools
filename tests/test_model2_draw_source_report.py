@@ -46,6 +46,8 @@ class SourceAuditTests(unittest.TestCase):
                  pack(0, 15), 0, 0),
                 ("model2_d3d9_source_color_mask", 101,
                  15, pack(0x112, 20), 17),
+                ("model2_d3d9_source_blend", 101,
+                 pack(1, 9), pack(1, 1), 0),
                 ("model2_d3d9_source_stage0_color", 101,
                  pack(4, 2), 0, pack(0x112, 20)),
                 ("model2_d3d9_source_stage0_alpha", 101,
@@ -93,6 +95,10 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["color_write_modes"], [[0, 15]])
             self.assertEqual(src["original_source_color_mask_modes"], [0, 15])
             self.assertEqual(src["original_depth_only_draw_witnesses"], 1)
+            self.assertEqual(src["original_source_blend_modes"],
+                             ["multiply_color"])
+            self.assertEqual(
+                src["original_source_blend_unsupported_witnesses"], 0)
             self.assertEqual(src["original_source_color_mask_mismatch_witnesses"], 0)
             self.assertEqual(src["original_material_complete_witnesses"], 1)
             self.assertEqual(src["original_material_current_result_witnesses"], 1)
@@ -228,6 +234,40 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p, bad)
             self.assertEqual(REPORT.audit_csv(p)["sources"][0][
                 "same_witness_joint_candidates"], 0)
+
+    def test_original_source_blend_requires_its_own_draw_witness(self):
+        classify=REPORT.original_d3d9_blend_mode
+        self.assertEqual(classify((pack(1,9),pack(1,1),0)),
+                         "multiply_color")
+        self.assertEqual(classify((pack(1,7),pack(8,1),0)),
+                         "destination_alpha_over")
+        self.assertEqual(classify((pack(1,1),pack(2,1),0)),
+                         "preserve_destination")
+        self.assertEqual(classify((pack(1,7),pack(8,1),1)),
+                         "unsupported")
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"original_blend.csv"
+            self.write_log(path, [
+                ("model2_d3d9_vb_present_frame",11,17,1,0),
+                ("model2_d3d9_vb_source",11,0x1234,
+                 pack(1,0x44),pack(600,20)),
+                ("model2_d3d9_source_blend",11,
+                 pack(1,7),pack(8,1),0),
+                ("model2_d3d9_vb_present_frame",12,17,1,0),
+                ("model2_d3d9_vb_source",12,0x1234,
+                 pack(1,0x44),pack(600,20)),
+                ("model2_d3d9_source_blend",12,
+                 pack(1,7),pack(8,1),1),
+                ("model2_d3d9_source_blend",13,
+                 pack(1,9),pack(1,1),0),
+            ])
+            result=REPORT.audit_csv(path)
+            source=result["sources"][0]
+            self.assertEqual(source["original_source_blend_modes"],
+                             ["destination_alpha_over"])
+            self.assertEqual(
+                source["original_source_blend_unsupported_witnesses"],1)
+            self.assertEqual(result["world_pass_proof"],"NOT_ESTABLISHED")
 
     def test_material_must_match_its_own_original_draw_declaration(self):
         with tempfile.TemporaryDirectory() as tmp:
