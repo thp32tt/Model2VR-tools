@@ -52,6 +52,8 @@ def analyze(path: Path):
     cpu_batch_joins = Counter()
     cpu_batch_edges = Counter()
     cpu_batch_frames = defaultdict(set)
+    cpu_matrix_join_status = Counter()
+    cpu_matrix_join_sources = Counter()
     up_candidates = []
     recent_cpu = deque(maxlen=4096)
     latest_project_ctx = {}
@@ -257,6 +259,29 @@ def analyze(path: Path):
                 cpu_batch_edges[edge] += complete
                 if frame is not None and len(cpu_batch_frames[edge]) < 4096:
                     cpu_batch_frames[edge].add(frame)
+            elif event in ("model2_d3d9_cpu_up_matrix_identity",
+                            "model2_d3d9_cpu_shader_matrix_identity",
+                            "model2_d3d9_cpu_vb_matrix_identity"):
+                # Read-only original active-matrix provenance within one
+                # CPU-projector->Draw join. NEVER authenticates a world pass.
+                family = {
+                    "model2_d3d9_cpu_up_matrix_identity": "up",
+                    "model2_d3d9_cpu_shader_matrix_identity": "shader_up",
+                    "model2_d3d9_cpu_vb_matrix_identity": "vb",
+                }[event]
+                if a1 > 0xFFFFFFFF or a2 not in (0, 1) or a3 > 0xFFFFFFFF:
+                    cpu_matrix_join_status[f"{family}:invalid"] += 1
+                elif a2:
+                    cpu_matrix_join_status[f"{family}:mixed_matrix_rejected"] += 1
+                elif not a1:
+                    cpu_matrix_join_status[f"{family}:matrix_unknown"] += 1
+                elif not a3:
+                    cpu_matrix_join_status[f"{family}:cpu_caller_unknown"] += 1
+                else:
+                    cpu_matrix_join_status[f"{family}:single_matrix_candidate"] += 1
+                    key = (family, a1, a3)
+                    if key in cpu_matrix_join_sources or len(cpu_matrix_join_sources) < 4096:
+                        cpu_matrix_join_sources[key] += 1
             elif event == "model2_d3d9_draw_origin":
                 frame, family, caller = a0, a1, a2
                 # a3 keeps the full unsigned 64-bit (primitive count, topology).
@@ -336,6 +361,16 @@ def analyze(path: Path):
             "in_process_cpu_draw_join": dict(joined_gpu_cpu.most_common()),
             "in_process_cpu_source_callers": dict(joined_cpu_callers.most_common()),
             "in_process_cpu_batch_join": dict(cpu_batch_joins.most_common()),
+            "in_process_cpu_matrix_join_status":
+                dict(cpu_matrix_join_status.most_common()),
+            "in_process_cpu_matrix_join_sources": [
+                {"draw_family": family, "matrix_identity": f"0x{matrix:08X}",
+                 "cpu_project_caller_rva": f"0x{caller:08X}",
+                 "single_matrix_candidates": count,
+                 "world_pass_proof": "NOT_ESTABLISHED"}
+                for (family, matrix, caller), count
+                in cpu_matrix_join_sources.most_common(64)
+            ],
             "in_process_cpu_batch_edges": [
                 {"projection_hypothesis": key[0],
                  "draw_family": key[1],
@@ -446,6 +481,15 @@ def markdown(summary):
             f"-> CPU {edge['cpu_project_caller_rva']}: "
             f"{edge['complete_triangle_candidates']} complete candidates across "
             f"{edge['distinct_present_frames']} frames; WORLD PROOF UNKNOWN")
+    lines += ["", "### Original CPU matrix identity across Draw joins", ""]
+    lines.append("One matrix per Draw is NOT a calibrated race world proof;")
+    lines.append("mixed original CPU matrices are rejected by the source join.")
+    for name, count in d3d9.get("in_process_cpu_matrix_join_status", {}).items():
+        lines.append(f"- {name}: {count}")
+    for source in d3d9.get("in_process_cpu_matrix_join_sources", []):
+        lines.append(f"- {source['draw_family']} matrix {source['matrix_identity']} "
+                     f"CPU {source['cpu_project_caller_rva']}: "
+                     f"{source['single_matrix_candidates']} candidates")
     lines += ["", "### Viewport, scissor and render-target samples", ""]
     for key in ("sampled_viewports", "sampled_scissors", "sampled_targets"):
         lines.append(f"#### {key}")

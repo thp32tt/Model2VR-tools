@@ -95,6 +95,14 @@ class ProbeLogTests(unittest.TestCase):
                                  23, (9 << 32) | 9, 0, 0])
                 writer.writerow([8, 17, 7, "model2_d3d9_cpu_up_join_batch",
                                  99, (1 << 32) | 1, 0, 0xEEE])
+                writer.writerow([9, 18, 7, "model2_d3d9_cpu_up_matrix_identity",
+                                 22, 0x10F0068, 0, 0xABC])
+                writer.writerow([10, 19, 7, "model2_d3d9_cpu_up_matrix_identity",
+                                 23, 0, 1, 0xABC])
+                writer.writerow([11, 20, 7, "model2_d3d9_cpu_shader_matrix_identity",
+                                 24, 0, 0, 0xDEF])
+                writer.writerow([12, 21, 7, "model2_d3d9_cpu_vb_matrix_identity",
+                                 25, 0x10F00A8, 0, 0x55])
             d3d9 = MODULE.analyze(path)["d3d9"]
         counts = d3d9["in_process_cpu_draw_join"]
         self.assertEqual(counts["xyzrhw_candidate:full_same_cpu_caller_candidate"], 1)
@@ -128,6 +136,30 @@ class ProbeLogTests(unittest.TestCase):
             {("0x00000111", 2), ("0x00000222", 2)})
         self.assertTrue(all(e["world_pass_proof"] == "NOT_ESTABLISHED"
                             for e in edges))
+
+    def test_cpu_matrix_identity_does_not_promote_world_proof(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "matrix.csv"
+            with path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
+                writer.writerow([1, 1, 1, "model2_d3d9_cpu_up_matrix_identity",
+                                 21, 0x1000, 0, 0x555])
+                writer.writerow([2, 2, 1, "model2_d3d9_cpu_up_matrix_identity",
+                                 22, 0, 1, 0x555])
+                writer.writerow([3, 3, 1, "model2_d3d9_cpu_shader_matrix_identity",
+                                 23, 0, 0, 0x555])
+                writer.writerow([4, 4, 1, "model2_d3d9_cpu_vb_matrix_identity",
+                                 24, 0x2000, 0, 0x777])
+            d3d9 = MODULE.analyze(path)["d3d9"]
+        kinds = d3d9["in_process_cpu_matrix_join_status"]
+        self.assertEqual(kinds["up:single_matrix_candidate"], 1)
+        self.assertEqual(kinds["up:mixed_matrix_rejected"], 1)
+        self.assertEqual(kinds["shader_up:matrix_unknown"], 1)
+        self.assertEqual(kinds["vb:single_matrix_candidate"], 1)
+        self.assertEqual(len(d3d9["in_process_cpu_matrix_join_sources"]), 2)
+        self.assertTrue(all(x["world_pass_proof"] == "NOT_ESTABLISHED"
+                            for x in d3d9["in_process_cpu_matrix_join_sources"]))
 
     def test_up_witness_correlates_only_prior_same_thread_coordinates(self):
         with tempfile.TemporaryDirectory() as td:
