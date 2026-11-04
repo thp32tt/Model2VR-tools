@@ -236,6 +236,45 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(
                 broken["original_source_blend_unsupported_witnesses"],1)
 
+    def test_original_alpha_write_mask_makes_split_factors_inert(self):
+        status=REPORT.original_d3d9_separate_alpha_status
+        blend=REPORT.original_d3d9_blend_mode
+        rgb=(pack(1,5),pack(6,1),1)
+        full=(7,pack(0x144,28),17) # actual same Draw/Present alpha off
+        self.assertEqual(status(
+            rgb,None,0x144,28,full,17),"masked_inert")
+        self.assertEqual(blend(
+            rgb,None,0x144,28,full,17),"source_alpha_over")
+        self.assertEqual(status(
+            rgb,None,0x144,28,full,18),"missing_source")
+        self.assertEqual(status(
+            rgb,None,0x144,28,(15,pack(0x144,28),17),17),
+            "missing_source")
+        self.assertEqual(status(
+            rgb,None,0x144,28,(7,pack(0x144,24),17),17),
+            "missing_source")
+        # A separately logged source cannot have a foreign declaration,
+        # even if a same-Present color mask would make it inert.
+        wrong=(pack(2,1),1,pack(0x144,24))
+        self.assertEqual(status(
+            rgb,wrong,0x144,28,full,17),"fvf_stride_mismatch")
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"masked-split.csv"
+            self.write_log(p,[
+                ("model2_d3d9_vb_source",77,0x55,
+                 pack(1,0x144),pack(2048,28)),
+                ("model2_d3d9_vb_present_frame",77,17,1,0),
+                ("model2_d3d9_source_blend",77,*rgb),
+                ("model2_d3d9_source_color_mask",77,
+                 7,pack(0x144,28),17),
+            ])
+            src=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["original_source_separate_alpha_status"],
+                             ["masked_inert"])
+            self.assertEqual(src["original_source_blend_modes"],
+                             ["source_alpha_over"])
+            self.assertFalse(src["world_pass_proven"])
+
     def test_conflicting_separate_alpha_witness_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"conflict.csv"
