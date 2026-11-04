@@ -336,13 +336,25 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
         // Independent ADD alpha factors MUST belong to this SAME original
         // Draw witness and FVF/stride, not a later Present or another pass.
         if(blend_enable==1u && separate_alpha==1u) {
-            DWORD asrc=0u,adst=0u,aop=0u;
-            if(SUCCEEDED(dev->GetRenderState(D3DRS_SRCBLENDALPHA,&asrc)) &&
-               SUCCEEDED(dev->GetRenderState(D3DRS_DESTBLENDALPHA,&adst)) &&
-               SUCCEEDED(dev->GetRenderState(D3DRS_BLENDOPALPHA,&aop)))
-                m2vr::LogEvent("model2_d3d9_source_separate_alpha_blend",
-                    witness,(std::uint64_t{asrc}<<32)|adst,aop,
-                    (std::uint64_t{fvf}<<32)|stride);
+            DWORD source_write_mask=0u;
+            // The original alpha blend registers are semantically inert
+            // if the genuine source COLORWRITEENABLE masks ALPHA. Avoid
+            // unnecessary COM reads; the SAME-witness original color-mask
+            // event still certifies this exact RGB-only path separately.
+            if(SUCCEEDED(dev->GetRenderState(
+                    D3DRS_COLORWRITEENABLE,&source_write_mask)) &&
+               (source_write_mask&D3DCOLORWRITEENABLE_ALPHA)!=0u) {
+                DWORD asrc=0u,adst=0u,aop=0u;
+                if(SUCCEEDED(dev->GetRenderState(
+                               D3DRS_SRCBLENDALPHA,&asrc)) &&
+                   SUCCEEDED(dev->GetRenderState(
+                               D3DRS_DESTBLENDALPHA,&adst)) &&
+                   SUCCEEDED(dev->GetRenderState(
+                               D3DRS_BLENDOPALPHA,&aop)))
+                    m2vr::LogEvent("model2_d3d9_source_separate_alpha_blend",
+                        witness,(std::uint64_t{asrc}<<32)|adst,aop,
+                        (std::uint64_t{fvf}<<32)|stride);
+            }
         }
     }
     // Original fixed-function vertex stage for the SAME sampled Draw.
