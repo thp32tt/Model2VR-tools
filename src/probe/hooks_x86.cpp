@@ -3,6 +3,7 @@
 #include "logger.h"
 #include "project_draw_correlator.hpp"
 #include "project_capture_stack.hpp"
+#include "source_matrix_fingerprint.hpp"
 #include <array>
 #include "signature.h"
 
@@ -12,6 +13,7 @@
 
 #include <atomic>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -70,6 +72,22 @@ std::uint32_t ReadStateRva(std::uint32_t rva) {
     return SafeReadU32(g_exe_base + rva);
 }
 
+// Read only the independently supplied active matrix pointer, never a
+// hard-coded original emulator address. SEH contains stale/reset pointers.
+// This opt-in probe already reads original CPU points; no state is written.
+std::uint32_t ReadSourceMatrixFingerprint(std::uint32_t pointer) noexcept {
+    if(pointer<0x10000u)return 0u;
+    std::array<float,16> values{};
+    __try {
+        const auto* source=reinterpret_cast<const volatile float*>(
+            static_cast<std::uintptr_t>(pointer));
+        for(std::size_t i=0;i<values.size();++i)values[i]=source[i];
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        return 0u;
+    }
+    return m2vr::drawprobe::SourceMatrixFingerprint(values);
+}
+
 extern "C" void __cdecl M2VR_OnTransformPoint(void* point, std::uint32_t caller) {
     if (!ShouldSample(g_transform_counter, g_config.transform_sample_every)) {
         return;
@@ -116,6 +134,8 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
             record->source_caller_rva=static_cast<std::uint32_t>(raw-base);
             record->matrix_identity=
                 ReadStateRva(g_config.active_matrix_ptr_rva);
+            record->matrix_fingerprint=
+                ReadSourceMatrixFingerprint(record->matrix_identity);
             record->capture=true;
         }
     }
@@ -151,11 +171,27 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* /*eax_after_original*/) 
         return;
     }
     if(capture){
-        const float projected[3]{x,y,z};
-        m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
-            m2vr::drawprobe::CurrentProjectDrawEpoch(),
-            record.source_caller_rva,record.source_xyz.data(),projected,
-            record.matrix_identity);
+        // Original projector may switch or rewrite an active matrix in place.
+        // Never correlate its before-CPU XYZ with after-CPU screen XY if the
+        // matrix snapshot changed during the original call.
+        const auto after_identity=ReadStateRva(g_config.active_matrix_ptr_rva);
+        const auto after_fingerprint=ReadSourceMatrixFingerprint(after_identity);
+        const bool changed=after_identity!=record.matrix_identity ||
+            (record.matrix_fingerprint!=0u &&
+             after_fingerprint!=record.matrix_fingerprint);
+        if(emit_log){
+            m2vr::LogEvent("project_matrix_content",
+                record.source_caller_rva,record.matrix_identity,
+                record.matrix_fingerprint,
+                changed?2u:(record.matrix_fingerprint?1u:0u));
+        }
+        if(!changed){
+            const float projected[3]{x,y,z};
+            m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
+                m2vr::drawprobe::CurrentProjectDrawEpoch(),
+                record.source_caller_rva,record.source_xyz.data(),projected,
+                record.matrix_identity,record.matrix_fingerprint);
+        }
     }
     if(emit_log)
         m2vr::LogEvent("project_after",reinterpret_cast<std::uintptr_t>(point),

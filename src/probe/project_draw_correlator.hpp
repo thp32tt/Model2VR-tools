@@ -48,7 +48,9 @@ struct ProjectedTriangleBatchJoin {
     std::uint32_t ambiguous=0;
     std::uint32_t common_source_caller_rva=0;
     std::uint32_t common_matrix_identity=0;
+    std::uint32_t common_matrix_fingerprint=0;
     bool mixed_matrix_identity=false;
+    bool mixed_matrix_fingerprint=false;
     // Filled only from individually complete original triangles; never
     // admits a mixed CPU caller as calibrated camera source.
     std::array<SourceProjectionSample,24> camera_samples{};
@@ -56,6 +58,7 @@ struct ProjectedTriangleBatchJoin {
     bool CompleteSameSource() const noexcept {
         return inspected>=2u && complete==inspected &&
             ambiguous==0u && partial==0u && !mixed_matrix_identity &&
+            !mixed_matrix_fingerprint &&
             common_source_caller_rva!=0u &&
             camera_sample_count==std::size_t(complete)*3u;
     }
@@ -65,13 +68,16 @@ struct ProjectedSourceJoin {
     std::uint32_t ambiguous=0;
     std::uint32_t source_caller_rva=0;
     std::uint32_t matrix_identity=0;
+    std::uint32_t matrix_fingerprint=0;
     bool mixed_matrix_identity=false;
+    bool mixed_matrix_fingerprint=false;
     std::array<std::array<float,3>,3> source_xyz{};
     // Three distinct, unambiguous matches are a correlation candidate;
     // they do NOT independently authenticate a world pass or camera units.
     bool Complete() const noexcept {
         return matched==3u && ambiguous==0u &&
-               !mixed_matrix_identity && source_caller_rva!=0u;
+               !mixed_matrix_identity && !mixed_matrix_fingerprint &&
+               source_caller_rva!=0u;
     }
 };
 class ProjectDrawCorrelator final {
@@ -81,7 +87,8 @@ public:
     void Capture(std::uint64_t epoch,std::uint32_t caller_rva,
                  const float source_xyz[3],
                  const float projected_xyz[3],
-                 std::uint32_t matrix_identity=0u) noexcept {
+                 std::uint32_t matrix_identity=0u,
+                 std::uint32_t matrix_fingerprint=0u) noexcept {
         if(!epoch || !caller_rva || !source_xyz || !projected_xyz)return;
         for(std::size_t i=0;i<3;++i) {
             if(!std::isfinite(source_xyz[i]) ||
@@ -102,6 +109,7 @@ public:
         entry.y=projected_xyz[1];
         entry.caller_rva=caller_rva;
         entry.matrix_identity=matrix_identity;
+        entry.matrix_fingerprint=matrix_fingerprint;
         cursor_=(cursor_+1u)%kCapacity;
         if(size_<kCapacity)++size_;
     }
@@ -114,6 +122,7 @@ public:
             kCapacity,kCapacity,kCapacity};
         std::uint32_t common_caller=0u;
         std::uint32_t common_matrix=0u;
+        std::uint32_t common_fingerprint=0u;
         for(std::size_t v=0;v<count;++v){
             const auto& pos=vertices[v];
             if(!std::isfinite(pos.x)||!std::isfinite(pos.y))return {};
@@ -142,15 +151,22 @@ public:
             if(!result.matched){
                 common_caller=sample.caller_rva;
                 common_matrix=sample.matrix_identity;
+                common_fingerprint=sample.matrix_fingerprint;
             }else{
                 if(common_caller!=sample.caller_rva)common_caller=0u;
                 if(common_matrix!=sample.matrix_identity)
                     result.mixed_matrix_identity=true;
+                // Detect in-place edits even when the active matrix pointer
+                // and original CPU projection caller are unchanged.
+                if(common_fingerprint!=sample.matrix_fingerprint)
+                    result.mixed_matrix_fingerprint=true;
             }
             ++result.matched;
         }
         result.source_caller_rva=common_caller;
         result.matrix_identity=result.mixed_matrix_identity?0u:common_matrix;
+        result.matrix_fingerprint=
+            result.mixed_matrix_fingerprint?0u:common_fingerprint;
         return result;
     }
     // Analyze up to eight original triangle-list primitives, not merely
@@ -171,11 +187,14 @@ public:
                 if(!batch.complete){
                     batch.common_source_caller_rva=join.source_caller_rva;
                     batch.common_matrix_identity=join.matrix_identity;
+                    batch.common_matrix_fingerprint=join.matrix_fingerprint;
                 }else{
                     if(batch.common_source_caller_rva!=join.source_caller_rva)
                         batch.common_source_caller_rva=0u;
                     if(batch.common_matrix_identity!=join.matrix_identity)
                         batch.mixed_matrix_identity=true;
+                    if(batch.common_matrix_fingerprint!=join.matrix_fingerprint)
+                        batch.mixed_matrix_fingerprint=true;
                 }
                 for(std::size_t v=0;v<3u;++v) {
                     auto& dest=batch.camera_samples[batch.camera_sample_count++];
@@ -188,6 +207,7 @@ public:
             }
             if(join.ambiguous)++batch.ambiguous;
             if(join.mixed_matrix_identity)batch.mixed_matrix_identity=true;
+            if(join.mixed_matrix_fingerprint)batch.mixed_matrix_fingerprint=true;
         }
         return batch;
     }
@@ -197,6 +217,7 @@ private:
         float x=0.f,y=0.f;
         std::uint32_t caller_rva=0u;
         std::uint32_t matrix_identity=0u;
+        std::uint32_t matrix_fingerprint=0u;
     };
     std::array<Entry,kCapacity> entries_{};
     std::uint64_t epoch_=0u;

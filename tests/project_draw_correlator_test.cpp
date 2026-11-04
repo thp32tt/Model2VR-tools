@@ -5,14 +5,16 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include "../src/probe/source_matrix_fingerprint.hpp"
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"source/draw correlation line %d: %s\n",__LINE__,#x);return 1;}}while(0)
 using namespace m2vr::drawprobe;
 static void Capture(ProjectDrawCorrelator& c,std::uint64_t epoch,
                     std::uint32_t caller,float sx,float sy,
                     float vx,float vy,float vz,
-                    std::uint32_t matrix_identity=0u){
+                    std::uint32_t matrix_identity=0u,
+                    std::uint32_t matrix_fingerprint=0u){
     const float view[3]{vx,vy,vz},screen[3]{sx,sy,0.5f};
-    c.Capture(epoch,caller,view,screen,matrix_identity);
+    c.Capture(epoch,caller,view,screen,matrix_identity,matrix_fingerprint);
 }
 int main(){
     ProjectDrawCorrelator c{};
@@ -71,6 +73,44 @@ int main(){
         85u,two_faces,6u);
     CHECK(switched.complete==2u && switched.mixed_matrix_identity);
     CHECK(!switched.CompleteSameSource());
+    // Same matrix pointer with different contents is a separate camera
+    // state and cannot be silently classified as one source world Draw.
+    ProjectDrawCorrelator rewritten_matrix{};
+    for(unsigned i=0;i<6;++i)
+        Capture(rewritten_matrix,85u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f,0x1000u,
+                i<3u?0xAABBCCDDu:0xDEADBEEFu);
+    const auto drift=rewritten_matrix.MatchTriangleList(85u,two_faces,6u);
+    CHECK(drift.complete==2u && drift.mixed_matrix_fingerprint);
+    CHECK(drift.common_matrix_identity==0x1000u);
+    CHECK(!drift.CompleteSameSource());
+    ProjectDrawCorrelator within_triangle_drift{};
+    for(unsigned i=0;i<3;++i)
+        Capture(within_triangle_drift,86u,0x55u,face[i].x,face[i].y,
+                float(i+1),float(i+2),5.f,0x1000u,
+                i==2u?0xDEADBEEFu:0xAABBCCDDu);
+    CHECK(!within_triangle_drift.Match(86u,face,3u).Complete());
+    ProjectDrawCorrelator consistent_content{};
+    for(unsigned i=0;i<6;++i)
+        Capture(consistent_content,87u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f,0x1000u,0xAABBCCDDu);
+    const auto stable_content=consistent_content.MatchTriangleList(
+        87u,two_faces,6u);
+    CHECK(stable_content.CompleteSameSource());
+    CHECK(stable_content.common_matrix_fingerprint==0xAABBCCDDu);
+    std::array<float,16> original_matrix{};
+    original_matrix[0]=1.f;original_matrix[5]=1.f;
+    original_matrix[10]=1.f;original_matrix[15]=1.f;
+    const auto original_fingerprint=SourceMatrixFingerprint(original_matrix);
+    CHECK(original_fingerprint!=0u);
+    auto changed_matrix=original_matrix;
+    changed_matrix[12]=0.5f;
+    CHECK(SourceMatrixFingerprint(changed_matrix)!=original_fingerprint);
+    changed_matrix=original_matrix;
+    changed_matrix[12]=-0.0f;
+    CHECK(SourceMatrixFingerprint(changed_matrix)==original_fingerprint);
+    changed_matrix[5]=std::numeric_limits<float>::infinity();
+    CHECK(SourceMatrixFingerprint(changed_matrix)==0u);
     ProjectDrawCorrelator intra_triangle{};
     for(unsigned i=0;i<6;++i)
         Capture(intra_triangle,86u,0x55u,two_faces[i].x,two_faces[i].y,

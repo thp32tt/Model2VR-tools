@@ -14,6 +14,7 @@ int main(){
     outer->source_caller_rva=0x1234u;
     outer->source_xyz={1.f,2.f,3.f};
     outer->capture=true;
+    outer->matrix_fingerprint=0x12345678u;
     CHECK(stack.Begin(&source_b,false));
     auto* inner=stack.Top();
     CHECK(inner && inner->original_point==&source_b);
@@ -30,6 +31,7 @@ int main(){
     CHECK(completed.original_point==&source_a);
     CHECK(completed.source_caller_rva==0x1234u);
     CHECK(completed.emit_log && completed.capture);
+    CHECK(completed.matrix_fingerprint==0x12345678u);
     CHECK(completed.source_xyz[2]==3.f);
     CHECK(stack.Depth()==0u);
     // Any overflow chain must consume its own matching unwinds and

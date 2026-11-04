@@ -13,6 +13,9 @@ struct ProjectCaptureRecord {
     std::uint32_t source_caller_rva=0;
     // Original active matrix identity sampled before the CPU projector.
     std::uint32_t matrix_identity=0;
+    // Snapshot of all 16 source matrix floats before the original projector.
+    // Zero means unavailable; source adapter never treats it as proof.
+    std::uint32_t matrix_fingerprint=0;
     bool emit_log=false;
     bool capture=false;
 };
