@@ -100,8 +100,18 @@ public:
         D3DVIEWPORT9 original_vp{};
         if(FAILED(d->GetViewport(&original_vp))){Drop(target);return;}
         IDirect3DSurface9* original_depth=nullptr;
-        if(FAILED(d->GetDepthStencilSurface(&original_depth)) ||
-           !original_depth){Drop(target);return;}
+        const HRESULT depth_hr=d->GetDepthStencilSurface(&original_depth);
+        const bool depth_bound=SUCCEEDED(depth_hr)&&original_depth;
+        if(!depth_bound){
+            // A real game HUD/menu pass can detach the depth buffer. Mirror
+            // only if the original draw explicitly disabled Z testing.
+            DWORD z_enabled=1u;
+            if(depth_hr!=D3DERR_NOTFOUND || original_depth ||
+               FAILED(d->GetRenderState(D3DRS_ZENABLE,&z_enabled)) ||
+               z_enabled!=D3DZB_FALSE){
+                Drop(original_depth);Drop(target);return;
+            }
+        }
         // A camera candidate requires an exact independently observed
         // source callsite and complete original shader-up declaration.
         bool scene=false;
@@ -161,12 +171,14 @@ public:
             // mismatch while switching the original render-target.
             if(FAILED(d->SetDepthStencilSurface(nullptr)) ||
                FAILED(d->SetRenderTarget(0,eyes_[eye].color)) ||
-               FAILED(d->SetDepthStencilSurface(eyes_[eye].depth)) ||
+               FAILED(d->SetDepthStencilSurface(depth_bound?eyes_[eye].depth:nullptr)) ||
                FAILED(d->SetViewport(&viewport))) {
                 both=false;break;
             }
             if(!frame_started_) {
-                if(FAILED(d->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,
+                const DWORD clear_flags=D3DCLEAR_TARGET|
+                    (depth_bound?D3DCLEAR_ZBUFFER:0u);
+                if(FAILED(d->Clear(0,nullptr,clear_flags,
                                    D3DCOLOR_XRGB(0,0,0),1.f,0))){
                     both=false;break;
                 }
@@ -177,12 +189,14 @@ public:
         }
         // Restore original game's RT, DS and exact viewport even if one
         // stereo eye fails. Never suppress its original successful draw.
-        d->SetDepthStencilSurface(nullptr);
-        d->SetRenderTarget(0,target);
-        d->SetDepthStencilSurface(original_depth);
-        d->SetViewport(&original_vp);
+        const HRESULT detach=d->SetDepthStencilSurface(nullptr);
+        const HRESULT target_restore=d->SetRenderTarget(0,target);
+        const HRESULT depth_restore=d->SetDepthStencilSurface(original_depth);
+        const HRESULT viewport_restore=d->SetViewport(&original_vp);
+        const bool restored=SUCCEEDED(detach)&&SUCCEEDED(target_restore)&&
+            SUCCEEDED(depth_restore)&&SUCCEEDED(viewport_restore);
         Drop(original_depth);Drop(target);
-        if(!both){Reset();return;}
+        if(!both || !restored){Reset();return;}
         frame_started_=true;
         ++mirrored_draws_;
         if(scene)++scene_draws_;
@@ -244,27 +258,34 @@ public:
             }
         }
         IDirect3DSurface9* original_depth=nullptr;
+        const HRESULT depth_hr=d->GetDepthStencilSurface(&original_depth);
+        const bool depth_bound=SUCCEEDED(depth_hr)&&original_depth;
+        if(!depth_bound && (depth_hr!=D3DERR_NOTFOUND || original_depth ||
+           (flags&(D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL))!=0u)){
+            Drop(original_depth);Drop(target);return;
+        }
         D3DVIEWPORT9 viewport{};
-        if(FAILED(d->GetDepthStencilSurface(&original_depth)) || !original_depth ||
-           FAILED(d->GetViewport(&viewport))){
+        if(FAILED(d->GetViewport(&viewport))){
             Drop(original_depth);Drop(target);return;
         }
         bool both=true;
         for(unsigned eye=0;eye<2;++eye){
             if(FAILED(d->SetDepthStencilSurface(nullptr)) ||
                FAILED(d->SetRenderTarget(0,eyes_[eye].color)) ||
-               FAILED(d->SetDepthStencilSurface(eyes_[eye].depth)) ||
+               FAILED(d->SetDepthStencilSurface(depth_bound?eyes_[eye].depth:nullptr)) ||
                FAILED(d->SetViewport(&viewport)) ||
                FAILED(original(d,count,rects,flags,color,z,stencil))){
                 both=false;break;
             }
         }
-        d->SetDepthStencilSurface(nullptr);
-        d->SetRenderTarget(0,target);
-        d->SetDepthStencilSurface(original_depth);
-        d->SetViewport(&viewport);
+        const HRESULT detach=d->SetDepthStencilSurface(nullptr);
+        const HRESULT target_restore=d->SetRenderTarget(0,target);
+        const HRESULT depth_restore=d->SetDepthStencilSurface(original_depth);
+        const HRESULT viewport_restore=d->SetViewport(&viewport);
+        const bool restored=SUCCEEDED(detach)&&SUCCEEDED(target_restore)&&
+            SUCCEEDED(depth_restore)&&SUCCEEDED(viewport_restore);
         Drop(original_depth);Drop(target);
-        if(!both){Reset();return;}
+        if(!both || !restored){Reset();return;}
         // A real original Clear can occur before any Draw; preserve the
         // source clear on both eyes instead of replacing it with black.
         frame_started_=true;

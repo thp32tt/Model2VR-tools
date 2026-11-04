@@ -190,3 +190,22 @@ manager clears its frame latch. The GPU producer now checks a fresh coherent
 OpenXR eye pair again after allocation, rather than losing the first frame's
 pose admission silently. The existing 250ms pose age gate and runtime
 UNTESTED status remain in force.
+
+## Source depth-less HUD/2D transitions (2026-11-04)
+
+A real D3D9 game frame can detach the original depth/stencil surface for
+menu and HUD overlays. Once an original, depth-bearing source has provided
+the eye-surface format, the native replay now accepts a subsequent
+`GetDepthStencilSurface == D3DERR_NOTFOUND` draw **only when** the
+original `D3DRS_ZENABLE` is disabled. These overlays are drawn into
+both eye targets with no bound depth, preserving their source no-Z
+semantics and retaining previous world eye depth for subsequent 3D draws.
+Source `Clear` with no depth surface is forwarded only for
+`D3DCLEAR_TARGET` (never guessed Z/stencil). The initial fallback
+eye clear uses color-only when original Z is detached. Both draw and
+clear paths verify render-target, depth and viewport restoration before
+counting a successful mirrored pass.
+
+No new shader world classification, duplicate original game simulation,
+Force Feedback interception or original emulator modification was
+introduced; Quest 3 runtime is still UNTESTED.

@@ -111,6 +111,19 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("mrt_slots_=caps.NumSimultaneousRTs;",gpu)
         self.assertEqual(gpu.count("GetDeviceCaps(&caps)"),1)
 
+    def test_depthless_hud_and_clear_preserve_game_z_semantics(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        self.assertIn("depth_hr!=D3DERR_NOTFOUND",gpu)
+        self.assertIn("z_enabled!=D3DZB_FALSE",gpu)
+        self.assertIn("(flags&(D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL))!=0u",gpu)
+        self.assertEqual(gpu.count("depth_bound?eyes_[eye].depth:nullptr"),2)
+        self.assertIn("(depth_bound?D3DCLEAR_ZBUFFER:0u)",gpu)
+        self.assertEqual(gpu.count("const bool restored="),2)
+        self.assertEqual(gpu.count("if(!both || !restored){Reset();return;}"),2)
+        # A depthless UI may only overlay an already proven original game's
+        # eye resources, not create an arbitrary guessed depth format.
+        self.assertIn("if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth)",gpu)
+
     def test_one_click_original_game_and_openxr_host_single_sim_owner(self):
         launcher=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
         legacy=(ROOT/"scripts/Run-Daytona-NativeStereo.cmd").read_text("utf-8")
