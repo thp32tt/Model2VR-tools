@@ -49,6 +49,8 @@ struct ProjectedTriangleBatchJoin {
     std::uint32_t common_source_caller_rva=0;
     std::uint32_t common_matrix_identity=0;
     std::uint32_t common_matrix_fingerprint=0;
+    std::uint32_t common_geometry_command=0;
+    bool mixed_geometry_command=false;
     bool mixed_matrix_identity=false;
     bool mixed_matrix_fingerprint=false;
     // Filled only from individually complete original triangles; never
@@ -69,6 +71,8 @@ struct ProjectedSourceJoin {
     std::uint32_t source_caller_rva=0;
     std::uint32_t matrix_identity=0;
     std::uint32_t matrix_fingerprint=0;
+    std::uint32_t geometry_command=0;
+    bool mixed_geometry_command=false;
     bool mixed_matrix_identity=false;
     bool mixed_matrix_fingerprint=false;
     std::array<std::array<float,3>,3> source_xyz{};
@@ -88,7 +92,8 @@ public:
                  const float source_xyz[3],
                  const float projected_xyz[3],
                  std::uint32_t matrix_identity=0u,
-                 std::uint32_t matrix_fingerprint=0u) noexcept {
+                 std::uint32_t matrix_fingerprint=0u,
+                 std::uint32_t geometry_command=0u) noexcept {
         if(!epoch || !caller_rva || !source_xyz || !projected_xyz)return;
         for(std::size_t i=0;i<3;++i) {
             if(!std::isfinite(source_xyz[i]) ||
@@ -110,6 +115,7 @@ public:
         entry.caller_rva=caller_rva;
         entry.matrix_identity=matrix_identity;
         entry.matrix_fingerprint=matrix_fingerprint;
+        entry.geometry_command=geometry_command;
         cursor_=(cursor_+1u)%kCapacity;
         if(size_<kCapacity)++size_;
     }
@@ -123,6 +129,7 @@ public:
         std::uint32_t common_caller=0u;
         std::uint32_t common_matrix=0u;
         std::uint32_t common_fingerprint=0u;
+        std::uint32_t common_geometry=0u;
         for(std::size_t v=0;v<count;++v){
             const auto& pos=vertices[v];
             if(!std::isfinite(pos.x)||!std::isfinite(pos.y))return {};
@@ -152,6 +159,7 @@ public:
                 common_caller=sample.caller_rva;
                 common_matrix=sample.matrix_identity;
                 common_fingerprint=sample.matrix_fingerprint;
+                common_geometry=sample.geometry_command;
             }else{
                 if(common_caller!=sample.caller_rva)common_caller=0u;
                 if(common_matrix!=sample.matrix_identity)
@@ -160,6 +168,11 @@ public:
                 // and original CPU projection caller are unchanged.
                 if(common_fingerprint!=sample.matrix_fingerprint)
                     result.mixed_matrix_fingerprint=true;
+                // Command stream may legitimately advance while drawing
+                // multiple polygons; record its diversity but do not
+                // promote or reject gameplay-world ownership from it.
+                if(common_geometry!=sample.geometry_command)
+                    result.mixed_geometry_command=true;
             }
             ++result.matched;
         }
@@ -167,6 +180,8 @@ public:
         result.matrix_identity=result.mixed_matrix_identity?0u:common_matrix;
         result.matrix_fingerprint=
             result.mixed_matrix_fingerprint?0u:common_fingerprint;
+        result.geometry_command=
+            result.mixed_geometry_command?0u:common_geometry;
         return result;
     }
     // Analyze up to eight original triangle-list primitives, not merely
@@ -188,6 +203,7 @@ public:
                     batch.common_source_caller_rva=join.source_caller_rva;
                     batch.common_matrix_identity=join.matrix_identity;
                     batch.common_matrix_fingerprint=join.matrix_fingerprint;
+                    batch.common_geometry_command=join.geometry_command;
                 }else{
                     if(batch.common_source_caller_rva!=join.source_caller_rva)
                         batch.common_source_caller_rva=0u;
@@ -195,6 +211,8 @@ public:
                         batch.mixed_matrix_identity=true;
                     if(batch.common_matrix_fingerprint!=join.matrix_fingerprint)
                         batch.mixed_matrix_fingerprint=true;
+                    if(batch.common_geometry_command!=join.geometry_command)
+                        batch.mixed_geometry_command=true;
                 }
                 for(std::size_t v=0;v<3u;++v) {
                     auto& dest=batch.camera_samples[batch.camera_sample_count++];
@@ -208,6 +226,7 @@ public:
             if(join.ambiguous)++batch.ambiguous;
             if(join.mixed_matrix_identity)batch.mixed_matrix_identity=true;
             if(join.mixed_matrix_fingerprint)batch.mixed_matrix_fingerprint=true;
+            if(join.mixed_geometry_command)batch.mixed_geometry_command=true;
         }
         return batch;
     }
@@ -218,6 +237,7 @@ private:
         std::uint32_t caller_rva=0u;
         std::uint32_t matrix_identity=0u;
         std::uint32_t matrix_fingerprint=0u;
+        std::uint32_t geometry_command=0u;
     };
     std::array<Entry,kCapacity> entries_{};
     std::uint64_t epoch_=0u;

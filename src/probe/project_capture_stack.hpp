@@ -16,6 +16,10 @@ struct ProjectCaptureRecord {
     // Snapshot of all 16 source matrix floats before the original projector.
     // Zero means unavailable; source adapter never treats it as proof.
     std::uint32_t matrix_fingerprint=0;
+    // Read-only active geometry stream command word at original CPU call.
+    // It is a *candidate* command context, not a world-pass bit.
+    std::uint32_t geometry_stream_pointer=0;
+    std::uint32_t geometry_command_word=0;
     bool emit_log=false;
     bool capture=false;
 };

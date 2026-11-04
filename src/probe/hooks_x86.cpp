@@ -136,6 +136,15 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
                 ReadStateRva(g_config.active_matrix_ptr_rva);
             record->matrix_fingerprint=
                 ReadSourceMatrixFingerprint(record->matrix_identity);
+            // The independently configured RVA gives the active original
+            // stream pointer; reading its first word is diagnostic only.
+            record->geometry_stream_pointer=
+                ReadStateRva(g_config.geometry_stream_ptr_rva);
+            if(record->geometry_stream_pointer>=0x10000u)
+                record->geometry_command_word=SafeReadU32(
+                    reinterpret_cast<const std::uint8_t*>(
+                        static_cast<std::uintptr_t>(
+                            record->geometry_stream_pointer)));
             record->capture=true;
         }
     }
@@ -184,13 +193,17 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* /*eax_after_original*/) 
                 record.source_caller_rva,record.matrix_identity,
                 record.matrix_fingerprint,
                 changed?2u:(record.matrix_fingerprint?1u:0u));
+            m2vr::LogEvent("project_geometry_command",
+                record.source_caller_rva,record.geometry_stream_pointer,
+                record.geometry_command_word,changed?1u:0u);
         }
         if(!changed){
             const float projected[3]{x,y,z};
             m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
                 m2vr::drawprobe::CurrentProjectDrawEpoch(),
                 record.source_caller_rva,record.source_xyz.data(),projected,
-                record.matrix_identity,record.matrix_fingerprint);
+                record.matrix_identity,record.matrix_fingerprint,
+                record.geometry_command_word);
         }
     }
     if(emit_log)

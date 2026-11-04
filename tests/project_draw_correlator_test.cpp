@@ -12,9 +12,11 @@ static void Capture(ProjectDrawCorrelator& c,std::uint64_t epoch,
                     std::uint32_t caller,float sx,float sy,
                     float vx,float vy,float vz,
                     std::uint32_t matrix_identity=0u,
-                    std::uint32_t matrix_fingerprint=0u){
+                    std::uint32_t matrix_fingerprint=0u,
+                    std::uint32_t geometry_command=0u){
     const float view[3]{vx,vy,vz},screen[3]{sx,sy,0.5f};
-    c.Capture(epoch,caller,view,screen,matrix_identity,matrix_fingerprint);
+    c.Capture(epoch,caller,view,screen,matrix_identity,matrix_fingerprint,
+              geometry_command);
 }
 int main(){
     ProjectDrawCorrelator c{};
@@ -111,6 +113,25 @@ int main(){
     CHECK(SourceMatrixFingerprint(changed_matrix)==original_fingerprint);
     changed_matrix[5]=std::numeric_limits<float>::infinity();
     CHECK(SourceMatrixFingerprint(changed_matrix)==0u);
+    // Geometry-command provenance is retained independently of matrix
+    // stability. Different command words can belong to a genuine batched
+    // Draw, and MUST NOT silently become world-pass authentication.
+    ProjectDrawCorrelator command_witness{};
+    for(unsigned i=0;i<6;++i)
+        Capture(command_witness,88u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f,0x1000u,0xAABBCCDDu,
+                i<3u?0x12u:0x13u);
+    const auto cmds=command_witness.MatchTriangleList(88u,two_faces,6u);
+    CHECK(cmds.CompleteSameSource() && cmds.mixed_geometry_command);
+    CHECK(cmds.common_matrix_fingerprint==0xAABBCCDDu);
+    CHECK(cmds.common_geometry_command==0x12u);
+    ProjectDrawCorrelator stable_command{};
+    for(unsigned i=0;i<6;++i)
+        Capture(stable_command,88u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f,0x1000u,0xAABBCCDDu,0x12u);
+    const auto stable=stable_command.MatchTriangleList(88u,two_faces,6u);
+    CHECK(stable.CompleteSameSource() && !stable.mixed_geometry_command &&
+          stable.common_geometry_command==0x12u);
     ProjectDrawCorrelator intra_triangle{};
     for(unsigned i=0;i<6;++i)
         Capture(intra_triangle,86u,0x55u,two_faces[i].x,two_faces[i].y,
