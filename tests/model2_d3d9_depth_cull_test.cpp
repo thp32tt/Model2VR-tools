@@ -172,6 +172,48 @@ int main() {
     CHECK(!DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ONE,
         D3DBLENDOP_ADD,1,decoded_blend));
 
+    // Same original Draw: the x86 source has its own independent RGB
+    // and alpha factor registers. Only D3DBLENDOP_ADD and supported
+    // 8-bit alpha-channel factors may become the binocular material.
+    using m2vr::drawprobe::DecodeBlendWithSeparateAlphaPolicy;
+    SeparateAlphaBlend split{};
+    CHECK(DecodeBlendWithSeparateAlphaPolicy(
+        1,D3DBLEND_SRCALPHA,D3DBLEND_INVSRCALPHA,D3DBLENDOP_ADD,
+        1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        decoded_blend,split));
+    CHECK(decoded_blend==BlendMode::SourceAlphaOver);
+    CHECK(split.enabled && split.source==AlphaBlendFactor::One &&
+          split.destination==AlphaBlendFactor::Zero);
+    CHECK(DecodeBlendWithSeparateAlphaPolicy(
+        1,D3DBLEND_ONE,D3DBLEND_ONE,D3DBLENDOP_ADD,
+        1,D3DBLEND_SRCCOLOR,D3DBLEND_INVDESTCOLOR,D3DBLENDOP_ADD,
+        decoded_blend,split));
+    CHECK(split.enabled && split.source==AlphaBlendFactor::SourceAlpha &&
+          split.destination==AlphaBlendFactor::InverseDestinationAlpha);
+    CHECK(DecodeBlendWithSeparateAlphaPolicy(
+        0u,99,99,99,1,99,99,99,decoded_blend,split));
+    CHECK(decoded_blend==BlendMode::Opaque && !split.enabled);
+    CHECK(DecodeBlendWithSeparateAlphaPolicy(
+        1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        0u,99,99,99,decoded_blend,split));
+    CHECK(decoded_blend==BlendMode::ReplaceRGBA && !split.enabled);
+    CHECK(!DecodeBlendWithSeparateAlphaPolicy(
+        1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_SUBTRACT,
+        decoded_blend,split));
+    CHECK(!DecodeBlendWithSeparateAlphaPolicy(
+        1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        1,D3DBLEND_SRCALPHASAT,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        decoded_blend,split));
+    CHECK(!DecodeBlendWithSeparateAlphaPolicy(
+        1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        2,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        decoded_blend,split));
+    CHECK(!DecodeBlendWithSeparateAlphaPolicy(
+        1,D3DBLEND_INVDESTALPHA,D3DBLEND_ONE,D3DBLENDOP_ADD,
+        1,D3DBLEND_ONE,D3DBLEND_ZERO,D3DBLENDOP_ADD,
+        decoded_blend,split));
+
     // Only the original game's compatible main depth-stencil surface
     // may be used as provenance for a projected binocular world draw.
     D3DSURFACE_DESC main_color{}, main_depth{};
