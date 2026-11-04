@@ -100,6 +100,7 @@ def audit_csv(path):
     observed_present_frame = 0
     last_original_present_frame = 0
     failed_original_scene_frames = set()
+    failed_original_draw_frames = set()
 
     def record(witness):
         if not witness or witness > UINT64:
@@ -167,6 +168,10 @@ def audit_csv(path):
                 status = "physical_original_present_invalid"
             elif frame in failed_original_scene_frames:
                 status = "original_scene_transition_failed"
+            elif frame in failed_original_draw_frames:
+                # An UNSAMPLED original Draw can fail after a different
+                # witnessed Draw succeeded. Never certify that whole Present.
+                status = "other_original_draw_failed"
             else:
                 status = "original_source_draw_and_present_succeeded"
         counts[status] += 1
@@ -233,12 +238,25 @@ def audit_csv(path):
                 "model2_d3d9_up_original_result",
                 "model2_d3d9_original_present_result",
                 "model2_d3d9_original_scene_failed",
+                "model2_d3d9_original_draw_failed",
             }):
                 continue
             try:
                 a0, a1, a2, a3 = (number(row[k]) for k in ("a0", "a1", "a2", "a3"))
             except (ValueError, TypeError) as exc:
                 raise ValueError(f"malformed original UP outcome row {row_no}") from exc
+            if event == "model2_d3d9_original_draw_failed":
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or
+                    a1 not in (1, 2, 3, 4) or
+                    a2 > 0xffffffff or (a2 & 0x80000000) == 0 or
+                    not 0 < a3 <= 0xffffffff):
+                    raise ValueError("invalid original Draw failure")
+                if len(failed_original_draw_frames) >= MAX_PENDING and (
+                        a0 not in failed_original_draw_frames):
+                    raise ValueError("original Draw failure capacity exceeded")
+                failed_original_draw_frames.add(a0)
+                continue
             if event == "model2_d3d9_original_scene_failed":
                 if (not 0 < a0 <= 0xffffffff or
                     a0 <= observed_present_frame or
@@ -275,6 +293,8 @@ def audit_csv(path):
                 observed_present_frame = frame
                 failed_original_scene_frames = {
                     f for f in failed_original_scene_frames if f > frame}
+                failed_original_draw_frames = {
+                    f for f in failed_original_draw_frames if f > frame}
                 # Source-context is emitted by VB too. Never carry those
                 # unidentified non-UP snapshots across physical Presents.
                 for witness, rec in list(records.items()):

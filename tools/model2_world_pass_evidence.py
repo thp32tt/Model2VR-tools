@@ -94,6 +94,7 @@ def _enough_original_source(source):
         "original_scene_phase_inactive_witnesses",
         "original_scene_phase_inconsistent_witnesses",
         "original_scene_transition_failure_witnesses",
+        "other_original_draw_failure_witnesses",
         "original_present_failed_witnesses",
         "original_present_missing_witnesses",
     ):

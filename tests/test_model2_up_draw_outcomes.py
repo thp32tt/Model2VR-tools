@@ -71,6 +71,36 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             got["physically_presented_same_witness_camera_callers"][0]
                ["world_pass_authorized"])
 
+    def test_unsampled_original_draw_failure_poisoned_present_and_recovery(self):
+        # One sampled UP succeeds, another original source Draw in the same
+        # physical Present fails without a sampled witness.
+        events = self.projected() + [
+            event("model2_d3d9_original_draw_failed",
+                  7, 2, 0x8876086C, 0x8888),
+            event("model2_d3d9_original_present_result", 7, 0, 1, 0),
+        ]
+        got = self.report(events)
+        self.assertEqual(got["counts"]["other_original_draw_failed"], 1)
+        self.assertNotIn("same_witness_cpu_camera_present_candidate",
+                         got["counts"])
+        for bad in (0, 5):
+            invalid = list(events)
+            invalid[-2] = event("model2_d3d9_original_draw_failed",
+                                7, bad, 0x8876086C, 0x8888)
+            with self.assertRaisesRegex(ValueError, "invalid original Draw failure"):
+                self.report(invalid)
+        invalid = list(events)
+        invalid[-2] = event("model2_d3d9_original_draw_failed",
+                            7, 2, 0, 0x8888)
+        with self.assertRaisesRegex(ValueError, "invalid original Draw failure"):
+            self.report(invalid)
+        # A later physical frame can recover with an independent source.
+        recovered = self.report(
+            events + self.projected(witness=22, frame=8) +
+            [event("model2_d3d9_original_present_result", 8, 0, 1, 0)])
+        self.assertEqual(
+            recovered["counts"]["same_witness_cpu_camera_present_candidate"], 1)
+
     def test_physical_present_failure_and_unknown_source_never_candidate(self):
         events = self.projected() + [
             event("model2_d3d9_original_present_result",

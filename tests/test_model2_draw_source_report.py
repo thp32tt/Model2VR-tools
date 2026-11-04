@@ -66,6 +66,39 @@ class SourceAuditTests(unittest.TestCase):
                 self.assertEqual(
                     src["original_draw_result_inconsistent_witnesses"], 1)
 
+    def test_unsampled_original_draw_failure_revokes_other_vb_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"draw_hresult.csv"
+            events=[
+                ("model2_d3d9_vb_present_frame", 501, 17, 1, 0),
+                ("model2_d3d9_vb_source", 501, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_source_draw_phase", 501,
+                 17, 12, pack(0x1234, 1)),
+                ("model2_d3d9_source_scene_phase", 501, 17, 1, 1),
+                ("model2_d3d9_vb_original_result", 501,
+                 0, 0x1234, pack(17, 1)),
+                ("model2_d3d9_original_draw_failed", 17,
+                 4, 0x8876086C, 0x4321),
+                ("model2_d3d9_original_present_result", 17, 0, 1, 0),
+            ]
+            self.write_log(p,events)
+            src=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["original_draw_success_witnesses"],1)
+            self.assertEqual(src["original_present_success_witnesses"],1)
+            self.assertEqual(src["other_original_draw_failure_witnesses"],1)
+            self.assertEqual(
+                src["distinct_scene_attested_physically_presented_material_present_frame_count"],0)
+            self.write_log(p,[e for e in events
+                              if e[0]!="model2_d3d9_original_draw_failed"])
+            src=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["other_original_draw_failure_witnesses"],0)
+            self.write_log(p,events[:-2]+[
+                ("model2_d3d9_original_draw_failed", 17, 4, 0, 0x4321),
+                events[-1]])
+            with self.assertRaisesRegex(ValueError,"invalid original Draw failure"):
+                REPORT.audit_csv(p)
+
     def test_original_scene_failure_invalidates_same_frame_vb_world_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"scene_hresult.csv"
