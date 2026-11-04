@@ -7,7 +7,11 @@
 #include <cstdint>
 namespace m2vr::vr {
 enum class FaceCull : std::uint32_t { None=0, Clockwise=1, CounterClockwise=2 };
-enum class DepthCompare : std::uint32_t { Less=0, LessEqual=1, Always=2 };
+// Preserve public ABI values 0..2, extend only explicitly proven source Z state.
+enum class DepthCompare : std::uint32_t {
+    Less=0, LessEqual=1, Always=2, Equal=3,
+    Greater=4, GreaterEqual=5, NotEqual=6
+};
 struct RasterPolicy {
     FaceCull cull=FaceCull::None;
     DepthCompare depth=DepthCompare::Less;
@@ -20,7 +24,11 @@ inline bool ValidRasterPolicy(const RasterPolicy& p) noexcept {
             p.cull==FaceCull::CounterClockwise) &&
            (p.depth==DepthCompare::Less ||
             p.depth==DepthCompare::LessEqual ||
-            p.depth==DepthCompare::Always) &&
+            p.depth==DepthCompare::Always ||
+            p.depth==DepthCompare::Equal ||
+            p.depth==DepthCompare::Greater ||
+            p.depth==DepthCompare::GreaterEqual ||
+            p.depth==DepthCompare::NotEqual) &&
            (p.write_rgba_mask&0xf0u)==0u;
 }
 inline bool TriangleSurvivesCull(double area,FaceCull mode) noexcept {
@@ -42,8 +50,15 @@ inline bool DepthPasses(double candidate,float existing,
     // the actual stored representation in both independent eyes.
     const float incoming=static_cast<float>(candidate);
     if(!std::isfinite(incoming))return false;
-    if(func==DepthCompare::Always)return true;
-    return func==DepthCompare::Less ?
-        incoming<existing : incoming<=existing;
+    switch(func){
+    case DepthCompare::Less: return incoming<existing;
+    case DepthCompare::LessEqual: return incoming<=existing;
+    case DepthCompare::Always: return true;
+    case DepthCompare::Equal: return incoming==existing;
+    case DepthCompare::Greater: return incoming>existing;
+    case DepthCompare::GreaterEqual: return incoming>=existing;
+    case DepthCompare::NotEqual: return incoming!=existing;
+    }
+    return false;
 }
 } // namespace m2vr::vr

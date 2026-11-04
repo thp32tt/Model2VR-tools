@@ -205,7 +205,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
             (!diffuse_only || width || height || pitch)) ||
        alpha_cutoff>255u ||
        filter_mode>1u || address_u>3u || address_v>3u ||
-       cull_mode>2u || depth_mode>2u || depth_write>1u ||
+       cull_mode>2u || depth_mode>6u || depth_write>1u ||
        rgb_source>2u || alpha_source>2u || blend_mode>8u ||
        write_rgba_mask>15u ||
        ((rgb_source!=0u || alpha_source!=0u) && !diffuse_argb)) {

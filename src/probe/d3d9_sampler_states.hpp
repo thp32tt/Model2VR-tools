@@ -71,7 +71,9 @@ inline bool DecodeRasterPolicy(DWORD cull_mode,DWORD zfunc,
     if((cull_mode!=D3DCULL_NONE && cull_mode!=D3DCULL_CW &&
         cull_mode!=D3DCULL_CCW) ||
        (zfunc!=D3DCMP_LESS && zfunc!=D3DCMP_LESSEQUAL &&
-        zfunc!=D3DCMP_ALWAYS) ||
+        zfunc!=D3DCMP_ALWAYS && zfunc!=D3DCMP_EQUAL &&
+        zfunc!=D3DCMP_GREATER && zfunc!=D3DCMP_GREATEREQUAL &&
+        zfunc!=D3DCMP_NOTEQUAL) ||
        (zwrite!=0u && zwrite!=1u) ||
        stencil_enabled!=0u || depth_bias!=0u || slope_bias!=0u ||
        srgb_write!=0u ||
@@ -84,9 +86,14 @@ inline bool DecodeRasterPolicy(DWORD cull_mode,DWORD zfunc,
     value.cull=cull_mode==D3DCULL_CW?FaceCull::Clockwise:
                cull_mode==D3DCULL_CCW?FaceCull::CounterClockwise:
                                         FaceCull::None;
+    // Preserve original ZFUNC across both independently clipped eye Z buffers.
     value.depth=zfunc==D3DCMP_LESS?DepthCompare::Less:
                 zfunc==D3DCMP_LESSEQUAL?DepthCompare::LessEqual:
-                                         DepthCompare::Always;
+                zfunc==D3DCMP_ALWAYS?DepthCompare::Always:
+                zfunc==D3DCMP_EQUAL?DepthCompare::Equal:
+                zfunc==D3DCMP_GREATER?DepthCompare::Greater:
+                zfunc==D3DCMP_GREATEREQUAL?DepthCompare::GreaterEqual:
+                                           DepthCompare::NotEqual;
     value.write_depth=(zwrite!=0u);
     value.write_rgba_mask=static_cast<std::uint8_t>(color_mask);
     out=value;

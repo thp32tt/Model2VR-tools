@@ -54,7 +54,9 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWit
     unsigned int filter_mode, unsigned int address_u, unsigned int address_v);
 /* Source D3D9 raster states (verified material bridge only):
    cull_mode: 0=NONE, 1=cull CW, 2=cull CCW (per-eye screen pixels).
-   depth_mode: 0=LESS, 1=LESS_EQUAL, 2=ALWAYS. depth_write: 0/1.
+   depth_mode: 0=LESS, 1=LESS_EQUAL, 2=ALWAYS (legacy),
+               3=EQUAL, 4=GREATER, 5=GREATER_EQUAL, 6=NOT_EQUAL.
+   depth_write: 0/1. NEVER and unknown comparisons fail closed.
    These arguments are only trusted when a separately authenticated
    gameplay world pass is active; no automatic D3D9 Draw hooking. */
 __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(

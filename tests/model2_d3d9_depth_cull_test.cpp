@@ -51,6 +51,18 @@ int main() {
     CHECK(DepthPasses(5.,3.f,DepthCompare::Always));
     CHECK(!DepthPasses(-1.,3.f,DepthCompare::Always));
     CHECK(!DepthPasses(-1.,1.f,DepthCompare::Less));
+    // Compare against float-quantized original Z for the new source modes.
+    CHECK(DepthPasses(source_z,saved_z,DepthCompare::Equal));
+    CHECK(!DepthPasses(source_z,saved_z,DepthCompare::NotEqual));
+    CHECK(DepthPasses(4.,saved_z,DepthCompare::Greater));
+    CHECK(DepthPasses(4.,saved_z,DepthCompare::GreaterEqual));
+    CHECK(DepthPasses(source_z,saved_z,DepthCompare::GreaterEqual));
+    CHECK(!DepthPasses(source_z,saved_z,DepthCompare::Greater));
+    CHECK(!DepthPasses(2.,3.f,DepthCompare::Greater));
+    CHECK(DepthPasses(2.,3.f,DepthCompare::NotEqual));
+    CHECK(!DepthPasses(-1.,3.f,DepthCompare::NotEqual));
+    CHECK(!ValidRasterPolicy({
+        FaceCull::None,static_cast<DepthCompare>(7),true}));
     CHECK(!ValidRasterPolicy({
         static_cast<FaceCull>(5),DepthCompare::Less,true}));
 
@@ -69,6 +81,17 @@ int main() {
     CHECK(DecodeRasterPolicy(D3DCULL_CW,D3DCMP_ALWAYS,1,
                               0,0,0,0,colors,decoded));
     CHECK(decoded.depth==DepthCompare::Always && decoded.write_depth);
+    const struct {DWORD original;DepthCompare expected;} other_depth[]{
+        {D3DCMP_EQUAL,DepthCompare::Equal},
+        {D3DCMP_GREATER,DepthCompare::Greater},
+        {D3DCMP_GREATEREQUAL,DepthCompare::GreaterEqual},
+        {D3DCMP_NOTEQUAL,DepthCompare::NotEqual}
+    };
+    for(const auto& mode:other_depth){
+        CHECK(DecodeRasterPolicy(D3DCULL_NONE,mode.original,1,
+                                 0,0,0,0,colors,decoded));
+        CHECK(decoded.depth==mode.expected && decoded.write_depth);
+    }
     CHECK(!DecodeRasterPolicy(D3DCULL_CW,D3DCMP_NEVER,1,
                               0,0,0,0,colors,decoded));
     CHECK(!DecodeRasterPolicy(D3DCULL_CW,D3DCMP_LESS,1,
@@ -273,6 +296,41 @@ int main() {
     CHECK(raster.DrawTextured(near_tri,b));
     CHECK(raster.DrawTextured(farther,r));
     CheckBoth(raster,0x0000FFu,ok);CHECK(ok);
+
+    // Real independently rendered left/right Z buffers honor the extended
+    // original source compares; read-only source authentication remains required.
+    auto depth_base=b;
+    depth_base.raster.depth=DepthCompare::Less;
+    depth_base.raster.write_depth=true;
+    auto depth_overlay=r;
+    depth_overlay.raster.depth=DepthCompare::Equal;
+    depth_overlay.raster.write_depth=false;
+    raster.Clear();
+    CHECK(raster.DrawTextured(near_tri,depth_base));
+    CHECK(raster.DrawTextured(farther,depth_overlay));
+    CheckBoth(raster,0x0000FFu,ok);CHECK(ok);
+    CHECK(raster.DrawTextured(near_tri,depth_overlay));
+    CheckBoth(raster,0xFF0000u,ok);CHECK(ok);
+    raster.Clear();
+    depth_overlay.raster.depth=DepthCompare::NotEqual;
+    CHECK(raster.DrawTextured(near_tri,depth_base));
+    CHECK(raster.DrawTextured(near_tri,depth_overlay));
+    CheckBoth(raster,0x0000FFu,ok);CHECK(ok);
+    CHECK(raster.DrawTextured(farther,depth_overlay));
+    CheckBoth(raster,0xFF0000u,ok);CHECK(ok);
+    raster.Clear();
+    depth_overlay.raster.depth=DepthCompare::Greater;
+    CHECK(raster.DrawTextured(near_tri,depth_base));
+    CHECK(raster.DrawTextured(near_tri,depth_overlay));
+    CheckBoth(raster,0x0000FFu,ok);CHECK(ok);
+    CHECK(raster.DrawTextured(farther,depth_overlay));
+    CheckBoth(raster,0xFF0000u,ok);CHECK(ok);
+    raster.Clear();
+    depth_overlay.raster.depth=DepthCompare::GreaterEqual;
+    CHECK(raster.DrawTextured(near_tri,depth_base));
+    CHECK(raster.DrawTextured(near_tri,depth_overlay));
+    CheckBoth(raster,0xFF0000u,ok);CHECK(ok);
+    CHECK(!raster.StereoPairUsable()); // identical synthetic eye geometry
     // Exact source color masks preserve disabled destination channels
     // (including alpha) in BOTH verified binocular eye render targets.
     raster.Clear();
