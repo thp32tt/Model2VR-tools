@@ -96,6 +96,8 @@ class ProbeLogTests(unittest.TestCase):
                      (1 << 32) | 9, (1 << 32) | 1, 0),
                     ("model2_d3d9_source_sampler_mip", 22,
                      2, 1, 7),
+                    ("model2_d3d9_source_vertex_pipeline",22,
+                     (2 << 32) | 1, 0, 7),
                     # Wrong original next-Present frame may have identical
                     # caller and material but MUST NOT be correlated.
                     ("model2_d3d9_up_source_fvf", 23, 0x144, 28, 8),
@@ -143,6 +145,25 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(examples[0]["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(examples[0]["color_stage"], [4, 2, 0])
         self.assertEqual(examples[0]["source_stage0_result"], 1)
+        self.assertEqual(
+            material["original_up_material_vertex_pipeline_status"],
+            {"supported": 1})
+        self.assertEqual(
+            examples[0]["original_source_vertex_pipeline_status"],
+            "supported")
+
+    def test_original_up_vertex_pipeline_strict_source_provenance(self):
+        status=MODULE.original_d3d9_vertex_pipeline_status
+        supported=((2<<32)|1,0,17)
+        self.assertEqual(status(None,17),"unobserved")
+        self.assertEqual(status(supported,17),"supported")
+        self.assertEqual(status(supported,18),"present_mismatch")
+        self.assertEqual(status(((1<<32)|1,0,17),17),"unsupported")
+        self.assertEqual(status(((2<<32)|0,0,17),17),"unsupported")
+        self.assertEqual(status(((2<<32)|1,(1<<32),17),17),"unsupported")
+        self.assertEqual(status(((2<<32)|1,1,17),17),"unsupported")
+        self.assertEqual(status(((2<<32)|1,0,(1<<32)|17),17),
+                         "unsupported")
 
     def test_original_up_sampler_mip_is_same_present_only(self):
         classify=MODULE.original_d3d9_mip_status
