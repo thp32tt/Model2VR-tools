@@ -1,6 +1,8 @@
 #include "hooks.h"
 
 #include "logger.h"
+#include "project_draw_correlator.hpp"
+#include <array>
 #include "signature.h"
 
 #include <MinHook.h>
@@ -25,6 +27,10 @@ std::uint32_t g_exe_size = 0;
 std::atomic<std::uint64_t> g_transform_counter{0};
 std::atomic<std::uint64_t> g_project_counter{0};
 thread_local bool g_project_sample_after=false;
+thread_local bool g_project_capture_after=false;
+thread_local const void* g_project_capture_point=nullptr;
+thread_local std::array<float,3> g_project_source{};
+thread_local std::uint32_t g_project_source_caller=0u;
 std::atomic<std::uint64_t> g_ffb_counter{0};
 
 extern "C" void* g_original_transform_point = nullptr;
@@ -92,29 +98,47 @@ extern "C" void __cdecl M2VR_OnTransformPoint(void* point, std::uint32_t caller)
 
 extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) {
     g_project_sample_after=ShouldSample(g_project_counter,g_config.project_sample_every);
-    if (!g_project_sample_after) return;
+    // Capture view-space candidate coordinates without logging all vertices.
+    // Only the opt-in D3D9 probe keeps a short thread-local association ring.
+    g_project_capture_after=false;
+    g_project_capture_point=nullptr;
+    if(!g_project_sample_after && !g_config.d3d9_read_only_probe)return;
 
-    float x = 0, y = 0, z = 0;
-    if (!SafeReadPoint(point, x, y, z)) {
-        m2vr::LogEvent("project_read_fault", reinterpret_cast<std::uintptr_t>(point));
+    float x=0,y=0,z=0;
+    if(!SafeReadPoint(point,x,y,z)){
+        if(g_project_sample_after)
+            m2vr::LogEvent("project_read_fault",reinterpret_cast<std::uintptr_t>(point));
         return;
     }
-
-    const auto active_matrix = ReadStateRva(g_config.active_matrix_ptr_rva);
-    m2vr::LogEvent("project_ctx", reinterpret_cast<std::uintptr_t>(point),
-                   caller - reinterpret_cast<std::uintptr_t>(g_exe_base),
-                   ReadStateRva(g_config.geometry_stream_ptr_rva), active_matrix);
-    m2vr::LogEvent("project_in", reinterpret_cast<std::uintptr_t>(point),
-                   FloatBits(x), FloatBits(y), FloatBits(z));
-}
-
-// Capture the actual Model 2 native post-projection X/Y/depth fields.
-// Called only on the same render thread and paired with project_in by pointer.
-// It never mutates the emulator's live vertex buffers.
-extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* point) {
+    if(g_config.d3d9_read_only_probe){
+        const auto raw=static_cast<std::uintptr_t>(caller);
+        const auto base=reinterpret_cast<std::uintptr_t>(g_exe_base);
+        if(raw>=base && raw-base<g_exe_size){
+            g_project_source={x,y,z};
+            g_project_source_caller=static_cast<std::uint32_t>(raw-base);
+            g_project_capture_point=point;
+            g_project_capture_after=true;
+        }
+    }
     if(!g_project_sample_after)return;
+    const auto active_matrix=ReadStateRva(g_config.active_matrix_ptr_rva);
+    m2vr::LogEvent("project_ctx",reinterpret_cast<std::uintptr_t>(point),
+                   caller-reinterpret_cast<std::uintptr_t>(g_exe_base),
+                   ReadStateRva(g_config.geometry_stream_ptr_rva),active_matrix);
+    m2vr::LogEvent("project_in",reinterpret_cast<std::uintptr_t>(point),
+                   FloatBits(x),FloatBits(y),FloatBits(z));
+}
+// Capture a bounded same-thread source/projected pair immediately after the
+// original CPU projector. This is not a calibrated world or HUD classifier.
+extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* point) {
+    const bool emit_log=g_project_sample_after;
+    const bool capture=g_project_capture_after && point &&
+                       point==g_project_capture_point;
     g_project_sample_after=false;
-    if(!point){m2vr::LogEvent("project_after_fault");return;}
+    g_project_capture_after=false;
+    g_project_capture_point=nullptr;
+    if(!emit_log && !capture)return;
+    if(!point){if(emit_log)m2vr::LogEvent("project_after_fault");return;}
     float x=0,y=0,z=0;
     __try {
         const auto* bytes=static_cast<const volatile std::uint8_t*>(point);
@@ -122,11 +146,19 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* point) {
         y=*reinterpret_cast<const volatile float*>(bytes+0x1c);
         z=*reinterpret_cast<const volatile float*>(bytes+0x20);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        m2vr::LogEvent("project_after_fault",reinterpret_cast<std::uintptr_t>(point));
+        if(emit_log)
+            m2vr::LogEvent("project_after_fault",reinterpret_cast<std::uintptr_t>(point));
         return;
     }
-    m2vr::LogEvent("project_after",
-        reinterpret_cast<std::uintptr_t>(point),FloatBits(x),FloatBits(y),FloatBits(z));
+    if(capture){
+        const float projected[3]{x,y,z};
+        m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
+            m2vr::drawprobe::CurrentProjectDrawEpoch(),
+            g_project_source_caller,g_project_source.data(),projected);
+    }
+    if(emit_log)
+        m2vr::LogEvent("project_after",reinterpret_cast<std::uintptr_t>(point),
+                       FloatBits(x),FloatBits(y),FloatBits(z));
 }
 
 extern "C" void __cdecl M2VR_OnFfbDispatch(std::uint32_t ecx_value) {

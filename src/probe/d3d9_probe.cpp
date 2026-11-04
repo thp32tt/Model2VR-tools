@@ -3,6 +3,7 @@
 #include "daytona_native_stereo.hpp"
 #include "daytona_up_decl_witness.hpp"
 #include "draw_origin_gate.hpp"
+#include "project_draw_correlator.hpp"
 #include "d3d9_world_source.hpp"
 #include <Windows.h>
 #include <d3d9.h>
@@ -333,6 +334,20 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
         m2vr::LogEvent("model2_d3d9_up_vertex",sample_id,
             observations[i].index,PackPair(v.x,v.y),PackPair(v.z,v.rhw));
     }
+    // The sampled original UP triangle can now be associated with
+    // immediately preceding CPU projector outputs on this SAME thread and
+    // Present epoch. Even a full match is a candidate, never world proof.
+    if(count==3u){
+        std::array<ProjectedDrawVertex,3> screen{};
+        for(unsigned i=0;i<3u;++i){
+            screen[i].x=observations[i].vertex.x;
+            screen[i].y=observations[i].vertex.y;
+        }
+        const auto join=ThreadProjectDrawCorrelator().Match(
+            CurrentProjectDrawEpoch(),screen.data(),screen.size());
+        m2vr::LogEvent("model2_d3d9_cpu_up_join",sample_id,
+            join.matched,join.ambiguous,join.source_caller_rva);
+    }
 }
 
 // Observe the original stream-zero D3D9 vertex declaration when GetFVF
@@ -530,7 +545,7 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     g_draws.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
-    if(!g_native_stereo && Sample(d,1,p,count,caller))
+    if(Sample(d,1,p,count,caller))
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count);
     const HRESULT hr=g_draw(d,p,start,count);
     if(SUCCEEDED(hr) && g_native_stereo)
@@ -541,7 +556,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
                                       UINT min,UINT num,UINT start,UINT count){
     g_indexed.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
-    if(!g_native_stereo && Sample(d,2,p,count,caller))
+    if(Sample(d,2,p,count,caller))
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count);
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
     if(SUCCEEDED(hr) && g_native_stereo)
@@ -552,7 +567,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
                                     const void* verts,UINT stride){
     g_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
-    if(!g_native_stereo && Sample(d,3,p,count,caller))
+    if(Sample(d,3,p,count,caller))
         ObserveUP(d,3,p,count,caller,verts,stride);
     const HRESULT hr=g_draw_up(d,p,count,verts,stride);
     if(SUCCEEDED(hr) && g_native_stereo)
@@ -563,7 +578,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
      UINT num,UINT count,const void* idx,D3DFORMAT fmt,const void* verts,UINT stride){
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
-    if(!g_native_stereo && Sample(d,4,p,count,caller))
+    if(Sample(d,4,p,count,caller))
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num);
     const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
     if(SUCCEEDED(hr) && g_native_stereo)
@@ -630,12 +645,14 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
+    m2vr::drawprobe::NextProjectDrawEpoch();
     if(g_native_stereo)
         m2vr::daytona::FinishFrameAfterPresent(frame,original_result);
     return original_result;
 }
 HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
                                      D3DPRESENT_PARAMETERS* pp){
+    m2vr::drawprobe::NextProjectDrawEpoch();
     if(g_native_stereo)m2vr::daytona::ResetResources();
     return g_reset(d,pp);
 }
