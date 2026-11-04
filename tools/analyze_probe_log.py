@@ -40,6 +40,32 @@ def original_stage_source(op: int, first: int, second: int):
     return None
 
 
+def original_up_source_pass_status(context, original_present_frame):
+    """Evaluate a same-witness original D3D9 main-Z pass, not world proof.
+
+    Scissor-enabled draws qualify only if the original device supplied an
+    exact full-backbuffer scissor rectangle. Legacy unscissored records
+    retain their earlier bit layout. No cross-witness source inference.
+    """
+    if context is None:
+        return "unobserved"
+    frame, flags, packed_dimensions = context
+    width, height = packed_dimensions >> 32, packed_dimensions & 0xFFFFFFFF
+    if (frame <= 0 or frame > 0xFFFFFFFF or flags & ~0x3FFF or
+            not 0 < width <= 16384 or not 0 < height <= 16384):
+        return "invalid"
+    if frame != original_present_frame:
+        return "present_mismatch"
+    if (flags & ~0x3100) != 0xEFD:
+        return "non_main_or_incomplete_depth"
+    if flags & 0x100:
+        return ("full_backbuffer_scissor_candidate" if
+                (flags & 0x3000) == 0x3000 else
+                "partial_or_unknown_scissor")
+    return ("disabled_scissor_candidate" if not flags & 0x3000 else
+            "inconsistent_disabled_scissor")
+
+
 def exact_original_world_source_fvf(fvf: int, stride: int) -> bool:
     # Source-layout diagnostic parity with the strict x86 D3D9 decoders.
     # XYZ or XYZRHW, optional packed DIFFUSE/SPECULAR, TEX0/TEX1 only.
@@ -78,6 +104,7 @@ def analyze(path: Path):
     up_meta = {}
     up_fixed_stage = {}
     up_source_fvf = {}
+    up_source_context = {}
     shader_up_meta = {}
     shader_up_frames = {}
     cpu_draw_edges = Counter()
@@ -183,6 +210,12 @@ def analyze(path: Path):
                         up_fixed_stage.clear()
                     up_fixed_stage[a0] = {}
                 up_fixed_stage[a0][event] = (a1, a2, a3)
+            elif event == "model2_d3d9_source_pass_context":
+                # Read-only source state from exactly this original Draw ID.
+                # Never infer a source pass from adjacent sampled callers.
+                up_source_context[a0] = (a1, a2, a3)
+                if len(up_source_context) > 4096:
+                    up_source_context.clear()
             elif event == "model2_d3d9_up_meta":
                 # a0=capture ID, a1=upcoming frame, a2=caller RVA,
                 # a3=(draw family << 32)|stride.
@@ -464,6 +497,7 @@ def analyze(path: Path):
     up_material_status = Counter()
     up_material_source_status = Counter()
     up_material_color_mask_status = Counter()
+    up_material_context_status = Counter()
     up_material_examples = []
     for witness, (frame, caller, family, stride) in up_meta.items():
         source = up_source_fvf.get(witness)
@@ -551,6 +585,9 @@ def analyze(path: Path):
                 mask_status=("depth_only" if value == 0 else
                              "rgba_all" if value == 15 else "partial_rgba")
         up_material_color_mask_status[mask_status] += 1
+        source_context=up_source_context.get(witness)
+        context_status=original_up_source_pass_status(source_context,frame)
+        up_material_context_status[context_status] += 1
         if len(up_material_examples) < 48:
             up_material_examples.append({
                 "witness_id": witness,
@@ -566,6 +603,9 @@ def analyze(path: Path):
                 "lighting_status": lighting_status,
                 "original_rgba_mask": mask_value,
                 "original_rgba_mask_status": mask_status,
+                "original_main_depth_context_status": context_status,
+                "original_source_scissor_full": (
+                    context_status == "full_backbuffer_scissor_candidate"),
                 "color_stage": [(c[0] >> 32) & 0xFFFFFFFF,
                                 c[0] & 0xFFFFFFFF, c[1]],
                 "alpha_stage": [(a[0] >> 32) & 0xFFFFFFFF,
@@ -609,6 +649,8 @@ def analyze(path: Path):
                 dict(up_material_source_status.most_common()),
             "original_up_material_color_mask_status":
                 dict(up_material_color_mask_status.most_common()),
+            "original_up_material_context_status":
+                dict(up_material_context_status.most_common()),
             "original_up_material_stage_examples": up_material_examples,
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,
