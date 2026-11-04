@@ -257,13 +257,33 @@ int main() {
     CHECK(raster.DrawTextured(farther,base));
     CheckBoth(raster,0x000000u,ok);CHECK(ok);
     CHECK(!raster.StereoPairUsable());
+    // Alpha-only output does change RGBA but must NEVER certify a
+    // distinct RGB eye pair for the x86->x64 OpenXR IPC bridge.
+    raster.Clear();
+    const std::array<std::uint8_t,4> black={0u,0u,0u,255u};
+    StereoWorldRaster::TextureRGBA rgb_black{black.data(),1,1,4,0};
+    rgb_black.raster.write_rgba_mask=0x07u;
+    CHECK(raster.DrawTextured(farther,rgb_black));
+    CHECK(raster.DrawnPixels()>0u && !raster.StereoPairUsable());
+    auto left_alpha=near_tri;
+    left_alpha.eyes[1].clear();
+    StereoWorldRaster::TextureRGBA alpha_only{gsrc.data(),1,1,4,0};
+    alpha_only.raster.write_rgba_mask=0x08u;
+    CHECK(raster.DrawTextured(left_alpha,alpha_only));
+    CHECK(raster.Eye(0)!=raster.Eye(1)); // differing alpha ONLY
+    CHECK(!raster.StereoPairUsable());
+    // Disabled RGB channels may still write Z, but alpha pixels alone
+    // do not increment per-eye native stereo color-coverage counters.
+    raster.Clear();
+    CHECK(raster.DrawTextured(near_tri,alpha_only));
+    CHECK(raster.DrawnPixels()==0u && !raster.StereoPairUsable());
     // Unsupported state fails before modifying either target.
     auto invalid=r;
     invalid.raster.cull=static_cast<FaceCull>(77);
     const auto old=raster.DrawnPixels();
     CHECK(!raster.DrawTextured(farther,invalid));
     CHECK(raster.DrawnPixels()==old);
-    // Depth-only prior Draw leaves the clear color black, not the blue
+    // Alpha-only prior Draw leaves the clear RGB black, not the blue
     // that an earlier independent test section wrote before Clear().
     CheckBoth(raster,0x000000u,ok);CHECK(ok);
     return 0;
