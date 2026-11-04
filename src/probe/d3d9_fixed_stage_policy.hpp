@@ -31,6 +31,12 @@ inline constexpr bool FixedStagePairUsesTexture(
     FixedStageSource rgb,FixedStageSource alpha) noexcept {
     return FixedStageUsesTexture(rgb) || FixedStageUsesTexture(alpha);
 }
+// D3D9 FVF TEX0 is only source-equivalent when BOTH stage-zero channels
+// are DIFFUSE/CURRENT. Never silently sample a nonexistent UV stream.
+inline constexpr bool FixedStageUVAvailableForSources(
+    bool has_uv,FixedStageSource rgb,FixedStageSource alpha) noexcept {
+    return has_uv || !FixedStagePairUsesTexture(rgb,alpha);
+}
 inline bool DecodeFixedStageSource(DWORD operation,DWORD first,
                                    DWORD second,FixedStageSource& out) noexcept {
     FixedStageSource next{};

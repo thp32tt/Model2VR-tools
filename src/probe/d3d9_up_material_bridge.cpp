@@ -181,7 +181,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     // Stage0 CURRENT is identical to DIFFUSE; neither requires guessed data.
     if(!layout.eligible ||
        !FixedFunctionMaterial(d,alpha_cutoff,sampler,raster,
-                              rgb_source,alpha_source,blend_mode))
+                              rgb_source,alpha_source,blend_mode) ||
+       !m2vr::drawprobe::FixedStageUVAvailableForSources(
+           layout.has_uv,rgb_source,alpha_source))
         return FALSE;
     D3DMATRIX world{},view{},projection{};
     if(FAILED(d->GetTransform(D3DTS_WORLD,&world)) ||
@@ -276,7 +278,10 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     if(FAILED(d->GetFVF(&fvf)) ||
        !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride) ||
        !FixedFunctionMaterial(d,cutoff,sampler,raster,
-                              rgb_source,alpha_source,blend_mode))return FALSE;
+                              rgb_source,alpha_source,blend_mode) ||
+       !m2vr::drawprobe::FixedStageUVAvailableForSources(
+           (fvf&D3DFVF_TEXCOUNT_MASK)==D3DFVF_TEX1,
+           rgb_source,alpha_source))return FALSE;
     D3DVIEWPORT9 viewport{};
     if(FAILED(d->GetViewport(&viewport)))return FALSE;
     try {

@@ -15,14 +15,16 @@ struct WorldUpLayout {
     std::uint32_t uv_offset=0;
     std::uint32_t diffuse_offset=0;
     bool has_diffuse=false;
+    bool has_uv=false;
     bool eligible=false;
 };
 inline WorldUpLayout DecodeWorldUpFVF(std::uint32_t fvf,
                                       std::uint32_t stride) noexcept {
     WorldUpLayout result{};
+    const auto tex_count=fvf&D3DFVF_TEXCOUNT_MASK;
     if((fvf&D3DFVF_POSITION_MASK)!=D3DFVF_XYZ ||
-       (fvf&D3DFVF_TEXCOUNT_MASK)!=D3DFVF_TEX1 ||
-       (fvf&0xffff0000u)!=0u)return result; // TEXCOORDSIZE2 only
+       (tex_count!=D3DFVF_TEX0 && tex_count!=D3DFVF_TEX1) ||
+       (fvf&0xffff0000u)!=0u)return result; // TEXCOORDSIZE2 if present
     constexpr std::uint32_t allowed=D3DFVF_XYZ|D3DFVF_NORMAL|
         D3DFVF_PSIZE|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX1;
     if((fvf&~allowed)!=0)return result;
@@ -36,7 +38,9 @@ inline WorldUpLayout DecodeWorldUpFVF(std::uint32_t fvf,
     }
     if(fvf&D3DFVF_SPECULAR)offset+=4;
     // Fail on unknown packed attributes, padding or non-2D UV variants.
-    if(stride!=offset+8u || stride>256u)return result;
+    result.has_uv=tex_count==D3DFVF_TEX1;
+    if(stride!=offset+(result.has_uv?8u:0u) || stride>256u)
+        return WorldUpLayout{};
     result.stride=stride;
     result.uv_offset=offset;
     result.eligible=true;
@@ -101,8 +105,9 @@ inline bool DecodeWorldVertex(const void* data,std::size_t bytes,
        !AffineMatrix(world)||!AffineMatrix(view))return false;
     float xyz[3]{},uv[2]{};
     std::memcpy(xyz,data,sizeof(xyz));
-    std::memcpy(uv,static_cast<const std::uint8_t*>(data)+layout.uv_offset,
-                sizeof(uv));
+    if(layout.has_uv)
+        std::memcpy(uv,static_cast<const std::uint8_t*>(data)+layout.uv_offset,
+                    sizeof(uv));
     float w[3]{};
     TransformPoint(world,xyz,w);
     TransformPoint(view,w,output.view_xyz);

@@ -83,6 +83,14 @@ int main(){
     CHECK(FixedStageUsesTexture(FixedStageSource::Modulate));
     CHECK(FixedStageUsesDiffuse(FixedStageSource::Modulate));
     CHECK(!FixedStageUsesDiffuse(FixedStageSource::Texture));
+    CHECK(FixedStageUVAvailableForSources(
+        false,FixedStageSource::Diffuse,FixedStageSource::Diffuse));
+    CHECK(FixedStageUVAvailableForSources(
+        true,FixedStageSource::Texture,FixedStageSource::Diffuse));
+    CHECK(!FixedStageUVAvailableForSources(
+        false,FixedStageSource::Texture,FixedStageSource::Diffuse));
+    CHECK(!FixedStageUVAvailableForSources(
+        false,FixedStageSource::Diffuse,FixedStageSource::Modulate));
     CHECK(ValidFixedStageSource(FixedStageSource::Diffuse));
     CHECK(!ValidFixedStageSource(static_cast<FixedStageSource>(5u)));
     return 0;

@@ -17,15 +17,20 @@ struct ProjectedUPWorldVertex {
     std::uint32_t diffuse_argb=0xffffffffu;
     bool has_diffuse=false;
     bool has_specular=false;
+    bool has_uv=false;
 };
 inline constexpr bool ExactProjectedUPWorldFVF(
     std::uint32_t fvf,std::uint32_t stride) noexcept {
-    constexpr std::uint32_t base=D3DFVF_XYZRHW|D3DFVF_TEX1;
+    constexpr std::uint32_t base=D3DFVF_XYZRHW;
     constexpr std::uint32_t colors=D3DFVF_DIFFUSE|D3DFVF_SPECULAR;
-    // Exactly XYZRHW + optional packed diffuse/specular + one float2 UV.
-    return (fvf&~colors)==base &&
-        stride==24u+((fvf&D3DFVF_DIFFUSE)?4u:0u)+
-                     ((fvf&D3DFVF_SPECULAR)?4u:0u);
+    // Exact source: screen XYZRHW, optional two packed colors and either
+    // no texture coordinates or one float2. Never infer missing texels.
+    const auto layout=fvf&~colors;
+    const bool has_uv=layout==(base|D3DFVF_TEX1);
+    return (layout==base || has_uv) &&
+        stride==16u+(has_uv?8u:0u)+
+            ((fvf&D3DFVF_DIFFUSE)?4u:0u)+
+            ((fvf&D3DFVF_SPECULAR)?4u:0u);
 }
 inline bool DecodeProjectedUPWorldVertex(const void* raw,
     std::uint32_t fvf,std::uint32_t stride,
@@ -37,7 +42,8 @@ inline bool DecodeProjectedUPWorldVertex(const void* raw,
     std::array<float,4> position{};
     std::array<float,2> uv{};
     std::memcpy(position.data(),bytes,sizeof(position));
-    std::memcpy(uv.data(),bytes+16u+(colored?4u:0u)+
+    const bool has_uv=(fvf&D3DFVF_TEXCOUNT_MASK)==D3DFVF_TEX1;
+    if(has_uv)std::memcpy(uv.data(),bytes+16u+(colored?4u:0u)+
         (specular?4u:0u),sizeof(uv));
     for(float number:position)if(!std::isfinite(number))return false;
     for(float number:uv)if(!std::isfinite(number))return false;
@@ -52,6 +58,7 @@ inline bool DecodeProjectedUPWorldVertex(const void* raw,
     next.uv=uv;
     next.has_diffuse=colored;
     next.has_specular=specular;
+    next.has_uv=has_uv;
     if(colored)std::memcpy(&next.diffuse_argb,bytes+16u,sizeof(std::uint32_t));
     out=next;
     return true;

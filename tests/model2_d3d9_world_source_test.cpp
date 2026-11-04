@@ -17,7 +17,14 @@ int main(){
         D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_DIFFUSE|D3DFVF_TEX1,36);
     CHECK(diffuse.eligible&&diffuse.uv_offset==28 &&
           diffuse.has_diffuse && diffuse.diffuse_offset==24);
-    CHECK(!plain.has_diffuse);
+    CHECK(!plain.has_diffuse && plain.has_uv);
+    // Real source FVF TEX0 has no UV bytes at all. Only a separately
+    // authenticated diffuse-only material may submit these triangles.
+    const auto untextured=DecodeWorldUpFVF(D3DFVF_XYZ|D3DFVF_DIFFUSE,16u);
+    CHECK(untextured.eligible && !untextured.has_uv &&
+          untextured.has_diffuse && untextured.diffuse_offset==12u);
+    CHECK(DecodeWorldUpFVF(D3DFVF_XYZ,12u).eligible);
+    CHECK(!DecodeWorldUpFVF(D3DFVF_XYZ|D3DFVF_DIFFUSE,20u).eligible);
     CHECK(!DecodeWorldUpFVF(D3DFVF_XYZRHW|D3DFVF_TEX1,24).eligible);
     CHECK(!DecodeWorldUpFVF(D3DFVF_XYZ|D3DFVF_TEX1,24).eligible);
     CHECK(!DecodeWorldUpFVF(D3DFVF_XYZ|D3DFVF_TEX2,28).eligible);
@@ -48,6 +55,15 @@ int main(){
                             diffuse,world,view,out));
     CHECK(out.diffuse_argb==diffuse_color &&
           out.uv[0]==0.25f && out.uv[1]==0.75f);
+    std::array<std::uint8_t,16> untextured_bytes{};
+    std::memcpy(untextured_bytes.data(),diffuse_xyz,sizeof(diffuse_xyz));
+    std::memcpy(untextured_bytes.data()+12u,&diffuse_color,4u);
+    CHECK(DecodeWorldVertex(untextured_bytes.data(),untextured_bytes.size(),
+        untextured,world,view,out));
+    CHECK(out.diffuse_argb==diffuse_color &&
+          out.uv[0]==0.f && out.uv[1]==0.f);
+    CHECK(!DecodeWorldVertex(untextured_bytes.data(),15u,
+        untextured,world,view,out));
     CHECK(!DecodeWorldVertex(diffuse_source.data(),35,
                              diffuse,world,view,out));
     CHECK(!DecodeWorldVertex(input.data(),19,plain,world,view,out));

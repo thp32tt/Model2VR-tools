@@ -189,6 +189,30 @@ int main(){
               decoded.diffuse_argb==expected_colors[i]);
     }
     const auto valid_colored=ordered;
+    // Original indexed VB with TEX0 + packed DIFFUSE has no UV memory.
+    // Keep the exact repeated source corner order for world-only materials.
+    std::array<std::array<std::uint8_t,20>,4> no_uv_colored{};
+    constexpr auto no_uv_fvf=D3DFVF_XYZRHW|D3DFVF_DIFFUSE;
+    for(std::size_t i=0;i<no_uv_colored.size();++i){
+        const float position[4]={120.f+float(i)*30.f,150.f,0.4f,0.5f};
+        std::memcpy(no_uv_colored[i].data(),position,16u);
+        std::memcpy(no_uv_colored[i].data()+16u,&argb[i],4u);
+    }
+    CHECK(m2vr::drawprobe::ExpandProjectedVBWindow(
+        reinterpret_cast<const std::uint8_t*>(no_uv_colored.data()),
+        sizeof(no_uv_colored),no_uv_fvf,20u,projected,ordered));
+    CHECK(ordered.size()==6u*20u);
+    for(std::size_t i=0;i<6u;++i){
+        m2vr::drawprobe::ProjectedUPWorldVertex vertex{};
+        CHECK(m2vr::drawprobe::DecodeProjectedUPWorldVertex(
+            ordered.data()+i*20u,no_uv_fvf,20u,vertex));
+        CHECK(!vertex.has_uv && vertex.uv[0]==0.f &&
+              vertex.uv[1]==0.f &&
+              vertex.diffuse_argb==expected_colors[i]);
+    }
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        reinterpret_cast<const std::uint8_t*>(no_uv_colored.data()),
+        sizeof(no_uv_colored),no_uv_fvf,28u,projected,ordered));
     // Both packed source colors precede UV; indexed original source order
     // must survive an additional SPECULAR attribute without being shaded.
     std::array<std::array<std::uint8_t,32>,4> dual_color{};

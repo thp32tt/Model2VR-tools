@@ -18,6 +18,13 @@ int main(){
     CHECK(ExactProjectedUPWorldFVF(
         fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,32u));
     CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_SPECULAR,24u));
+    CHECK(ExactProjectedUPWorldFVF(D3DFVF_XYZRHW,16u));
+    CHECK(ExactProjectedUPWorldFVF(
+        D3DFVF_XYZRHW|D3DFVF_DIFFUSE,20u));
+    CHECK(ExactProjectedUPWorldFVF(
+        D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,24u));
+    CHECK(!ExactProjectedUPWorldFVF(
+        D3DFVF_XYZRHW|D3DFVF_DIFFUSE,28u));
     CHECK(!ExactProjectedUPWorldFVF(
         fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,28u));
     // Reject texture-coordinate size modifiers and extra source streams;
@@ -32,7 +39,25 @@ int main(){
     ProjectedUPWorldVertex v{};
     CHECK(DecodeProjectedUPWorldVertex(packed.data(),fvf,24,v));
     CHECK(v.screen_xy[0]==120.f && v.uv[1]==0.7f);
-    CHECK(!v.has_diffuse && v.diffuse_argb==0xffffffffu);
+    CHECK(!v.has_diffuse && v.has_uv &&
+          v.diffuse_argb==0xffffffffu);
+    const std::array<float,4> no_uv_rhw{120.f,140.f,0.5f,0.25f};
+    CHECK(DecodeProjectedUPWorldVertex(no_uv_rhw.data(),
+        D3DFVF_XYZRHW,16u,v));
+    CHECK(!v.has_uv && !v.has_diffuse &&
+          v.uv[0]==0.f && v.uv[1]==0.f &&
+          v.diffuse_argb==0xffffffffu);
+    std::array<std::uint8_t,20> no_uv_colored{};
+    const std::uint32_t no_uv_argb=0x80204060u;
+    std::memcpy(no_uv_colored.data(),no_uv_rhw.data(),16u);
+    std::memcpy(no_uv_colored.data()+16u,&no_uv_argb,4u);
+    CHECK(DecodeProjectedUPWorldVertex(no_uv_colored.data(),
+        D3DFVF_XYZRHW|D3DFVF_DIFFUSE,20u,v));
+    CHECK(!v.has_uv && v.has_diffuse &&
+          v.diffuse_argb==no_uv_argb &&
+          v.uv[0]==0.f && v.uv[1]==0.f);
+    CHECK(!DecodeProjectedUPWorldVertex(no_uv_colored.data(),
+        D3DFVF_XYZRHW|D3DFVF_DIFFUSE,24u,v));
     // Original D3DCOLOR occupies four raw bytes between XYZRHW and UV.
     // The 0xff... pattern must NOT be interpreted as a NaN float.
     std::array<std::uint8_t,28> with_diffuse{};
