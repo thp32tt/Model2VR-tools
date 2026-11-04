@@ -511,6 +511,31 @@ int main(){
         const auto center=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
         CHECK(raster.Eye(eye)[center+3u]==128u);
     }
+    // Different original destination alpha in left/right eyes MUST
+    // remain independent. Alpha-only eye divergence cannot certify a
+    // native binocular RGB frame, even with two successful Draw calls.
+    raster.Clear();
+    auto only_left=manual,only_right=manual;
+    only_left.eyes[1].clear();
+    only_right.eyes[0].clear();
+    const std::array<std::uint8_t,4> right_blue{{0,0,255,192}};
+    layer.separate_alpha={};layer.blend=BlendMode::Opaque;
+    layer.rgba=dst_alpha.data();
+    CHECK(raster.DrawTextured(only_left,layer));
+    layer.rgba=right_blue.data();
+    CHECK(raster.DrawTextured(only_right,layer));
+    layer.blend=BlendMode::SourceAlphaOver;
+    layer.separate_alpha={true,AlphaBlendFactor::DestinationAlpha,
+                         AlphaBlendFactor::InverseDestinationAlpha};
+    layer.rgba=half_red.data();
+    CHECK(raster.DrawTextured(manual,layer));
+    const auto left_center=(std::size_t(512)*StereoWorldRaster::Width+
+                            512u)*4u;
+    CHECK(raster.Eye(0)[left_center+3u]==80u);
+    CHECK(raster.Eye(1)[left_center+3u]==144u);
+    CHECK(Pixel(raster,0,512,512)==Pixel(raster,1,512,512));
+    CHECK(!raster.StereoPairUsable()); // alpha is NOT binocular RGB
+
     // Reject invalid source factors, stale disabled-policy values and
     // disabled RGB blending with separate alpha BEFORE either-eye writes.
     const auto before_bad_alpha=raster.DrawnPixels();
