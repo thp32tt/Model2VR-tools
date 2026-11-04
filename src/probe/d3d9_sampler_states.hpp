@@ -104,10 +104,22 @@ inline bool AlphaCutoffMatches(DWORD alpha_enable,DWORD alpha_func,
                                DWORD alpha_ref,
                                unsigned int requested_cutoff) noexcept {
     if(requested_cutoff>255u)return false;
-    // If alpha test is disabled, 0 ensures even texel alpha 0 survives.
+    // The stereo raster compares unsigned 8-bit alpha >= cutoff.
+    // Admit only D3D9 comparisons mathematically equivalent for ALL
+    // 256 input values; unsupported comparisons still fail closed.
     if(alpha_enable==0u)return requested_cutoff==0u;
-    // Renderer implements >= and not >, ==, !=, etc.
-    return alpha_enable==1u && alpha_func==D3DCMP_GREATEREQUAL &&
-           alpha_ref<=255u && requested_cutoff==alpha_ref;
+    if(alpha_enable!=1u || alpha_ref>255u)return false;
+    if(alpha_func==D3DCMP_GREATEREQUAL)
+        return requested_cutoff==alpha_ref;
+    if(alpha_func==D3DCMP_GREATER)
+        return alpha_ref<255u && requested_cutoff==alpha_ref+1u;
+    if(alpha_func==D3DCMP_ALWAYS ||
+       (alpha_func==D3DCMP_LESSEQUAL && alpha_ref==255u))
+        return requested_cutoff==0u;
+    if(alpha_func==D3DCMP_NOTEQUAL && alpha_ref==0u)
+        return requested_cutoff==1u;
+    if(alpha_func==D3DCMP_EQUAL && alpha_ref==255u)
+        return requested_cutoff==255u;
+    return false;
 }
 } // namespace m2vr::drawprobe

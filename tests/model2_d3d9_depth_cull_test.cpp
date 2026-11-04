@@ -100,6 +100,23 @@ int main() {
     CHECK(!DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ONE,
         D3DBLENDOP_ADD,1,decoded_blend));
 
+    // Source alpha test equivalences are evaluated on integer RGBA8
+    // texels before either independent-eye blend/depth write.
+    using m2vr::drawprobe::AlphaCutoffMatches;
+    CHECK(AlphaCutoffMatches(0u, D3DCMP_NEVER, 0u, 0u));
+    CHECK(AlphaCutoffMatches(1u, D3DCMP_GREATEREQUAL, 127u, 127u));
+    CHECK(AlphaCutoffMatches(1u, D3DCMP_GREATER, 127u, 128u));
+    CHECK(AlphaCutoffMatches(1u, D3DCMP_GREATER, 0u, 1u));
+    CHECK(!AlphaCutoffMatches(1u, D3DCMP_GREATER, 255u, 255u));
+    CHECK(AlphaCutoffMatches(1u, D3DCMP_NOTEQUAL, 0u, 1u));
+    CHECK(AlphaCutoffMatches(1u, D3DCMP_EQUAL, 255u, 255u));
+    CHECK(AlphaCutoffMatches(1u, D3DCMP_ALWAYS, 17u, 0u));
+    CHECK(AlphaCutoffMatches(1u, D3DCMP_LESSEQUAL, 255u, 0u));
+    CHECK(!AlphaCutoffMatches(1u, D3DCMP_LESSEQUAL, 254u, 0u));
+    CHECK(!AlphaCutoffMatches(1u, D3DCMP_NOTEQUAL, 17u, 18u));
+    CHECK(!AlphaCutoffMatches(1u, D3DCMP_EQUAL, 128u, 128u));
+    CHECK(!AlphaCutoffMatches(1u, D3DCMP_GREATER, 127u, 127u));
+
     // The independently rendered game-world target cannot honor an
     // original sub-viewport, cropped scissor or depth-range remap.
     D3DVIEWPORT9 viewport{};

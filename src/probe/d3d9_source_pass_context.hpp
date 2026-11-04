@@ -35,7 +35,8 @@ inline constexpr std::uint32_t EncodeOriginalDrawSourceContext(
     // dimensions; never promote a plausible-looking auxiliary viewport.
     return static_cast<std::uint32_t>(c.target) |
         (c.viewport_known?kSourceViewportKnown:0u) |
-        (c.viewport_known && c.viewport_full &&
+        (c.viewport_known && c.viewport_full && c.target_desc_known &&
+             c.source_width>0u && c.source_height>0u &&
              c.target==OriginalTargetClass::MainBackbuffer ?
              kSourceViewportFull:0u) |
         (c.depth_known?kSourceDepthKnown:0u) |

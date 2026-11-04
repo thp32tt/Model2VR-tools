@@ -22,6 +22,15 @@ int main(){
     bits=EncodeOriginalDrawSourceContext(c);
     CHECK((bits&kSourceTargetMask)==1u);
     CHECK((bits&kSourceViewportFull)!=0u);
+    c.target_desc_known=false;
+    CHECK((EncodeOriginalDrawSourceContext(c)&kSourceViewportFull)==0u);
+    c.target_desc_known=true;
+    c.source_width=0u;
+    CHECK((EncodeOriginalDrawSourceContext(c)&kSourceViewportFull)==0u);
+    c.source_width=256u;c.source_height=0u;
+    CHECK((EncodeOriginalDrawSourceContext(c)&kSourceViewportFull)==0u);
+    c.source_height=256u;
+    CHECK((EncodeOriginalDrawSourceContext(c)&kSourceViewportFull)!=0u);
     c.viewport_known=false;
     CHECK((EncodeOriginalDrawSourceContext(c)&kSourceViewportFull)==0u);
     c.viewport_known=true;c.depth_known=false;

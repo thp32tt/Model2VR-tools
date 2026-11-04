@@ -221,7 +221,8 @@ void LogOriginalSourcePassContext(IDirect3DDevice9* dev,
     c.viewport_full=c.viewport_known && backbuffer_desc_known &&
         vp.X==0u && vp.Y==0u &&
         vp.Width==backbuffer_desc.Width &&
-        vp.Height==backbuffer_desc.Height;
+        vp.Height==backbuffer_desc.Height &&
+        vp.MinZ==0.f && vp.MaxZ==1.f;
     DWORD z=0u,write=0u,scissor=0u;
     c.depth_known=SUCCEEDED(dev->GetRenderState(D3DRS_ZENABLE,&z)) &&
         SUCCEEDED(dev->GetRenderState(D3DRS_ZWRITEENABLE,&write));

@@ -7,7 +7,10 @@
 namespace m2vr::drawprobe {
 inline bool DecodeFixedTextureDiffuseOp(
     DWORD operation,DWORD first,DWORD second,bool& modulation) noexcept {
-    if(operation==D3DTOP_SELECTARG1 && first==D3DTA_TEXTURE){
+    if((operation==D3DTOP_SELECTARG1 && first==D3DTA_TEXTURE) ||
+       (operation==D3DTOP_SELECTARG2 && second==D3DTA_TEXTURE)){
+        // Both original argument selectors reproduce the same texel;
+        // unused argument state does not modify the selected color.
         modulation=false;
         return true;
     }
