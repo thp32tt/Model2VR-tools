@@ -363,7 +363,6 @@ int wmain(int argc, wchar_t** argv) {
         CloseHandle(pi.hProcess);
         return 8;
     }
-    if (host_process) CloseHandle(host_process);
 
     // Diagnostic-only Daytona sessions must not launch any FFB editor.
     // Preserve existing behavior when this optional INI key is absent.
@@ -372,6 +371,44 @@ int wmain(int argc, wchar_t** argv) {
         StartFfbControlPanel(pi.dwProcessId, emulator.parent_path());
 
     CloseHandle(pi.hThread);
+
+    // Keep the launcher alive as a VR watchdog for the whole game session.
+    // Startup readiness alone is insufficient: if OpenXR dies after the game
+    // resumes, letting the emulator continue would recreate the original
+    // silent desktop-2D fallback symptom.
+    if (host_process) {
+        HANDLE waits[2]{pi.hProcess, host_process};
+        const DWORD wait = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
+        if (wait == WAIT_OBJECT_0) {
+            DWORD host_exit=STILL_ACTIVE;
+            GetExitCodeProcess(host_process,&host_exit);
+            if (host_exit==STILL_ACTIVE) TerminateProcess(host_process, 0);
+            WaitForSingleObject(host_process, 2000);
+            CloseHandle(host_process);
+            CloseHandle(pi.hProcess);
+            std::wcout<<L"Emulator exited; OpenXR host stopped.\n";
+            return 0;
+        }
+        if (wait == WAIT_OBJECT_0 + 1) {
+            DWORD host_exit=1;
+            GetExitCodeProcess(host_process,&host_exit);
+            std::wcerr<<L"OpenXR host exited while Daytona was still running; code="
+                      <<host_exit<<L". Stopping emulator to prevent 2D fallback.\n";
+            TerminateProcess(pi.hProcess, 4);
+            WaitForSingleObject(pi.hProcess, 2000);
+            CloseHandle(host_process);
+            CloseHandle(pi.hProcess);
+            return 10;
+        }
+        const DWORD wait_error=GetLastError();
+        std::wcerr<<L"VR watchdog wait failed; error="<<wait_error<<L"\n";
+        TerminateProcess(host_process, 5);
+        TerminateProcess(pi.hProcess, 5);
+        CloseHandle(host_process);
+        CloseHandle(pi.hProcess);
+        return 11;
+    }
+
     CloseHandle(pi.hProcess);
     return 0;
 }
