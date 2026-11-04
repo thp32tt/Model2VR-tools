@@ -100,6 +100,10 @@ public:
            !ValidSampler(texture.sampler) ||
            !ValidRasterPolicy(texture.raster) ||
            !ValidAlphaCompare(texture.alpha_compare) ||
+           (texture.alpha_compare==AlphaCompare::LegacyCutoff &&
+            texture.alpha_reference!=0u) ||
+           (texture.alpha_compare!=AlphaCompare::LegacyCutoff &&
+            texture.alpha_cutoff!=0u) ||
            !ValidBlendMode(texture.blend) ||
            (texture.select_diffuse_rgb && texture.modulate_rgb) ||
            (texture.select_diffuse_alpha && texture.modulate_alpha) ||
