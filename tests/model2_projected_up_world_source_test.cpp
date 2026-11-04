@@ -20,6 +20,14 @@ int main(){
     CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_SPECULAR,24u));
     CHECK(!ExactProjectedUPWorldFVF(
         fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,28u));
+    // Reject texture-coordinate size modifiers and extra source streams;
+    // a D3D9 FVF declaring non-float2 UV can never be read as TEX1.
+    CHECK(!ExactProjectedUPWorldFVF(
+        fvf|D3DFVF_TEXCOORDSIZE1(0),24u));
+    CHECK(!ExactProjectedUPWorldFVF(
+        fvf|D3DFVF_TEXCOORDSIZE3(0),28u));
+    CHECK(!ExactProjectedUPWorldFVF(
+        fvf|D3DFVF_DIFFUSE|D3DFVF_TEX2,36u));
     const std::array<float,6> packed{120.f,140.f,0.5f,0.25f,0.4f,0.7f};
     ProjectedUPWorldVertex v{};
     CHECK(DecodeProjectedUPWorldVertex(packed.data(),fvf,24,v));
@@ -61,6 +69,18 @@ int main(){
           v.diffuse_argb==0xffffffffu && v.uv[1]==0.7f);
     CHECK(!DecodeProjectedUPWorldVertex(combined.data(),
         fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,28u,v));
+    // Only the float UV pair is checked for validity. Packed colors may
+    // contain arbitrary bits; a malformed RHW still fails before both eyes.
+    std::array<std::uint8_t,32> bad_combined=combined;
+    const float zero=0.f;
+    std::memcpy(bad_combined.data()+12u,&zero,sizeof(zero));
+    CHECK(!DecodeProjectedUPWorldVertex(bad_combined.data(),
+        fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,32u,v));
+    bad_combined=combined;
+    const float too_large_uv=70000.f;
+    std::memcpy(bad_combined.data()+24u,&too_large_uv,sizeof(too_large_uv));
+    CHECK(!DecodeProjectedUPWorldVertex(bad_combined.data(),
+        fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,32u,v));
     CHECK(!DecodeProjectedUPWorldVertex(with_diffuse.data(),
         fvf|D3DFVF_DIFFUSE,24u,v));
     const float nan=(std::numeric_limits<float>::quiet_NaN)();
