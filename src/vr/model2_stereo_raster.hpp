@@ -77,6 +77,9 @@ public:
         // Kept after legacy fields so existing aggregate ABI is intact.
         bool select_diffuse_rgb=false;
         bool select_diffuse_alpha=false;
+        // Exact original D3D9 alpha comparison; zero preserves old cutoff ABI.
+        AlphaCompare alpha_compare=AlphaCompare::LegacyCutoff;
+        std::uint8_t alpha_reference=0u;
     };
     // Fully clipped and validated beforehand; no half-eye write on a bad
     // texture, stale frame, invalid UV, or unsupported mixed pass.
@@ -96,6 +99,7 @@ public:
              texture.stride)) ||
            !ValidSampler(texture.sampler) ||
            !ValidRasterPolicy(texture.raster) ||
+           !ValidAlphaCompare(texture.alpha_compare) ||
            !ValidBlendMode(texture.blend) ||
            (texture.select_diffuse_rgb && texture.modulate_rgb) ||
            (texture.select_diffuse_alpha && texture.modulate_alpha) ||
@@ -308,7 +312,9 @@ private:
                         (255.*diffuse[3]) :
                         (double(texel.a)*
                          (texture.modulate_alpha?diffuse[3]:1.))));
-                if(sampled_alpha<texture.alpha_cutoff)continue;
+                if(!AlphaPasses(static_cast<std::uint8_t>(sampled_alpha),
+                    texture.alpha_cutoff,texture.alpha_compare,
+                    texture.alpha_reference))continue;
                 const auto pixel=offset*4u;
                 if(texture.raster.write_depth)
                     depth_[eye][offset]=static_cast<float>(z);
