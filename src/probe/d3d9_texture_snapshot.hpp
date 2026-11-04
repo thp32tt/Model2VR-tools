@@ -9,6 +9,7 @@
 #include "d3d9_rgb_byte_decode.hpp"
 #include "d3d9_luminance_decode.hpp"
 #include "d3d9_alpha_only_decode.hpp"
+#include "d3d9_palette_decode.hpp"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -50,7 +51,26 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
         !Supported16BitColor(desc.Format) &&
         !LuminancePixelBytes(desc.Format) &&
         !RgbBytePixelBytes(desc.Format) &&
-        !AlphaOnlyPixelBytes(desc.Format)))return false;
+        !AlphaOnlyPixelBytes(desc.Format) &&
+        !PalettedPixelBytes(desc.Format)))return false;
+    CpuPaletteRGBA palette{};
+    const auto palette_pixel_bytes=PalettedPixelBytes(desc.Format);
+    if(palette_pixel_bytes){
+        UINT number=0u;
+        D3DCAPS9 caps{};
+        std::array<PALETTEENTRY,256> entries{};
+        if(FAILED(dev->GetCurrentTexturePalette(&number)) ||
+           number>65535u ||
+           FAILED(dev->GetPaletteEntries(number,entries.data())) ||
+           FAILED(dev->GetDeviceCaps(&caps)))return false;
+        palette.palette_alpha_supported=
+            (caps.TextureCaps&D3DPTEXTURECAPS_ALPHAPALETTE)!=0u;
+        for(std::size_t i=0;i<entries.size();++i){
+            palette.colors[i]={
+                entries[i].peRed,entries[i].peGreen,
+                entries[i].peBlue,entries[i].peFlags};
+        }
+    }
     D3DLOCKED_RECT locked{};
     if(FAILED(tex->LockRect(0,&locked,nullptr,D3DLOCK_READONLY)))
         return false;
@@ -66,7 +86,8 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
         RgbBytePixelBytes(desc.Format)?
             RgbBytePixelBytes(desc.Format):
         AlphaOnlyPixelBytes(desc.Format)?
-            AlphaOnlyPixelBytes(desc.Format):4u;
+            AlphaOnlyPixelBytes(desc.Format):
+        palette_pixel_bytes?palette_pixel_bytes:4u;
     const std::uint32_t row_bytes=dxt_bytes?
         ((desc.Width+3u)/4u)*dxt_bytes :
         desc.Width*source_pixel_bytes;
@@ -107,6 +128,10 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
             if(!DecodeAlphaOnlyRowRGBA(
                 row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
                 desc.Width,desc.Format))return false;
+        }else if(palette_pixel_bytes){
+            if(!DecodePalettedRowRGBA(
+                row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
+                desc.Width,desc.Format,palette))return false;
         }else if(RgbBytePixelBytes(desc.Format)){
             if(!DecodeRgbByteRowRGBA(
                 row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
