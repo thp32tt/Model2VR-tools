@@ -63,7 +63,11 @@ inline bool CapturePlacement(const View& left,const View& right,
     // Both eyes describe essentially one rigid HMD, not two unrelated
     // orientations. A corrupt pair cannot place a quad behind the user.
     if(dot<0.95f)return false;
-    Quat middle{a.x+b.x,a.y+b.y,a.z+b.z,a.w+b.w};
+    // Average the two *unit* orientations before re-normalizing.
+    // A raw sum has length ~2 (length squared ~4) and would be
+    // spuriously rejected by Normalize's bounded input contract.
+    Quat middle{(a.x+b.x)*0.5f,(a.y+b.y)*0.5f,
+                (a.z+b.z)*0.5f,(a.w+b.w)*0.5f};
     if(!Normalize(middle))return false;
     const Vec3 center{(left.position.x+right.position.x)*0.5f,
                       (left.position.y+right.position.y)*0.5f,

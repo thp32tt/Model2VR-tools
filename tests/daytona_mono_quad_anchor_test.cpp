@@ -11,6 +11,7 @@ int main(){
     const View right{{+.032f,1.50f,.75f},{0.f,0.f,0.f,1.f}};
     Placement placement{};
     assert(CapturePlacement(left,right,placement));
+    assert(Near(Dot(placement.orientation,placement.orientation),1.f));
     assert(Near(placement.position.x,0.f));
     assert(Near(placement.position.y,1.50f));
     assert(Near(placement.position.z,-.90f)); // .75 - 1.65
