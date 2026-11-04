@@ -6,6 +6,24 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_original_d3d9_eye_bootstrap_failure_has_one_root_cause(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        self.assertIn('"model2_vr_eye_bootstrap_failure"',gpu)
+        self.assertIn("last_bootstrap_reason_!=code || last_bootstrap_hr_!=original_hr",gpu)
+        for reason in range(1,10):
+            self.assertIn(f"RejectBootstrap({reason}u,",gpu)
+        self.assertIn("const HRESULT color_hr=d->CreateRenderTarget(",gpu)
+        self.assertIn("const HRESULT depth_hr=d->CreateDepthStencilSurface(",gpu)
+        self.assertIn("const HRESULT resolve_hr=d->CreateRenderTarget(",gpu)
+        self.assertIn("const HRESULT staging_hr=d->CreateOffscreenPlainSurface(",gpu)
+        self.assertIn("last_bootstrap_reason_=0u;",gpu)
+        self.assertIn("last_bootstrap_hr_=0u;",gpu)
+        # The bootstrap instrumentation cannot replace or reissue any of
+        # the four original Draw/Present calls owned by the emulator.
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        self.assertIn("const HRESULT hr=g_draw(d,p,start,count);",hooks)
+        self.assertIn("const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);",hooks)
+
     def test_colored_openxr_eyes_do_not_masquerade_as_real_daytona_source(self):
         host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
         app=(ROOT/"host/xr_app.h").read_text("utf-8")
