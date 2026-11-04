@@ -4,6 +4,7 @@
 // LockRect can only read supported CPU-lockable original texture resources.
 // DEFAULT-pool inaccessible textures fail closed instead of inventing pixels.
 #include "d3d9_world_source.hpp"
+#include "d3d9_dxt_decode.hpp"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -41,7 +42,8 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
        !desc.Width || !desc.Height ||
        desc.Width>1024u || desc.Height>1024u ||
        (desc.Format!=D3DFMT_A8R8G8B8 &&
-        desc.Format!=D3DFMT_X8R8G8B8))return false;
+        desc.Format!=D3DFMT_X8R8G8B8 &&
+        !DxtBytesPerBlock(desc.Format)))return false;
     D3DLOCKED_RECT locked{};
     if(FAILED(tex->LockRect(0,&locked,nullptr,D3DLOCK_READONLY)))
         return false;
@@ -49,8 +51,11 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
         IDirect3DTexture9* tex;
         ~Unlock(){if(tex)tex->UnlockRect(0);}
     } unlock{tex};
+    const std::uint32_t dxt_bytes=DxtBytesPerBlock(desc.Format);
+    const std::uint32_t row_bytes=dxt_bytes?
+        ((desc.Width+3u)/4u)*dxt_bytes : desc.Width*4u;
     if(!locked.pBits || locked.Pitch<0 ||
-       std::uint32_t(locked.Pitch)<desc.Width*4u)return false;
+       std::uint32_t(locked.Pitch)<row_bytes)return false;
     TextureSnapshot temp{};
     temp.width=desc.Width;
     temp.height=desc.Height;
@@ -59,14 +64,26 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
         temp.rgba.resize(std::size_t(desc.Width)*desc.Height*4u);
     }catch(...){return false;}
     std::array<std::uint8_t,4096> row{};
-    for(std::uint32_t y=0;y<desc.Height;++y){
+    const std::uint32_t rows=dxt_bytes?
+        (desc.Height+3u)/4u:desc.Height;
+    for(std::uint32_t y=0;y<rows;++y){
         const auto* origin=static_cast<const std::uint8_t*>(locked.pBits);
         if(!SafeCopyRow(row.data(),
                        origin+std::size_t(y)*std::size_t(locked.Pitch),
-                       std::size_t(desc.Width)*4u))return false;
-        if(!DecodeTextureRowRGBA(
-                row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
-                desc.Width,desc.Format))return false;
+                       row_bytes))return false;
+        if(dxt_bytes){
+            const auto blocks=(desc.Width+3u)/4u;
+            for(std::uint32_t x=0;x<blocks;++x){
+                if(!DecodeDxtBlockRGBA(
+                    row.data()+std::size_t(x)*dxt_bytes,
+                    desc.Format,x,y,temp.rgba.data(),
+                    desc.Width,desc.Height,desc.Width*4u))return false;
+            }
+        }else{
+            if(!DecodeTextureRowRGBA(
+                    row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
+                    desc.Width,desc.Format))return false;
+        }
     }
     out=std::move(temp);
     return true;

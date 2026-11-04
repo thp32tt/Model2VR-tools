@@ -218,6 +218,13 @@ add_executable(model2_d3d9_world_source_test tests/model2_d3d9_world_source_test
 target_compile_features(model2_d3d9_world_source_test PRIVATE cxx_std_20)
 add_test(NAME model2_real_d3d9_world_up_source_layout
     COMMAND model2_d3d9_world_source_test)
+# CPU-readable original D3D9 DXT1/DXT3/DXT5 source materials must decode
+# to the same RGBA8 texture stage used by the world eye renderer.
+add_executable(model2_d3d9_dxt_source_test
+    tests/model2_d3d9_dxt_decode_test.cpp)
+target_compile_features(model2_d3d9_dxt_source_test PRIVATE cxx_std_20)
+add_test(NAME model2_d3d9_verified_world_dxt_material_source
+    COMMAND model2_d3d9_dxt_source_test)
 # Same-render-thread CPU ProjectVertexToScreen -> original D3D9 UP
 # candidate correlation. Never authenticates a gameplay world pass.
 add_executable(model2_project_draw_join_test tests/project_draw_correlator_test.cpp)

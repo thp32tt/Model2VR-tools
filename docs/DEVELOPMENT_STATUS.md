@@ -108,6 +108,17 @@ fail closed; neither D3D9 gameplay draws nor the OpenXR world adapter are
 automatically enabled. Camera fit cannot establish physical units-per-meter
 or distinguish auxiliary/HUD passes without separate private evidence.
 
+**Verifiable D3D9 compressed texture source bridge (2026-11-04):**
+The proven world-only fixed-function material snapshot now safely accepts
+original CPU-lockable DXT1, DXT3 and DXT5 textures in addition to 32-bit
+BGRA, converting block colors, DXT1 punch-through alpha, DXT3 alpha
+nibbles and DXT5 interpolated alpha into tightly packed RGBA8 for existing
+independent eye raster sampling. Supports clipped edge blocks within the
+1024x1024 cap and validates source block row pitch. The original device
+texture is never modified, and unreadable/default-pool GPU-only originals
+still fail closed. This increases supported real material paths only when
+the separate game-world source/pass contract was already satisfied.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP
