@@ -9,6 +9,7 @@ int main(){
     CHECK(Supported16BitColor(D3DFMT_A1R5G5B5));
     CHECK(Supported16BitColor(D3DFMT_A4R4G4B4));
     CHECK(Supported16BitColor(D3DFMT_X4R4G4B4));
+    CHECK(Supported16BitColor(D3DFMT_A8R3G3B2));
     CHECK(!Supported16BitColor(D3DFMT_A8R8G8B8));
     std::array<std::uint8_t,8> source{
         0x00,0xF8, // R5G6B5 red 255
@@ -36,6 +37,15 @@ int main(){
     CHECK(Decode16BitColorRowRGBA(source.data(),out.data(),2,D3DFMT_X4R4G4B4));
     CHECK(out[0]==255 && out[1]==0 && out[2]==68 && out[3]==255);
     CHECK(out[7]==255);
+    // Original A8R3G3B2: high 8-bit alpha, low byte packed RGB332.
+    source={0xE0,0x80, 0x1C,0x22, 0x03,0x00, 0xFF,0xFF};
+    CHECK(Decode16BitColorRowRGBA(
+        source.data(),out.data(),4,D3DFMT_A8R3G3B2));
+    CHECK(out[0]==255 && out[1]==0 && out[2]==0 && out[3]==128);
+    CHECK(out[4]==0 && out[5]==255 && out[6]==0 && out[7]==34);
+    CHECK(out[8]==0 && out[9]==0 && out[10]==255 && out[11]==0);
+    CHECK(out[12]==255 && out[13]==255 &&
+          out[14]==255 && out[15]==255);
     CHECK(!Decode16BitColorRowRGBA(source.data(),out.data(),2,D3DFMT_A8R8G8B8));
     CHECK(!Decode16BitColorRowRGBA(source.data(),out.data(),0,D3DFMT_R5G6B5));
     CHECK(!Decode16BitColorRowRGBA(source.data(),out.data(),1025,D3DFMT_R5G6B5));

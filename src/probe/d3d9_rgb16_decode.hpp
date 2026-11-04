@@ -9,13 +9,17 @@ namespace m2vr::drawprobe {
 inline constexpr bool Supported16BitColor(D3DFORMAT format) noexcept {
     return format==D3DFMT_R5G6B5 || format==D3DFMT_X1R5G5B5 ||
            format==D3DFMT_A1R5G5B5 || format==D3DFMT_A4R4G4B4 ||
-           format==D3DFMT_X4R4G4B4;
+           format==D3DFMT_X4R4G4B4 ||
+           format==D3DFMT_A8R3G3B2;
 }
 inline constexpr std::uint8_t Expand5(std::uint32_t v) noexcept {
     return static_cast<std::uint8_t>((v<<3u)|(v>>2u));
 }
 inline constexpr std::uint8_t Expand6(std::uint32_t v) noexcept {
     return static_cast<std::uint8_t>((v<<2u)|(v>>4u));
+}
+inline constexpr std::uint8_t ExpandSource3(std::uint32_t v) noexcept {
+    return static_cast<std::uint8_t>((v<<5u)|(v<<2u)|(v>>1u));
 }
 inline constexpr std::uint8_t Expand4(std::uint32_t v) noexcept {
     return static_cast<std::uint8_t>((v<<4u)|v);
@@ -35,6 +39,13 @@ inline bool Decode16BitColorRowRGBA(
             red=Expand4((pixel>>8u)&15u);
             if(format==D3DFMT_A4R4G4B4)
                 alpha=Expand4((pixel>>12u)&15u);
+        }else if(format==D3DFMT_A8R3G3B2){
+            // Original D3D9 16-bit A8R3G3B2: alpha lives in the
+            // high byte, red/green use three bits, blue uses two.
+            red=ExpandSource3((pixel>>5u)&7u);
+            green=ExpandSource3((pixel>>2u)&7u);
+            blue=static_cast<std::uint8_t>((pixel&3u)*85u);
+            alpha=static_cast<std::uint8_t>(pixel>>8u);
         }else if(format==D3DFMT_R5G6B5){
             blue=Expand5(pixel&31u);
             green=Expand6((pixel>>5u)&63u);
