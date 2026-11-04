@@ -58,7 +58,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("alpha_cutoff>256u",adapter)
         self.assertIn("cutoff>256u",adapter)
         self.assertEqual(adapter.count(
-            "Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates("),
+            "Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates("),
             2)
         self.assertIn("!Model2VR_VerifiedWorldFrameOwnedByCurrentThread()",adapter)
         self.assertIn("!Model2VR_IsOriginalPrimaryD3D9Device(d)",adapter)
@@ -69,6 +69,31 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("texture.alpha_compare",eye)
         self.assertIn("AlphaPasses(",eye)
         self.assertIn("if(texture.raster.write_depth)",eye)
+
+    def test_original_separate_alpha_source_reaches_both_pose_tagged_eyes(self):
+        source=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")
+        dx9=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        decoder=(ROOT/"src/probe/d3d9_sampler_states.hpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        header=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
+        eye=(ROOT/"src/vr/model2_stereo_raster.hpp").read_text("utf-8")
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        self.assertIn('D3DRS_SRCBLENDALPHA',source)
+        self.assertIn('D3DRS_DESTBLENDALPHA',source)
+        self.assertIn('D3DRS_BLENDOPALPHA',source)
+        self.assertIn('DecodeBlendWithSeparateAlphaPolicy(',source)
+        self.assertIn('DecodeOriginalSeparateAlphaFactor(',decoder)
+        self.assertIn('"model2_d3d9_source_separate_alpha_blend"',dx9)
+        api="Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates("
+        self.assertEqual(source.count(api),2)
+        self.assertIn(api,header)
+        self.assertIn(api,bridge)
+        self.assertIn("alpha_compare,alpha_reference,0u,1u,0u);",bridge)
+        self.assertIn("!ValidSeparateAlphaBlend(texture.separate_alpha)",eye)
+        self.assertIn("texture.separate_alpha);",eye)
+        self.assertIn("pose_history_.Find",host)
+        self.assertIn("!Model2VR_VerifiedWorldFrameOwnedByCurrentThread()",source)
+        self.assertIn("!Model2VR_IsOriginalPrimaryD3D9Device(d)",source)
 
     def test_verified_cpu_world_source_uses_the_original_primary_device(self):
         original=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
