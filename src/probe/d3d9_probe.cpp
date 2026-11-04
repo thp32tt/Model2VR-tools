@@ -247,6 +247,35 @@ void LogOriginalSourcePassContext(IDirect3DDevice9* dev,
         (std::uint64_t{c.source_width}<<32)|c.source_height);
 }
 
+// Read-only fixed-function material state belongs to its exact original
+// Draw witness, not a later Present or an inferred gameplay-world pass.
+// No original D3D9 state or game/FFB tick is modified.
+void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
+                                   std::uint64_t witness,DWORD fvf,UINT stride) {
+    if(!dev || !witness)return;
+    DWORD co=0,c1=0,c2=0,ao=0,a1=0,a2=0;
+    DWORD next_color=0,next_alpha=0,specular=0,fog=0;
+    if(FAILED(dev->GetTextureStageState(0,D3DTSS_COLOROP,&co)) ||
+       FAILED(dev->GetTextureStageState(0,D3DTSS_COLORARG1,&c1)) ||
+       FAILED(dev->GetTextureStageState(0,D3DTSS_COLORARG2,&c2)) ||
+       FAILED(dev->GetTextureStageState(0,D3DTSS_ALPHAOP,&ao)) ||
+       FAILED(dev->GetTextureStageState(0,D3DTSS_ALPHAARG1,&a1)) ||
+       FAILED(dev->GetTextureStageState(0,D3DTSS_ALPHAARG2,&a2)) ||
+       FAILED(dev->GetTextureStageState(1,D3DTSS_COLOROP,&next_color)) ||
+       FAILED(dev->GetTextureStageState(1,D3DTSS_ALPHAOP,&next_alpha)) ||
+       FAILED(dev->GetRenderState(D3DRS_SPECULARENABLE,&specular)) ||
+       FAILED(dev->GetRenderState(D3DRS_FOGENABLE,&fog)))
+        return; // Unavailable states are unknown, never guessed.
+    m2vr::LogEvent("model2_d3d9_source_stage0_color",witness,
+        (std::uint64_t{co}<<32)|c1,c2,
+        (std::uint64_t{fvf}<<32)|stride);
+    m2vr::LogEvent("model2_d3d9_source_stage0_alpha",witness,
+        (std::uint64_t{ao}<<32)|a1,a2,
+        (std::uint64_t{fvf}<<32)|stride);
+    m2vr::LogEvent("model2_d3d9_source_stage1_specular",witness,
+        next_color,next_alpha,(std::uint64_t{specular}<<32)|fog);
+}
+
 // Read at most 16 guarded bytes at a time from game-owned UP pointers.
 // The small SEH helper contains no C++ objects requiring unwinding.
 bool SafeReadBytes(const void* source,std::size_t offset,
@@ -326,6 +355,7 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
     const auto id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
     LogOriginalSourcePassContext(dev,id);
+    LogOriginalFixedStageEvidence(dev,id,fvf,stride);
     m2vr::LogEvent("model2_world_up_candidate",id,
          CallerRva(caller),fvf,
          (std::uint64_t{family}<<32)|stride);
@@ -443,6 +473,7 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     const auto sample_id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
     LogOriginalSourcePassContext(dev,sample_id);
+    LogOriginalFixedStageEvidence(dev,sample_id,fvf,stride);
     m2vr::LogEvent("model2_d3d9_up_meta",sample_id,
         g_present_count.load(std::memory_order_relaxed)+1u,
         CallerRva(caller),(std::uint64_t{family}<<32)|stride);
@@ -727,6 +758,7 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
     // This distinguishes independent scene passes from repeated calls
     // within one frame when validating original world/HUD ownership.
     LogOriginalSourcePassContext(dev,id);
+    LogOriginalFixedStageEvidence(dev,id,fvf,stride);
     m2vr::LogEvent("model2_d3d9_vb_present_frame",id,
         g_present_count.load(std::memory_order_relaxed)+1u,
         family,0u);
