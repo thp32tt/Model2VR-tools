@@ -78,7 +78,9 @@ extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitStereoRGBAWithPos
 }
 
 // Separate real CPU-world provenance, still not a Quest HMD validation.
-extern "C" __declspec(dllexport) BOOL __stdcall
+// Internal x86 original-game bridge entry: do not export an unauthenticated
+// external API capable of claiming the CPU-world-only transport subtype.
+extern "C" BOOL __stdcall
 Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(
     const unsigned char* left,const unsigned char* right,
     unsigned long long frame,unsigned int width,unsigned int height,

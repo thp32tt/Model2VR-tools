@@ -20,6 +20,7 @@ class NativeStereoTest(unittest.TestCase):
         protocol=(ROOT/"src/common/stereo_frame_ipc.h").read_text("utf-8")
         self.assertIn("Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(",bridge)
         self.assertIn("FrameKind::VerifiedCpuWorldStereo",writer)
+        self.assertNotIn('__declspec(dllexport) BOOL __stdcall\\nModel2VR_SubmitVerifiedCpuWorldRGBAWithPose(',writer)
         self.assertIn("transport::IsStereoGame(stamp.kind)",host)
         self.assertIn("pair_is_verified_cpu_world=",host)
         self.assertIn("VerifiedCpuWorldStereo=5",protocol)
