@@ -1107,11 +1107,11 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
 // The actual emulator COM Draw and steering/FFB are never replayed here.
 template<class Submit>
 void ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
-    std::uint64_t frame,unsigned family,void* caller,
-    unsigned scene,bool original_scene_open,Submit&& submit){
+    std::uint64_t frame,std::uint64_t ordinal,unsigned family,
+    void* caller,unsigned scene,bool original_scene_open,Submit&& submit){
     m2vr::vrbridge::ArmedOriginalDraw permission{};
     if(!m2vr::vrbridge::TryTakeAuthenticatedOriginalDraw(
-          frame,family,CallerRva(caller),scene,
+          frame,ordinal,family,CallerRva(caller),scene,
           original_scene_open && g_original_scene_hooks_ready.load(
               std::memory_order_acquire),permission))return;
     const BOOL rendered=submit(permission.cpu_projector,
@@ -1139,7 +1139,8 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,1,p,count,caller)?
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
-    ForwardAuthenticatedOriginalDraw(d,source_frame,1u,caller,
+    ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+        1u,caller,
         source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
         return cpu
             ?Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured(
@@ -1176,7 +1177,8 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,2,p,count,caller)?
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
-    ForwardAuthenticatedOriginalDraw(d,source_frame,2u,caller,
+    ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+        2u,caller,
         source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
         return cpu
             ?Model2VR_AppendVerifiedProjectedD3D9IndexedVBTopologyTextured(
@@ -1213,7 +1215,8 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,3,p,count,caller)?
         ObserveUP(d,3,p,count,caller,verts,stride):0u;
-    ForwardAuthenticatedOriginalDraw(d,source_frame,3u,caller,
+    ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+        3u,caller,
         source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
         return cpu
             ?Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopologyTextured(
@@ -1250,7 +1253,8 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,4,p,count,caller)?
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num):0u;
-    ForwardAuthenticatedOriginalDraw(d,source_frame,4u,caller,
+    ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+        4u,caller,
         source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
         return cpu
             ?Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyTextured(
@@ -1548,6 +1552,23 @@ extern "C" __declspec(dllexport) BOOL __stdcall
 Model2VR_IsOriginalPrimaryD3D9Device(const void* device){
     return g_device_installed.load(std::memory_order_acquire) &&
            g_primary_device.Owns(device) ? TRUE : FALSE;
+}
+extern "C" __declspec(dllexport) unsigned long long __stdcall
+Model2VR_NextOriginalD3D9DrawOrdinal(){
+    if(!g_device_installed.load(std::memory_order_acquire))return 0u;
+    const auto prior=g_original_frame_draw_ordinal.load(
+        std::memory_order_acquire);
+    return prior<10000000u ? prior+1u : 0u;
+}
+extern "C" __declspec(dllexport) unsigned int __stdcall
+Model2VR_CurrentOriginalD3D9SceneOrdinal(){
+    if(!g_device_installed.load(std::memory_order_acquire) ||
+       !g_original_scene_hooks_ready.load(std::memory_order_acquire) ||
+       g_original_scene_poisoned.load(std::memory_order_acquire) ||
+       !g_original_scene_open.load(std::memory_order_acquire) ||
+       g_original_scene_owner_thread.load(std::memory_order_acquire)!=
+           GetCurrentThreadId())return 0u;
+    return g_original_scene_ordinal.load(std::memory_order_acquire);
 }
 extern "C" __declspec(dllexport) unsigned long long __stdcall
 Model2VR_NextOriginalD3D9PresentFrameId(){

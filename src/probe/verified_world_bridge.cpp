@@ -194,29 +194,31 @@ bool AdmitVerifiedFixedD3D9SourcePass(
 } // namespace m2vr::vrbridge
 namespace m2vr::vrbridge {
 bool TryTakeAuthenticatedOriginalDraw(std::uint64_t frame,
-    std::uint32_t family,std::uint32_t caller,std::uint32_t scene,
+    std::uint64_t ordinal,std::uint32_t family,std::uint32_t caller,std::uint32_t scene,
     bool genuine_scene_open,ArmedOriginalDraw& result) noexcept {
     if(!g.original_draw_armed.load(std::memory_order_acquire))return false;
     std::scoped_lock lock(g.mutex);
     if(!Owner() || g.frame!=frame)return false;
-    if(!g.original_draw_one_shot.Take(frame,family,caller,scene,
+    if(!g.original_draw_one_shot.Take(frame,ordinal,family,caller,scene,
                                      genuine_scene_open,result))return false;
     g.original_draw_armed.store(false,std::memory_order_release);
     // Source proof is one-use. The actual original COM Draw HRESULT still
     // decides the physical Present. Never emit game geometry or matrices.
     m2vr::LogEvent("model2_vr_authenticated_original_draw_taken",
-        frame,family,caller,scene);
+        frame,ordinal,(std::uint64_t{family}<<32)|caller,scene);
     return true;
 }
 } // namespace m2vr::vrbridge
 extern "C" BOOL __stdcall Model2VR_ArmVerifiedOriginalD3D9Draw(
-    unsigned long long frame,unsigned int family,unsigned int caller,
-    unsigned int scene,unsigned int cpu_projector,unsigned int alpha_cutoff){
+    unsigned long long frame,unsigned long long ordinal,
+    unsigned int family,unsigned int caller,unsigned int scene,
+    unsigned int cpu_projector,unsigned int alpha_cutoff){
     const auto source_frame=Model2VR_NextOriginalD3D9PresentFrameId();
     std::scoped_lock lock(g.mutex);
     if(!Owner() || g.frame!=frame || frame!=source_frame)return FALSE;
     m2vr::vrbridge::ArmedOriginalDraw rule{};
-    rule.frame=frame;rule.family=family;rule.caller=caller;rule.scene=scene;
+    rule.frame=frame;rule.ordinal=ordinal;
+    rule.family=family;rule.caller=caller;rule.scene=scene;
     rule.cpu_projector=cpu_projector;rule.alpha_cutoff=alpha_cutoff;
     if(!g.original_draw_one_shot.Arm(rule))return FALSE;
     g.original_draw_armed.store(true,std::memory_order_release);

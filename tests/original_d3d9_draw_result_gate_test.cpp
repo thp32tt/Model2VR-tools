@@ -37,28 +37,31 @@ int main(){
     // Independent source authorization: never inferred from a generic
     // Draw, scene phase, caller address or successful HRESULT alone.
     OriginalDrawOneShot permits{};
-    ArmedOriginalDraw proof{77u,3u,0x1234u,2u,0x9876u,256u};
+    ArmedOriginalDraw proof{77u,12u,3u,0x1234u,2u,0x9876u,256u};
     ArmedOriginalDraw taken{};
     CHECK(!permits.Pending());
-    CHECK(!permits.Arm({77u,0u,0x1234u,2u,0u,0u}));
-    CHECK(!permits.Arm({77u,3u,0u,2u,0u,0u}));
-    CHECK(!permits.Arm({77u,3u,0x1234u,0u,0u,0u}));
-    CHECK(!permits.Arm({77u,3u,0x1234u,2u,0u,257u}));
+    CHECK(!permits.Arm({77u,12u,0u,0x1234u,2u,0u,0u}));
+    CHECK(!permits.Arm({77u,12u,3u,0u,2u,0u,0u}));
+    CHECK(!permits.Arm({77u,12u,3u,0x1234u,0u,0u,0u}));
+    CHECK(!permits.Arm({77u,12u,3u,0x1234u,2u,0u,257u}));
+    CHECK(!permits.Arm({77u,0u,3u,0x1234u,2u,0u,0u}));
     CHECK(permits.Arm(proof));
     CHECK(permits.Pending());
     CHECK(!permits.Arm(proof));
-    CHECK(!permits.Take(76u,3u,0x1234u,2u,true,taken));
-    CHECK(!permits.Take(77u,1u,0x1234u,2u,true,taken));
-    CHECK(!permits.Take(77u,3u,0x1111u,2u,true,taken));
-    CHECK(!permits.Take(77u,3u,0x1234u,1u,true,taken));
-    CHECK(!permits.Take(77u,3u,0x1234u,2u,false,taken));
+    CHECK(!permits.Take(76u,12u,3u,0x1234u,2u,true,taken));
+    CHECK(!permits.Take(77u,12u,1u,0x1234u,2u,true,taken));
+    CHECK(!permits.Take(77u,12u,3u,0x1111u,2u,true,taken));
+    CHECK(!permits.Take(77u,12u,3u,0x1234u,1u,true,taken));
+    CHECK(!permits.Take(77u,12u,3u,0x1234u,2u,false,taken));
     CHECK(permits.Pending());
-    CHECK(permits.Take(77u,3u,0x1234u,2u,true,taken));
+    CHECK(!permits.Take(77u,11u,3u,0x1234u,2u,true,taken));
+    CHECK(permits.Take(77u,12u,3u,0x1234u,2u,true,taken));
     CHECK(!permits.Pending());
-    CHECK(taken.frame==77u && taken.family==3u && taken.cpu_projector==0x9876u);
+    CHECK(taken.frame==77u && taken.ordinal==12u &&
+          taken.family==3u && taken.cpu_projector==0x9876u);
     CHECK(taken.alpha_cutoff==256u);
-    CHECK(!permits.Take(77u,3u,0x1234u,2u,true,taken));
-    CHECK(permits.Arm({78u,1u,0x1234u,3u,0u,0u}));
+    CHECK(!permits.Take(77u,12u,3u,0x1234u,2u,true,taken));
+    CHECK(permits.Arm({78u,1u,1u,0x1234u,3u,0u,0u}));
     permits.Reset();
     CHECK(!permits.Pending());
     return 0;

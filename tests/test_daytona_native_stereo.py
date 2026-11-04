@@ -72,14 +72,17 @@ class NativeStereoTest(unittest.TestCase):
         api=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
         guard=(ROOT/"src/probe/original_d3d9_authenticated_draw.hpp").read_text("utf-8")
         self.assertIn("Model2VR_ArmVerifiedOriginalD3D9Draw(",api)
+        self.assertIn("Model2VR_NextOriginalD3D9DrawOrdinal()",hooks)
+        self.assertIn("Model2VR_CurrentOriginalD3D9SceneOrdinal()",hooks)
+        self.assertIn("ordinal!=expected_.ordinal",guard)
         self.assertIn("TryTakeAuthenticatedOriginalDraw(",bridge)
         self.assertIn("bool genuine_scene_open",guard)
         self.assertIn("g.original_draw_one_shot.Pending()",bridge)
         self.assertIn("g.original_draw_one_shot.Reset();",bridge)
-        self.assertEqual(hooks.count("ForwardAuthenticatedOriginalDraw(d,source_frame,"),4)
+        self.assertEqual(hooks.count("ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,"),4)
         for family in range(1,5):
             self.assertIn(
-                f"ForwardAuthenticatedOriginalDraw(d,source_frame,{family}u,caller,",
+                f"{family}u,caller,",
                 hooks)
         for name in ("D3D9VBTopologyTextured",
                      "ProjectedD3D9VBTopologyTextured",

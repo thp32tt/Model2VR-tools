@@ -7,11 +7,12 @@
 #include <cstdint>
 namespace m2vr::vrbridge {
 struct ArmedOriginalDraw {
-    std::uint64_t frame=0u;
+    std::uint64_t frame=0u,ordinal=0u;
     std::uint32_t family=0u,caller=0u,scene=0u;
     std::uint32_t cpu_projector=0u,alpha_cutoff=0u;
     constexpr bool Valid()const noexcept {
-        return frame!=0u && family>=1u && family<=4u && caller!=0u &&
+        return frame!=0u && ordinal>0u && ordinal<=10000000u &&
+               family>=1u && family<=4u && caller!=0u &&
                scene!=0u && scene<=100000u && alpha_cutoff<=256u;
     }
 };
@@ -21,10 +22,12 @@ public:
         if(armed_ || !request.Valid())return false;
         expected_=request;armed_=true;return true;
     }
-    constexpr bool Take(std::uint64_t frame,std::uint32_t family,
+    constexpr bool Take(std::uint64_t frame,std::uint64_t ordinal,
+                        std::uint32_t family,
                         std::uint32_t caller,std::uint32_t scene,
                         bool genuine_scene_open,ArmedOriginalDraw& result)noexcept {
         if(!armed_ || !genuine_scene_open || frame!=expected_.frame ||
+           ordinal!=expected_.ordinal ||
            family!=expected_.family || caller!=expected_.caller ||
            scene!=expected_.scene)return false;
         result=expected_;
@@ -41,6 +44,6 @@ private:
 // A successful Take establishes a one-use source identity, not gameplay
 // pass/world ownership, which is independently required at Begin.
 bool TryTakeAuthenticatedOriginalDraw(std::uint64_t frame,
-    std::uint32_t family,std::uint32_t caller,std::uint32_t scene,
+    std::uint64_t ordinal,std::uint32_t family,std::uint32_t caller,std::uint32_t scene,
     bool genuine_scene_open,ArmedOriginalDraw& result) noexcept;
 } // namespace m2vr::vrbridge
