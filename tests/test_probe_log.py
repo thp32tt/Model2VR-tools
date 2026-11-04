@@ -94,6 +94,8 @@ class ProbeLogTests(unittest.TestCase):
                      7, 0x3FFD, (640 << 32) | 480),
                     ("model2_d3d9_source_blend", 22,
                      (1 << 32) | 9, (1 << 32) | 1, 0),
+                    ("model2_d3d9_source_alpha_compare", 22,
+                     (1 << 32) | 6, 128, (0x144 << 32) | 28),
                     ("model2_d3d9_source_sampler_mip", 22,
                      2, 1, 7),
                     ("model2_d3d9_source_vertex_pipeline",22,
@@ -138,6 +140,11 @@ class ProbeLogTests(unittest.TestCase):
         self.assertTrue(examples[0]["original_source_scissor_full"])
         self.assertEqual(examples[0]["original_source_blend_mode"],
                          "multiply_color")
+        self.assertEqual(examples[0]["original_source_alpha_compare_status"],
+                         "not_equal")
+        self.assertEqual(
+            material["original_up_material_alpha_compare_status"],
+            {"not_equal": 1})
         self.assertEqual(
             material["original_up_material_blend_status"]["multiply_color"],1)
         self.assertEqual(examples[0]["world_pass_proof"], "NOT_ESTABLISHED")
@@ -156,6 +163,27 @@ class ProbeLogTests(unittest.TestCase):
             material["original_up_material_fill_status"],{"solid":1})
         self.assertEqual(
             examples[0]["original_source_fill_status"],"solid")
+
+    def test_original_up_alpha_compare_witness_and_decl_fail_closed(self):
+        status=MODULE.original_d3d9_alpha_compare_status
+        tag=(0x144 << 32) | 28
+        self.assertEqual(status(None,0x144,28),"unobserved")
+        self.assertEqual(status(((1 << 32) | 2,127,tag),
+                                0x144,28),"less")
+        self.assertEqual(status(((1 << 32) | 3,127,tag),
+                                0x144,28),"equal")
+        self.assertEqual(status(((1 << 32) | 6,127,tag),
+                                0x144,28),"not_equal")
+        self.assertEqual(status(((0 << 32) | 99,127,tag),
+                                0x144,28),"disabled")
+        self.assertEqual(status(((1 << 32) | 3,127,tag),
+                                0x144,24),"fvf_stride_mismatch")
+        self.assertEqual(status(((1 << 32) | 3,127,tag),
+                                0x145,28),"fvf_stride_mismatch")
+        self.assertEqual(status(((1 << 32) | 9,127,tag),
+                                0x144,28),"unsupported")
+        self.assertEqual(status(((1 << 32) | 3,256,tag),
+                                0x144,28),"unsupported")
 
     def test_original_up_fillmode_strict_source_provenance(self):
         status=MODULE.original_d3d9_fill_status
