@@ -5,6 +5,7 @@
 #include "../vr/model2_head_recenter.hpp"
 #include "../vr/model2_camera_source_contract.hpp"
 #include "daytona_eye_pose_gate.hpp"
+#include "daytona_source_pose_commit_gate.hpp"
 #include "verified_world_present_gate.hpp"
 #include "../common/daytona_producer_health.hpp"
 #include "logger.h"
@@ -34,12 +35,13 @@ struct Bridge {
     m2vr::vr::Model2CameraCalibration calibration{};
     m2vr::vr::DrawEvidence evidence{};
     std::uint64_t frame=0,last_completed=0,pose_sequence=0;
+    std::uint64_t pose_published_qpc=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
     bool active=false,pending_present=false;
     void Abort()noexcept{
         active=false;pending_present=false;
-        owner=0;frame=0;pose_sequence=0;
+        owner=0;frame=0;pose_sequence=0;pose_published_qpc=0;
         draw_count=0;triangle_count=0;
         evidence={};calibration={};
     }
@@ -72,6 +74,20 @@ m2vr::vr::DrawEvidence EvidenceFromProof(std::uint32_t flags)noexcept{
     return e;
 }
 bool Owner()noexcept{return g.active && g.owner==GetCurrentThreadId();}
+// A newer HMD pose cannot revive geometry drawn using an expired source.
+bool OriginalWorldPoseLive()noexcept {
+    if(!g.pose_sequence || !g.pose_published_qpc)return false;
+    m2vr::pose::Frame latest{};
+    if(!Model2VR_ReadPredictedEyeViews(&latest))return false;
+    LARGE_INTEGER now{},frequency{};
+    if(!QueryPerformanceCounter(&now) ||
+       !QueryPerformanceFrequency(&frequency) ||
+       now.QuadPart<=0 || frequency.QuadPart<=0)return false;
+    return m2vr::daytona::OriginalStereoPoseStillLiveAtPresent(
+        {g.pose_sequence,g.pose_published_qpc},latest,
+        static_cast<std::uint64_t>(now.QuadPart),
+        static_cast<std::uint64_t>(frequency.QuadPart));
+}
 }
 extern "C" BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread(){
     std::scoped_lock lock(g.mutex);
@@ -122,6 +138,7 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         g.camera_epoch=next_camera;
         g.frame=frame_id;
         g.pose_sequence=predicted.sequence;
+        g.pose_published_qpc=predicted.published_qpc;
         g.owner=GetCurrentThreadId();
         g.calibration=cal;
         g.evidence=evidence;
@@ -416,7 +433,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     std::scoped_lock lock(g.mutex);
     if(!Owner())return FALSE;
     if(!g.draw_count || !g.raster ||
-       !g.raster->StereoPairUsable()){
+       !g.raster->StereoPairUsable() || !OriginalWorldPoseLive()){
         g.Abort();
         return FALSE;
     }
@@ -439,7 +456,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent(){
     std::scoped_lock lock(g.mutex);
     if(!Owner())return FALSE;
     if(!g.draw_count || !g.raster ||
-       !g.raster->StereoPairUsable()){
+       !g.raster->StereoPairUsable() || !OriginalWorldPoseLive()){
         g.Abort();
         return FALSE;
     }
@@ -460,8 +477,10 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
         native_gpu_replay_enabled!=0u,
         g.owner==GetCurrentThreadId());
     if(action==m2vr::vrbridge::PendingWorldPresent::Wait)return FALSE;
+    const bool pose_live=action==m2vr::vrbridge::PendingWorldPresent::Publish
+        && OriginalWorldPoseLive();
     bool success=false;
-    if(action==m2vr::vrbridge::PendingWorldPresent::Publish){
+    if(action==m2vr::vrbridge::PendingWorldPresent::Publish && pose_live){
         const auto& left=g.raster->Eye(0);
         const auto& right=g.raster->Eye(1);
         success=Model2VR_OpenStereoWriter() &&
@@ -478,7 +497,7 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
             g.producer_health.Create(GetCurrentProcessId());
         if(g.producer_health.Valid()){
             const auto reason=m2vr::vrbridge::PendingWorldHealthReason(
-                action,original_succeeded!=0u,success);
+                action,original_succeeded!=0u,success,pose_live);
             // This describes proven CPU-world draws, never fabricated GPU
             // DP/DIP/UP family counts. The host can distinguish a failed
             // original Present from stale or disconnected HMD tracking.
@@ -487,6 +506,9 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
                 success?g.draw_count:0u,0u,0u,none);
         }
     }
+    if(action==m2vr::vrbridge::PendingWorldPresent::Publish && !pose_live)
+        m2vr::LogEvent("model2_vr_cpu_world_source_pose_expired",
+            g.frame,g.pose_sequence,g.pose_published_qpc,0u);
     m2vr::LogEvent("model2_vr_cpu_world_present_commit",g.frame,
         static_cast<unsigned int>(action),success?1u:0u,
         native_gpu_replay_enabled);
