@@ -80,6 +80,9 @@ public:
         // Exact original D3D9 alpha comparison; zero preserves old cutoff ABI.
         AlphaCompare alpha_compare=AlphaCompare::LegacyCutoff;
         std::uint8_t alpha_reference=0u;
+        // Original RGB and ALPHA can have independent blend factors.
+        // Default disabled is identical to pre-existing material ABI.
+        SeparateAlphaBlend separate_alpha{};
     };
     // Fully clipped and validated beforehand; no half-eye write on a bad
     // texture, stale frame, invalid UV, or unsupported mixed pass.
@@ -105,6 +108,9 @@ public:
            (texture.alpha_compare!=AlphaCompare::LegacyCutoff &&
             texture.alpha_cutoff!=0u) ||
            !ValidBlendMode(texture.blend) ||
+           !ValidSeparateAlphaBlend(texture.separate_alpha) ||
+           (texture.separate_alpha.enabled &&
+            texture.blend==BlendMode::Opaque) ||
            (texture.select_diffuse_rgb && texture.modulate_rgb) ||
            (texture.select_diffuse_alpha && texture.modulate_alpha) ||
            batch.game_frame==0 || batch.pose_sequence==0)
@@ -337,7 +343,8 @@ private:
                 // Per-channel output mask applies after blending. Z-only passes
                 // do not establish visible binocular color coverage.
                 CompositeSourceRGBA(color.data()+pixel,src_rgba,
-                    texture.blend,texture.raster.write_rgba_mask);
+                    texture.blend,texture.raster.write_rgba_mask,
+                    texture.separate_alpha);
                 if((texture.raster.write_rgba_mask&0x07u) &&
                    BlendProducesColor(texture.blend)) {
                     ++pixels_;
