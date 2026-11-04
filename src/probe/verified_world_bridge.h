@@ -98,3 +98,7 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTexture
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 __declspec(dllexport) void __stdcall Model2VR_AbortVerifiedWorldFrame();
 }
+
+// Optional explicit recenter on a proven scene/device restart.
+// Returns FALSE if the renderer currently owns an active world frame.
+extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_ResetVerifiedWorldTrackingOrigin();

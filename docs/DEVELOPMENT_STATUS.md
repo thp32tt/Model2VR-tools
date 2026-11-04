@@ -41,6 +41,26 @@ Do not re-request identical 2D traces or re-run unchanged SHA CI.
 
 ---
 
+## Verified-world head-origin 6DoF adapter (2026-11-04)
+
+The separately proven CPU world renderer adapter now rebases OpenXR LOCAL
+eye poses to the midpoint and orientation of its first accepted stereo pair
+before independent world camera/projection and textured clipping. This
+preserves genuine binocular IPD, relative translation, yaw/pitch/roll and
+asymmetric eye FOV without adding the headset's arbitrary initial playspace
+position to the Daytona camera. Tracking must be under 250ms old, genuinely
+binocular and independently world-pass verified. Invalid pose samples cannot
+overwrite the current tracking origin. The adapter may explicitly reset
+the origin with Model2VR_ResetVerifiedWorldTrackingOrigin only when no world
+frame is active, such as on a proven emulator scene/device reset.
+
+This is the optional verified CPU-world source path, not Daytona shader-UP
+pixel-shift replay. Game camera coordinate axes, units-per-meter and actual
+gameplay world pass still need independent evidence; no new runtime proof or
+automatic conversion is inferred from the HMD. 2D fallback and the separate
+FFB plugin are unchanged. Windows x86/x64 synthetic tests are not Quest 3
+visual confirmation: RUNTIME_VALIDATION=UNTESTED.
+
 ## Historical milestone reference
 
 ## Milestone 01 — Read-only runtime probe

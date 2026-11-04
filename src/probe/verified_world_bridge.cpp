@@ -2,6 +2,8 @@
 // no automatic D3D9 draw replay and no second simulation/input/FFB call.
 #include "verified_world_bridge.h"
 #include "../vr/model2_stereo_raster.hpp"
+#include "../vr/model2_head_recenter.hpp"
+#include "daytona_eye_pose_gate.hpp"
 #include <Windows.h>
 #include <algorithm>
 #include <cstdint>
@@ -22,6 +24,7 @@ struct Bridge {
     std::mutex mutex;
     std::unique_ptr<m2vr::vr::StereoWorldRaster> raster;
     m2vr::vr::Model2FramePoseLatch latch;
+    m2vr::vr::Model2HeadRecenter head_origin;
     m2vr::vr::Model2CameraCalibration calibration{};
     m2vr::vr::DrawEvidence evidence{};
     std::uint64_t frame=0,last_completed=0;
@@ -82,11 +85,25 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         if(m2vr::vr::ChooseEyeAction(evidence)!=
            m2vr::vr::EyeAction::StereoGeometry)return FALSE;
         m2vr::pose::Frame predicted{};
-        if(!Model2VR_ReadPredictedEyeViews(&predicted) ||
-           !g.latch.Begin(frame_id,predicted))return FALSE;
+        if(!Model2VR_ReadPredictedEyeViews(&predicted))return FALSE;
+        LARGE_INTEGER now{},frequency{};
+        if(!QueryPerformanceCounter(&now) ||
+           !QueryPerformanceFrequency(&frequency) ||
+           now.QuadPart<=0 || frequency.QuadPart<=0 ||
+           !m2vr::daytona::AdmitLiveEyePose(
+               predicted,static_cast<std::uint64_t>(now.QuadPart),
+               static_cast<std::uint64_t>(frequency.QuadPart)).valid)
+            return FALSE;
+        // Source game vertices are in camera view space, not XR LOCAL.
+        // Stage new origin until proof, fresh pose and latch all succeed.
+        auto next_origin=g.head_origin;
+        m2vr::pose::Frame camera_relative{};
+        if(!next_origin.Rebase(predicted,camera_relative) ||
+           !g.latch.Begin(frame_id,camera_relative))return FALSE;
         if(!g.raster)
             g.raster=std::make_unique<m2vr::vr::StereoWorldRaster>();
         g.raster->Clear();
+        g.head_origin=next_origin;
         g.frame=frame_id;
         g.owner=GetCurrentThreadId();
         g.calibration=cal;
@@ -256,4 +273,15 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
 extern "C" void __stdcall Model2VR_AbortVerifiedWorldFrame() {
     std::scoped_lock lock(g.mutex);
     if(Owner())g.Abort();
+}
+
+// An explicit verified game-adapter scene/device restart may establish a
+// fresh tracking origin. Never recenter on a failed Draw/pose sample.
+extern "C" BOOL __stdcall Model2VR_ResetVerifiedWorldTrackingOrigin() {
+    std::scoped_lock lock(g.mutex);
+    if(g.active)return FALSE;
+    g.head_origin.Reset();
+    g.latch.Reset();
+    g.last_completed=0;
+    return TRUE;
 }

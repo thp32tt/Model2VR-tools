@@ -81,3 +81,10 @@ target_compile_definitions(daytona_d3d11_typeless_upload_x64_test PRIVATE
 target_link_libraries(daytona_d3d11_typeless_upload_x64_test PRIVATE d3d11)
 add_test(NAME daytona_d3d11_typeless_openxr_upload_x64
          COMMAND daytona_d3d11_typeless_upload_x64_test)
+
+# Identical verified-world recenter contract in x86 producer / x64 host.
+add_executable(model2_head_recenter_x64_test ../tests/model2_head_recenter_test.cpp)
+target_compile_features(model2_head_recenter_x64_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_head_recenter_x64_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME model2_verified_camera_head_recenter_x64
+         COMMAND model2_head_recenter_x64_test)

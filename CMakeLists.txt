@@ -253,3 +253,10 @@ target_compile_features(daytona_eye_pose_gate_x86_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_eye_pose_gate_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_live_openxr_binocular_pose_gate_x86
          COMMAND daytona_eye_pose_gate_x86_test)
+
+# Live HMD camera-origin policy used by a separately verified world adapter.
+add_executable(model2_head_recenter_x86_test tests/model2_head_recenter_test.cpp)
+target_compile_features(model2_head_recenter_x86_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_head_recenter_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME model2_verified_camera_head_recenter_x86
+         COMMAND model2_head_recenter_x86_test)
