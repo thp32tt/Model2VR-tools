@@ -359,11 +359,14 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
         // Read only fixed layout fields. Never dereference beyond 65536
         // source bytes, and never ask the caller to provide hidden memory.
         std::array<std::uint8_t,256> source{};
-        if(!SafeReadBytes(vertices,std::size_t(index)*stride,
-                          source.data(),12u) ||
-           !SafeReadBytes(vertices,std::size_t(index)*stride+
-                              layout.uv_offset,
-                          source.data()+layout.uv_offset,8u) ||
+        const std::size_t vertex_base=std::size_t(index)*stride;
+        if(!SafeReadBytes(vertices,vertex_base,source.data(),12u) ||
+           (layout.has_diffuse &&
+            !SafeReadBytes(vertices,vertex_base+layout.diffuse_offset,
+                           source.data()+layout.diffuse_offset,4u)) ||
+           (layout.has_uv &&
+            !SafeReadBytes(vertices,vertex_base+layout.uv_offset,
+                           source.data()+layout.uv_offset,8u)) ||
            !DecodeWorldVertex(source.data(),stride,layout,
                               world,view,samples[i]))return;
         ids[i]=absolute_index;

@@ -26,6 +26,20 @@ def finite_stats(values):
     }
 
 
+# Exact subset of D3D9 stage-zero source semantics supported by the
+# verified source adapter. A material match is only diagnostic evidence:
+# it NEVER authenticates an original gameplay world/camera Draw caller.
+def original_stage_source(op: int, first: int, second: int):
+    # D3DTOP_SELECTARG1=2, SELECTARG2=3, MODULATE=4.
+    # D3DTA_DIFFUSE=0, CURRENT=1 (stage0 aliases DIFFUSE), TEXTURE=2.
+    mode = {0: "diffuse", 1: "diffuse", 2: "texture"}
+    if op in (2, 3):
+        return mode.get(first if op == 2 else second)
+    if op == 4 and {first, second} in ({0, 2}, {1, 2}):
+        return "modulate"
+    return None
+
+
 def analyze(path: Path):
     event_counts = Counter()
     active_matrices = Counter()
@@ -138,7 +152,8 @@ def analyze(path: Path):
             elif event in ("model2_d3d9_source_stage0_color",
                            "model2_d3d9_source_stage0_alpha",
                            "model2_d3d9_source_stage1_specular",
-                           "model2_d3d9_source_stage_result"):
+                           "model2_d3d9_source_stage_result",
+                           "model2_d3d9_source_lighting"):
                 if a0 not in up_fixed_stage:
                     if len(up_fixed_stage) >= 4096:
                         up_fixed_stage.clear()
@@ -423,6 +438,7 @@ def analyze(path: Path):
     # A complete stage record from the same original UP Draw is still
     # MATERIAL EVIDENCE ONLY, never an authenticated gameplay camera/pass.
     up_material_status = Counter()
+    up_material_source_status = Counter()
     up_material_examples = []
     for witness, (frame, caller, family, stride) in up_meta.items():
         source = up_source_fvf.get(witness)
@@ -454,6 +470,44 @@ def analyze(path: Path):
             up_material_status["material_fvf_or_stride_mismatch"] += 1
             continue
         up_material_status["same_witness_stage_candidate"] += 1
+        color_source = original_stage_source(
+            (c[0] >> 32) & 0xFFFFFFFF, c[0] & 0xFFFFFFFF, c[1])
+        alpha_source = original_stage_source(
+            (a[0] >> 32) & 0xFFFFFFFF, a[0] & 0xFFFFFFFF, a[1])
+        # D3DFVF_TEXCOUNT_MASK=0xF00 and D3DFVF_TEX1=0x100.
+        has_uv = (fvf & 0xF00) == 0x100
+        uses_texture = color_source in ("texture", "modulate") or (
+            alpha_source in ("texture", "modulate"))
+        # The original must write CURRENT and disable stage1. The source
+        # adapter still validates actual texture and raster state separately.
+        if color_source is None or alpha_source is None:
+            source_status = "unsupported_source_operation"
+        elif extra[0] != 1 or extra[1] != 1 or (
+                extra[2] != 0):
+            source_status = "unsupported_secondary_stage_or_fog"
+        elif uses_texture and not has_uv:
+            source_status = "texture_source_without_uv"
+        elif not has_uv and (color_source, alpha_source) == (
+                "diffuse", "diffuse"):
+            source_status = "diffuse_only_tex0_candidate"
+        else:
+            source_status = "source_mode_candidate"
+        lighting = stage.get("model2_d3d9_source_lighting")
+        lighting_status = "lighting_unobserved"
+        if lighting is not None:
+            l_enabled, color_vertex, l_fvf_stride = lighting
+            if ((l_fvf_stride >> 32) != fvf or
+                    (l_fvf_stride & 0xFFFFFFFF) != stride or
+                    l_enabled not in (0, 1) or color_vertex not in (0, 1)):
+                lighting_status = "lighting_witness_mismatch"
+            elif l_enabled == 1 and (fvf & 0xE) != 0x4:
+                lighting_status = "nonpretransformed_lighting_unsupported"
+            elif l_enabled == 1:
+                lighting_status = "pretransformed_lighting_ignored"
+            else:
+                lighting_status = "lighting_disabled"
+        up_material_source_status[source_status] += 1
+        up_material_source_status[lighting_status] += 1
         if len(up_material_examples) < 48:
             up_material_examples.append({
                 "witness_id": witness,
@@ -462,6 +516,11 @@ def analyze(path: Path):
                 "original_draw_family": family,
                 "original_fvf": f"0x{fvf:08X}",
                 "original_stride": stride,
+                "source_has_uv": has_uv,
+                "rgb_source_mode": color_source or "unsupported",
+                "alpha_source_mode": alpha_source or "unsupported",
+                "source_mode_status": source_status,
+                "lighting_status": lighting_status,
                 "color_stage": [(c[0] >> 32) & 0xFFFFFFFF,
                                 c[0] & 0xFFFFFFFF, c[1]],
                 "alpha_stage": [(a[0] >> 32) & 0xFFFFFFFF,
@@ -501,6 +560,8 @@ def analyze(path: Path):
             "external_or_unknown_caller_samples": d3d9_external_origin_samples,
             "up_xyzw_witnesses": dict(up_witnesses.most_common()),
             "original_up_material_stage_status": dict(up_material_status.most_common()),
+            "original_up_material_source_status":
+                dict(up_material_source_status.most_common()),
             "original_up_material_stage_examples": up_material_examples,
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,

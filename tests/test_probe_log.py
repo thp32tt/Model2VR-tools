@@ -127,6 +127,60 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(examples[0]["color_stage"], [4, 2, 0])
         self.assertEqual(examples[0]["source_stage0_result"], 1)
 
+    def test_tex0_source_lighting_and_missing_uv_are_never_world_proof(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "original_tex0.csv"
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(
+                    ["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
+                rows = []
+                # Original XYZRHW|DIFFUSE, no TEX1: 16+4 bytes.
+                # CURRENT must be interpreted as source diffuse at stage0.
+                for witness, colorop, colorarg, lighting in [
+                        (30, 2, 0, 1),  # valid DIFFUSE/Diffuse TEX0
+                        (31, 2, 2, 1),  # invalid TEXTURE/DIFFUSE TEX0
+                        (32, 2, 0, 1)]: # wrong same-witness lighting FVF
+                    fvf, stride, frame = 0x44, 20, 9
+                    rows.extend([
+                        ("model2_d3d9_up_source_fvf", witness,
+                         fvf, stride, frame),
+                        ("model2_d3d9_up_meta", witness, frame,
+                         0x987, (3 << 32) | stride),
+                        ("model2_d3d9_source_stage0_color", witness,
+                         (colorop << 32) | colorarg, 99,
+                         (fvf << 32) | stride),
+                        ("model2_d3d9_source_stage0_alpha", witness,
+                         (2 << 32) | 1, 99,
+                         (fvf << 32) | stride),
+                        ("model2_d3d9_source_stage1_specular",
+                         witness, 1, 1, 0),
+                        ("model2_d3d9_source_stage_result", witness,
+                         1, 1, (fvf << 32) | stride),
+                        ("model2_d3d9_source_lighting", witness,
+                         lighting, 1, ((0x144 if witness == 32
+                                       else fvf) << 32) | stride),
+                    ])
+                for seq, values in enumerate(rows, 1):
+                    writer.writerow([seq, 100 + seq, 7, *values])
+            d3d9 = MODULE.analyze(path)["d3d9"]
+        self.assertEqual(
+            d3d9["original_up_material_stage_status"][
+                "same_witness_stage_candidate"], 3)
+        status = d3d9["original_up_material_source_status"]
+        self.assertEqual(status["diffuse_only_tex0_candidate"], 2)
+        self.assertEqual(status["texture_source_without_uv"], 1)
+        self.assertEqual(status["pretransformed_lighting_ignored"], 2)
+        self.assertEqual(status["lighting_witness_mismatch"], 1)
+        examples = d3d9["original_up_material_stage_examples"]
+        self.assertTrue(all(not x["source_has_uv"] for x in examples))
+        self.assertTrue(all(
+            x["world_pass_proof"] == "NOT_ESTABLISHED" for x in examples))
+        self.assertEqual(examples[0]["rgb_source_mode"], "diffuse")
+        self.assertEqual(examples[1]["rgb_source_mode"], "texture")
+        self.assertEqual(examples[0]["source_mode_status"],
+                         "diffuse_only_tex0_candidate")
+
     def test_in_process_cpu_draw_join_remains_candidate_only(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "join.csv"
