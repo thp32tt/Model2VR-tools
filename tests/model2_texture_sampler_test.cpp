@@ -55,7 +55,7 @@ int main(){
     CHECK(SampleTextureRGBA(rgba.data(),2,2,8,1.,0.25,mirror,px));
     CHECK(px.r==0 && px.g==255 && px.b==0 && px.a==0);
     CHECK(SampleTextureRGBA(rgba.data(),2,2,8,2.,0.25,mirror,px));
-    CHECK(px.r==128 && px.g==128 && px.b==0 && px.a==128);
+    CHECK(px.r==255 && px.g==0 && px.b==0 && px.a==255);
     CHECK(SampleTextureRGBA(rgba.data(),2,2,8,-1.,0.25,mirror,px));
     CHECK(px.r==0 && px.g==255 && px.b==0 && px.a==0);
     // Default fixed-function point/clamp behavior remains unchanged.
