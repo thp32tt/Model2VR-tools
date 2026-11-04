@@ -48,4 +48,4 @@ int main(){
     full_right[0]=full_left[0];
     assert(!OriginalEyesHaveVisibleRgbDifference(full_left,full_right,8u));
     return 0;
-
+}
