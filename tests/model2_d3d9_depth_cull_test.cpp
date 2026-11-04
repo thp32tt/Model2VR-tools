@@ -66,6 +66,25 @@ int main() {
     CHECK(!ValidRasterPolicy({
         static_cast<FaceCull>(5),DepthCompare::Less,true}));
 
+    // Genuine original shader/clip state is independently required.
+    // A well-formed FVF alone can NEVER certify Gouraud interpolation,
+    // original clipping or CPU world-space ownership.
+    using m2vr::drawprobe::OriginalVertexPipelineEquivalent;
+    CHECK(OriginalVertexPipelineEquivalent(
+        D3DSHADE_GOURAUD,TRUE,0u,D3DVBF_DISABLE,FALSE));
+    CHECK(!OriginalVertexPipelineEquivalent(
+        D3DSHADE_FLAT,TRUE,0u,D3DVBF_DISABLE,FALSE));
+    CHECK(!OriginalVertexPipelineEquivalent(
+        D3DSHADE_PHONG,TRUE,0u,D3DVBF_DISABLE,FALSE));
+    CHECK(!OriginalVertexPipelineEquivalent(
+        D3DSHADE_GOURAUD,FALSE,0u,D3DVBF_DISABLE,FALSE));
+    CHECK(!OriginalVertexPipelineEquivalent(
+        D3DSHADE_GOURAUD,TRUE,1u,D3DVBF_DISABLE,FALSE));
+    CHECK(!OriginalVertexPipelineEquivalent(
+        D3DSHADE_GOURAUD,TRUE,0u,D3DVBF_1WEIGHTS,FALSE));
+    CHECK(!OriginalVertexPipelineEquivalent(
+        D3DSHADE_GOURAUD,TRUE,0u,D3DVBF_DISABLE,TRUE));
+
     using m2vr::drawprobe::DecodeRasterPolicy;
     RasterPolicy decoded{};
     constexpr DWORD colors=D3DCOLORWRITEENABLE_RED|
