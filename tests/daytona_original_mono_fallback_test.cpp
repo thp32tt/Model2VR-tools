@@ -2,6 +2,10 @@
 #include <cassert>
 using namespace m2vr::daytona;
 int main(){
+    assert(ChooseCpuWorldBackup(false,false)==CpuWorldBackupPath::NoPendingWorld);
+    assert(ChooseCpuWorldBackup(false,true)==CpuWorldBackupPath::NoPendingWorld);
+    assert(ChooseCpuWorldBackup(true,true)==CpuWorldBackupPath::OriginalMonoReady);
+    assert(ChooseCpuWorldBackup(true,false)==CpuWorldBackupPath::GpuEyesRequired);
     assert(CanStageOriginalMono(true,true,true,true,1u));
     assert(!CanStageOriginalMono(false,true,true,true,1u)); // no opt-in
     assert(!CanStageOriginalMono(true,false,true,true,1u)); // foreign device

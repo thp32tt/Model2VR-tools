@@ -471,14 +471,22 @@ public:
         pending_present_frame_=frame;
         pending_present_reason_=0u;
         if(verified_cpu_world_pending){
-            // A complete separately proven CPU world pair is already
-            // staged, but could still lose its tracked pose or Present.
-            // Capture ONE original mono backbuffer as fail-safe, not two
-            // redundant GPU replay eye readbacks on this same game frame.
+            // A complete separately proven CPU pair is ready but can still
+            // fail Present/pose. Prefer ONE real game-mono rollback image.
             pending_present_reason_=
                 m2vr::producerhealth::CpuWorldDeferredGpuReadback;
             PrepareOriginalMono(d,frame,pending_present_reason_);
-            return;
+            const auto backup=m2vr::daytona::ChooseCpuWorldBackup(
+                verified_cpu_world_pending,pending_mono_ready_);
+            if(frame==1u || frame%120u==0u)
+                m2vr::LogEvent("model2_vr_cpu_world_backup",frame,
+                    static_cast<unsigned>(backup),pending_mono_ready_?1u:0u,0u);
+            if(backup==m2vr::daytona::CpuWorldBackupPath::OriginalMonoReady)
+                return;
+            // The real D3D9 backbuffer readback failed: recover via the
+            // existing GPU eye staging rather than guarantee colored host
+            // diagnostics when the CPU world subsequently loses its pose.
+            pending_present_reason_=0u;
         }
         // Read the current game frame before the original Present can flip
         // its backbuffer. No transport writer or health is touched here.

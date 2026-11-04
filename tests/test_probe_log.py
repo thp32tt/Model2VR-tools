@@ -41,6 +41,12 @@ class ProbeLogTests(unittest.TestCase):
                                  13,0,0,0])
                 writer.writerow([8,108,7,"model2_vr_cpu_world_present_commit",
                                  14,2,1,2])
+                writer.writerow([9,109,7,"model2_vr_cpu_world_backup",
+                                 10,1,1,0])
+                writer.writerow([10,110,7,"model2_vr_cpu_world_backup",
+                                 11,2,0,0])
+                writer.writerow([11,111,7,"model2_vr_cpu_world_backup",
+                                 12,2,1,0])
             report=MODULE.analyze(path)
             routes=report["d3d9"]["native_stereo_source_route_counts"]
             self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
@@ -51,7 +57,9 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(routes["original_mono_readback_unavailable"],1)
             self.assertEqual(routes["original_game_present_failed"],1)
             self.assertEqual(routes["cpu_world_pose_expired"],1)
-            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],1)
+            self.assertEqual(routes["cpu_world_original_mono_backup_ready"],1)
+            self.assertEqual(routes["cpu_world_mono_failed_gpu_eyes_backup"],1)
+            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],2)
             self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",
                           MODULE.markdown(report))
             self.assertIn("HMD=UNTESTED",MODULE.markdown(report))

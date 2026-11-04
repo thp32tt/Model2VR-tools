@@ -393,6 +393,17 @@ def analyze(path: Path):
                             "reason_mask": a1,
                             "hmd_runtime_validation": "UNTESTED",
                         })
+            elif event == "model2_vr_cpu_world_backup":
+                # a1 1=original D3D9 mono staged, 2=mono failed so GPU
+                # eye readback resumed; a2 confirms a real mono snapshot.
+                if (a0 <= 0 or a1 not in (1,2) or a2 not in (0,1) or
+                        (a1 == 1 and a2 != 1) or
+                        (a1 == 2 and a2 != 0)):
+                    source_route_invalid_records += 1
+                else:
+                    label=("cpu_world_original_mono_backup_ready" if a1 == 1
+                           else "cpu_world_mono_failed_gpu_eyes_backup")
+                    source_route_counts[label] += 1
             elif event == "model2_vr_original_mono_readback_unavailable":
                 source_route_counts["original_mono_readback_unavailable"] += 1
             elif event == "model2_vr_original_present_failed":
