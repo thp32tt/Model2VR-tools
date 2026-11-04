@@ -521,6 +521,60 @@ int main(){
     CHECK(!raster.DrawTextured(manual,layer));
     CHECK(raster.DrawnPixels()==count_before_invalid);
     CHECK(Pixel(raster,0,512,512)==blended);
+    // Original D3D9 8-bit ALPHAFUNC now uses the same source reference
+    // independently in both original-eye raster targets. Rejected samples
+    // must leave both color and depth untouched. The original legacy cutoff
+    // still tests >= cutoff when compare mode is zero.
+    const std::array<std::uint8_t,4> exact_alpha_tex{{255u,0u,0u,128u}};
+    StereoWorldRaster::TextureRGBA exact_alpha{
+        exact_alpha_tex.data(),1u,1u,4u,0u};
+    exact_alpha.alpha_compare=AlphaCompare::Less;
+    exact_alpha.alpha_reference=129u;
+    raster.Clear();
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0xff0000u);
+    raster.Clear();
+    exact_alpha.alpha_reference=128u; // strict LESS rejects equality
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    for(int eye=0;eye<2;++eye) {
+        CHECK(Pixel(raster,eye,512,512)==0u);
+        CHECK(raster.WrittenEyePixels(eye)==0u);
+    }
+    exact_alpha.alpha_compare=AlphaCompare::Equal;
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0xff0000u);
+    raster.Clear();
+    exact_alpha.alpha_compare=AlphaCompare::NotEqual;
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    CHECK(raster.WrittenEyePixels(0)==0u);
+    CHECK(raster.WrittenEyePixels(1)==0u);
+    exact_alpha.alpha_compare=AlphaCompare::GreaterEqual;
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0xff0000u);
+    raster.Clear();
+    exact_alpha.alpha_compare=AlphaCompare::Never;
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    CHECK(raster.WrittenEyePixels(0)==0u);
+    exact_alpha.alpha_compare=AlphaCompare::Always;
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0xff0000u);
+    raster.Clear();
+    exact_alpha.alpha_compare=AlphaCompare::LegacyCutoff;
+    exact_alpha.alpha_cutoff=129u;
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    CHECK(raster.WrittenEyePixels(0)==0u);
+    exact_alpha.alpha_cutoff=128u;
+    CHECK(raster.DrawTextured(manual,exact_alpha));
+    CHECK(raster.WrittenEyePixels(0)>0u);
+    const auto prior_alpha_pixels=raster.DrawnPixels();
+    exact_alpha.alpha_compare=static_cast<AlphaCompare>(9u);
+    CHECK(!raster.DrawTextured(manual,exact_alpha));
+    CHECK(raster.DrawnPixels()==prior_alpha_pixels);
+
     // Original x86 D3DTADDRESS_MIRRORONCE traverses the real
     // independent-eye texture path, not only the standalone sampler.
     raster.Clear();
