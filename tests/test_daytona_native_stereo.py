@@ -6,6 +6,13 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_primary_d3d9_owner_precedes_world_source_extraction(self):
+        for file in ("d3d9_vb_material_bridge.cpp",
+                     "d3d9_indexed_up_material_bridge.cpp",
+                     "d3d9_up_topology_material_bridge.cpp"):
+            content=(ROOT/"src/probe"/file).read_text("utf-8")
+            self.assertIn("Model2VR_IsOriginalPrimaryD3D9Device(device)",content)
+
     def test_original_stereo_source_pose_stays_live_until_present(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
