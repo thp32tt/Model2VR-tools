@@ -91,6 +91,24 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
 - In-process diagnostic witness IDs now correlate real original D3D9 Draw callsites to CPU projector callsites and count distinct frames in the local log report. Private original emulator source, raw traces and proprietary assets are never committed to the public repo.
 - Next real gate: privately authenticate gameplay world ownership, view axes and game units-per-meter, then connect only proven source draws into the existing calibrated OpenXR CPU-world adapter. Unknown HUD/auxiliary remains flat. Quest3/VDXR RUNTIME_VALIDATION=UNTESTED.
 
+## Connected CPU-source to original Present frame ID (2026-11-04)
+
+- The verified CPU-world renderer can now explicitly request
+  `Model2VR_NextOriginalD3D9PresentFrameId()` from the real installed
+  original D3D9 hook, rather than assume the Model 2 simulation tick
+  equals a GPU Present frame number. Unknown hooks, GPU replay ownership
+  and counter wrap reject the request.
+- `Model2VR_EndVerifiedWorldFrameOnOriginalPresent()` arms a complete
+  binocular frame but does not publish it; only the matching original
+  frame, original successful HRESULT and render thread can publish
+  after Present, and a Reset discards it. Legacy immediate submission
+  remains ABI compatible.
+- The source-to-draw joins and this optional submission gate do NOT
+  certify the emulator's game-world camera axes, scale, HUD ownership
+  or texture material coverage. A separately authenticated adapter must
+  still provide those, privately. No Quest 3 visual run has happened;
+  `RUNTIME_VALIDATION=UNTESTED`.
+
 ## Next implementation sequence
 
 1. Read `README.md`, `docs/DEVELOPMENT_STATUS.md`, current `host/`, `src/`, `scripts/Run-Daytona-VR.bat`, `scripts/Run-Daytona-NativeStereo.cmd`, actual test fixtures and recent main commits. Identify the exact unfinished integration or reproducible failure; modify code first.

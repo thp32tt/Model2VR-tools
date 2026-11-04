@@ -6,6 +6,16 @@
 #include <cstdint>
 
 namespace m2vr::vrbridge {
+// A source camera adapter may join a verified world transaction to the
+// actual original device frame, not to a guessed simulation tick. The
+// original Present counter is incremented on entry. Fail closed on wrap.
+inline std::uint64_t NextOriginalPresentFrameId(
+    std::uint32_t original_present_counter,
+    bool device_hook_installed,bool native_gpu_replay_enabled) noexcept {
+    if(!device_hook_installed || native_gpu_replay_enabled ||
+       original_present_counter==0xffffffffu)return 0u;
+    return std::uint64_t{original_present_counter}+1u;
+}
 enum class PendingWorldPresent : std::uint8_t {
     None, Wait, Drop, Publish
 };

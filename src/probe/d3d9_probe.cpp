@@ -4,6 +4,7 @@
 #include "daytona_up_decl_witness.hpp"
 #include "draw_origin_gate.hpp"
 #include "project_draw_correlator.hpp"
+#include "verified_world_present_gate.hpp"
 #include "d3d9_world_source.hpp"
 #include <Windows.h>
 #include <d3d9.h>
@@ -66,7 +67,7 @@ m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 std::atomic<std::uint64_t> g_witness_serial{0};
 std::uint32_t g_draw_sample_every=1024u;
-bool g_device_installed=false;
+std::atomic<bool> g_device_installed{false};
 bool g_native_stereo=false;
 // Internal callback into the independently proven CPU-world renderer.
 // No verified-world frame is generated or self-authorized by this probe.
@@ -801,7 +802,7 @@ bool HookDevice(IDirect3DDevice9* dev){
                        update,stretch,fill,clear);
         return false;
     }
-    g_device_installed=true;
+    g_device_installed.store(true,std::memory_order_release);
     m2vr::LogEvent("model2_d3d9_device_hooks_ready");
     return true;
 }
@@ -840,6 +841,18 @@ IDirect3D9* WINAPI Create9Hook(UINT sdk){
     return api;
 }
 } // namespace
+
+// The authenticated source adapter must use this specific original D3D9
+// frame identifier instead of assuming its emulator simulation frame index
+// equals a real device Present. Never activate CPU-world submission when
+// the separate GPU shader-UP replay already owns the transport.
+extern "C" __declspec(dllexport) unsigned long long __stdcall
+Model2VR_NextOriginalD3D9PresentFrameId(){
+    return m2vr::vrbridge::NextOriginalPresentFrameId(
+        g_present_count.load(std::memory_order_relaxed),
+        g_device_installed.load(std::memory_order_acquire),
+        g_native_stereo);
+}
 
 namespace m2vr {
 bool InstallD3D9ReadOnlyProbe(HMODULE executable,std::uint32_t exe_size,

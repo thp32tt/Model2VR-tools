@@ -3,6 +3,11 @@
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"world present gate line %d: %s\n",__LINE__,#x);return 1;}}while(0)
 int main(){
     using namespace m2vr::vrbridge;
+    CHECK(NextOriginalPresentFrameId(0u,true,false)==1u);
+    CHECK(NextOriginalPresentFrameId(25u,true,false)==26u);
+    CHECK(NextOriginalPresentFrameId(25u,false,false)==0u);
+    CHECK(NextOriginalPresentFrameId(25u,true,true)==0u);
+    CHECK(NextOriginalPresentFrameId(0xffffffffu,true,false)==0u);
     CHECK(DecidePendingWorldPresent(0u,1u,true,false,true)==
           PendingWorldPresent::None);
     CHECK(DecidePendingWorldPresent(5u,4u,true,false,true)==

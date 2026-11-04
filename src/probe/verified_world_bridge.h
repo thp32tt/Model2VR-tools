@@ -96,6 +96,11 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTexture
     unsigned int start_index, unsigned int primitive_count,
     unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
+// Source-owned upcoming original D3D9 Present frame ID (nonzero only
+// after real device hooks are installed and GPU-replay mode is disabled).
+// Query during the game render pass before original Present is entered.
+__declspec(dllexport) unsigned long long __stdcall
+Model2VR_NextOriginalD3D9PresentFrameId();
 // Preferred opt-in source-connected end: ARM, but never publish before the
 // matching ORIGINAL D3D9 Present HRESULT succeeds. The emulator adapter
 // must supply the exact upcoming original frame ID to BeginVerifiedWorldFrame.
