@@ -52,6 +52,8 @@ class SourceAuditTests(unittest.TestCase):
                  0xAABBCCDD, 0, 0x1000),
                 ("model2_d3d9_cpu_vb_geometry_command", 101,
                  0x77, 0, 0xAABBCCDD),
+                ("model2_d3d9_source_pass_context", 101,
+                 17, 0x2FC, pack(640, 480)),
                 ("model2_d3d9_vb_present_frame", 102, 17, 2, 0),
                 ("model2_d3d9_vb_source", 102, 0x1234,
                  pack(2, 0x112), pack(65536, 20)),
@@ -93,6 +95,9 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["cpu_geometry_command_words"], ["0x00000077"])
             self.assertEqual(
                 src["distinct_geometry_command_present_frame_count"], 1)
+            self.assertEqual(src["distinct_context_present_frame_count"], 1)
+            self.assertEqual(src["original_main_full_view_depth_candidates"], 1)
+            self.assertEqual(src["source_contexts"], [[1, 640, 480, 764]])
             self.assertFalse(src["world_pass_proven"])
 
     def test_in_place_matrix_drift_is_not_authentic_world_evidence(self):
@@ -110,6 +115,8 @@ class SourceAuditTests(unittest.TestCase):
                  0xABC123, 1, 0x1000),
                 ("model2_d3d9_cpu_vb_geometry_command", 77,
                  0x77, 1, 0xABC123),
+                ("model2_d3d9_source_pass_context", 77,
+                 9, 0x2FE, pack(256, 256)),
             ])
             item = REPORT.audit_csv(p)["sources"][0]
             self.assertEqual(
@@ -121,6 +128,8 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(item["cpu_geometry_command_mixed_batches"], 1)
             self.assertEqual(
                 item["distinct_geometry_command_present_frame_count"], 0)
+            self.assertEqual(item["source_context_frame_mismatches"], 1)
+            self.assertEqual(item["original_main_full_view_depth_candidates"], 0)
             self.assertFalse(item["world_pass_proven"])
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):

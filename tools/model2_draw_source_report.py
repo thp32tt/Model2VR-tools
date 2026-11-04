@@ -26,6 +26,7 @@ NAMES = {
     "model2_d3d9_cpu_vb_matrix_identity",
     "model2_d3d9_cpu_vb_matrix_content",
     "model2_d3d9_cpu_vb_geometry_command",
+    "model2_d3d9_source_pass_context",
     "model2_d3d9_vb_present_frame",
 }
 
@@ -95,6 +96,8 @@ def audit_csv(path):
                 fields["matrix_content"] = values
             elif event == "model2_d3d9_cpu_vb_geometry_command":
                 fields["geometry_command"] = values
+            elif event == "model2_d3d9_source_pass_context":
+                fields["source_context"] = values
             elif event == "model2_d3d9_vb_present_frame":
                 fields["present_frame"] = values
             elif event == "model2_d3d9_vb_camera":
@@ -125,6 +128,11 @@ def audit_csv(path):
         "cpu_geometry_command_unavailable_batches": 0,
         "cpu_geometry_command_words": set(),
         "geometry_command_present_frames": set(),
+        "source_contexts": set(),
+        "source_context_frame_mismatches": 0,
+        "source_context_unknowns": 0,
+        "original_main_full_view_depth_candidates": 0,
+        "context_present_frames": set(),
         "present_frames": set(),
         "correlated_present_frames": set(),
         "candidate_only": True,
@@ -154,6 +162,29 @@ def audit_csv(path):
                 raise ValueError("invalid original VB Present frame")
             present_frame = frame
             entry["present_frames"].add(frame)
+        if "source_context" in data:
+            ctx_frame, ctx_flags, ctx_size = data["source_context"]
+            target = ctx_flags & 3
+            width, height = halves(ctx_size)
+            if (not ctx_frame or ctx_frame > 0xFFFFFFFF or
+                    ctx_flags > 0x3FF or target == 3 or
+                    width > 16384 or height > 16384):
+                raise ValueError("invalid D3D9 source-pass witness")
+            if present_frame is None or ctx_frame != present_frame:
+                entry["source_context_frame_mismatches"] += 1
+            elif not (ctx_flags & 0x200) or target == 0:
+                entry["source_context_unknowns"] += 1
+            else:
+                # Values are read from the original COM device at Draw.
+                # Even a full depth-tested main RT remains a CANDIDATE.
+                entry["source_contexts"].add(
+                    (target, width, height, ctx_flags))
+                entry["context_present_frames"].add(ctx_frame)
+                if (target == 1 and (ctx_flags & 0x3FC) == 0x2FC):
+                    # Full viewport, confirmed Z, depth writes, no
+                    # scissor. Require explicit known scissor = disabled,
+                    # instead of interpreting a missing query as off.
+                    entry["original_main_full_view_depth_candidates"] += 1
         if "stream" in data:
             offset_usage, _, _ = data["stream"]
             _, usage = halves(offset_usage)
@@ -282,12 +313,15 @@ def audit_csv(path):
             value["matrix_consistent_present_frames"])
         record["distinct_geometry_command_present_frame_count"] = len(
             value["geometry_command_present_frames"])
+        record["distinct_context_present_frame_count"] = len(
+            value["context_present_frames"])
         record["distinct_correlated_present_frame_count"] = len(
             value["correlated_present_frames"])
         for key, item in value.items():
             if key in ("present_frames", "correlated_present_frames",
                        "matrix_consistent_present_frames",
-                       "geometry_command_present_frames"):
+                       "geometry_command_present_frames",
+                       "context_present_frames"):
                 continue
             if isinstance(item, set):
                 record[key] = sorted([list(v) if isinstance(v, tuple) else v for v in item])
