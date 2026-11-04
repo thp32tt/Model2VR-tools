@@ -32,6 +32,12 @@ static m2vr::pose::Frame ValidTestPose(){
     return f;
 }
 int main(){
+    using m2vr::daytona::CanTagGameStereoPose;
+    CHECK(!CanTagGameStereoPose(0u));
+    CHECK(CanTagGameStereoPose(1u));
+    CHECK(CanTagGameStereoPose(0xffffffffull));
+    CHECK(!CanTagGameStereoPose(0x100000000ull));
+    CHECK(!CanTagGameStereoPose(0xffffffffffffffffull));
     using m2vr::daytona::SafeStereoHomogeneousW;
     CHECK(SafeStereoHomogeneousW(98.9f));
     CHECK(SafeStereoHomogeneousW(414.78f));
