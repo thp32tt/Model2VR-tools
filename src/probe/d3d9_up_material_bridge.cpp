@@ -276,7 +276,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
             return FALSE;
     }catch(...){return FALSE;}
     // No second haptic owner, no duplicated emulator CPU draw or state.
-    return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates(
+    return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates(
         positions.data(),uv.data(),count,safe_indices.data(),index_count,
         texture.rgba.data(),texture.width,texture.height,texture.width*4u,
         alpha_cutoff==256u?0u:alpha_cutoff,
@@ -291,7 +291,10 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
         static_cast<unsigned>(alpha_source),
         static_cast<unsigned>(blend_mode),
         static_cast<unsigned>(raster.write_rgba_mask),
-        alpha_compare,alpha_reference);
+        alpha_compare,alpha_reference,
+        separate_policy.enabled?1u:0u,
+        static_cast<unsigned>(separate_policy.source),
+        static_cast<unsigned>(separate_policy.destination));
 }
 
 // Actual original x86 D3D9 DrawPrimitiveUP XYZRHW/TEX1 vertices may already
@@ -381,7 +384,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             return FALSE;
         // Same authenticated owner and exact existing rasterization/pose
         // contract as the other fixed-function original Draw adapters.
-        return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates(
+        return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates(
             positions.data(),uv.data(),static_cast<unsigned>(count),
             indices.data(),static_cast<unsigned>(count),
             texture.rgba.data(),texture.width,texture.height,
@@ -397,6 +400,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         static_cast<unsigned>(alpha_source),
             static_cast<unsigned>(blend_mode),
             static_cast<unsigned>(raster.write_rgba_mask),
-        alpha_compare,alpha_reference);
+        alpha_compare,alpha_reference,
+        separate_policy.enabled?1u:0u,
+        static_cast<unsigned>(separate_policy.source),
+        static_cast<unsigned>(separate_policy.destination));
     }catch(...){return FALSE;}
 }
