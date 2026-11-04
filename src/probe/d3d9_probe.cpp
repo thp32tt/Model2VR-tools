@@ -751,6 +751,12 @@ HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
         m2vr::daytona::MirrorColorFill(d,dst,rect,color,g_color_fill);
     return hr;
 }
+// Every COM Present path must execute the original game's method exactly
+// once; a secondary device is excluded from all primary frame accounting.
+HRESULT CallOriginalPresentOnce(IDirect3DDevice9* d,CONST RECT* a,
+    CONST RECT* b,HWND w,CONST RGNDATA* dirty){
+    return g_present(d,a,b,w,dirty);
+}
 HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RECT* b,
                                      HWND w,CONST RGNDATA* dirty){
     if(!g_primary_device.Owns(d)){
@@ -759,7 +765,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         if(seen==1u || seen%120u==0u)
             m2vr::LogEvent("model2_d3d9_secondary_device_present",
                            seen,0u,0u,0u);
-        return g_present(d,a,b,w,dirty);
+        return CallOriginalPresentOnce(d,a,b,w,dirty);
     }
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
     // Native replay must also drain the *original* source-family counters.

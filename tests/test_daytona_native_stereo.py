@@ -228,6 +228,10 @@ class NativeStereoTest(unittest.TestCase):
         self.assertLess(body.index("const HRESULT original_result=g_present("),
                         body.index("FinishFrameAfterPresent(frame,original_result)"))
         self.assertEqual(body.count("g_present(d,a,b,w,dirty)"),1)
+        self.assertIn("return CallOriginalPresentOnce(d,a,b,w,dirty);",body)
+        secondary=body.split("if(!g_primary_device.Owns(d))")[1]
+        self.assertLess(secondary.index("CallOriginalPresentOnce("),
+                        secondary.index("const unsigned frame="))
         self.assertIn("return original_result;",body)
         pre=gpu.split("void PreparePresent(")[1].split("void FinishPresent(")[0]
         post=gpu.split("void FinishPresent(")[1].split("private:")[0]
