@@ -9,6 +9,7 @@
 #include "verified_world_present_gate.hpp"
 #include "d3d9_world_source.hpp"
 #include "d3d9_projected_vb_observer.hpp"
+#include "d3d9_indexed_up_window.hpp"
 #include "projected_up_world_source.hpp"
 #include <Windows.h>
 #include <d3d9.h>
@@ -213,8 +214,8 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
     if(FAILED(dev->GetFVF(&fvf)))return;
     const auto layout=DecodeWorldUpFVF(fvf,stride);
     if(!layout.eligible)return;
-    if(family==4u && (!indices||first!=0u||!vertex_count||
-       vertex_count>65536u ||
+    if(family==4u && (!indices||!vertex_count||
+       vertex_count>m2vr::drawprobe::kMaxIndexedUPVertices ||
        (index_format!=D3DFMT_INDEX16 &&
         index_format!=D3DFMT_INDEX32)))return;
     D3DMATRIX world{},view{};
@@ -230,6 +231,7 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
     const unsigned count=elements<max_sample?elements:max_sample;
     for(unsigned i=0;i<count;++i) {
         std::uint32_t index=i;
+        std::uint32_t absolute_index=index;
         if(family==4u) {
             const unsigned bytes=index_format==D3DFMT_INDEX16?2u:4u;
             std::array<std::uint8_t,4> raw{};
@@ -237,7 +239,11 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
                               raw.data(),bytes))return;
             if(bytes==2u){std::uint16_t x=0;std::memcpy(&x,raw.data(),2);index=x;}
             else std::memcpy(&index,raw.data(),4);
-            if(index>=vertex_count)return;
+            std::uint32_t relative=0u;
+            if(!IndexedUPRelativeIndex(index,first,vertex_count,relative))
+                return;
+            absolute_index=index;
+            index=relative; // UP vertex pointer begins at first
         }
         // Read only fixed layout fields. Never dereference beyond 65536
         // source bytes, and never ask the caller to provide hidden memory.
@@ -249,13 +255,16 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
                           source.data()+layout.uv_offset,8u) ||
            !DecodeWorldVertex(source.data(),stride,layout,
                               world,view,samples[i]))return;
-        ids[i]=index;
+        ids[i]=absolute_index;
     }
     const auto id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
     m2vr::LogEvent("model2_world_up_candidate",id,
          CallerRva(caller),fvf,
          (std::uint64_t{family}<<32)|stride);
+    if(family==4u)
+        m2vr::LogEvent("model2_d3d9_indexed_up_window",id,
+            first,vertex_count,index_format);
     for(unsigned i=0;i<count;++i){
         const auto& v=samples[i];
         m2vr::LogEvent("model2_world_up_view_xyz",id,ids[i],
@@ -307,10 +316,10 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     }
     if((fvf&D3DFVF_POSITION_MASK)!=D3DFVF_XYZRHW)return;
 
-    // For indexed UP the vertex base is only unambiguous at index zero.
-    // Skip all other layouts rather than risk a false draw association.
-    if(family==4u && (!indices||first!=0u||!vertex_count||
-       vertex_count>65536u ||
+    // Nonzero MinVertexIndex is legal: resolve original absolute index
+    // against the declared UP span before reading its local memory.
+    if(family==4u && (!indices||!vertex_count||
+       vertex_count>m2vr::drawprobe::kMaxIndexedUPVertices ||
        (index_format!=D3DFMT_INDEX16 &&
         index_format!=D3DFMT_INDEX32)))return;
 
@@ -325,6 +334,7 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     const unsigned count=elements<limit?elements:limit;
     for(unsigned i=0;i<count;++i){
         std::uint32_t index=i;
+        std::uint32_t absolute_index=index;
         if(family==4u){
             std::array<std::uint8_t,4> bytes{};
             const unsigned width=index_format==D3DFMT_INDEX16?2u:4u;
@@ -337,13 +347,17 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
             }else{
                 std::memcpy(&index,bytes.data(),4u);
             }
-            if(index>=vertex_count)return;
+            std::uint32_t relative=0u;
+            if(!IndexedUPRelativeIndex(index,first,vertex_count,relative))
+                return;
+            absolute_index=index;
+            index=relative; // UP vertex pointer begins at first
         }
         std::array<std::uint32_t,4> bits{};
         if(!SafeReadBytes(vertices,std::size_t{index}*stride,
                           bits.data(),sizeof(bits)) ||
            !DecodeXYZRHW(bits,observations[i].vertex))return;
-        observations[i].index=index;
+        observations[i].index=absolute_index;
     }
 
     const auto sample_id=g_witness_serial.fetch_add(
@@ -351,6 +365,9 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     m2vr::LogEvent("model2_d3d9_up_meta",sample_id,
         g_present_count.load(std::memory_order_relaxed)+1u,
         CallerRva(caller),(std::uint64_t{family}<<32)|stride);
+    if(family==4u)
+        m2vr::LogEvent("model2_d3d9_indexed_up_window",sample_id,
+            first,vertex_count,index_format);
     // Preserve the original three-vertex per-witness log volume/schema.
     // Extra source triangles are correlated only via aggregate metadata.
     for(unsigned i=0;i<count && i<MaxVertices;++i){
