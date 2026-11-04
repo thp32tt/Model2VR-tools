@@ -187,6 +187,15 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(classify((17, 0x4EFD, dims), 17), "invalid")
         self.assertEqual(classify(None, 17), "unobserved")
 
+    def test_original_up_depth_cull_is_only_diagnostic(self):
+        check=MODULE.original_d3d9_depth_cull_status
+        good=((1 << 32)|3,(1 << 32)|2,9)
+        self.assertEqual(check(None,9),"unobserved")
+        self.assertEqual(check(good,9),"supported")
+        self.assertEqual(check(good,10),"present_mismatch")
+        self.assertEqual(check(((1 << 32)|1,2,9),9),"unsupported")
+        self.assertEqual(check(((2 << 32)|3,2,9),9),"unsupported")
+
     def test_exact_world_fvf_layout_is_diagnostic_only(self):
         check = MODULE.exact_original_world_source_fvf
         self.assertTrue(check(0x44, 20)) # XYZRHW, DIFFUSE, TEX0
@@ -236,6 +245,9 @@ class ProbeLogTests(unittest.TestCase):
                         ("model2_d3d9_source_lighting", witness,
                          lighting, 1, ((0x144 if witness == 32
                                        else fvf) << 32) | stride),
+                        ("model2_d3d9_source_depth_cull", witness,
+                         (1 << 32) | 4, (1 << 32) | 3,
+                         frame if witness == 30 else frame + 1),
                         ("model2_d3d9_source_color_mask", witness,
                          10 if witness == 30 else 0,
                          ((0x144 if witness == 32 else fvf) << 32)
@@ -252,6 +264,9 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(status["texture_source_without_uv"], 1)
         self.assertEqual(status["pretransformed_lighting_ignored"], 2)
         self.assertEqual(status["lighting_witness_mismatch"], 1)
+        depth_status = d3d9["original_up_material_depth_cull_status"]
+        self.assertEqual(depth_status["supported"], 1)
+        self.assertEqual(depth_status["present_mismatch"], 2)
         masks = d3d9["original_up_material_color_mask_status"]
         self.assertEqual(masks["partial_rgba"], 1)
         self.assertEqual(masks["depth_only"], 1)

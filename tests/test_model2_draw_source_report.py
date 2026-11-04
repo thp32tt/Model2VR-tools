@@ -42,6 +42,8 @@ class SourceAuditTests(unittest.TestCase):
                  pack(1, 7), 128, 0),
                 ("model2_d3d9_vb_raster", 101,
                  pack(3, 4), pack(1, 0), pack(0, 0)),
+                ("model2_d3d9_source_depth_cull", 101,
+                 pack(1, 4), pack(1, 3), 17),
                 ("model2_d3d9_vb_write_color", 101,
                  pack(0, 15), 0, 0),
                 ("model2_d3d9_source_color_mask", 101,
@@ -94,6 +96,8 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["sampler_modes"], [[1, 3, 2, 2, 0, 0]])
             self.assertEqual(src["alpha_test_modes"], [[1, 7, 128]])
             self.assertEqual(src["raster_modes"], [[3, 4, 1, 0, 0, 0]])
+            self.assertEqual(src["original_source_depth_cull_status"],
+                             ["supported"])
             self.assertEqual(src["color_write_modes"], [[0, 15]])
             self.assertEqual(src["original_source_color_mask_modes"], [0, 15])
             self.assertEqual(src["original_depth_only_draw_witnesses"], 1)
@@ -238,6 +242,33 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p, bad)
             self.assertEqual(REPORT.audit_csv(p)["sources"][0][
                 "same_witness_joint_candidates"], 0)
+
+    def test_original_depth_cull_same_witness_never_world_proof(self):
+        check=REPORT.original_d3d9_depth_cull_status
+        good=(pack(1,7),pack(1,3),17)
+        raster=(pack(3,7),pack(1,0),pack(0,0))
+        self.assertEqual(check(None,17),"unobserved")
+        self.assertEqual(check(good,17,raster),"supported")
+        self.assertEqual(check(good,18,raster),"present_mismatch")
+        self.assertEqual(check(good,17,(pack(3,4),pack(1,0),0)),
+                         "source_raster_mismatch")
+        self.assertEqual(check((pack(2,7),pack(1,3),17),17),"unsupported")
+        self.assertEqual(check((pack(1,1),pack(1,3),17),17),"unsupported")
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"source_depth.csv"
+            self.write_log(p,[
+                ("model2_d3d9_vb_present_frame",101,17,1,0),
+                ("model2_d3d9_vb_source",101,0x44,pack(1,0x144),pack(2048,28)),
+                ("model2_d3d9_source_depth_cull",101,*good),
+                ("model2_d3d9_vb_present_frame",102,17,1,0),
+                ("model2_d3d9_vb_source",102,0x44,pack(1,0x144),pack(2048,28)),
+                ("model2_d3d9_source_depth_cull",102,
+                 pack(1,7),pack(1,3),18),
+            ])
+            entry=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(entry["original_source_depth_cull_status"],
+                             ["present_mismatch","supported"])
+            self.assertFalse(entry["world_pass_proven"])
 
     def test_source_mip_provenance_cannot_invent_world_or_lod(self):
         check=REPORT.original_d3d9_mip_status
