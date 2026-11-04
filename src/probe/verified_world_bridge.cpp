@@ -178,7 +178,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
 }
 // Optional texture source path for a trusted Model2 CPU-world integration.
 // This does not query game textures, rerun any D3D9 draw, or alter FFB.
-extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates(
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates(
     const float* xyz,const float* uv,unsigned int vertex_count,
     const std::uint32_t* indices,unsigned int index_count,
     const unsigned char* texture_rgba,unsigned int width,
@@ -188,7 +188,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
     const std::uint32_t* diffuse_argb,unsigned int rgb_source,
     unsigned int alpha_source,unsigned int blend_mode,
     unsigned int write_rgba_mask,unsigned int alpha_compare,
-    unsigned int alpha_reference) {
+    unsigned int alpha_reference,unsigned int separate_alpha_enabled,
+    unsigned int separate_alpha_src,unsigned int separate_alpha_dst) {
     std::scoped_lock lock(g.mutex);
     // Only stage-zero DIFFUSE/CURRENT on BOTH channels is textureless.
     // Zero-byte source texture is safe for this explicit world-only path.
@@ -205,6 +206,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
              pitch!=width*4u) :
             (!diffuse_only || width || height || pitch)) ||
        alpha_cutoff>255u || alpha_compare>8u || alpha_reference>255u ||
+       separate_alpha_enabled>1u || separate_alpha_src>5u ||
+       separate_alpha_dst>5u ||
+       (separate_alpha_enabled==0u &&
+        (separate_alpha_src!=1u || separate_alpha_dst!=0u)) ||
+       (separate_alpha_enabled==1u && blend_mode==0u) ||
        (alpha_compare!=0u && alpha_cutoff!=0u) ||
        (alpha_compare==0u && alpha_reference!=0u) ||
        filter_mode>1u || address_u>3u || address_v>3u ||
@@ -262,7 +268,10 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
             static_cast<m2vr::vr::BlendMode>(blend_mode),
             rgb_source==1u,alpha_source==1u,
             static_cast<m2vr::vr::AlphaCompare>(alpha_compare),
-            static_cast<std::uint8_t>(alpha_reference)
+            static_cast<std::uint8_t>(alpha_reference),
+            {separate_alpha_enabled!=0u,
+             static_cast<m2vr::vr::AlphaBlendFactor>(separate_alpha_src),
+             static_cast<m2vr::vr::AlphaBlendFactor>(separate_alpha_dst)}
         };
         if(!g.raster->DrawTextured(clipped,texture)) {
             g.Abort();return FALSE;
@@ -273,6 +282,26 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
     }catch(...){
         g.Abort();return FALSE;
     }
+}
+// Preserve the exact previous alpha-compare/material ABI for all already
+// compiled world adapters. Only the new source path opts into separately
+// selected original D3D9 alpha ADD factors.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates(
+    const float* xyz,const float* uv,unsigned int vertex_count,
+    const std::uint32_t* indices,unsigned int index_count,
+    const unsigned char* texture_rgba,unsigned int width,
+    unsigned int height,unsigned int pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
+    const std::uint32_t* diffuse_argb,unsigned int rgb_source,
+    unsigned int alpha_source,unsigned int blend_mode,
+    unsigned int write_rgba_mask,unsigned int alpha_compare,
+    unsigned int alpha_reference) {
+    return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates(
+        xyz,uv,vertex_count,indices,index_count,texture_rgba,width,height,
+        pitch,alpha_cutoff,filter_mode,address_u,address_v,cull_mode,
+        depth_mode,depth_write,diffuse_argb,rgb_source,alpha_source,
+        blend_mode,write_rgba_mask,alpha_compare,alpha_reference,0u,1u,0u);
 }
 // Stable legacy material/color-mask ABI. Previous producers call this
 // unchanged and retain the 8-bit >= cutoff semantics. Only the additional
