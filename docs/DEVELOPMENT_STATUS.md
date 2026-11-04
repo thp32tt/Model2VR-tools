@@ -1,3 +1,7 @@
+## Original Daytona D3D9 physical Draw/Present result to candidate gate — 2026-11-05
+
+Validated source `Model2VR-tools@1c8f290a68217640e00eefa8df55a9b1089d9db1` now correlates sampled genuine Win32 VB/IB Draw HRESULT and exact physical original Present HRESULT with the pre-Draw CPU projection/matrix/geometry/render-state witness. The private cross-phase race candidate report excludes failed, absent, duplicated or mismatched original results. Genuine Draw/Present/FFB/simulation and GPU/mono fallback are unchanged. Same source SHA Public, ModDev, Win32 probe, Win32 Daytona + Win64 OpenXR bundle workflows all **SUCCESS** (41913103410/41913103391/41913103485/41913103434); matched ZIP artifact 13363676649. World-pass caller/basis/units are still unauthenticated. No Quest3/VDXR runtime verification (`RUNTIME_VALIDATION=UNTESTED`). Independent checkpoint credited exactly once in AI2 scoreboard (2578 +1 = 2579); docs-only follow-up +0.
+
 ## Original D3D9 GPU stereo / actual OpenXR RGB content proof — 2026-11-05
 
 - The existing real game D3D9 x86 GPU mirror-replay readback previously compared two entire RGBA eyes for byte inequality. **Alpha-only differences**, including original render-target write-mask/clear artifacts, could therefore be mislabeled as independent binocular game color and published as native GameStereo into Win64 OpenXR. The x86 GPU producer now requires at least one real **visible RGB** difference in the full validated 1024x1024 RGBA eye pair, matching the CPU-world renderer's earlier RGB-only stereo criterion.
