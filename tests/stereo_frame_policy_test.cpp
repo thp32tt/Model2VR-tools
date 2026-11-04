@@ -7,6 +7,14 @@ using namespace m2vr::transport;
 int main(){
     // A native GameStereo source MUST identify a pose in the x64 host ring.
     // Legacy untagged producer packets remain ABI-readable but not HMD-safe.
+    CHECK(IsStereoGame(FrameKind::GameStereo));
+    CHECK(IsStereoGame(FrameKind::VerifiedCpuWorldStereo));
+    CHECK(!IsStereoGame(FrameKind::CompactMono));
+    CHECK(SourcePoseMatchesFrame(FrameKind::VerifiedCpuWorldStereo,123u,true));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::VerifiedCpuWorldStereo,0u,true));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::VerifiedCpuWorldStereo,123u,false));
+    CHECK(ValidEyePayload(FrameKind::VerifiedCpuWorldStereo,kBytesPerEye,kBytesPerEye));
+    CHECK(!ValidEyePayload(FrameKind::VerifiedCpuWorldStereo,kBytesPerEye,0u));
     CHECK(SourcePoseMatchesFrame(FrameKind::GameStereo,123u,true));
     CHECK(!SourcePoseMatchesFrame(FrameKind::GameStereo,0u,true));
     CHECK(!SourcePoseMatchesFrame(FrameKind::GameStereo,123u,false));

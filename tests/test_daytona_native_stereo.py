@@ -13,6 +13,18 @@ class NativeStereoTest(unittest.TestCase):
             content=(ROOT/"src/probe"/file).read_text("utf-8")
             self.assertIn("Model2VR_IsOriginalPrimaryD3D9Device(device)",content)
 
+    def test_verified_cpu_world_has_distinct_original_source_frame_kind(self):
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        writer=(ROOT/"src/probe/stereo_feed.cpp").read_text("utf-8")
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        protocol=(ROOT/"src/common/stereo_frame_ipc.h").read_text("utf-8")
+        self.assertIn("Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(",bridge)
+        self.assertIn("FrameKind::VerifiedCpuWorldStereo",writer)
+        self.assertIn("transport::IsStereoGame(stamp.kind)",host)
+        self.assertIn("pair_is_verified_cpu_world=",host)
+        self.assertIn("VerifiedCpuWorldStereo=5",protocol)
+        self.assertIn("kind==FrameKind::VerifiedCpuWorldStereo && pose_sequence==0u",protocol)
+
     def test_authenticated_cpu_world_handoff_before_native_gpu_fallback(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         world=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
@@ -144,7 +156,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("producer_reason_mask=",host)
         self.assertIn("last_pose_rejection_=stamp.pose_sequence==0u?1u:2u;",host)
         self.assertIn("source_failed_after_pair",host)
-        self.assertIn("frame_gate_.kind()==transport::FrameKind::GameStereo",host)
+        self.assertIn("transport::IsStereoGame(frame_gate_.kind())",host)
         health=(ROOT/"src/common/daytona_producer_health.hpp").read_text("utf-8")
         self.assertIn("return cached_was_native_stereo;",health)
         self.assertIn("if(eye_delivery_gate_.Changed(eye_delivery_status_))",host)

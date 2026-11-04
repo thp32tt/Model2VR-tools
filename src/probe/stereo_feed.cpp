@@ -77,6 +77,22 @@ extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitStereoRGBAWithPos
                static_cast<std::uint32_t>(pose_sequence))?TRUE:FALSE;
 }
 
+// Separate real CPU-world provenance, still not a Quest HMD validation.
+extern "C" __declspec(dllexport) BOOL __stdcall
+Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(
+    const unsigned char* left,const unsigned char* right,
+    unsigned long long frame,unsigned int width,unsigned int height,
+    unsigned int pitch,unsigned long long pose) {
+    if(width!=m2vr::transport::kWidth ||
+       height!=m2vr::transport::kHeight ||
+       pitch!=m2vr::transport::kPitch || !left || !right || !frame ||
+       !pose || pose>0xffffffffull)return FALSE;
+    std::scoped_lock lock(g_writer_mutex);
+    if(!g_initialized)return FALSE;
+    return g_writer.Publish(left,right,frame,
+         m2vr::transport::FrameKind::VerifiedCpuWorldStereo,
+         static_cast<std::uint32_t>(pose))?TRUE:FALSE;
+}
 // Returns an atomic, coherent *pair* of predicted OpenXR eye views, not two
 // independently sampled poses. Sample once per emulated render frame.
 namespace {

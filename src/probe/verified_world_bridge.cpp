@@ -19,7 +19,7 @@
 #include <vector>
 
 extern "C" BOOL __stdcall Model2VR_OpenStereoWriter();
-extern "C" BOOL __stdcall Model2VR_SubmitStereoRGBAWithPose(
+extern "C" BOOL __stdcall Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(
     const unsigned char*,const unsigned char*,unsigned long long,
     unsigned int,unsigned int,unsigned int,unsigned long long);
 extern "C" BOOL __stdcall Model2VR_ReadPredictedEyeViews(
@@ -453,7 +453,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     const auto& a=g.raster->Eye(0);
     const auto& b=g.raster->Eye(1);
     const bool success=Model2VR_OpenStereoWriter() &&
-        Model2VR_SubmitStereoRGBAWithPose(a.data(),b.data(),g.frame,
+        Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(a.data(),b.data(),g.frame,
             m2vr::transport::kWidth,m2vr::transport::kHeight,
             m2vr::transport::kPitch,g.pose_sequence);
     if(success)g.last_completed=g.frame;
@@ -499,7 +499,7 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
         const auto& left=g.raster->Eye(0);
         const auto& right=g.raster->Eye(1);
         success=Model2VR_OpenStereoWriter() &&
-            Model2VR_SubmitStereoRGBAWithPose(
+            Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(
                 left.data(),right.data(),g.frame,
                 m2vr::transport::kWidth,m2vr::transport::kHeight,
                 m2vr::transport::kPitch,g.pose_sequence);

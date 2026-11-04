@@ -83,6 +83,17 @@ int main(){
     REQUIRE(reader.ReadReusable(staging));
     REQUIRE(staging.kind==FrameKind::GameStereo &&
             staging.eyes[1].size()==kBytesPerEye && staging.eyes[1][0]==0x91u);
+    REQUIRE(!writer.Publish(a.data(),b.data(),9,
+        FrameKind::VerifiedCpuWorldStereo,0u));
+    REQUIRE(!writer.Publish(a.data(),nullptr,9,
+        FrameKind::VerifiedCpuWorldStereo,119u));
+    REQUIRE(writer.Publish(a.data(),b.data(),9,
+        FrameKind::VerifiedCpuWorldStereo,119u));
+    REQUIRE(reader.ReadReusable(staging));
+    REQUIRE(staging.kind==FrameKind::VerifiedCpuWorldStereo);
+    REQUIRE(staging.pose_sequence==119u);
+    REQUIRE(staging.eyes[0].size()==kBytesPerEye);
+    REQUIRE(staging.eyes[1].size()==kBytesPerEye);
     reader.Close();writer.Close();
     REQUIRE(!reader.Read(snap));
     return 0;

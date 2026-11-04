@@ -101,7 +101,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
     if(!wizard_diag_enabled_ || source_pid_==0)return;
     const auto status=wizard::Classify(
         tracking_valid,paired_frame_fresh,frame_gate_.id()!=0,
-        frame_gate_.kind()==transport::FrameKind::GameStereo);
+        transport::IsStereoGame(frame_gate_.kind()));
     if(wizard_gate_.Transition(status)){
         std::cout<<"Daytona VR Wizard: "<<wizard::Name(status)
                  <<" emulator_pid="<<source_pid_<<" paired_frame_id="<<frame_gate_.id()
@@ -134,7 +134,9 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"eye_delivery_action="<<delivery::NextAction(eye_delivery_status_)<<"\n"
           <<"source_pose_rejection="<<static_cast<unsigned>(last_pose_rejection_)<<"\n"
           <<"frame_transport_open="<<(shared_frames_.Valid()?1:0)<<"\n"
-          <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::GameStereo
+          <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::VerifiedCpuWorldStereo
+                ?"VerifiedCpuWorldStereo":
+                transport::IsStereoGame(frame_gate_.kind())
                 ?"GameStereo":transport::IsMonoGame(frame_gate_.kind())
                 ?"OriginalGameMonoFallback":frame_gate_.kind()==transport::FrameKind::Diagnostic
                 ?"Diagnostic":"Unknown")<<"\n"
@@ -142,7 +144,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"mono_quad_distance_m="<<mono_quad_distance_m_<<"\n"
           <<"mono_quad_width_m="<<mono_quad_width_m_<<"\n"
           <<"native_stereo_confirmed="<<(paired_frame_fresh &&
-                frame_gate_.kind()==transport::FrameKind::GameStereo?1:0)<<"\n"
+                transport::IsStereoGame(frame_gate_.kind())?1:0)<<"\n"
           <<"producer_health_fresh="<<(producer_health_fresh_?1:0)<<"\n"
           <<"producer_last_frame_id="<<producer_health_status_.frame_id<<"\n"
           <<"producer_reason_mask="<<producer_health_status_.reason_mask<<"\n"
@@ -288,7 +290,7 @@ void XrApp::draw_frame(XrTime display_time){
                     stamp.pose_sequence!=0u &&
                         pose_history_.Find(stamp.pose_sequence)!=nullptr);
                 if(!known_pose &&
-                   stamp.kind==transport::FrameKind::GameStereo){
+                   transport::IsStereoGame(stamp.kind)){
                     last_pose_rejection_=stamp.pose_sequence==0u?1u:2u;
                     // Log the first rejection until a coherent pair
                     // recovers. This is actionable in the launcher host
@@ -334,7 +336,7 @@ void XrApp::draw_frame(XrTime display_time){
     // display tick, but stop presenting it if the producer stalls.
     const bool source_failed_after_pair=producerhealth::InvalidatesCachedPair(
         producer_health_status_,producer_health_fresh_,frame_gate_.id(),
-        frame_gate_.kind()==transport::FrameKind::GameStereo);
+        transport::IsStereoGame(frame_gate_.kind()));
     bool usable=!source_failed_after_pair &&
         frame_gate_.Cached(now,hz) &&
         eye_frame_.frame_id==frame_gate_.id() &&
@@ -381,7 +383,9 @@ void XrApp::draw_frame(XrTime display_time){
     delivery_evidence.ever_accepted_pair=frame_gate_.id()!=0u;
     delivery_evidence.paired_frame_fresh=usable;
     delivery_evidence.pair_is_game=
-        frame_gate_.kind()==transport::FrameKind::GameStereo;
+        transport::IsStereoGame(frame_gate_.kind());
+    delivery_evidence.pair_is_verified_cpu_world=
+        frame_gate_.kind()==transport::FrameKind::VerifiedCpuWorldStereo;
     delivery_evidence.pair_is_original_mono=
         transport::IsMonoGame(frame_gate_.kind());
     delivery_evidence.swapchain_compatible=

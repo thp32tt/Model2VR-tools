@@ -29,6 +29,9 @@ int main(){
     assert(Classify(e)==Status::LiveOriginalMonoFallback);
     e.pair_is_original_mono=false;e.pair_is_game=true;
     assert(Classify(e)==Status::LiveGameStereo);
+    e.pair_is_verified_cpu_world=true;
+    assert(Classify(e)==Status::LiveVerifiedCpuWorld);
+    e.pair_is_verified_cpu_world=false;
     // Valid game stereo must not become "live" if producer later rejects
     // newer original Present: the host must set paired_frame_fresh=false.
     e.paired_frame_fresh=false;e.producer_reason_mask=256;

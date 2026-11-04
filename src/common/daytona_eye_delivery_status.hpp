@@ -9,7 +9,7 @@ namespace m2vr::delivery {
 enum class Status : std::uint8_t {
     NoEmulatorPid, NoProducerHealth, NoFrameTransport, AwaitingGameFrame,
     ProducerRejected, MissingOriginalPoseTag, ExpiredOriginalPoseTag,
-    SourcePairStale, DiagnosticOnly, HostEyeSizeMismatch, LiveGameStereo, LiveOriginalMonoFallback,
+    SourcePairStale, DiagnosticOnly, HostEyeSizeMismatch, LiveGameStereo, LiveVerifiedCpuWorld, LiveOriginalMonoFallback,
     MonoQuadAnchorRejected
 };
 struct Evidence {
@@ -20,6 +20,7 @@ struct Evidence {
     bool ever_accepted_pair=false;
     bool paired_frame_fresh=false;
     bool pair_is_game=false;
+    bool pair_is_verified_cpu_world=false;
     bool pair_is_original_mono=false;
     bool swapchain_compatible=false;
     bool missing_original_pose_tag=false;
@@ -32,7 +33,8 @@ constexpr Status Classify(const Evidence& e) noexcept {
     // tracking pose is valid or the loader saw the host-ready handshake.
     if(e.paired_frame_fresh) {
         if(!e.swapchain_compatible)return Status::HostEyeSizeMismatch;
-        if(e.pair_is_game)return Status::LiveGameStereo;
+        if(e.pair_is_game)return e.pair_is_verified_cpu_world?
+            Status::LiveVerifiedCpuWorld:Status::LiveGameStereo;
         return e.pair_is_original_mono
             ?Status::LiveOriginalMonoFallback:Status::DiagnosticOnly;
     }
@@ -64,6 +66,7 @@ constexpr const char* Name(Status s) noexcept {
     case Status::DiagnosticOnly:return "DIAGNOSTIC_NOT_GAME_PIXELS";
     case Status::HostEyeSizeMismatch:return "OPENXR_EYE_SIZE_MISMATCH";
     case Status::LiveGameStereo:return "LIVE_GAME_STEREO_NOT_CAMERA_VERIFIED";
+    case Status::LiveVerifiedCpuWorld:return "LIVE_CPU_WORLD_SOURCE_HMD_UNTESTED";
     case Status::LiveOriginalMonoFallback:return "LIVE_ORIGINAL_GAME_2D_FALLBACK";
     case Status::MonoQuadAnchorRejected:return "ORIGINAL_MONO_QUAD_HEAD_POSE_REJECTED";
     }
@@ -82,6 +85,7 @@ constexpr const char* NextAction(Status s) noexcept {
     case Status::DiagnosticOnly:return "Diagnostic eye images do not contain original game output";
     case Status::HostEyeSizeMismatch:return "Match OpenXR swapchain to original 1024x1024 eye transport";
     case Status::LiveGameStereo:return "Verify actual Daytona world/camera calibration on HMD";
+    case Status::LiveVerifiedCpuWorld:return "Verify source-world camera and optics on Quest 3 HMD";
     case Status::LiveOriginalMonoFallback:return "Original game pixels visible; source VR world pass still unverified";
     case Status::MonoQuadAnchorRejected:return "Check tracked HMD stereo view positions and orientations";
     }

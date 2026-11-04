@@ -28,13 +28,18 @@ constexpr std::uint32_t kPixelRGBA8 = 1;
 // its second eye has no valid payload. An old reader will reject kind=4.
 enum class FrameKind : std::uint32_t {
     Invalid=0, GameStereo=1, Diagnostic=2,
-    GameMonoFallback=3, CompactMono=4
+    GameMonoFallback=3, CompactMono=4,
+    // Only source-authenticated CPU world, not hardware HMD validation.
+    VerifiedCpuWorldStereo=5
 };
+constexpr bool IsStereoGame(FrameKind k)noexcept{
+    return k==FrameKind::GameStereo || k==FrameKind::VerifiedCpuWorldStereo;
+}
 constexpr bool IsMonoGame(FrameKind kind) noexcept {
     return kind==FrameKind::GameMonoFallback || kind==FrameKind::CompactMono;
 }
 constexpr bool ValidSourceKind(FrameKind kind) noexcept {
-    return kind==FrameKind::GameStereo || kind==FrameKind::Diagnostic ||
+    return IsStereoGame(kind) || kind==FrameKind::Diagnostic ||
            IsMonoGame(kind);
 }
 constexpr bool ValidEyePayload(FrameKind kind,std::size_t left,
@@ -134,7 +139,8 @@ public:
         if(!writable_||!Valid()||!left||frame_id==0||
            (!right && kind!=FrameKind::CompactMono) ||
            !ValidSourceKind(kind) ||
-           (kind!=FrameKind::GameStereo && pose_sequence!=0u))
+           (kind==FrameKind::VerifiedCpuWorldStereo && pose_sequence==0u) ||
+           (!IsStereoGame(kind) && pose_sequence!=0u))
             return false;
         auto* h=reinterpret_cast<Header*>(base_);
         // A writer must not overlap itself. No consumer ever writes.

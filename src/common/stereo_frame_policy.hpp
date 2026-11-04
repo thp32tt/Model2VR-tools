@@ -13,7 +13,7 @@ inline constexpr bool SourcePoseMatchesFrame(
     FrameKind kind,std::uint32_t pose_tag,bool exact_pose_in_host_ring) noexcept {
     if(kind==FrameKind::Diagnostic || IsMonoGame(kind))
         return pose_tag==0u;
-    return kind==FrameKind::GameStereo &&
+    return IsStereoGame(kind) &&
            pose_tag!=0u && exact_pose_in_host_ring;
 }
 enum class FrameUse : std::uint8_t { Missing, ReadNew, HoldCached };
