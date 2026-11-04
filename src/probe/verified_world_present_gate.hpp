@@ -24,10 +24,10 @@ enum class PendingWorldPresent : std::uint8_t {
 // CPU-world pair reports success only after its original Present succeeds.
 inline std::uint32_t PendingWorldHealthReason(
     PendingWorldPresent action,bool original_present_ok,
-    bool published) noexcept {
+    bool published,bool source_pose_live=true) noexcept {
     using namespace m2vr::producerhealth;
     if(action==PendingWorldPresent::Publish)
-        return published ? 0u : TransportFailed;
+        return !source_pose_live ? PoseExpired : (published ? 0u : TransportFailed);
     if(!original_present_ok)return OriginalPresentFailed;
     return WrongDevice;
 }
