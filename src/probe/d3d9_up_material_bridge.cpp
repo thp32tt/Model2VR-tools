@@ -37,6 +37,7 @@ bool NoAdditionalColorTargets(IDirect3DDevice9* d) {
     return true;
 }
 bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
+                           DWORD source_fvf,
                            m2vr::vr::SamplerPolicy& sampler,
                            m2vr::vr::RasterPolicy& raster,
                            m2vr::drawprobe::FixedStageSource& rgb_source,
@@ -76,7 +77,9 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        FAILED(d->GetRenderState(D3DRS_FOGENABLE,&fog)) ||
        FAILED(d->GetRenderState(D3DRS_LIGHTING,&lighting)) ||
        FAILED(d->GetRenderState(D3DRS_SPECULARENABLE,&specular)) ||
-       z!=D3DZB_TRUE || fog || lighting || specular ||
+       z!=D3DZB_TRUE || fog || specular ||
+       !m2vr::drawprobe::FixedStageOriginalLightingEquivalent(
+           lighting,source_fvf) ||
        !m2vr::drawprobe::DecodeBlendPolicy(
             blend_enable,blend_src,blend_dst,blend_op,separate_alpha,
             blend_mode))return false;
@@ -180,7 +183,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     // opaque white 0xffffffff, already produced by DecodeWorldVertex.
     // Stage0 CURRENT is identical to DIFFUSE; neither requires guessed data.
     if(!layout.eligible ||
-       !FixedFunctionMaterial(d,alpha_cutoff,sampler,raster,
+       !FixedFunctionMaterial(d,alpha_cutoff,fvf,sampler,raster,
                               rgb_source,alpha_source,blend_mode) ||
        !m2vr::drawprobe::FixedStageUVAvailableForSources(
            layout.has_uv,rgb_source,alpha_source))
@@ -277,7 +280,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)) ||
        !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride) ||
-       !FixedFunctionMaterial(d,cutoff,sampler,raster,
+       !FixedFunctionMaterial(d,cutoff,fvf,sampler,raster,
                               rgb_source,alpha_source,blend_mode) ||
        !m2vr::drawprobe::FixedStageUVAvailableForSources(
            (fvf&D3DFVF_TEXCOUNT_MASK)==D3DFVF_TEX1,

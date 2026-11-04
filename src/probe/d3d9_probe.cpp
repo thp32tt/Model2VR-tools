@@ -282,6 +282,14 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
     // source output register and declaration without enabling world proof.
     m2vr::LogEvent("model2_d3d9_source_stage_result",witness,
         current_result,next_result,(std::uint64_t{fvf}<<32)|stride);
+    // Source lighting has no effect on original pretransformed XYZRHW,
+    // but may change XYZ color; record it under the exact same Draw witness
+    // without treating either original state as gameplay-world proof.
+    DWORD lighting=0,color_vertex=0;
+    if(SUCCEEDED(dev->GetRenderState(D3DRS_LIGHTING,&lighting)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_COLORVERTEX,&color_vertex)))
+        m2vr::LogEvent("model2_d3d9_source_lighting",witness,
+            lighting,color_vertex,(std::uint64_t{fvf}<<32)|stride);
 }
 
 // Read at most 16 guarded bytes at a time from game-owned UP pointers.

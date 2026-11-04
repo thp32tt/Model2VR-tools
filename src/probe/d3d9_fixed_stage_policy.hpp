@@ -37,6 +37,15 @@ inline constexpr bool FixedStageUVAvailableForSources(
     bool has_uv,FixedStageSource rgb,FixedStageSource alpha) noexcept {
     return has_uv || !FixedStagePairUsesTexture(rgb,alpha);
 }
+// XYZRHW is already transformed and lit by the original emulator CPU.
+ // With this FVF the D3D9 LIGHTING bit cannot relight source D3DCOLOR;
+ // ordinary XYZ geometry still requires lighting disabled to preserve it.
+inline constexpr bool FixedStageOriginalLightingEquivalent(
+    DWORD lighting,DWORD fvf) noexcept {
+    return lighting==0u ||
+        (lighting==1u &&
+         (fvf&D3DFVF_POSITION_MASK)==D3DFVF_XYZRHW);
+}
 inline bool DecodeFixedStageSource(DWORD operation,DWORD first,
                                    DWORD second,FixedStageSource& out) noexcept {
     FixedStageSource next{};

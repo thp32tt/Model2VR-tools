@@ -93,5 +93,15 @@ int main(){
         false,FixedStageSource::Diffuse,FixedStageSource::Modulate));
     CHECK(ValidFixedStageSource(FixedStageSource::Diffuse));
     CHECK(!ValidFixedStageSource(static_cast<FixedStageSource>(5u)));
+    // The original XYZRHW stream bypasses D3D9's fixed-function T&L
+    // even when the shared device LIGHTING bit remains enabled.
+    CHECK(FixedStageOriginalLightingEquivalent(
+        1u,D3DFVF_XYZRHW|D3DFVF_DIFFUSE));
+    CHECK(FixedStageOriginalLightingEquivalent(
+        0u,D3DFVF_XYZ|D3DFVF_DIFFUSE));
+    CHECK(!FixedStageOriginalLightingEquivalent(
+        1u,D3DFVF_XYZ|D3DFVF_DIFFUSE));
+    CHECK(!FixedStageOriginalLightingEquivalent(
+        2u,D3DFVF_XYZRHW|D3DFVF_DIFFUSE));
     return 0;
 }
