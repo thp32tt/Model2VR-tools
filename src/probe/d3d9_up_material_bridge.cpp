@@ -50,9 +50,9 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
     IDirect3DPixelShader9* ps=nullptr;
     if(FAILED(d->GetPixelShader(&ps)))return false;
     if(ps){ps->Release();return false;}
-    IDirect3DBaseTexture9* second=nullptr;
-    if(FAILED(d->GetTexture(1,&second)))return false;
-    if(second){second->Release();return false;}
+    // The original may leave texture slot1 bound after an earlier draw.
+    // Both stage1 operations are required DISABLED below, so the binding
+    // is inert and must not disqualify an otherwise equivalent world pass.
     DWORD zfunc=0,zwrite=0,cull=0,stencil=0,dbias=0,sbias=0;
     DWORD srgb_write=0,color_mask=0;
     if(FAILED(d->GetRenderState(D3DRS_ZFUNC,&zfunc)) ||
@@ -100,31 +100,38 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
     DWORD srgb_texture=0,alpha_test=0,alpha_ref=0,alpha_func=0;
     DWORD stage1_colorop=0,stage1_alphaop=0,stage0_result=0;
     DWORD texcoord_index=0,transform_flags=0;
-    if(FAILED(d->GetSamplerState(0,D3DSAMP_ADDRESSU,&address_u)) ||
-       FAILED(d->GetSamplerState(0,D3DSAMP_ADDRESSV,&address_v)) ||
-       FAILED(d->GetSamplerState(0,D3DSAMP_MINFILTER,&min_filter)) ||
-       FAILED(d->GetSamplerState(0,D3DSAMP_MAGFILTER,&mag_filter)) ||
-       FAILED(d->GetSamplerState(0,D3DSAMP_MIPFILTER,&mip_filter)) ||
-       FAILED(d->GetSamplerState(0,D3DSAMP_SRGBTEXTURE,&srgb_texture)) ||
-       FAILED(d->GetRenderState(D3DRS_ALPHATESTENABLE,&alpha_test)) ||
+    if(FAILED(d->GetRenderState(D3DRS_ALPHATESTENABLE,&alpha_test)) ||
        FAILED(d->GetRenderState(D3DRS_ALPHAREF,&alpha_ref)) ||
        FAILED(d->GetRenderState(D3DRS_ALPHAFUNC,&alpha_func)) ||
        FAILED(d->GetTextureStageState(1,D3DTSS_COLOROP,&stage1_colorop)) ||
        FAILED(d->GetTextureStageState(1,D3DTSS_ALPHAOP,&stage1_alphaop)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_RESULTARG,&stage0_result)) ||
-       FAILED(d->GetTextureStageState(0,D3DTSS_TEXCOORDINDEX,&texcoord_index)) ||
-       FAILED(d->GetTextureStageState(0,D3DTSS_TEXTURETRANSFORMFLAGS,
-                                     &transform_flags)) ||
-       stage1_colorop!=D3DTOP_DISABLE ||
-       stage1_alphaop!=D3DTOP_DISABLE ||
+       !m2vr::drawprobe::FixedStageOneDisabled(
+           stage1_colorop,stage1_alphaop) ||
        stage0_result!=D3DTA_CURRENT ||
-       (m2vr::drawprobe::FixedStagePairUsesTexture(
-            rgb_source,alpha_source) &&
-        (texcoord_index!=0u || transform_flags!=D3DTTFF_DISABLE ||
-         !m2vr::drawprobe::DecodeSamplerPolicy(address_u,address_v,
-            min_filter,mag_filter,mip_filter,srgb_texture,sampler))) ||
        !m2vr::drawprobe::AlphaCutoffMatches(
             alpha_test,alpha_func,alpha_ref,cutoff))return false;
+    // An original diffuse-only TEX0 Draw cannot sample coordinates or
+    // sampler states. Avoid six irrelevant COM queries and never require
+    // UV transforms on an input stream without UV. Texture-dependent
+    // operations continue to be validated against exact original state.
+    if(m2vr::drawprobe::FixedStagePairUsesTexture(
+            rgb_source,alpha_source) &&
+       (FAILED(d->GetSamplerState(0,D3DSAMP_ADDRESSU,&address_u)) ||
+        FAILED(d->GetSamplerState(0,D3DSAMP_ADDRESSV,&address_v)) ||
+        FAILED(d->GetSamplerState(0,D3DSAMP_MINFILTER,&min_filter)) ||
+        FAILED(d->GetSamplerState(0,D3DSAMP_MAGFILTER,&mag_filter)) ||
+        FAILED(d->GetSamplerState(0,D3DSAMP_MIPFILTER,&mip_filter)) ||
+        FAILED(d->GetSamplerState(0,D3DSAMP_SRGBTEXTURE,&srgb_texture)) ||
+        FAILED(d->GetTextureStageState(
+            0,D3DTSS_TEXCOORDINDEX,&texcoord_index)) ||
+        FAILED(d->GetTextureStageState(
+            0,D3DTSS_TEXTURETRANSFORMFLAGS,&transform_flags)) ||
+        texcoord_index!=0u || transform_flags!=D3DTTFF_DISABLE ||
+        !m2vr::drawprobe::DecodeSamplerPolicy(
+            address_u,address_v,min_filter,mag_filter,mip_filter,
+            srgb_texture,sampler)))
+        return false;
     IDirect3DSurface9* current=nullptr;
     IDirect3DSurface9* main=nullptr;
     const bool have_current=SUCCEEDED(d->GetRenderTarget(0,&current))&&current;

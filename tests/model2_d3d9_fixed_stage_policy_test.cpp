@@ -91,6 +91,9 @@ int main(){
         false,FixedStageSource::Texture,FixedStageSource::Diffuse));
     CHECK(!FixedStageUVAvailableForSources(
         false,FixedStageSource::Diffuse,FixedStageSource::Modulate));
+    CHECK(FixedStageOneDisabled(D3DTOP_DISABLE,D3DTOP_DISABLE));
+    CHECK(!FixedStageOneDisabled(D3DTOP_MODULATE,D3DTOP_DISABLE));
+    CHECK(!FixedStageOneDisabled(D3DTOP_DISABLE,D3DTOP_SELECTARG1));
     CHECK(ValidFixedStageSource(FixedStageSource::Diffuse));
     CHECK(!ValidFixedStageSource(static_cast<FixedStageSource>(5u)));
     // The original XYZRHW stream bypasses D3D9's fixed-function T&L

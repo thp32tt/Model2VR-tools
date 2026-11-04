@@ -33,6 +33,14 @@ inline constexpr bool FixedStagePairUsesTexture(
 }
 // D3D9 FVF TEX0 is only source-equivalent when BOTH stage-zero channels
 // are DIFFUSE/CURRENT. Never silently sample a nonexistent UV stream.
+// A bound second texture is inert when both stage1 operations are
+// disabled. World-only acceptance depends on the actual stage registers,
+// not a leftover COM binding from another original draw.
+inline constexpr bool FixedStageOneDisabled(
+    DWORD color_operation,DWORD alpha_operation) noexcept {
+    return color_operation==D3DTOP_DISABLE &&
+           alpha_operation==D3DTOP_DISABLE;
+}
 inline constexpr bool FixedStageUVAvailableForSources(
     bool has_uv,FixedStageSource rgb,FixedStageSource alpha) noexcept {
     return has_uv || !FixedStagePairUsesTexture(rgb,alpha);
