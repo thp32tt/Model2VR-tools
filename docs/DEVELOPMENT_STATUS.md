@@ -161,6 +161,18 @@ head-relative OpenXR eye raster. The original Draw remains unchanged.
 camera units/axes must still be independently verified by an authorized
 adapter. Shader-UP and unknown UI sources are not force-converted.
 
+**Original D3D9 device-specific Present/Draw ownership (2026-11-04):**
+COM hooks are installed on the first real original D3D9 device vtable;
+a second device can share that vtable. The original source owner is now
+immutably bound once after successful hook installation. Calls to the
+shared Draw/UP, Clear, StretchRect, ColorFill, UpdateSurface, Reset and
+Present entrypoints from any non-owner device execute their original
+method exactly once, but never pollute the game frame counter, CPU source
+epoch, verified CPU-world Present commit or binocular replay. Secondary
+Presents yield bounded local diagnostic counts. An externally recreated
+device is not silently promoted as a valid calibrated world source;
+runtime HMD hardware validation remains outstanding.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

@@ -275,6 +275,13 @@ add_test(NAME model2_real_d3d9_vb_ib_source_window COMMAND model2_d3d9_vb_window
 add_executable(model2_draw_origin_gate_test tests/draw_origin_gate_test.cpp)
 target_compile_features(model2_draw_origin_gate_test PRIVATE cxx_std_20)
 add_test(NAME model2_real_d3d9_caller_coverage COMMAND model2_draw_origin_gate_test)
+# Preserve the game's original D3D9 frame epoch even if a secondary
+# device shares the same COM vtable and invokes hook entrypoints.
+add_executable(model2_primary_d3d9_owner_test
+  tests/model2_primary_d3d9_owner_test.cpp)
+target_compile_features(model2_primary_d3d9_owner_test PRIVATE cxx_std_20)
+add_test(NAME model2_primary_d3d9_device_present_owner
+  COMMAND model2_primary_d3d9_owner_test)
 
 
 # Original Generic DD Model 2 emulator binding key contract (no SDL or FFB).

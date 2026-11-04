@@ -5,6 +5,7 @@
 #include "draw_origin_gate.hpp"
 #include "project_draw_correlator.hpp"
 #include "model2_camera_projection_fit.hpp"
+#include "d3d9_primary_device_owner.hpp"
 #include "verified_world_present_gate.hpp"
 #include "d3d9_world_source.hpp"
 #include <Windows.h>
@@ -69,6 +70,8 @@ std::atomic<unsigned> g_present_count{0};
 std::atomic<std::uint64_t> g_witness_serial{0};
 std::uint32_t g_draw_sample_every=1024u;
 std::atomic<bool> g_device_installed{false};
+m2vr::drawprobe::OriginalD3D9DeviceOwner g_primary_device{};
+std::atomic<unsigned> g_secondary_presents{0u};
 bool g_native_stereo=false;
 // Internal callback into the independently proven CPU-world renderer.
 // No verified-world frame is generated or self-authorized by this probe.
@@ -665,6 +668,7 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
 }
 
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
+    if(!g_primary_device.Owns(d))return g_draw(d,p,start,count);
     g_draws.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
     if(Sample(d,1,p,count,caller))
@@ -676,6 +680,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
 }
 HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT base,
                                       UINT min,UINT num,UINT start,UINT count){
+    if(!g_primary_device.Owns(d))return g_draw_indexed(d,p,base,min,num,start,count);
     g_indexed.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
     if(Sample(d,2,p,count,caller))
@@ -687,6 +692,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
 }
 HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT count,
                                     const void* verts,UINT stride){
+    if(!g_primary_device.Owns(d))return g_draw_up(d,p,count,verts,stride);
     g_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
     if(Sample(d,3,p,count,caller))
@@ -698,6 +704,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
 }
 HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
      UINT num,UINT count,const void* idx,D3DFORMAT fmt,const void* verts,UINT stride){
+    if(!g_primary_device.Owns(d))return g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
     if(Sample(d,4,p,count,caller))
@@ -710,6 +717,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
 HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
                                    const D3DRECT* rects,DWORD flags,
                                    D3DCOLOR color,float z,DWORD stencil){
+    if(!g_primary_device.Owns(d))return g_clear(d,count,rects,flags,color,z,stencil);
     const HRESULT hr=g_clear(d,count,rects,flags,color,z,stencil);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorClear(d,count,rects,flags,color,z,stencil,g_clear);
@@ -718,6 +726,7 @@ HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
 HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
      IDirect3DSurface9* src,const RECT* src_rect,IDirect3DSurface9* dst,
      const POINT* dst_point){
+    if(!g_primary_device.Owns(d))return g_update_surface(d,src,src_rect,dst,dst_point);
     const HRESULT hr=g_update_surface(d,src,src_rect,dst,dst_point);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorUpdateSurface(
@@ -727,6 +736,7 @@ HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
 HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
      IDirect3DSurface9* src,const RECT* src_rect,IDirect3DSurface9* dst,
      const RECT* dst_rect,D3DTEXTUREFILTERTYPE filter){
+    if(!g_primary_device.Owns(d))return g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
     const HRESULT hr=g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorStretchRect(
@@ -735,6 +745,7 @@ HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
 }
 HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
      IDirect3DSurface9* dst,const RECT* rect,D3DCOLOR color){
+    if(!g_primary_device.Owns(d))return g_color_fill(d,dst,rect,color);
     const HRESULT hr=g_color_fill(d,dst,rect,color);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorColorFill(d,dst,rect,color,g_color_fill);
@@ -742,6 +753,14 @@ HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
 }
 HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RECT* b,
                                      HWND w,CONST RGNDATA* dirty){
+    if(!g_primary_device.Owns(d)){
+        const unsigned seen=g_secondary_presents.fetch_add(
+            1u,std::memory_order_relaxed)+1u;
+        if(seen==1u || seen%120u==0u)
+            m2vr::LogEvent("model2_d3d9_secondary_device_present",
+                           seen,0u,0u,0u);
+        return g_present(d,a,b,w,dirty);
+    }
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
     // Native replay must also drain the *original* source-family counters.
     // Previously these only reset in passive 2D mode, so a long VR session
@@ -779,6 +798,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
 }
 HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
                                      D3DPRESENT_PARAMETERS* pp){
+    if(!g_primary_device.Owns(d))return g_reset(d,pp);
     m2vr::drawprobe::NextProjectDrawEpoch();
     Model2VR_DiscardPendingWorldOnReset();
     if(g_native_stereo)m2vr::daytona::ResetResources();
@@ -830,6 +850,9 @@ bool HookDevice(IDirect3DDevice9* dev){
                        update,stretch,fill,clear);
         return false;
     }
+    // Vtable methods are shared by D3D9 devices. Bind the real first
+    // successfully hooked game device before declaring the hook ready.
+    if(!g_primary_device.BindOnce(dev))return false;
     g_device_installed.store(true,std::memory_order_release);
     m2vr::LogEvent("model2_d3d9_device_hooks_ready");
     return true;
