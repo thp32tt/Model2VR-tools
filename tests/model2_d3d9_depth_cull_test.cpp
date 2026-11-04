@@ -70,8 +70,14 @@ int main() {
                               0,0x3f800000u,0,0,colors,decoded));
     CHECK(!DecodeRasterPolicy(D3DCULL_NONE,D3DCMP_LESS,1,
                               0,0,0,1,colors,decoded));
-    CHECK(!DecodeRasterPolicy(D3DCULL_NONE,D3DCMP_LESS,1,
+    CHECK(DecodeRasterPolicy(D3DCULL_NONE,D3DCMP_LESS,1,
                               0,0,0,0,D3DCOLORWRITEENABLE_RED,decoded));
+    CHECK(decoded.write_rgba_mask==D3DCOLORWRITEENABLE_RED);
+    CHECK(DecodeRasterPolicy(D3DCULL_NONE,D3DCMP_LESS,1,
+                              0,0,0,0,0u,decoded));
+    CHECK(decoded.write_rgba_mask==0u);
+    CHECK(!DecodeRasterPolicy(D3DCULL_NONE,D3DCMP_LESS,1,
+                              0,0,0,0,0x10u,decoded));
 
     // Strict original D3D9 BLENDOP_ADD classification; no approximation.
     using m2vr::drawprobe::DecodeBlendPolicy;
@@ -216,6 +222,41 @@ int main() {
     CHECK(raster.DrawTextured(near_tri,b));
     CHECK(raster.DrawTextured(farther,r));
     CheckBoth(raster,0x0000FFu,ok);CHECK(ok);
+    // Exact source color masks preserve disabled destination channels
+    // (including alpha) in BOTH verified binocular eye render targets.
+    raster.Clear();
+    StereoWorldRaster::TextureRGBA base{red.data(),1,1,4,0};
+    CHECK(raster.DrawTextured(farther,base));
+    const std::array<std::uint8_t,4> gsrc={0u,255u,0u,64u};
+    StereoWorldRaster::TextureRGBA masked{gsrc.data(),1,1,4,0};
+    masked.raster.depth=DepthCompare::LessEqual;
+    masked.raster.write_rgba_mask=0x0au; // green, alpha
+    CHECK(raster.DrawTextured(farther,masked));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Center(raster,eye)==0xffff00u);
+        const auto& rgba=raster.Eye(eye);
+        const auto pixel=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
+        CHECK(rgba[pixel+3u]==64u);
+    }
+    masked.rgba=blue.data();
+    masked.blend=BlendMode::SourceAlphaOver;
+    masked.raster.write_rgba_mask=0x05u; // red, blue only
+    CHECK(raster.DrawTextured(farther,masked));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Center(raster,eye)==0x00ffffu); // green retained
+        const auto& rgba=raster.Eye(eye);
+        const auto pixel=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
+        CHECK(rgba[pixel+3u]==64u); // alpha retained
+    }
+    // Z-only Draw must occlude future color but never make stereo usable.
+    raster.Clear();
+    auto z_only=base;
+    z_only.raster.write_rgba_mask=0u;
+    CHECK(raster.DrawTextured(near_tri,z_only));
+    CHECK(raster.DrawnPixels()==0u && !raster.StereoPairUsable());
+    CHECK(raster.DrawTextured(farther,base));
+    CheckBoth(raster,0x000000u,ok);CHECK(ok);
+    CHECK(!raster.StereoPairUsable());
     // Unsupported state fails before modifying either target.
     auto invalid=r;
     invalid.raster.cull=static_cast<FaceCull>(77);

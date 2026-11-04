@@ -12,12 +12,15 @@ struct RasterPolicy {
     FaceCull cull=FaceCull::None;
     DepthCompare depth=DepthCompare::Less;
     bool write_depth=true;
+    // D3D9 COLORWRITEENABLE0: RGBA bits 1,2,4,8; default all.
+    std::uint8_t write_rgba_mask=0x0fu;
 };
 inline bool ValidRasterPolicy(const RasterPolicy& p) noexcept {
     return (p.cull==FaceCull::None || p.cull==FaceCull::Clockwise ||
             p.cull==FaceCull::CounterClockwise) &&
            (p.depth==DepthCompare::Less ||
-            p.depth==DepthCompare::LessEqual);
+            p.depth==DepthCompare::LessEqual) &&
+           (p.write_rgba_mask&0xf0u)==0u;
 }
 inline bool TriangleSurvivesCull(double area,FaceCull mode) noexcept {
     if(!std::isfinite(area)||std::abs(area)<1.e-8)return false;

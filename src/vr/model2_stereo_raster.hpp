@@ -279,9 +279,14 @@ private:
                     src_rgba[channel]=static_cast<std::uint8_t>(
                         std::lround(std::clamp(channel_value,0.,255.)));
                 }
-                CompositeSourceRGBA(color.data()+pixel,src_rgba,texture.blend);
-                ++pixels_;
-                ++eye_pixels_[eye];
+                // Per-channel output mask applies after blending. Z-only passes
+                // do not establish visible binocular color coverage.
+                CompositeSourceRGBA(color.data()+pixel,src_rgba,
+                    texture.blend,texture.raster.write_rgba_mask);
+                if(texture.raster.write_rgba_mask) {
+                    ++pixels_;
+                    ++eye_pixels_[eye];
+                }
             }
         }
     }

@@ -11,7 +11,8 @@ enum class BlendMode : std::uint32_t {
     Opaque=0, SourceAlphaOver=1, Additive=2,
     SourceAlphaAdd=3, PremultipliedOver=4, ReplaceRGBA=5
 };
-inline bool ValidBlendMode(BlendMode mode) noexcept {
+inline bool ValidBlendMode(BlendMode mode,std::uint8_t write_mask=0x0fu) noexcept {
+    if(write_mask&0xf0u)return;
     return mode==BlendMode::Opaque || mode==BlendMode::SourceAlphaOver ||
            mode==BlendMode::Additive || mode==BlendMode::SourceAlphaAdd ||
            mode==BlendMode::PremultipliedOver ||
@@ -27,14 +28,16 @@ inline void CompositeSourceRGBA(
         // discard or force the pixel's alpha. When all COLORWRITE channels
         // are enabled the original source RGBA replaces destination RGBA.
         // A later D3D9 blend must see this actual 8-bit destination alpha.
-        for(std::size_t i=0;i<4;++i)dst[i]=source[i];
+        for(std::size_t i=0;i<4;++i)
+            if(write_mask&(1u<<i))dst[i]=source[i];
         return;
     }
     if(mode==BlendMode::ReplaceRGBA){
         // ALPHABLENDENABLE=TRUE, ONE/ZERO replaces *all four* D3D9
         // destination channels. Unlike disabled blending it must keep
         // the incoming source alpha for subsequent world material passes.
-        for(std::size_t i=0;i<4;++i)dst[i]=source[i];
+        for(std::size_t i=0;i<4;++i)
+            if(write_mask&(1u<<i))dst[i]=source[i];
         return;
     }
     const double alpha=double(source[3])/255.;
@@ -42,8 +45,10 @@ inline void CompositeSourceRGBA(
                      mode==BlendMode::PremultipliedOver)?1.:alpha;
     const double df=(mode==BlendMode::SourceAlphaOver ||
                      mode==BlendMode::PremultipliedOver)?1.-alpha:1.;
-    for(std::size_t i=0;i<4;++i)
+    for(std::size_t i=0;i<4;++i) {
+        if(!(write_mask&(1u<<i)))continue;
         dst[i]=static_cast<std::uint8_t>(std::lround(std::clamp(
             double(source[i])*sf+double(dst[i])*df,0.,255.)));
+    }
 }
 } // namespace m2vr::vr
