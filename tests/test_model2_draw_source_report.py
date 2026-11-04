@@ -712,6 +712,36 @@ class SourceAuditTests(unittest.TestCase):
             ])
             with self.assertRaisesRegex(ValueError, "duplicate source witness"):
                 REPORT.audit_csv(p)
+            # A new matrix, geometry command, source context, or original
+            # material under an already used witness is not another Draw.
+            # It must fail closed, not silently overwrite the first capture.
+            for event in (
+                "model2_d3d9_cpu_vb_matrix_identity",
+                "model2_d3d9_cpu_vb_matrix_content",
+                "model2_d3d9_cpu_vb_geometry_command",
+                "model2_d3d9_source_pass_context",
+                "model2_d3d9_vb_present_frame",
+                "model2_d3d9_source_stage0_color",
+                "model2_d3d9_source_depth_cull",
+                "model2_d3d9_source_fill",
+            ):
+                with self.subTest(event=event):
+                    self.write_log(p, [
+                        ("model2_d3d9_vb_source", 1, 5, pack(1, 0x112),
+                         pack(2048, 20)),
+                        (event, 1, 100, 200, 300),
+                        (event, 1, 100, 200, 301),
+                    ])
+                    with self.assertRaisesRegex(
+                            ValueError, "conflicting original Draw witness"):
+                        REPORT.audit_csv(p)
+            self.write_log(p, [
+                ("model2_d3d9_vb_source", 1, 5, pack(1, 0x112),
+                 pack(2048, 20)),
+                ("model2_d3d9_cpu_vb_matrix_content", 1, 100, 200, 300),
+                ("model2_d3d9_cpu_vb_matrix_content", 1, 100, 200, 300),
+            ])
+            self.assertEqual(REPORT.audit_csv(p)["caller_count"], 1)
             self.write_log(p, [
                 ("model2_d3d9_vb_source", 0, 5, pack(1, 0x112),
                  pack(2048, 20)),

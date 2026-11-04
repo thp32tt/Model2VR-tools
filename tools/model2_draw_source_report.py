@@ -477,6 +477,19 @@ def original_projected_material_candidate(data):
     return True
 
 
+def store_original_draw_witness_field(fields, name, values, witness):
+    """Reject conflicting duplicate original Draw metadata, not overwrite it.
+
+    A corrupted/replayed same-witness CPU matrix, D3D9 render target,
+    material or Present field must never fabricate a valid source join.
+    Identical duplicate metadata is idempotent, unlike duplicate origins.
+    """
+    if name in fields and fields[name] != values:
+        raise ValueError(
+            f"conflicting original Draw witness {witness} field {name}")
+    fields[name] = values
+
+
 def audit_csv(path):
     witnesses = {}
     ignored = Counter()
@@ -507,45 +520,45 @@ def audit_csv(path):
                     raise ValueError(f"duplicate source witness {witness}")
                 fields["origin"] = values
             elif event == "model2_d3d9_vb_stream":
-                fields["stream"] = values
+                store_original_draw_witness_field(fields, "stream", values, witness)
             elif event == "model2_d3d9_vb_draw_args":
-                fields["draw"] = values
+                store_original_draw_witness_field(fields, "draw", values, witness)
             elif event == "model2_d3d9_ib_source":
-                fields["index"] = values
+                store_original_draw_witness_field(fields, "index", values, witness)
             elif event == "model2_d3d9_vb_texture":
-                fields["texture"] = values
+                store_original_draw_witness_field(fields, "texture", values, witness)
             elif event == "model2_d3d9_vb_sampler":
-                fields["sampler"] = values
+                store_original_draw_witness_field(fields, "sampler", values, witness)
             elif event == "model2_d3d9_vb_alpha":
-                fields["alpha"] = values
+                store_original_draw_witness_field(fields, "alpha", values, witness)
             elif event == "model2_d3d9_vb_raster":
-                fields["raster"] = values
+                store_original_draw_witness_field(fields, "raster", values, witness)
             elif event == "model2_d3d9_vb_write_color":
-                fields["write_color"] = values
+                store_original_draw_witness_field(fields, "write_color", values, witness)
             elif event == "model2_d3d9_cpu_vb_join_batch":
-                fields["cpu_join"] = values
+                store_original_draw_witness_field(fields, "cpu_join", values, witness)
             elif event == "model2_d3d9_cpu_vb_matrix_identity":
-                fields["matrix_identity"] = values
+                store_original_draw_witness_field(fields, "matrix_identity", values, witness)
             elif event == "model2_d3d9_cpu_vb_matrix_content":
-                fields["matrix_content"] = values
+                store_original_draw_witness_field(fields, "matrix_content", values, witness)
             elif event == "model2_d3d9_cpu_vb_geometry_command":
-                fields["geometry_command"] = values
+                store_original_draw_witness_field(fields, "geometry_command", values, witness)
             elif event == "model2_d3d9_source_pass_context":
-                fields["source_context"] = values
+                store_original_draw_witness_field(fields, "source_context", values, witness)
             elif event == "model2_d3d9_vb_present_frame":
-                fields["present_frame"] = values
+                store_original_draw_witness_field(fields, "present_frame", values, witness)
             elif event == "model2_d3d9_source_stage0_color":
-                fields["stage_color"] = values
+                store_original_draw_witness_field(fields, "stage_color", values, witness)
             elif event == "model2_d3d9_source_stage0_alpha":
-                fields["stage_alpha"] = values
+                store_original_draw_witness_field(fields, "stage_alpha", values, witness)
             elif event == "model2_d3d9_source_stage1_specular":
-                fields["stage_extra"] = values
+                store_original_draw_witness_field(fields, "stage_extra", values, witness)
             elif event == "model2_d3d9_source_stage_result":
-                fields["stage_result"] = values
+                store_original_draw_witness_field(fields, "stage_result", values, witness)
             elif event == "model2_d3d9_source_color_mask":
-                fields["source_mask"] = values
+                store_original_draw_witness_field(fields, "source_mask", values, witness)
             elif event == "model2_d3d9_source_blend":
-                fields["source_blend"] = values
+                store_original_draw_witness_field(fields, "source_blend", values, witness)
             elif event == "model2_d3d9_source_separate_alpha_blend":
                 prior=fields.get("source_separate_alpha_blend")
                 if prior is not None and prior!=values:
@@ -559,15 +572,15 @@ def audit_csv(path):
                         f"conflicting original alpha witness {witness}")
                 fields["source_alpha_compare"] = values
             elif event == "model2_d3d9_source_sampler_mip":
-                fields["source_mip"] = values
+                store_original_draw_witness_field(fields, "source_mip", values, witness)
             elif event == "model2_d3d9_source_depth_cull":
-                fields["source_depth_cull"] = values
+                store_original_draw_witness_field(fields, "source_depth_cull", values, witness)
             elif event == "model2_d3d9_source_vertex_pipeline":
-                fields["source_vertex_pipeline"] = values
+                store_original_draw_witness_field(fields, "source_vertex_pipeline", values, witness)
             elif event == "model2_d3d9_source_fill":
-                fields["source_fill"] = values
+                store_original_draw_witness_field(fields, "source_fill", values, witness)
             elif event == "model2_d3d9_vb_camera":
-                fields["camera"] = values
+                store_original_draw_witness_field(fields, "camera", values, witness)
             else:
                 fields["camera_unknown"] = True
 
