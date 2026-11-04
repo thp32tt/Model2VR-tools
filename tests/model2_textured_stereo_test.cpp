@@ -223,6 +223,34 @@ int main(){
         CHECK(rgba[pixel+3u]==0x60u);
     }
 
+    // Genuine TEX0/DIFFUSE renders without synthesizing/copying even
+    // a 1x1 texture. Only the original D3DCOLOR supplies RGBA.
+    raster.Clear();
+    auto textureless=tex0_diffuse;
+    textureless.rgba=nullptr;
+    textureless.width=0u;textureless.height=0u;
+    textureless.stride=0u;
+    CHECK(raster.DrawTextured(tex0_world,textureless));
+    CHECK(raster.StereoPairUsable());
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0x4080c0u);
+        const auto& rgba=raster.Eye(eye);
+        const auto offset=(std::size_t(512)*StereoWorldRaster::Width+
+                           512u)*4u;
+        CHECK(rgba[offset+3u]==0x60u);
+    }
+    raster.Clear();
+    auto missing_texel=textureless;
+    missing_texel.select_diffuse_alpha=false;
+    CHECK(!raster.DrawTextured(tex0_world,missing_texel));
+    CHECK(raster.DrawnPixels()==0u);
+    missing_texel=textureless;
+    missing_texel.width=1u;missing_texel.height=1u;
+    missing_texel.stride=4u;
+    CHECK(!raster.DrawTextured(tex0_world,missing_texel));
+    CHECK(raster.DrawnPixels()==0u);
+    raster.Clear();
+
     // MODULATE with missing vertex color is identically the source texel,
     // not a rejected or silently blackened original D3D9 primitive.
     raster.Clear();

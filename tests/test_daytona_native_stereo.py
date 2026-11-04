@@ -6,6 +6,22 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_source_depth_always_and_diffuse_tex0_enter_real_world_bridge(self):
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        source=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")
+        raster=(ROOT/"src/vr/model2_stereo_raster.hpp").read_text("utf-8")
+        self.assertIn("depth_mode>2u",bridge)
+        self.assertNotIn("depth_mode>1u",bridge)
+        self.assertIn("const bool diffuse_only=rgb_source==1u && alpha_source==1u;",bridge)
+        self.assertIn("(!diffuse_only || width || height || pitch)",bridge)
+        self.assertIn("source_texture?safe_texture.data():nullptr",bridge)
+        self.assertIn("const bool diffuse_only=texture.select_diffuse_rgb",raster)
+        self.assertIn("(!diffuse_only || texture.width || texture.height ||",raster)
+        self.assertIn("SampledRGBA texel{255u,255u,255u,255u}",raster)
+        self.assertNotIn("texture.rgba.assign(4u,255u)",source)
+        self.assertGreaterEqual(
+            source.count("!m2vr::drawprobe::FixedStagePairIsDiffuseOnly("),2)
+
     def test_verified_cpu_world_source_uses_the_original_primary_device(self):
         original=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         bridge=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")

@@ -189,16 +189,23 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
     unsigned int alpha_source,unsigned int blend_mode,
     unsigned int write_rgba_mask) {
     std::scoped_lock lock(g.mutex);
-    if(!Owner() || !xyz || !uv || !indices || !texture_rgba ||
+    // Only stage-zero DIFFUSE/CURRENT on BOTH channels is textureless.
+    // Zero-byte source texture is safe for this explicit world-only path.
+    const bool diffuse_only=rgb_source==1u && alpha_source==1u;
+    const bool source_texture=texture_rgba!=nullptr;
+    if(!Owner() || !xyz || !uv || !indices ||
        !vertex_count || vertex_count>4096u ||
        !index_count || index_count%3u!=0 ||
        index_count>3u*2048u ||
        index_count/3u>2048u-g.triangle_count ||
        g.draw_count>=2048u ||
-       !width || !height || width>1024u || height>1024u ||
-       pitch!=width*4u || alpha_cutoff>255u ||
+       (source_texture ?
+            (!width || !height || width>1024u || height>1024u ||
+             pitch!=width*4u) :
+            (!diffuse_only || width || height || pitch)) ||
+       alpha_cutoff>255u ||
        filter_mode>1u || address_u>3u || address_v>3u ||
-       cull_mode>2u || depth_mode>1u || depth_write>1u ||
+       cull_mode>2u || depth_mode>2u || depth_write>1u ||
        rgb_source>2u || alpha_source>2u || blend_mode>5u ||
        write_rgba_mask>15u ||
        ((rgb_source!=0u || alpha_source!=0u) && !diffuse_argb)) {
@@ -209,7 +216,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
         std::vector<m2vr::vr::CpuPoint> positions(vertex_count);
         std::vector<float> safe_uv(std::size_t(vertex_count)*2u);
         std::vector<std::uint32_t> safe_indices(index_count);
-        std::vector<std::uint8_t> safe_texture(std::size_t(pitch)*height);
+        std::vector<std::uint8_t> safe_texture;
+        if(source_texture)safe_texture.resize(std::size_t(pitch)*height);
         std::vector<std::uint32_t> safe_diffuse;
         if(diffuse_argb)safe_diffuse.resize(vertex_count);
         if(!GuardedCopy(positions.data(),xyz,
@@ -218,8 +226,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
                         safe_uv.size()*sizeof(float)) ||
            !GuardedCopy(safe_indices.data(),indices,
                         safe_indices.size()*sizeof(std::uint32_t)) ||
-           !GuardedCopy(safe_texture.data(),texture_rgba,
-                        safe_texture.size()) ||
+           (source_texture && !GuardedCopy(safe_texture.data(),texture_rgba,
+                                           safe_texture.size())) ||
            (diffuse_argb && !GuardedCopy(safe_diffuse.data(),diffuse_argb,
                             safe_diffuse.size()*sizeof(std::uint32_t)))) {
             g.Abort();return FALSE;
@@ -233,7 +241,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
             g.Abort();return FALSE;
         }
         m2vr::vr::StereoWorldRaster::TextureRGBA texture{
-            safe_texture.data(),width,height,pitch,
+            source_texture?safe_texture.data():nullptr,
+            width,height,pitch,
             static_cast<std::uint8_t>(alpha_cutoff),
             {
                 static_cast<m2vr::vr::TextureAddress>(address_u),

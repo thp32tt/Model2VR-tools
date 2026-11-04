@@ -83,9 +83,17 @@ public:
     // Original alpha-test followed by exact non-separate source blending.
     bool DrawTextured(const ClippedTexturedStereoBatch& batch,
                       const TextureRGBA& texture) noexcept {
-        if(!texture.rgba || !texture.width || !texture.height ||
-           texture.width>1024 || texture.height>1024 ||
-           texture.stride!=texture.width*4u ||
+        const bool diffuse_only=texture.select_diffuse_rgb &&
+                                texture.select_diffuse_alpha;
+        // A textureless original TEX0 Draw is only valid if both fixed
+        // stage-zero channels select DIFFUSE/CURRENT. Mixed channels must
+        // never substitute a fictional texture or color.
+        if((texture.rgba ?
+            (!texture.width || !texture.height ||
+             texture.width>1024 || texture.height>1024 ||
+             texture.stride!=texture.width*4u) :
+            (!diffuse_only || texture.width || texture.height ||
+             texture.stride)) ||
            !ValidSampler(texture.sampler) ||
            !ValidRasterPolicy(texture.raster) ||
            !ValidBlendMode(texture.blend) ||
@@ -263,15 +271,18 @@ private:
                 const auto offset=std::size_t(y)*Width+std::size_t(x);
                 if(!DepthPasses(z,depth_[eye][offset],
                      texture.raster.depth))continue;
-                const double u=(a*u_over_z[0]+b*u_over_z[1]+
-                                c*u_over_z[2])/inv;
-                const double tex_v=(a*v_over_z[0]+b*v_over_z[1]+
-                                    c*v_over_z[2])/inv;
-                if(!std::isfinite(u)||!std::isfinite(tex_v))continue;
-                SampledRGBA texel{};
-                if(!SampleTextureRGBA(texture.rgba,texture.width,
-                     texture.height,texture.stride,u,tex_v,
-                     texture.sampler,texel))continue;
+                SampledRGBA texel{255u,255u,255u,255u};
+                if(!(texture.select_diffuse_rgb &&
+                     texture.select_diffuse_alpha)){
+                    const double u=(a*u_over_z[0]+b*u_over_z[1]+
+                                    c*u_over_z[2])/inv;
+                    const double tex_v=(a*v_over_z[0]+b*v_over_z[1]+
+                                        c*v_over_z[2])/inv;
+                    if(!std::isfinite(u)||!std::isfinite(tex_v))continue;
+                    if(!SampleTextureRGBA(texture.rgba,texture.width,
+                         texture.height,texture.stride,u,tex_v,
+                         texture.sampler,texel))continue;
+                }
                 // Bilinear alpha is filtered BEFORE the alpha cutoff,
                 // mirroring the fixed-function texture sample pipeline.
                 // Source D3D9 COLOROP/ALPHAOP MODULATE(TEXTURE,DIFFUSE):

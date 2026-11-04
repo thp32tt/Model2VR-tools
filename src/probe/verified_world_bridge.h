@@ -54,7 +54,7 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWit
     unsigned int filter_mode, unsigned int address_u, unsigned int address_v);
 /* Source D3D9 raster states (verified material bridge only):
    cull_mode: 0=NONE, 1=cull CW, 2=cull CCW (per-eye screen pixels).
-   depth_mode: 0=LESS, 1=LESS_EQUAL. depth_write: 0/1.
+   depth_mode: 0=LESS, 1=LESS_EQUAL, 2=ALWAYS. depth_write: 0/1.
    These arguments are only trusted when a separately authenticated
    gameplay world pass is active; no automatic D3D9 Draw hooking. */
 __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
@@ -121,7 +121,10 @@ Model2VR_AppendVerifiedTexturedTrianglesWithMaterialSourceRenderStates(
     const std::uint32_t* diffuse_argb,unsigned int rgb_source,
     unsigned int alpha_source,unsigned int blend_mode);
 
-// New source D3D9 COLORWRITEENABLE0 byte mask (RGBA bits 1,2,4,8).
+// Source D3D9 COLORWRITEENABLE0 byte mask (RGBA bits 1,2,4,8).
+// With rgb_source=alpha_source=1 (DIFFUSE/CURRENT), NULL texture plus
+// zero width, height and pitch is legal. A texture-dependent source still
+// requires the original nonempty RGBA bytes. Depth mode 2 is ALWAYS.
 // Old material export remains ABI-compatible with the full 0xF mask.
 // Zero RGB/A mask can still produce Z, but NOT stereo eye-color coverage.
 __declspec(dllexport) BOOL __stdcall
