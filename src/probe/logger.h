@@ -8,6 +8,7 @@ namespace m2vr {
 
 bool OpenLog(const std::filesystem::path& path);
 void CloseLog();
+void FlushLog();
 void LogEvent(
     std::string_view event,
     std::uint64_t a0 = 0,
