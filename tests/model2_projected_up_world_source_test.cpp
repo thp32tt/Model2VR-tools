@@ -3,6 +3,8 @@
 #include "../src/probe/model2_camera_projection_fit.hpp"
 #include <array>
 #include <cstdio>
+#include <cstring>
+#include <limits>
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"original projected UP world %d: %s\n",__LINE__,#x);return 1;}}while(0)
 using namespace m2vr::drawprobe;
 int main(){
@@ -10,11 +12,34 @@ int main(){
     CHECK(ExactProjectedUPWorldFVF(fvf,24u));
     CHECK(!ExactProjectedUPWorldFVF(fvf,28u));
     CHECK(!ExactProjectedUPWorldFVF(D3DFVF_XYZ|D3DFVF_TEX1,24u));
-    CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_DIFFUSE,28u));
+    CHECK(ExactProjectedUPWorldFVF(fvf|D3DFVF_DIFFUSE,28u));
+    CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_DIFFUSE,24u));
+    CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_SPECULAR,28u));
+    CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,32u));
     const std::array<float,6> packed{120.f,140.f,0.5f,0.25f,0.4f,0.7f};
     ProjectedUPWorldVertex v{};
     CHECK(DecodeProjectedUPWorldVertex(packed.data(),fvf,24,v));
     CHECK(v.screen_xy[0]==120.f && v.uv[1]==0.7f);
+    CHECK(!v.has_diffuse && v.diffuse_argb==0xffffffffu);
+    // Original D3DCOLOR occupies four raw bytes between XYZRHW and UV.
+    // The 0xff... pattern must NOT be interpreted as a NaN float.
+    std::array<std::uint8_t,28> with_diffuse{};
+    const std::array<float,4> rhw{120.f,140.f,0.5f,0.25f};
+    const std::array<float,2> colored_uv{0.4f,0.7f};
+    const std::uint32_t argb=0xff804020u;
+    std::memcpy(with_diffuse.data(),rhw.data(),16u);
+    std::memcpy(with_diffuse.data()+16u,&argb,4u);
+    std::memcpy(with_diffuse.data()+20u,colored_uv.data(),8u);
+    CHECK(DecodeProjectedUPWorldVertex(with_diffuse.data(),
+        fvf|D3DFVF_DIFFUSE,28u,v));
+    CHECK(v.has_diffuse && v.diffuse_argb==argb &&
+          v.screen_xy[0]==120.f && v.uv[1]==0.7f);
+    CHECK(!DecodeProjectedUPWorldVertex(with_diffuse.data(),
+        fvf|D3DFVF_DIFFUSE,24u,v));
+    const float nan=(std::numeric_limits<float>::quiet_NaN)();
+    std::memcpy(with_diffuse.data()+20u,&nan,sizeof(nan));
+    CHECK(!DecodeProjectedUPWorldVertex(with_diffuse.data(),
+        fvf|D3DFVF_DIFFUSE,28u,v));
     CHECK(!DecodeProjectedUPWorldVertex(nullptr,fvf,24,v));
     CHECK(!DecodeProjectedUPWorldVertex(packed.data(),fvf,32,v));
     auto wrong=packed;wrong[3]=0.f;
