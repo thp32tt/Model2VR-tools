@@ -118,6 +118,16 @@ class NativeStereoTest(unittest.TestCase):
         self.assertLess(prepare.index("ScopedEyeReplay recursion_guard;"),
                         prepare.index("d->StretchRect(eyes_[eye].color,nullptr"))
 
+    def test_one_run_writes_all_startup_and_wizard_logs_under_logs(self):
+        cfg=(ROOT/"config/daytona_native_stereo.ini").read_text("utf-8")
+        entry=(ROOT/"src/probe/dllmain.cpp").read_text("utf-8")
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        self.assertIn("log_file=logs/daytona_vr_startup.csv",cfg)
+        self.assertIn("std::filesystem::create_directories(log_path.parent_path()",entry)
+        self.assertEqual(entry.count("m2vr::PublishProbeState(m2vr::ProbeState::Ready"),1)
+        self.assertIn('std::filesystem::create_directories("logs",directory_error)',host)
+        self.assertIn('logs/daytona_vr_bug_capture.txt',host)
+
     def test_direct_launch_reports_intentional_2d_and_dependency_failure(self):
         script=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
         self.assertIn("SAFE_MODE_FLAG_PRESENT",script)

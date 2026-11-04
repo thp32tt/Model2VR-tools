@@ -391,3 +391,16 @@ boundary mapping, padded/invalid pitch, and out-of-bounds guards.
 This reduces per-pixel scale arithmetic and prevents an MSAA resolve
 hook recursion without changing original game GPU calls. No measured
 Quest performance gain or 6DoF calibration is claimed.
+
+## One-launch local log grouping (2026-11-04)
+
+The direct-launch package now stores the x86 startup CSV, launcher log,
+x64 OpenXR host log and optional F9 wizard capture together in the
+unpacked VR test folder's `logs/` directory. The x86 DLL creates its
+log parent directory even if the user starts the loader directly
+instead of the batch script. This avoids a configuration-dependent
+log-open handshake failure when the folder does not already exist.
+
+The original emulator and wheel setup are unchanged. A single failed
+start should leave enough independent startup/producer/host evidence to
+identify injection, D3D9 Present, stereo IPC or OpenXR failures.

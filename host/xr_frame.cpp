@@ -1,4 +1,5 @@
 #include "xr_app.h"
+#include <filesystem>
 #include <algorithm>
 #include <iostream>
 #include <fstream>
@@ -93,7 +94,13 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
     const bool key_down=(GetAsyncKeyState(VK_F9)&0x8000)!=0;
     if(!wizard_gate_.CaptureEdge(key_down))return;
     SYSTEMTIME clock{};GetLocalTime(&clock);
-    std::ofstream report("daytona_vr_bug_capture.txt",std::ios::app);
+    std::error_code directory_error;
+    std::filesystem::create_directories("logs",directory_error);
+    if(directory_error){
+        std::cerr<<"Daytona VR Wizard: could not create logs directory\n";
+        return;
+    }
+    std::ofstream report("logs/daytona_vr_bug_capture.txt",std::ios::app);
     if(!report){
         std::cerr<<"Daytona VR Wizard: could not write local bug capture\n";
         return;
@@ -121,7 +128,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"producer_draw_indexed_up="<<producer_health_status_.family_draws[3]<<"\n"
           <<"daytona_head_camera_6dof=UNVERIFIED\n"
           <<"note=GameStereo transport does not prove calibrated in-game HMD camera\n---\n";
-    std::cout<<"Daytona VR Wizard: captured daytona_vr_bug_capture.txt\n";
+    std::cout<<"Daytona VR Wizard: captured logs/daytona_vr_bug_capture.txt\n";
 }
 void XrApp::draw_frame(XrTime display_time){
     std::array<XrView,2> views{XrView{XR_TYPE_VIEW},XrView{XR_TYPE_VIEW}};

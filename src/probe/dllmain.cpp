@@ -2,7 +2,6 @@
 #include "hooks.h"
 #include "logger.h"
 #include "../common/probe_ipc.h"
-#include "../common/probe_ipc.h"
 
 #include <Windows.h>
 #include <filesystem>
@@ -36,7 +35,12 @@ DWORD WINAPI ProbeThread(void* parameter) {
                now.wHour, now.wMinute, now.wSecond, GetCurrentProcessId());
     log_path = log_path.parent_path() /
         (log_path.stem().wstring()+suffix+log_path.extension().wstring());
-    if (!m2vr::OpenLog(log_path)) {
+    // Keep x86 startup CSV beside the launcher and x64 host logs even
+    // when the DLL is started directly rather than via the batch script.
+    std::error_code directory_error;
+    std::filesystem::create_directories(log_path.parent_path(),
+                                         directory_error);
+    if (directory_error || !m2vr::OpenLog(log_path)) {
         m2vr::PublishProbeState(m2vr::ProbeState::Failed, m2vr::ProbeError::LogOpen);
         return 0;
     }
@@ -59,7 +63,6 @@ DWORD WINAPI ProbeThread(void* parameter) {
         return 0;
     }
     m2vr::LogEvent("probe_ready");
-    m2vr::PublishProbeState(m2vr::ProbeState::Ready, m2vr::ProbeError::None);
     m2vr::PublishProbeState(m2vr::ProbeState::Ready, m2vr::ProbeError::None);
     return 0;
 }
