@@ -431,7 +431,6 @@ def original_projected_material_candidate(data):
                 data.get("source_separate_alpha_blend"),
                 fvf,stride) in ("unsupported","unobserved"):
             return False
-        return False
     if (rgb != "DIFFUSE" or alpha != "DIFFUSE") and (
             "source_mip" in data):
         frame=data.get("present_frame")
