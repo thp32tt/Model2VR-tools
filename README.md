@@ -2,6 +2,23 @@
 
 Public clean-room tooling and implementation workspace for Model 2 Emulator VR/FFB support.
 
+## Current Daytona USA native OpenXR VR development (2026-11-04)
+
+The Windows x86 Model 2 D3D9 integration mirrors four original draw
+families, original clear/surface writes and a source-verified subset of
+Daytona shader-UP scene geometry into two independent eye targets.
+Original D3D9 Present success gates x86->x64 stereo publication.
+The x64 OpenXR host uses coherent, reusable left/right IPC buffers and
+a tracked-pose gate, with a direct-launch Windows batch and grouped
+startup logs. See `docs/DAYTONA_NATIVE_STEREO.md`.
+
+**This is experimental source-verified stereo, NOT a finished 6DoF
+game-camera port.** Real Daytona race playback and Quest 3 visuals are
+`RUNTIME_VALIDATION=UNTESTED`. Camera transforms, source-verified world
+pass classification, material completeness and runtime performance
+remain unfinished. The normal emulator game and separate FFB plugin
+are not modified. No proprietary ROM/emulator/REA data live here.
+
 ## What lives here
 - Generic i960 ROM word interleaving and reference-scanning tools
 - Synthetic unit tests and free public GitHub Actions CI

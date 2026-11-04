@@ -1,5 +1,48 @@
 # Development status
 
+## Current C-lane source checkpoint — 2026-11-04
+
+Repository SSOT: `thp32tt/Model2VR-tools@main`.
+The old M01 read-only probe milestone documented below is **historical**,
+not a direction to restart the same 2D capture loop.
+
+**Implemented in source:**
+- Original x86 ElSemi D3D9 DP/DIP/DPUP/DIPUP GPU draw mirroring,
+  original backbuffer Clear, StretchRect, ColorFill and UpdateSurface
+  parity; original gameplay draw/Present executes only once.
+- Daytona shader-UP caller-verified POSITION0 triangles receive
+  independently gated left/right shifts. Unknown geometry remains
+  flat; nothing silently labels a generic draw as gameplay world.
+- Two-eye D3D9 render/depth targets, optional MSAA resolve, staged
+  BGRA->RGBA readback with native-aspect letterboxing, guard against
+  recursive hooked StretchRect and cached integer scaling coordinates.
+- Original D3D9 Present HRESULT and fresh OpenXR pose decide whether
+  the coherent binocular frame may be published. A failure is reported
+  through x86/x64 producer health, without publishing stale eyes.
+- Versioned pointer-free source health, predicted eye pose and two-eye
+  frame transport to x64 OpenXR projection swapchains; host reuses
+  staging buffers instead of allocating 8MiB per new frame.
+- Direct Windows launcher and local `logs/` diagnostics, including
+  optional F9 capture. Existing 2D safe mode and separate wheel/FFB
+  owner remain intact.
+
+**Verified only in source/CI:** Windows x86 D3D9 producer, Windows x64
+OpenXR host, architecture-crossing CTests, Python integration tests
+and runnable ZIP packaging. These are synthetic/static/build checks,
+not proof of source camera calibration or a game/HMD playtest.
+
+**Still unfinished, in priority order:** authenticate real Daytona
+world/camera transform and correct head-relative 6DoF, discriminate
+HUD/menu/postprocessing from 3D scene beyond the known shader-UP
+caller, improve texture/depth/render target material fidelity and
+frame pacing, then validate on original emulator plus Quest 3/VDXR.
+`RUNTIME_VALIDATION=UNTESTED` until owner hardware results exist.
+Do not re-request identical 2D traces or re-run unchanged SHA CI.
+
+---
+
+## Historical milestone reference
+
 ## Milestone 01 — Read-only runtime probe
 
 Status: buildable on GitHub Windows x86 CI.

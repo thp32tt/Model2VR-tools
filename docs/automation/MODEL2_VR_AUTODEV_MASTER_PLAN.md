@@ -19,6 +19,33 @@ Status: IN DEVELOPMENT; desktop OpenXR native stereo still requires actual emula
 - A production build should produce a usable direct-launch Windows batch file and diagnostic log on failure, not demand repeated duplicate probes. Existing user feedback: launcher briefly flashes and opens 2D; preserve logs and diagnose genuine OpenXR host connection, swapchain/eye rendering, game/process startup and Direct3D hook, without inventing evidence.
 - Source / exact SHA CI success is NOT HMD visual confirmation. Mark hardware validation UNTESTED until the user actually runs on Quest 3 / PC. Preserve game compatibility and optional hook modes.
 
+## Current source checkpoint (2026-11-04)
+
+- Main now implements all four original D3D9 GPU Draw API eye replay
+  families plus Clear, StretchRect, ColorFill and UpdateSurface source
+  writes, with a bounded independently shifted subset of verified
+  Daytona shader-UP triangles. This is NOT a fully verified world/HUD
+  classifier and source-translation is not a calibrated headset camera.
+- x86 captures pre-Present eye RGB only; GameStereo IPC commits after
+  the original game Present succeeds and the tracked pose remains valid.
+  Original HRESULT and FFB/simulation are untouched. Actual source
+  Present failures reach x64 producer-health diagnostics.
+- Per-eye MSAA StretchRect recursion is guarded. Readback computes its
+  integer scale plan once per source size, preserves physical image
+  aspect and rejects invalid surface pitch. x64 OpenXR uses a separate
+  recyclable IPC staging pair to preserve active two-eye atomicity.
+- Launcher/host/probe/F9 logs are grouped under local `logs/`. The
+  user should not have to replay the same diagnostic capture to recover
+  failure reason metadata.
+- Remaining hard gates: proven game camera/view-projection integration,
+  full 3D world/HUD boundary classification beyond the known caller,
+  real game graphics performance, and Quest 3 + VDXR runtime visual
+  confirmation. Mark `RUNTIME_VALIDATION=UNTESTED` until hardware runs.
+
+Automation should resume with **actual missing camera/source renderer
+functionality** rather than re-implementing the already validated
+Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
+
 ## Next implementation sequence
 
 1. Read `README.md`, `docs/DEVELOPMENT_STATUS.md`, current `host/`, `src/`, `scripts/Run-Daytona-VR.bat`, `scripts/Run-Daytona-NativeStereo.cmd`, actual test fixtures and recent main commits. Identify the exact unfinished integration or reproducible failure; modify code first.
