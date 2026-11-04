@@ -488,3 +488,10 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
   projector caller, matrix geometry command, units/meter and world-only
   Draw pass; then enable calibrated per-eye game world on the existing
   x86->x64 bridge while retaining the mono escape hatch.
+
+- The x64 display now renders only `GameMonoFallback` as a genuine
+  stationary OpenXR quad cinema layer at 1.65 metres. It reuses one
+  original-game RGBA image and does not stretch cloned mono pixels into
+  two stereo FOV projections. Normal authenticated native
+  `GameStereo` remains separate per-eye projection; missing source
+  still uses colored host diagnostics. Hardware runtime UNTESTED.

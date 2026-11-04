@@ -564,3 +564,18 @@ explicit 2D fallback with no stereo depth claim. Backbuffer alpha is
 not treated as transparency when compositing the final game display
 into the headset. Hardware support of these surface readbacks and
 actual Daytona Quest playback remain UNTESTED.
+
+## HMD presentation of authentic mono game frames (2026-11-05)
+
+An original-game 2D fallback is no longer drawn as cloned eye-wide
+`XrCompositionLayerProjection` textures. The Win64 OpenXR host now uses
+a core `XrCompositionLayerQuad` at a fixed location 1.65 metres in front
+of the OpenXR local-space origin. A single uploaded 1024x1024
+aspect-preserved original game image is shown to both eyes as a
+2-metre-wide virtual flat screen. It is explicitly **2D** and does not
+assert head-rotation control of the Daytona camera. Its source channel
+still requires the actual original D3D9 pre-Present readback and
+successful original Present. Normal `GameStereo` frames retain both
+independent eye uploads and the two-eye projection layer; absent
+source frames retain the existing colored fallback diagnostics.
+Actual VDXR/Quest rendering is UNTESTED until a headset session.

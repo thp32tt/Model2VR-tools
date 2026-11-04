@@ -360,11 +360,18 @@ void XrApp::draw_frame(XrTime display_time){
                  <<std::endl;
     }
     report_wizard_health(true,usable);
+    // The real original mono game image is a 2D cinema quad, never
+    // counterfeit independent per-eye world projection.
+    const bool original_mono_quad=usable &&
+        frame_gate_.kind()==transport::FrameKind::GameMonoFallback &&
+        chains_[0].width==transport::kWidth &&
+        chains_[0].height==transport::kHeight;
     std::array<XrCompositionLayerProjectionView,2> layer_views{
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}
     };
-    for(std::size_t eye=0;eye<chains_.size();++eye){
+    // The quad needs only one native DX11 swapchain image and one upload.
+    for(std::size_t eye=0;eye<(original_mono_quad?1u:chains_.size());++eye){
         auto& chain=chains_[eye];
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
         std::uint32_t index=0;
@@ -406,15 +413,33 @@ void XrApp::draw_frame(XrTime display_time){
     projection.space=local_space_;
     projection.viewCount=2;
     projection.views=layer_views.data();
-    const XrCompositionLayerBaseHeader* layers[]={
-        reinterpret_cast<const XrCompositionLayerBaseHeader*>(&projection)
-    };
+    // Core OpenXR quad (no extension): world-stationary 2D game screen,
+    // 1.65 m ahead, 2 m wide. Native world GameStereo remains a projection.
+    XrCompositionLayerQuad mono_quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    mono_quad.space=local_space_;
+    mono_quad.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+    mono_quad.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
+    mono_quad.subImage.swapchain=chains_[0].handle;
+    mono_quad.subImage.imageRect.extent.width=
+        static_cast<std::int32_t>(chains_[0].width);
+    mono_quad.subImage.imageRect.extent.height=
+        static_cast<std::int32_t>(chains_[0].height);
+    mono_quad.pose.orientation.w=1.f;
+    mono_quad.pose.position.z=-1.65f;
+    mono_quad.size.width=2.0f;
+    mono_quad.size.height=2.0f;
+    const XrCompositionLayerBaseHeader* selected_layer=
+        original_mono_quad
+            ?reinterpret_cast<const XrCompositionLayerBaseHeader*>(&mono_quad)
+            :reinterpret_cast<const XrCompositionLayerBaseHeader*>(&projection);
+    const XrCompositionLayerBaseHeader* layers[]={selected_layer};
     XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
     end.displayTime=display_time;
     end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     end.layerCount=1;
     end.layers=layers;
-    check(xrEndFrame(session_,&end),"end stereo frame");
+    check(xrEndFrame(session_,&end),
+          original_mono_quad?"end original-game mono quad frame":"end stereo frame");
 }
 void XrApp::run(int max_frames){
     wizard_diag_enabled_=GetPrivateProfileIntW(L"probe",L"wizard_health_diagnostics",
