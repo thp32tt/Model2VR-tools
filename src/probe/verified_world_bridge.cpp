@@ -9,6 +9,7 @@
 #include "verified_world_present_gate.hpp"
 #include "verified_world_source_epoch.hpp"
 #include "verified_world_source_result.hpp"
+#include "verified_world_projection_epoch.hpp"
 #include "daytona_native_stereo.hpp"
 #include "../common/daytona_producer_health.hpp"
 #include "logger.h"
@@ -40,6 +41,7 @@ struct Bridge {
     m2vr::vr::DrawEvidence evidence{};
     std::uint64_t frame=0,last_completed=0,pose_sequence=0;
     m2vr::vrbridge::OriginalSourceFrameEpoch source_epoch{};
+    m2vr::vrbridge::OriginalProjectedCameraEpoch projected_camera{};
     std::uint64_t pose_published_qpc=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
@@ -60,6 +62,7 @@ struct Bridge {
         active=false;pending_present=false;
         owner=0;frame=0;pose_sequence=0;pose_published_qpc=0;
         draw_count=0;triangle_count=0;
+        projected_camera.Reset();
         evidence={};calibration={};
     }
 };
@@ -106,6 +109,23 @@ bool OriginalWorldPoseLive()noexcept {
         static_cast<std::uint64_t>(frequency.QuadPart));
 }
 }
+namespace m2vr::vrbridge {
+bool AdmitVerifiedProjectedD3D9SourcePass(std::uint32_t caller,
+    OriginalProjectionViewport viewport,
+    const m2vr::drawprobe::PerspectiveCandidate& fit) noexcept {
+    std::scoped_lock lock(g.mutex);
+    if(!Owner())return false;
+    const auto result=g.projected_camera.Admit(g.frame,caller,viewport,fit);
+    if(!CameraPassAccepted(result)){
+        RejectOriginalSourceMaterial(OriginalSourceFailure::ProjectionPass);
+        m2vr::LogEvent("model2_vr_cpu_world_camera_pass_rejected",
+            g.frame,CurrentOriginalSourceDrawKind(),
+            static_cast<std::uint32_t>(result),g.draw_count);
+        return false;
+    }
+    return true;
+}
+} // namespace m2vr::vrbridge
 extern "C" BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread(){
     std::scoped_lock lock(g.mutex);
     return Owner()?TRUE:FALSE;
@@ -160,6 +180,7 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         if(!g.raster)
             g.raster=std::make_unique<m2vr::vr::StereoWorldRaster>();
         g.raster->Clear();
+        g.projected_camera.Reset();
         g.head_origin=next_origin;
         g.camera_epoch=next_camera;
         g.frame=frame_id;

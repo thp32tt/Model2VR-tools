@@ -1,4 +1,5 @@
 #include "../src/probe/model2_camera_projection_fit.hpp"
+#include "../src/probe/verified_world_projection_epoch.hpp"
 #include <array>
 #include <cstdio>
 #include <limits>
@@ -46,5 +47,28 @@ int main(){
     // No x or y depth-dependent spread: insufficient calibration geometry.
     for(auto& p:source){p.source_xyz[0]=0.f;p.source_xyz[1]=0.f;}
     CHECK(!FitSourcePerspective(source.data(),6,0,0,640,480).plausible);
+    // Multi-Draw original D3D9 sources keep one fitted camera until Present.
+    using namespace m2vr::vrbridge;
+    OriginalProjectedCameraEpoch gate;
+    const OriginalProjectionViewport vp{0u,0u,640u,480u};
+    CHECK(gate.Admit(77u,0x1234u,vp,camera)==OriginalCameraPassResult::Initial);
+    auto noisy=camera;
+    noisy.center_x+=0.5f;noisy.scale_x+=2.f;
+    CHECK(gate.Admit(77u,0x1234u,vp,noisy)==OriginalCameraPassResult::Continuation);
+    CHECK(gate.Admit(78u,0x1234u,vp,camera)==OriginalCameraPassResult::FrameChanged);
+    CHECK(gate.Admit(77u,0x1235u,vp,camera)==OriginalCameraPassResult::CallerChanged);
+    CHECK(gate.Admit(77u,0x1234u,{0u,0u,320u,240u},camera)==OriginalCameraPassResult::ViewportChanged);
+    CHECK(gate.Admit(77u,0x1234u,vp,negative)==OriginalCameraPassResult::DepthChanged);
+    auto preview=camera;preview.center_x+=40.f;
+    CHECK(gate.Admit(77u,0x1234u,vp,preview)==OriginalCameraPassResult::OpticsChanged);
+    preview=camera;preview.scale_y*=1.2f;
+    CHECK(gate.Admit(77u,0x1234u,vp,preview)==OriginalCameraPassResult::OpticsChanged);
+    preview=camera;preview.scale_x=-preview.scale_x;
+    CHECK(gate.Admit(77u,0x1234u,vp,preview)==OriginalCameraPassResult::OpticsChanged);
+    preview=camera;preview.center_x=bad;
+    CHECK(gate.Admit(77u,0x1234u,vp,preview)==OriginalCameraPassResult::Invalid);
+    gate.Reset();
+    CHECK(gate.Admit(78u,0x5678u,vp,negative)==OriginalCameraPassResult::Initial);
+    CHECK(gate.Admit(78u,0x5678u,vp,negative)==OriginalCameraPassResult::Continuation);
     return 0;
 }

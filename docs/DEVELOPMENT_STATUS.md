@@ -1,3 +1,9 @@
+## Original projected CPU-world multi-Draw camera epoch — 2026-11-05
+
+- The original x86 D3D9 projected UP and nested indexed-UP/VB/IB/topology world-source adapters now check a single same-original-Present optical camera epoch before updating their left/right CPU eye raster. CPU projector source caller, viewport, optical center, scale and signed depth must remain consistent across consecutive draws. Legitimate model/object matrix changes remain possible.
+- A secondary/mirror camera, source caller change, inconsistent projection, invalid evidence or different viewport causes the source Draw failure to revoke all partial CPU-world binocular pixels. Original Draw/Present HRESULT, game logic and FFB are not altered. The existing experimental GPU/original backbuffer mono recovery remains enabled, and only bounded reason codes (no original pixels, matrices or private assets) are logged.
+- This is continuity of a separately authenticated original source, not automatic Daytona race-world authorization, game-units-per-meter calibration or headset visual confirmation. `RUNTIME_VALIDATION=UNTESTED`.
+
 # Development status
 
 ## Original CPU-world incomplete-draw fail-closed source transaction — 2026-11-05

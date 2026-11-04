@@ -36,7 +36,7 @@ inline std::uint32_t CurrentOriginalSourceDrawKind() noexcept {
 enum class OriginalSourceFailure : std::uint32_t {
     Unknown=0u, Device=1u, Shader=2u, VertexPipeline=3u,
     Raster=4u, BlendAndLighting=5u, StageZero=6u,
-    StageOneAndAlphaTest=7u, Sampler=8u, TargetAndDepth=9u
+    StageOneAndAlphaTest=7u, Sampler=8u, TargetAndDepth=9u, ProjectionPass=10u
 };
 inline thread_local OriginalSourceFailure g_current_original_source_failure=
     OriginalSourceFailure::Unknown;

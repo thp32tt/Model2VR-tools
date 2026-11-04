@@ -4,6 +4,7 @@
 // from FVF, never hooks automatically and never touches simulation or FFB.
 #include "verified_world_bridge.h"
 #include "verified_world_source_result.hpp"
+#include "verified_world_projection_epoch.hpp"
 #include "d3d9_texture_snapshot.hpp"
 #include "d3d9_sampler_states.hpp"
 #include "d3d9_fixed_stage_policy.hpp"
@@ -411,7 +412,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         const auto fit=m2vr::drawprobe::FitSourcePerspective(
             joined.camera_samples.data(),joined.camera_sample_count,
             viewport.X,viewport.Y,viewport.Width,viewport.Height);
-        if(!fit.plausible)return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        if(!fit.plausible ||
+           !m2vr::vrbridge::AdmitVerifiedProjectedD3D9SourcePass(
+               joined.common_source_caller_rva,
+               {viewport.X,viewport.Y,viewport.Width,viewport.Height},fit))
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
         for(std::size_t i=0;i<count;++i)
