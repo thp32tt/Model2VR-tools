@@ -243,7 +243,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
             return FALSE;
     }catch(...){return FALSE;}
     // No second haptic owner, no duplicated emulator CPU draw or state.
-    return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialSourceRenderStates(
+    return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskRenderStates(
         positions.data(),uv.data(),count,safe_indices.data(),index_count,
         texture.rgba.data(),texture.width,texture.height,texture.width*4u,
         alpha_cutoff,
@@ -256,7 +256,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
         diffuse.empty()?nullptr:diffuse.data(),
         static_cast<unsigned>(rgb_source),
         static_cast<unsigned>(alpha_source),
-        static_cast<unsigned>(blend_mode));
+        static_cast<unsigned>(blend_mode),
+        static_cast<unsigned>(raster.write_rgba_mask));
 }
 
 // Actual original x86 D3D9 DrawPrimitiveUP XYZRHW/TEX1 vertices may already
@@ -346,7 +347,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             return FALSE;
         // Same authenticated owner and exact existing rasterization/pose
         // contract as the other fixed-function original Draw adapters.
-        return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialSourceRenderStates(
+        return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskRenderStates(
             positions.data(),uv.data(),static_cast<unsigned>(count),
             indices.data(),static_cast<unsigned>(count),
             texture.rgba.data(),texture.width,texture.height,
@@ -360,6 +361,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             diffuse.empty()?nullptr:diffuse.data(),
             static_cast<unsigned>(rgb_source),
         static_cast<unsigned>(alpha_source),
-            static_cast<unsigned>(blend_mode));
+            static_cast<unsigned>(blend_mode),
+            static_cast<unsigned>(raster.write_rgba_mask));
     }catch(...){return FALSE;}
 }
