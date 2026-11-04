@@ -6,6 +6,7 @@
 #include "d3d9_world_source.hpp"
 #include "d3d9_dxt_decode.hpp"
 #include "d3d9_rgb16_decode.hpp"
+#include "d3d9_luminance_decode.hpp"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -45,7 +46,8 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
        (desc.Format!=D3DFMT_A8R8G8B8 &&
         desc.Format!=D3DFMT_X8R8G8B8 &&
         !DxtBytesPerBlock(desc.Format) &&
-        !Supported16BitColor(desc.Format)))return false;
+        !Supported16BitColor(desc.Format) &&
+        !LuminancePixelBytes(desc.Format)))return false;
     D3DLOCKED_RECT locked{};
     if(FAILED(tex->LockRect(0,&locked,nullptr,D3DLOCK_READONLY)))
         return false;
@@ -54,9 +56,13 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
         ~Unlock(){if(tex)tex->UnlockRect(0);}
     } unlock{tex};
     const std::uint32_t dxt_bytes=DxtBytesPerBlock(desc.Format);
+    const std::uint32_t source_pixel_bytes=
+        Supported16BitColor(desc.Format)?2u:
+        LuminancePixelBytes(desc.Format)?
+            LuminancePixelBytes(desc.Format):4u;
     const std::uint32_t row_bytes=dxt_bytes?
         ((desc.Width+3u)/4u)*dxt_bytes :
-        desc.Width*(Supported16BitColor(desc.Format)?2u:4u);
+        desc.Width*source_pixel_bytes;
     if(!locked.pBits || locked.Pitch<0 ||
        std::uint32_t(locked.Pitch)<row_bytes)return false;
     TextureSnapshot temp{};
@@ -84,6 +90,10 @@ inline bool SnapshotCurrentTexture(IDirect3DDevice9* dev,
             }
         }else if(Supported16BitColor(desc.Format)){
             if(!Decode16BitColorRowRGBA(
+                row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
+                desc.Width,desc.Format))return false;
+        }else if(LuminancePixelBytes(desc.Format)){
+            if(!DecodeLuminanceRowRGBA(
                 row.data(),temp.rgba.data()+std::size_t(y)*desc.Width*4u,
                 desc.Width,desc.Format))return false;
         }else{
