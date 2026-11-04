@@ -65,6 +65,7 @@ private:
     // as the last valid OpenXR game frame.
     transport::Snapshot staging_frame_;
     transport::StereoFrameGate frame_gate_;
+    bool warned_unmatched_game_pose_=false;
     bool saw_diagnostic_=false;
     bool wizard_diag_enabled_=true;
     bool startup_ready_signaled_=false;
