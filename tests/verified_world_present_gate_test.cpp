@@ -26,5 +26,13 @@ int main(){
     // even with a genuine tracked OpenXR source-pose tag.
     CHECK(DecidePendingWorldPresent(0u,0u,false,false,false)==
           PendingWorldPresent::None);
+    CHECK(PendingWorldHealthReason(PendingWorldPresent::Publish,true,true)==0u);
+    CHECK(PendingWorldHealthReason(PendingWorldPresent::Publish,true,false)==
+          m2vr::producerhealth::TransportFailed);
+    CHECK(PendingWorldHealthReason(PendingWorldPresent::Drop,false,false)==
+          m2vr::producerhealth::OriginalPresentFailed);
+    CHECK(PendingWorldHealthReason(PendingWorldPresent::Drop,true,false)==
+          m2vr::producerhealth::WrongDevice);
+
     return 0;
 }

@@ -4,6 +4,7 @@
 // submission remains available to source adapters that require that ABI.
 // No D3D9 Draw, simulator, steering or FFB callback is called here.
 #include <cstdint>
+#include "../common/daytona_producer_health.hpp"
 
 namespace m2vr::vrbridge {
 // A source camera adapter may join a verified world transaction to the
@@ -19,6 +20,17 @@ inline std::uint64_t NextOriginalPresentFrameId(
 enum class PendingWorldPresent : std::uint8_t {
     None, Wait, Drop, Publish
 };
+// Use the same pointer-free producer-health ABI as GPU replay. A real
+// CPU-world pair reports success only after its original Present succeeds.
+inline std::uint32_t PendingWorldHealthReason(
+    PendingWorldPresent action,bool original_present_ok,
+    bool published) noexcept {
+    using namespace m2vr::producerhealth;
+    if(action==PendingWorldPresent::Publish)
+        return published ? 0u : TransportFailed;
+    if(!original_present_ok)return OriginalPresentFailed;
+    return WrongDevice;
+}
 inline PendingWorldPresent DecidePendingWorldPresent(
     std::uint64_t pending_frame,std::uint64_t original_present_frame,
     bool original_present_ok,bool native_gpu_replay_enabled,

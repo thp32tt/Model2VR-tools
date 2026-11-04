@@ -6,6 +6,7 @@
 #include "../vr/model2_camera_source_contract.hpp"
 #include "daytona_eye_pose_gate.hpp"
 #include "verified_world_present_gate.hpp"
+#include "../common/daytona_producer_health.hpp"
 #include "logger.h"
 #include <Windows.h>
 #include <algorithm>
@@ -29,6 +30,7 @@ struct Bridge {
     m2vr::vr::Model2FramePoseLatch latch;
     m2vr::vr::Model2HeadRecenter head_origin;
     m2vr::vr::Model2CameraEpochContract camera_epoch;
+    m2vr::producerhealth::Link producer_health;
     m2vr::vr::Model2CameraCalibration calibration{};
     m2vr::vr::DrawEvidence evidence{};
     std::uint64_t frame=0,last_completed=0,pose_sequence=0;
@@ -318,6 +320,22 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
                 m2vr::transport::kWidth,m2vr::transport::kHeight,
                 m2vr::transport::kPitch,g.pose_sequence);
         if(success)g.last_completed=g.frame;
+    }
+    // GPU native replay already owns the process health channel; an
+    // unverified overlapping CPU frame must not stomp its diagnosis.
+    if(!native_gpu_replay_enabled) {
+        if(!g.producer_health.Valid())
+            g.producer_health.Create(GetCurrentProcessId());
+        if(g.producer_health.Valid()){
+            const auto reason=m2vr::vrbridge::PendingWorldHealthReason(
+                action,original_succeeded!=0u,success);
+            // This describes proven CPU-world draws, never fabricated GPU
+            // DP/DIP/UP family counts. The host can distinguish a failed
+            // original Present from stale or disconnected HMD tracking.
+            const std::array<std::uint32_t,4> none{};
+            g.producer_health.Publish(original_frame,reason,
+                success?g.draw_count:0u,0u,0u,none);
+        }
     }
     m2vr::LogEvent("model2_vr_cpu_world_present_commit",g.frame,
         static_cast<unsigned int>(action),success?1u:0u,

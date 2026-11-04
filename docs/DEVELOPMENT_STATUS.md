@@ -77,6 +77,16 @@ This still requires a separately authenticated gameplay source adapter to
 provide world proof, axis/units calibration and correct source frame IDs:
 generic CPU/D3D9 correlations do NOT silently trigger stereo rendering.
 
+**CPU-world producer-health parity with OpenXR host (2026-11-04):**
+The opt-in verified CPU-original-Present commit now publishes frame-bound,
+pointer-free producer health using the existing x86/x64 IPC contract: success
+only for a published pair; original Present failure, mismatched device/thread
+or IPC failure have distinct diagnostic reason bits. CPU health never overwrites
+the GPU-replay producer's health link when that separate replay mode owns the
+source. GPU Draw family counters remain zero for the separate CPU renderer.
+The x64 host can now revoke a stale previous pair on a newer failed original
+CPU Present. A true game-world camera source still requires independent proof.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP
