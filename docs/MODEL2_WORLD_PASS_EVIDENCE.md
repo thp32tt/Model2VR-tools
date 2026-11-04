@@ -94,3 +94,24 @@ A successful Draw/Present, shared FVF, or pixel projection fit never proves
 the race gameplay pass or calibrates the camera. Original game Draw/Present,
 FFB and original mono/GPU-eye fallback remain unchanged. No ROMs or private
 runtime captures belong in this public repository.
+
+## Physical original all-family Draw phase (2026-11-05)
+
+The primary Win32 D3D9 hook assigns **every** real original VB/IB/UP/
+IndexedUP Draw one global one-based ordinal in its physical Present frame,
+including unsampled commands. The sampled witness receives the immutable
+`model2_d3d9_source_draw_phase` event: witness, upcoming original Present ID,
+absolute Draw ordinal and original EXE-relative caller/family. The original
+Draw HRESULT is recorded against the *pre-call* source frame, rather than
+being relabelled if a concurrent Present occurs. Present and Reset reset
+this per-frame ordinal; game COM calls, GPU replay, FFB and fallback remain
+unchanged.
+
+The offline private UP analyzer rejects a source phase with wrong caller,
+frame, family or duplicate per-frame physical ordinal. Old captures without
+the phase event still display their actual Draw/Present status, but cannot
+be mistaken for phase-attested same-witness CPU camera candidates. Ordinal
+ranges support local comparison of gameplay race versus title/HUD/sky and
+auxiliary passes. Ordinal alone is not proof of world ownership, calibrated
+axes/units-per-meter or real Quest3 6DoF vision. Never upload raw logs or
+original game assets to this public repository.

@@ -29,6 +29,7 @@ JOINS = {
 }
 META = {
     "model2_d3d9_up_source_fvf": "fvf",
+    "model2_d3d9_source_draw_phase": "draw_phase",
     "model2_d3d9_up_layout_frame": "layout_frame",
     "model2_d3d9_source_pass_context": "context",
     "model2_d3d9_cpu_up_matrix_identity": "matrix",
@@ -91,6 +92,8 @@ def audit_csv(path):
     counts = Counter()
     examples = []
     caller_frames = defaultdict(set)
+    caller_ordinals = defaultdict(set)
+    phase_owner = {}
     records = {}
     pending = defaultdict(set)
     observed_present_frame = 0
@@ -126,6 +129,12 @@ def audit_csv(path):
             caller = rec.get("caller", 0)
             kind = rec.get("kind")
             fvf_data = rec.get("fvf")
+            phase = rec.get("draw_phase")
+            phase_matches = (
+                phase is not None and phase[0] == frame and
+                0 < phase[1] <= 10_000_000 and
+                halves(phase[2]) == (result_caller, family)
+            )
             source_layout_matches = (
                 kind == "shader_decl" or
                 (fvf_data is not None and rec.get("stride") == fvf_data[1] and
@@ -137,7 +146,8 @@ def audit_csv(path):
             if (rec.get("source_frame") != frame or
                 rec.get("family") != family or caller != result_caller or
                 not caller or family not in (3, 4) or
-                not source_layout_matches):
+                not source_layout_matches or
+                (phase is not None and not phase_matches)):
                 status = "source_identity_or_frame_mismatch"
             elif draw_hresult & 0x80000000:
                 status = "original_draw_failed"
@@ -153,16 +163,27 @@ def audit_csv(path):
         kind = rec.get("kind", "unknown_source")
         counts["source_kind_" + kind] += 1
         if status == "original_source_draw_and_present_succeeded":
-            if camera_joined(rec, frame):
+            if rec.get("draw_phase") is None:
+                counts["physical_draw_phase_missing"] += 1
+            else:
+                counts["physical_draw_phase_authenticated"] += 1
+            # Historical logs are readable, but without an original phase
+            # witness cannot enter the phase-attested CPU camera shortlist.
+            if rec.get("draw_phase") is not None and camera_joined(rec, frame):
                 counts["same_witness_cpu_camera_present_candidate"] += 1
                 key = (kind, family, caller)
                 if key not in caller_frames and len(caller_frames) >= MAX_CALLERS:
                     raise ValueError("original UP caller capacity exceeded")
                 caller_frames[key].add(frame)
+                caller_ordinals[key].add(rec["draw_phase"][1])
         if len(examples) < 48:
             examples.append({
                 "source_witness": witness,
                 "original_present_frame": frame,
+                "original_draw_ordinal": (
+                    rec["draw_phase"][1] if rec.get("draw_phase") and
+                    result is not None and
+                    rec["draw_phase"][0] == frame else None),
                 "original_draw_family": family,
                 "original_gpu_caller_rva_hex": f"0x{caller:08x}",
                 "source_kind": kind,
@@ -198,6 +219,10 @@ def audit_csv(path):
                     frame <= last_original_present_frame):
                     raise ValueError("invalid/duplicate physical original Present")
                 last_original_present_frame = frame
+                # Bounded uniqueness: no old frame can lend an ordinal
+                # to a newer physical original Present.
+                phase_owner = {key: owner for key, owner in phase_owner.items()
+                               if key[0] > frame}
                 # Drain only source records tagged for the physical boundary.
                 # A missing old Present cannot silently acquire a newer
                 # successful result, even when the caller is identical.
@@ -256,7 +281,17 @@ def audit_csv(path):
                 continue
             if event in META:
                 key = META[event]
-                if key == "fvf":
+                if key == "draw_phase":
+                    if (not a1 or a1 > 0xffffffff or
+                        not 0 < a2 <= 10_000_000 or
+                        halves(a3)[1] not in (1, 2, 3, 4) or
+                        a1 <= observed_present_frame):
+                        raise ValueError("invalid original Draw phase")
+                    prior = phase_owner.setdefault((a1, a2), a0)
+                    if prior != a0:
+                        raise ValueError("duplicate original Draw phase")
+                    once(rec, key, (a1, a2, a3), a0)
+                elif key == "fvf":
                     once(rec, "fvf", (a1, a2), a0)
                     if rec.get("kind") == "fixed_xyz":
                         once(rec, "source_frame", a3, a0)
@@ -288,6 +323,8 @@ def audit_csv(path):
                 "original_draw_family": family,
                 "original_gpu_draw_caller_rva_hex": f"0x{caller:08x}",
                 "distinct_original_present_frames": len(frames),
+                "first_original_draw_ordinal": min(caller_ordinals[(kind, family, caller)]),
+                "last_original_draw_ordinal": max(caller_ordinals[(kind, family, caller)]),
                 "world_pass_authorized": False,
             }
             for (kind, family, caller), frames in sorted(caller_frames.items())

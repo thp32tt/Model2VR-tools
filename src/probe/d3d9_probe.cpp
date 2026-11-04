@@ -75,6 +75,9 @@ std::atomic<unsigned> g_draws{0},g_indexed{0},g_up{0},g_indexed_up{0};
 std::array<std::atomic<unsigned>,4> g_family_samples{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
+// Physical original Draw order across all four API families, including
+// unsampled commands. Never inferred from per-family sample cadence.
+std::atomic<std::uint64_t> g_original_frame_draw_ordinal{0u};
 std::atomic<std::uint64_t> g_witness_serial{0};
 // Only frames containing a real sampled original VB/IB Draw receive a
 // matching physical original Present outcome. No per-Draw GPU readback.
@@ -1030,16 +1033,19 @@ std::uint64_t ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
 }
 
 void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
-                                void* caller,unsigned family) {
+                                void* caller,unsigned family,
+                                std::uint64_t original_frame,
+                                std::uint64_t frame_ordinal) {
     if(!witness)return;
-    // HRESULT belongs to exactly this original COM Draw, never GPU replay.
-    const std::uint64_t frame=g_present_count.load(std::memory_order_relaxed)+1u;
-    // One real original COM result belongs to its pre-Draw source witness.
-    // UP(shader/fixed/projection) and VB have distinct read-only kinds.
+    // Capture phase BEFORE the original COM Draw; a concurrent Present
+    // must not relabel the returned HRESULT with the next frame.
+    m2vr::LogEvent("model2_d3d9_source_draw_phase",witness,
+        original_frame,frame_ordinal,
+        (std::uint64_t{CallerRva(caller)}<<32)|family);
     m2vr::LogEvent(family<=2u?"model2_d3d9_vb_original_result":
                                "model2_d3d9_up_original_result",witness,
         static_cast<std::uint32_t>(hr),CallerRva(caller),
-        (frame<<32)|family);
+        (original_frame<<32)|family);
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
@@ -1051,10 +1057,14 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         return TrackOriginalD3D9DrawResult(
             g_draw(d,p,start,count),1u,caller);
     g_draws.fetch_add(1,std::memory_order_relaxed);
+    const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
+        1u,std::memory_order_relaxed)+1u;
     const std::uint64_t witness=Sample(d,1,p,count,caller)?
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
     const HRESULT hr=g_draw(d,p,start,count);
-    RecordOriginalSourceResult(witness,hr,caller,1u);
+    RecordOriginalSourceResult(witness,hr,caller,1u,
+                               source_frame,source_ordinal);
     TrackOriginalD3D9DrawResult(hr,1u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorPrimitive(d,p,start,count,g_draw);
@@ -1070,10 +1080,14 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         return TrackOriginalD3D9DrawResult(
             g_draw_indexed(d,p,base,min,num,start,count),2u,caller);
     g_indexed.fetch_add(1,std::memory_order_relaxed);
+    const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
+        1u,std::memory_order_relaxed)+1u;
     const std::uint64_t witness=Sample(d,2,p,count,caller)?
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
-    RecordOriginalSourceResult(witness,hr,caller,2u);
+    RecordOriginalSourceResult(witness,hr,caller,2u,
+                               source_frame,source_ordinal);
     TrackOriginalD3D9DrawResult(hr,2u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexed(d,p,base,min,num,start,count,g_draw_indexed);
@@ -1089,10 +1103,14 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         return TrackOriginalD3D9DrawResult(
             g_draw_up(d,p,count,verts,stride),3u,caller);
     g_up.fetch_add(1,std::memory_order_relaxed);
+    const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
+        1u,std::memory_order_relaxed)+1u;
     const std::uint64_t witness=Sample(d,3,p,count,caller)?
         ObserveUP(d,3,p,count,caller,verts,stride):0u;
     const HRESULT hr=g_draw_up(d,p,count,verts,stride);
-    RecordOriginalSourceResult(witness,hr,caller,3u);
+    RecordOriginalSourceResult(witness,hr,caller,3u,
+                               source_frame,source_ordinal);
     TrackOriginalD3D9DrawResult(hr,3u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorDraw(d,p,count,verts,stride,CallerRva(caller),g_draw_up);
@@ -1108,10 +1126,14 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         return TrackOriginalD3D9DrawResult(
             g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller);
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
+    const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
+        1u,std::memory_order_relaxed)+1u;
     const std::uint64_t witness=Sample(d,4,p,count,caller)?
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num):0u;
     const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
-    RecordOriginalSourceResult(witness,hr,caller,4u);
+    RecordOriginalSourceResult(witness,hr,caller,4u,
+                               source_frame,source_ordinal);
     TrackOriginalD3D9DrawResult(hr,4u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexedUP(d,p,min,num,count,idx,fmt,verts,stride,g_draw_indexed_up);
@@ -1171,6 +1193,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         return CallOriginalPresentOnce(d,a,b,w,dirty);
     }
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
+    g_original_frame_draw_ordinal.exchange(0u,std::memory_order_relaxed);
     // Native replay must also drain the *original* source-family counters.
     // Previously these only reset in passive 2D mode, so a long VR session
     // accumulated lifetime totals instead of per-Present evidence.
@@ -1233,6 +1256,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
 HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
                                      D3DPRESENT_PARAMETERS* pp){
     if(!g_primary_device.Owns(d))return g_reset(d,pp);
+    g_original_frame_draw_ordinal.store(0u,std::memory_order_relaxed);
     m2vr::drawprobe::NextProjectDrawEpoch();
     Model2VR_DiscardPendingWorldOnReset();
     if(g_native_stereo)m2vr::daytona::ResetResources();

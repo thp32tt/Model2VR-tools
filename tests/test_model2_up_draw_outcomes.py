@@ -39,6 +39,8 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0x12345678, 0, 0x1008),
             event("model2_d3d9_cpu_up_geometry_command", witness,
                   0x120, 0, 0x12345678),
+            event("model2_d3d9_source_draw_phase", witness,
+                  frame, 12, pack(caller, 3)),
             event("model2_d3d9_up_original_result", witness,
                   0, caller, pack(frame, 3)),
         ]
@@ -52,6 +54,10 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             got["counts"]["original_source_draw_and_present_succeeded"], 1)
         self.assertEqual(
             got["counts"]["same_witness_cpu_camera_present_candidate"], 1)
+        self.assertEqual(got["counts"]["physical_draw_phase_authenticated"], 1)
+        self.assertEqual(got["examples"][0]["original_draw_ordinal"], 12)
+        self.assertEqual(got["physically_presented_same_witness_camera_callers"][0]
+                         ["first_original_draw_ordinal"], 12)
         self.assertEqual(got["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertFalse(got["adapter_auto_enable"])
         self.assertEqual(
@@ -113,6 +119,8 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             event("model2_d3d9_up_source_fvf", 31, 0x142, 24, 7),
             event("model2_world_up_candidate", 31, 0x1111,
                   0x142, pack(4, 24)),
+            event("model2_d3d9_source_draw_phase", 31,
+                  7, 25, pack(0x1111, 4)),
             event("model2_d3d9_up_original_result", 31, 0,
                   0x1111, pack(7, 4)),
             event("model2_d3d9_original_present_result", 7, 0, 1, 0),
@@ -129,6 +137,8 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0x12345678, 0, 0x1010),
             event("model2_d3d9_cpu_shader_geometry_command", 32,
                   0x44, 0, 0x12345678),
+            event("model2_d3d9_source_draw_phase", 32,
+                  8, 26, pack(0x2222, 3)),
             event("model2_d3d9_up_original_result", 32, 0,
                   0x2222, pack(8, 3)),
             event("model2_d3d9_original_present_result", 8, 0, 1, 0),
@@ -164,6 +174,8 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             self.report(events + [
                 event("model2_d3d9_up_source_fvf", 22, 0x144, 24, 7),
                 event("model2_d3d9_up_meta", 22, 7, 0x4444, pack(3, 24)),
+                event("model2_d3d9_source_draw_phase", 22,
+                      7, 13, pack(0x4444, 3)),
                 event("model2_d3d9_up_original_result", 22, 0,
                       0x4444, pack(7, 3)),
                 event("model2_d3d9_original_present_result", 7, 0, 1, 0),
@@ -173,6 +185,40 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                 event("model2_d3d9_original_present_result", 7, 0, 1, 0),
                 event("model2_d3d9_original_present_result", 7, 0, 1, 0),
             ])
+
+    def test_missing_original_phase_cannot_claim_phase_attested_camera(self):
+        events = [r for r in self.projected()
+                  if r[0] != "model2_d3d9_source_draw_phase"]
+        got = self.report(events + [
+            event("model2_d3d9_original_present_result", 7, 0, 1, 0)])
+        self.assertEqual(got["counts"]["physical_draw_phase_missing"], 1)
+        self.assertEqual(got["counts"]["original_source_draw_and_present_succeeded"], 1)
+        self.assertFalse(got["physically_presented_same_witness_camera_callers"])
+
+    def test_wrong_frame_family_or_caller_phase_cannot_qualify(self):
+        for bad in [(8, 12, pack(0x4321, 3)),
+                    (7, 12, pack(0x4321, 4)),
+                    (7, 12, pack(0x9999, 3))]:
+            with self.subTest(bad=bad):
+                events = self.projected()
+                events[-2] = event("model2_d3d9_source_draw_phase",
+                                   21, *bad)
+                got = self.report(events + [
+                    event("model2_d3d9_original_present_result", 7, 0, 1, 0)])
+                self.assertEqual(
+                    got["counts"]["source_identity_or_frame_mismatch"], 1)
+                self.assertFalse(
+                    got["physically_presented_same_witness_camera_callers"])
+
+    def test_cross_family_same_physical_phase_ordinal_rejected(self):
+        events = self.projected()
+        events.extend([
+            event("model2_d3d9_up_meta", 22, 7, 0x4444, pack(3, 24)),
+            event("model2_d3d9_source_draw_phase", 22,
+                  7, 12, pack(0x4444, 3)),
+        ])
+        with self.assertRaisesRegex(ValueError, "duplicate original Draw phase"):
+            self.report(events)
 
     def test_unrelated_vb_source_context_does_not_become_up_evidence(self):
         got = self.report([
