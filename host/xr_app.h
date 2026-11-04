@@ -17,6 +17,7 @@
 #include "../src/common/daytona_producer_health.hpp"
 #include "../src/common/daytona_eye_delivery_status.hpp"
 #include "../src/common/daytona_mono_quad_anchor.hpp"
+#include "../src/common/daytona_host_pixel_format.hpp"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -51,6 +52,9 @@ private:
     ComPtr<ID3D11DeviceContext> context_;
     std::vector<XrViewConfigurationView> view_configs_;
     std::array<EyeChain,2> chains_;
+    DXGI_FORMAT swapchain_upload_format_=DXGI_FORMAT_R8G8B8A8_UNORM;
+    // One recycled pixel swizzle scratch buffer, never part of IPC staging.
+    std::vector<std::uint8_t> bgra_upload_scratch_;
     std::uint32_t source_pid_=0;
     transport::SharedFrames shared_frames_;
     producerhealth::Link producer_health_;

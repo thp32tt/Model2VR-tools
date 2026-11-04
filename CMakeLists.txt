@@ -125,6 +125,14 @@ target_compile_features(daytona_mono_quad_anchor_x86_test PRIVATE cxx_std_20)
 add_test(NAME daytona_original_mono_quad_world_anchor_x86
          COMMAND daytona_mono_quad_anchor_x86_test)
 
+# Verify original-game RGBA wire and OpenXR BGRA runtime conversion on x86
+# too, keeping host pixel operations independent of source game/FFB state.
+add_executable(daytona_host_pixel_format_x86_test
+    tests/daytona_host_pixel_format_test.cpp)
+target_compile_features(daytona_host_pixel_format_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_host_rgba_bgra_swapchain_x86
+         COMMAND daytona_host_pixel_format_x86_test)
+
 # 32/64-bit ABI-compatible shared stereo transport and diagnostic producer.
 add_executable(model2vr_stereo_ipc_test tests/stereo_frame_ipc_test.cpp)
 target_compile_features(model2vr_stereo_ipc_test PRIVATE cxx_std_20)

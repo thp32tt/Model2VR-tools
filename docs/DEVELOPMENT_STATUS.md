@@ -371,3 +371,18 @@ side lengths and total pixel count are bounded (4096 max side, 4096x2160
 max pixels) before D3D9 SYSTEMMEM allocation. The transport remains
 1024x1024, and tests confirm wide-screen aspect/coordinate mapping;
 no extra compositor allocation or stereo world authorization is added.
+
+
+## OpenXR host RGBA8/BGRA8 runtime swapchain compatibility (2026-11-05)
+
+The actual x64 OpenXR runtime's enumerated DXGI swapchain format is now
+selected with RGBA8 first and BGRA8 as a compatible fallback; no unsupported
+format is guessed. For BGRA8 only, a single bounded recycled CPU scratch
+buffer converts the existing original x86 RGBA8 IPC frame immediately before
+D3D11 UpdateSubresource; neither accepted GameStereo eyes, compact mono source
+nor the original game's Draw/Present/FFB buffers are modified. Both mono
+stationary OpenXR quad and tracked verified GameStereo projection share the
+same exact per-image upload identity and frame-sequence gates. Native x86/x64
+pixel-order/supported-format regression tests and Python wiring checks cover
+the new path. Exact final SHA CI and Quest3/VDXR still require independent
+verification; RUNTIME_VALIDATION=UNTESTED.

@@ -18,9 +18,18 @@ void XrApp::create_swapchains(){
     check(xrEnumerateSwapchainFormats(session_,0,&count,nullptr),"swapchain formats count");
     std::vector<std::int64_t> formats(count);
     check(xrEnumerateSwapchainFormats(session_,count,&count,formats.data()),"swapchain formats");
-    constexpr std::int64_t format=DXGI_FORMAT_R8G8B8A8_UNORM;
-    if(std::find(formats.begin(),formats.end(),format)==formats.end())
-        throw std::runtime_error("XR runtime does not support RGBA8 format");
+    const auto negotiated=hostcolor::ChooseSwapchainFormat(
+        formats.data(),formats.size(),
+        static_cast<std::int64_t>(DXGI_FORMAT_R8G8B8A8_UNORM),
+        static_cast<std::int64_t>(DXGI_FORMAT_B8G8R8A8_UNORM));
+    if(!negotiated)
+        throw std::runtime_error(
+            "XR runtime supports neither RGBA8 nor BGRA8 game frame swapchain");
+    const auto format=static_cast<DXGI_FORMAT>(negotiated);
+    swapchain_upload_format_=format;
+    std::cout<<"OpenXR source RGBA8 -> swapchain "
+             <<(format==DXGI_FORMAT_B8G8R8A8_UNORM?"BGRA8 swizzle":"RGBA8 direct")
+             <<" format="<<static_cast<int>(format)<<std::endl;
     for(std::size_t eye=0;eye<chains_.size();++eye){
         auto& chain=chains_[eye];
         chain.width=source_pid_ ? transport::kWidth : view_configs_[eye].recommendedImageRectWidth;
@@ -420,8 +429,19 @@ void XrApp::draw_frame(XrTime display_time){
             // It already holds the exact current left/right source frame:
             // avoid redundant CPU->GPU uploads on that image.
             if(chain.uploaded_frame_ids.at(index)!=frame_gate_.id()){
+                const auto* upload_pixels=eye_frame_.eyes[eye].data();
+                if(swapchain_upload_format_==DXGI_FORMAT_B8G8R8A8_UNORM){
+                    if(bgra_upload_scratch_.size()!=transport::kBytesPerEye)
+                        bgra_upload_scratch_.resize(transport::kBytesPerEye);
+                    if(!hostcolor::ConvertRgbaToBgra(
+                           upload_pixels,transport::kBytesPerEye,
+                           bgra_upload_scratch_.data(),
+                           bgra_upload_scratch_.size()))
+                        throw std::runtime_error("OpenXR RGBA8 to BGRA8 swizzle rejected");
+                    upload_pixels=bgra_upload_scratch_.data();
+                }
                 context_->UpdateSubresource(chain.images.at(index).texture,0,nullptr,
-                      eye_frame_.eyes[eye].data(),transport::kPitch,0);
+                      upload_pixels,transport::kPitch,0);
                 chain.uploaded_frame_ids[index]=frame_gate_.id();
             }
         }else{

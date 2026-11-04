@@ -136,3 +136,10 @@ target_compile_features(daytona_aux_surface_gate_x64_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_aux_surface_gate_x64_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_auxiliary_scene_blit_route_x64
          COMMAND daytona_aux_surface_gate_x64_test)
+
+# Win64 OpenXR actual swapchain format preference and source-RGBA upload.
+add_executable(daytona_host_pixel_format_x64_test
+    ../tests/daytona_host_pixel_format_test.cpp)
+target_compile_features(daytona_host_pixel_format_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_host_rgba_bgra_swapchain_x64
+         COMMAND daytona_host_pixel_format_x64_test)
