@@ -243,6 +243,12 @@ add_executable(model2_d3d9_rgb_byte_source_test
 target_compile_features(model2_d3d9_rgb_byte_source_test PRIVATE cxx_std_20)
 add_test(NAME model2_d3d9_verified_world_rgb_byte_material_source
     COMMAND model2_d3d9_rgb_byte_source_test)
+# Genuine D3D9 A8 alpha-only source -> RGBA8 before eye alpha policy.
+add_executable(model2_d3d9_alpha_only_source_test
+    tests/model2_d3d9_alpha_only_decode_test.cpp)
+target_compile_features(model2_d3d9_alpha_only_source_test PRIVATE cxx_std_20)
+add_test(NAME model2_d3d9_verified_world_alpha_only_source
+    COMMAND model2_d3d9_alpha_only_source_test)
 add_executable(model2_d3d9_luminance_source_test
     tests/model2_d3d9_luminance_decode_test.cpp)
 target_compile_features(model2_d3d9_luminance_source_test PRIVATE cxx_std_20)
