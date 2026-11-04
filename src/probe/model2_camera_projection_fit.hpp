@@ -9,6 +9,9 @@
 #include <cstdint>
 
 namespace m2vr::drawprobe {
+// Source matches are capped at 64 original triangles (192 points),
+// strictly below the 256-point same-thread CPU projector witness ring.
+inline constexpr std::size_t kMaxOriginalProjectionSamples=192u;
 struct SourceProjectionSample {
     std::array<float,3> source_xyz{};
     std::array<float,2> screen_xy{};
@@ -29,13 +32,13 @@ inline PerspectiveCandidate FitSourcePerspective(
     std::uint32_t viewport_x,std::uint32_t viewport_y,
     std::uint32_t viewport_width,std::uint32_t viewport_height) noexcept {
     PerspectiveCandidate out{};
-    if(!points || count<6u || count>24u ||
+    if(!points || count<6u || count>kMaxOriginalProjectionSamples ||
        !viewport_width || !viewport_height ||
        viewport_width>16384u || viewport_height>16384u ||
        viewport_x>16384u || viewport_y>16384u)return out;
     double mx=0,my=0,mpx=0,mpy=0;
     int depth_sign=0;
-    std::array<std::array<double,4>,24> samples{};
+    std::array<std::array<double,4>,kMaxOriginalProjectionSamples> samples{};
     for(std::size_t i=0;i<count;++i) {
         const auto& p=points[i];
         for(float v:p.source_xyz)
@@ -86,7 +89,11 @@ inline PerspectiveCandidate FitSourcePerspective(
         const auto& v=samples[i];
         const double dx=v[2]-(cx+fx*v[0]);
         const double dy=v[3]-(cy+fy*v[1]);
-        error+=dx*dx+dy*dy;
+        const double point_error=dx*dx+dy*dy;
+        // A single incorrectly joined HUD/preview point must not become
+        // admissible just because a large 192-point batch dilutes RMS.
+        if(!std::isfinite(point_error) || point_error>6.25)return out;
+        error+=point_error;
     }
     const double rms=std::sqrt(error/n);
     if(!std::isfinite(rms) || rms>1.25)return out;

@@ -55,7 +55,7 @@ struct ProjectedTriangleBatchJoin {
     bool mixed_matrix_fingerprint=false;
     // Filled only from individually complete original triangles; never
     // admits a mixed CPU caller as calibrated camera source.
-    std::array<SourceProjectionSample,24> camera_samples{};
+    std::array<SourceProjectionSample,kMaxOriginalProjectionSamples> camera_samples{};
     std::size_t camera_sample_count=0u;
     bool CompleteSameSource() const noexcept {
         return inspected>=2u && complete==inspected &&
@@ -97,13 +97,20 @@ class ProjectDrawCorrelator final {
 public:
     static constexpr std::size_t kCapacity=256u;
     static constexpr float kMaxDeltaPixels=0.25f;
+    // Source projected by one original D3D9 Draw cannot be recycled by a
+    // later Draw in the SAME Present merely because its XY matches again.
+    void RetireOriginalDraw(std::uint64_t epoch) noexcept {
+        if(!epoch || epoch<epoch_)return;
+        epoch_=epoch; size_=0u; cursor_=0u;
+    }
     void Capture(std::uint64_t epoch,std::uint32_t caller_rva,
                  const float source_xyz[3],
                  const float projected_xyz[3],
                  std::uint32_t matrix_identity=0u,
                  std::uint32_t matrix_fingerprint=0u,
                  std::uint32_t geometry_command=0u) noexcept {
-        if(!epoch || !caller_rva || !source_xyz || !projected_xyz)return;
+        if(!epoch || epoch<epoch_ || !caller_rva || !source_xyz ||
+           !projected_xyz)return;
         for(std::size_t i=0;i<3;++i) {
             if(!std::isfinite(source_xyz[i]) ||
                !std::isfinite(projected_xyz[i]) ||
@@ -193,10 +200,14 @@ public:
             result.mixed_geometry_command?0u:common_geometry;
         return result;
     }
-    // Analyze up to eight original triangle-list primitives, not merely
-    // draws consisting of exactly one triangle. A capped batch avoids
-    // unbounded CPU work in the hooked D3D9 render path.
-    static constexpr std::size_t kMaxJoinTriangles=8u;
+    // One bounded authentic Draw up to 64 triangles, not a sequence of
+    // fabricated replays. The CPU source ring can hold all 192 points.
+    static constexpr std::size_t kMaxJoinTriangles=
+        kMaxOriginalProjectionSamples/3u;
+    // Passive diagnostics stay at eight triangles; only a separately
+    // authenticated world-source adapter may join all 64.
+    static constexpr std::size_t kMaxDiagnosticJoinTriangles=8u;
+    static_assert(kMaxOriginalProjectionSamples<=kCapacity);
     ProjectedTriangleBatchJoin MatchTriangleList(
         std::uint64_t epoch,const ProjectedDrawVertex* vertices,
         std::size_t vertex_count) const noexcept {
@@ -265,4 +276,14 @@ inline std::uint64_t CurrentProjectDrawEpoch() noexcept {
 inline void NextProjectDrawEpoch() noexcept {
     g_project_draw_epoch.fetch_add(1u,std::memory_order_relaxed);
 }
+// Retire original CPU projection evidence at each PHYSICAL D3D9 Draw
+// method exit, including secondary-device Draw. Never touch FFB/ticks.
+struct ScopedOriginalDrawBoundary final {
+    ScopedOriginalDrawBoundary() noexcept = default;
+    ~ScopedOriginalDrawBoundary() noexcept {
+        ThreadProjectDrawCorrelator().RetireOriginalDraw(CurrentProjectDrawEpoch());
+    }
+    ScopedOriginalDrawBoundary(const ScopedOriginalDrawBoundary&)=delete;
+    ScopedOriginalDrawBoundary& operator=(const ScopedOriginalDrawBoundary&)=delete;
+};
 } // namespace m2vr::drawprobe

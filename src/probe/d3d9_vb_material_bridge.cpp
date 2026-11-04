@@ -403,7 +403,7 @@ bool InspectProjectedD3D9VBTopologyJoin(
     UINT start_index,UINT primitive_count,
     ProjectedTriangleBatchJoin& output) noexcept {
     if(!device || primitive_count<2u ||
-       primitive_count>ProjectDrawCorrelator::kMaxJoinTriangles)return false;
+       primitive_count>ProjectDrawCorrelator::kMaxDiagnosticJoinTriangles)return false;
     try {
         VBVertexWindow window{};
         if(indexed){
@@ -423,7 +423,7 @@ bool InspectProjectedD3D9VBTopologyJoin(
                                     fvf,stride,window,ordered))
             return false;
         std::array<ProjectedDrawVertex,
-                   ProjectDrawCorrelator::kMaxJoinTriangles*3u> screen{};
+                   ProjectDrawCorrelator::kMaxDiagnosticJoinTriangles*3u> screen{};
         const std::size_t count=window.indices.size();
         for(std::size_t i=0;i<count;++i){
             ProjectedUPWorldVertex decoded{};

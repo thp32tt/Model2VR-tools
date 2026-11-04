@@ -565,7 +565,7 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     // TRIANGLEFAN triangles with source winding preserved, without another
     // original Draw call. Unknown topology stays at three source vertices.
     constexpr unsigned kJoinTriangles=
-        static_cast<unsigned>(m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles);
+        static_cast<unsigned>(m2vr::drawprobe::ProjectDrawCorrelator::kMaxDiagnosticJoinTriangles);
     constexpr unsigned kJoinSampleVertices=3u*kJoinTriangles;
     std::array<Observation,kJoinSampleVertices> observations{};
     const bool triangle_topology=
@@ -802,15 +802,15 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
             // for hundreds of original shader-UP world candidates. Sample
             // up to seven more, never read shader bytecode or change state.
             constexpr unsigned max_vertices=
-                3u*m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles;
+                3u*m2vr::drawprobe::ProjectDrawCorrelator::kMaxDiagnosticJoinTriangles;
             std::array<m2vr::drawprobe::ProjectedDrawVertex,max_vertices>
                 batch_vertices{};
             for(unsigned i=0;i<3u;++i)batch_vertices[i]=screen[i];
             unsigned valid_triangles=1u;
             const unsigned limit=primitive_count<
-                m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles?
+                m2vr::drawprobe::ProjectDrawCorrelator::kMaxDiagnosticJoinTriangles?
                 primitive_count:static_cast<unsigned>(
-                m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles);
+                m2vr::drawprobe::ProjectDrawCorrelator::kMaxDiagnosticJoinTriangles);
             for(unsigned tri=1u;tri<limit;++tri){
                 bool valid=true;
                 for(unsigned j=0u;j<3u;++j){
@@ -1011,6 +1011,9 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
 }
 
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
+    // Consume the original CPU projector witnesses once this physical
+    // D3D9 Draw completes; no same-Present sample reuse by later Draws.
+    const m2vr::drawprobe::ScopedOriginalDrawBoundary draw_boundary;
     if(!g_primary_device.Owns(d))return g_draw(d,p,start,count);
     g_draws.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
@@ -1023,6 +1026,9 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
 }
 HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT base,
                                       UINT min,UINT num,UINT start,UINT count){
+    // Consume the original CPU projector witnesses once this physical
+    // D3D9 Draw completes; no same-Present sample reuse by later Draws.
+    const m2vr::drawprobe::ScopedOriginalDrawBoundary draw_boundary;
     if(!g_primary_device.Owns(d))return g_draw_indexed(d,p,base,min,num,start,count);
     g_indexed.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
@@ -1035,6 +1041,9 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
 }
 HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT count,
                                     const void* verts,UINT stride){
+    // Consume the original CPU projector witnesses once this physical
+    // D3D9 Draw completes; no same-Present sample reuse by later Draws.
+    const m2vr::drawprobe::ScopedOriginalDrawBoundary draw_boundary;
     if(!g_primary_device.Owns(d))return g_draw_up(d,p,count,verts,stride);
     g_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();
@@ -1047,6 +1056,9 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
 }
 HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
      UINT num,UINT count,const void* idx,D3DFORMAT fmt,const void* verts,UINT stride){
+    // Consume the original CPU projector witnesses once this physical
+    // D3D9 Draw completes; no same-Present sample reuse by later Draws.
+    const m2vr::drawprobe::ScopedOriginalDrawBoundary draw_boundary;
     if(!g_primary_device.Owns(d))return g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
     void* caller=_ReturnAddress();

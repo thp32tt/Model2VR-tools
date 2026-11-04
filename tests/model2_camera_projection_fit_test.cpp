@@ -47,11 +47,33 @@ int main(){
     // No x or y depth-dependent spread: insufficient calibration geometry.
     for(auto& p:source){p.source_xyz[0]=0.f;p.source_xyz[1]=0.f;}
     CHECK(!FitSourcePerspective(source.data(),6,0,0,640,480).plausible);
+    // Large real original Draws must reject one unrelated HUD/preview
+    // projector point even when the 192-point average RMS is small.
+    std::array<SourceProjectionSample,kMaxOriginalProjectionSamples> large{};
+    for(std::size_t i=0;i<large.size();++i){
+        const float z=5.f+float(i%7u);
+        const float px=20.f+float(i)*3.f;
+        const float py=30.f+float(i%48u)*4.f;
+        large[i].source_xyz={(px-320.f)*z/400.f,
+                             (240.f-py)*z/380.f,z};
+        large[i].screen_xy={px,py};
+    }
+    const auto complete_large=FitSourcePerspective(
+        large.data(),large.size(),0u,0u,640u,480u);
+    CHECK(complete_large.plausible && complete_large.accepted_samples==192u);
+    large.back().screen_xy[0]+=10.f;
+    CHECK(!FitSourcePerspective(
+        large.data(),large.size(),0u,0u,640u,480u).plausible);
+    large.back().screen_xy[0]-=10.f;
+    CHECK(!FitSourcePerspective(
+        large.data(),kMaxOriginalProjectionSamples+1u,
+        0u,0u,640u,480u).plausible);
     // Multi-Draw original D3D9 sources keep one fitted camera until Present.
     using namespace m2vr::vrbridge;
     OriginalProjectedCameraEpoch gate;
     const OriginalProjectionViewport vp{0u,0u,640u,480u};
-    CHECK(gate.Admit(77u,0x1234u,vp,camera)==OriginalCameraPassResult::Initial);
+    CHECK(gate.Admit(77u,0x1234u,vp,complete_large)==OriginalCameraPassResult::Initial);
+    CHECK(gate.Admit(77u,0x1234u,vp,camera)==OriginalCameraPassResult::Continuation);
     auto noisy=camera;
     noisy.center_x+=0.5f;noisy.scale_x+=2.f;
     CHECK(gate.Admit(77u,0x1234u,vp,noisy)==OriginalCameraPassResult::Continuation);

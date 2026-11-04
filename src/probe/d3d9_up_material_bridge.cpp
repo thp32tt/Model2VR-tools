@@ -400,7 +400,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         if(!GuardCopy(raw.data(),original_vertices,raw.size()))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
-        std::array<m2vr::drawprobe::ProjectedDrawVertex,24> screen{};
+        std::array<m2vr::drawprobe::ProjectedDrawVertex,
+            m2vr::drawprobe::kMaxOriginalProjectionSamples> screen{};
         std::vector<float> uv(count*2u),positions(count*3u);
         std::vector<std::uint32_t> indices(count);
         std::vector<std::uint32_t> diffuse;

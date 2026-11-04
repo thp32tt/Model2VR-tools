@@ -48,7 +48,8 @@ int main(){
     CHECK(full_batch.common_source_caller_rva==0x55u);
     CHECK(multi.MatchTriangleList(44u,two_faces,6u).complete==0u);
     CHECK(multi.MatchTriangleList(43u,two_faces,5u).inspected==0u);
-    CHECK(multi.MatchTriangleList(43u,two_faces,27u).inspected==0u);
+    CHECK(multi.MatchTriangleList(43u,two_faces,
+        kMaxOriginalProjectionSamples+3u).inspected==0u);
     ProjectDrawCorrelator cross_source{};
     for(unsigned i=0;i<6;++i)
         Capture(cross_source,44u,i<3u?0x55u:0x66u,
@@ -259,5 +260,63 @@ int main(){
     CHECK(!CandidateClipToViewport(invalid_clip,0,0,640,480,center));
     CHECK(!CandidateClipToViewport(center_clip,0,0,0,480,center));
     CHECK(!CandidateClipToViewport(center_clip,0,0,640,0,center));
+    // Previously 9+ original triangles were rejected even for complete
+    // same-thread source projector data. A single larger actual D3D9 Draw
+    // must remain one atomic two-eye/material/camera source transaction.
+    CHECK(ProjectDrawCorrelator::kMaxJoinTriangles==64u);
+    ProjectDrawCorrelator larger{};
+    std::array<ProjectedDrawVertex,kMaxOriginalProjectionSamples> screen64{};
+    for(std::size_t i=0;i<screen64.size();++i){
+        const float x=20.f+float(i)*3.f;
+        const float y=30.f+float(i%48u)*4.f;
+        screen64[i]={x,y};
+        const float z=5.f+float(i%7u);
+        Capture(larger,123u,0xA551u,x,y,
+            (x-320.f)*z/400.f,(240.f-y)*z/380.f,z,
+            0x1111u,0xA0A0u,0x77u);
+    }
+    const auto joined64=larger.MatchTriangleList(
+        123u,screen64.data(),screen64.size());
+    CHECK(joined64.inspected==64u && joined64.complete==64u);
+    CHECK(joined64.StableOriginalProjectionProvenance());
+    CHECK(joined64.camera_sample_count==kMaxOriginalProjectionSamples);
+    const auto fitted64=FitSourcePerspective(
+        joined64.camera_samples.data(),joined64.camera_sample_count,
+        0u,0u,640u,480u);
+    CHECK(fitted64.plausible && fitted64.accepted_samples==192u);
+    CHECK(fitted64.rms_pixels<0.01f);
+    CHECK(larger.MatchTriangleList(123u,screen64.data(),
+          kMaxOriginalProjectionSamples+3u).inspected==0u);
+    larger.RetireOriginalDraw(123u);
+    CHECK(!larger.MatchTriangleList(
+        123u,screen64.data(),screen64.size()).CompleteSameSource());
+    // Fresh CPU projector calls can join the NEXT original Draw in the
+    // same Present, but the already retired points may not be recycled.
+    for(unsigned i=0;i<6u;++i){
+        const auto& v=screen64[i];
+        const float xyz[3]{(v.x-320.f)*5.f/400.f,
+                           (240.f-v.y)*5.f/380.f,5.f};
+        const float xy[3]{v.x,v.y,0.f};
+        larger.Capture(123u,0xA551u,xyz,xy,0x1111u,0xA0A0u,0x77u);
+    }
+    CHECK(larger.MatchTriangleList(123u,screen64.data(),6u)
+        .StableOriginalProjectionProvenance());
+    larger.RetireOriginalDraw(122u); // stale epoch must not rewind
+    CHECK(larger.MatchTriangleList(123u,screen64.data(),6u)
+        .StableOriginalProjectionProvenance());
+    larger.RetireOriginalDraw(123u);
+    CHECK(!larger.MatchTriangleList(123u,screen64.data(),6u)
+        .StableOriginalProjectionProvenance());
+    // Four hooked physical Draw methods use this RAII boundary.
+    for(unsigned i=0;i<3u;++i)
+        Capture(ThreadProjectDrawCorrelator(),CurrentProjectDrawEpoch(),
+            0x55u,face[i].x,face[i].y,1.f+float(i),2.f,4.f);
+    CHECK(ThreadProjectDrawCorrelator().Match(
+        CurrentProjectDrawEpoch(),face,3u).Complete());
+    {
+        const ScopedOriginalDrawBoundary draw_boundary;
+    }
+    CHECK(!ThreadProjectDrawCorrelator().Match(
+        CurrentProjectDrawEpoch(),face,3u).Complete());
     return 0;
 }

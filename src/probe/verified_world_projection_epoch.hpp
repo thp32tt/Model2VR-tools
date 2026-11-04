@@ -31,7 +31,7 @@ public:
            viewport.width>16384u || viewport.height>16384u ||
            viewport.x>16384u || viewport.y>16384u ||
            !fit.plausible || fit.accepted_samples<6u ||
-           fit.accepted_samples>24u ||
+           fit.accepted_samples>m2vr::drawprobe::kMaxOriginalProjectionSamples ||
            !std::isfinite(fit.center_x) || !std::isfinite(fit.center_y) ||
            !std::isfinite(fit.scale_x) || !std::isfinite(fit.scale_y) ||
            !std::isfinite(fit.rms_pixels) ||
