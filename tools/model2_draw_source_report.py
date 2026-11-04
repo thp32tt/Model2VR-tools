@@ -57,7 +57,8 @@ def signed32(value):
 
 
 def original_d3d9_separate_alpha_status(
-        rgb_record, alpha_record, fvf=None, stride=None):
+        rgb_record, alpha_record, fvf=None, stride=None,
+        color_mask=None, present_frame=None):
     """Original separate-alpha state must share exact Draw and declaration."""
     if rgb_record is None:
         return "orphan" if alpha_record is not None else "unobserved"
@@ -69,6 +70,18 @@ def original_d3d9_separate_alpha_status(
         return "unsupported"
     if separate==0:
         return "unexpected_alpha" if alpha_record is not None else "inactive"
+    if alpha_record is not None:
+        original_fvf,original_stride=halves(alpha_record[2])
+        if ((fvf is not None and fvf!=original_fvf) or
+                (stride is not None and stride!=original_stride)):
+            return "fvf_stride_mismatch"
+    if (color_mask is not None and present_frame is not None and
+            fvf is not None and stride is not None):
+        mask,tag,frame=color_mask
+        tagged_fvf,tagged_stride=halves(tag)
+        if (mask<=15 and (mask&8)==0 and frame==present_frame and
+                tagged_fvf==fvf and tagged_stride==stride):
+            return "masked_inert"
     if alpha_record is None:
         return "missing_source"
     alpha_src,alpha_dst=halves(alpha_record[0])
@@ -86,7 +99,8 @@ def original_d3d9_separate_alpha_status(
 
 
 def original_d3d9_blend_mode(
-        record, separate_record=None, fvf=None, stride=None):
+        record, separate_record=None, fvf=None, stride=None,
+        color_mask=None, present_frame=None):
     """Classify SAME-Draw original D3D9 RGB+optional independent alpha.
 
     No classification is gameplay-world authorization. Missing separate
@@ -98,11 +112,11 @@ def original_d3d9_blend_mode(
     destination,operation=halves(record[1])
     separate=record[2]
     separate_status=original_d3d9_separate_alpha_status(
-        record,separate_record,fvf,stride)
+        record,separate_record,fvf,stride,color_mask,present_frame)
     if enabled==0:
         return "opaque" if separate_status=="inert" else "unsupported"
     if enabled!=1 or operation!=1 or separate_status not in (
-            "inactive","supported"):
+            "inactive","supported","masked_inert"):
         return "unsupported"
     rgb={
         (2,1):"replace_rgba", (5,6):"source_alpha_over",
@@ -273,7 +287,8 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
         if original_d3d9_blend_mode(
                 data.get("source_blend"),
                 data.get("source_separate_alpha_blend"),
-                fvf,stride) in ("unsupported","unobserved"):
+                fvf,stride,data.get("source_mask"),present_frame) in (
+                    "unsupported","unobserved"):
             return None
     if ("source_depth_cull" in data and
             original_d3d9_depth_cull_status(
@@ -426,10 +441,12 @@ def original_projected_material_candidate(data):
                     "fvf_stride_mismatch","vb_alpha_mismatch","unsupported")):
         return False
     if "source_blend" in data or "source_separate_alpha_blend" in data:
+        frame=data.get("present_frame")
         if original_d3d9_blend_mode(
                 data.get("source_blend"),
                 data.get("source_separate_alpha_blend"),
-                fvf,stride) in ("unsupported","unobserved"):
+                fvf,stride,data.get("source_mask"),
+                frame[0] if frame else None) in ("unsupported","unobserved"):
             return False
     if (rgb != "DIFFUSE" or alpha != "DIFFUSE") and (
             "source_mip" in data):
@@ -685,7 +702,8 @@ def audit_csv(path):
         if "source_blend" in data or "source_separate_alpha_blend" in data:
             separate_status=original_d3d9_separate_alpha_status(
                 data.get("source_blend"),
-                data.get("source_separate_alpha_blend"),fvf,stride)
+                data.get("source_separate_alpha_blend"),fvf,stride,
+                data.get("source_mask"),present_frame)
             entry["original_source_separate_alpha_status"].add(separate_status)
             if separate_status in (
                     "unsupported","missing_source","fvf_stride_mismatch",
@@ -693,7 +711,8 @@ def audit_csv(path):
                 entry["original_source_separate_alpha_invalid_witnesses"]+=1
             mode=original_d3d9_blend_mode(
                 data.get("source_blend"),
-                data.get("source_separate_alpha_blend"),fvf,stride)
+                data.get("source_separate_alpha_blend"),fvf,stride,
+                data.get("source_mask"),present_frame)
             if mode in ("unsupported","unobserved"):
                 entry["original_source_blend_unsupported_witnesses"]+=1
             else:
