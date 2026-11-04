@@ -1,6 +1,18 @@
 # Sega Model 2 / Daytona USA VR — Automated Development Master Plan
 
-Updated: 2026-11-04 KST
+Updated: 2026-11-05 KST
+
+## Latest 2026-11-05 original D3D9 multi-Draw stereo camera transaction
+
+- **Source-bearing SHA:** `fb951d92b50cccf887dc44d799858a2974557a0f`; this follows the connected camera/fallback correctness commits `0b503eb`, `1b00b2c`, `9729ddc`, camera-log Python fixtures and first-failure diagnostic correction. Treat them as **ONE independent implementation milestone**, not separate score events for source files, commits, CI runs or report edits.
+- Original 32-bit D3D9 **projected XYZRHW/TEX0** CPU ProjectVertexToScreen-joined source Draws now share one per-physical-original-Present camera epoch: CPU caller, source viewport, depth sign, optical center and focal scales must remain coherent within bounded projector fit error. A separate authenticated world source is still required; a synthetic fit does NOT prove Daytona gameplay-world draw ownership.
+- Original fixed-function **XYZ/TEX0, VB/IB, indexed-UP, triangle strip/fan** source Draws share an exact VIEW and PROJECTION snapshot and source viewport across one original Present, while the per-object WORLD matrix may change. The projective CPU path, D3D9 WVP path and direct native CPU world triangles may not silently mix into a single independent-eye frame.
+- A bad projector join, missing camera transform/viewport, mixed camera family or changed optical basis tags source admission failure `ProjectionPass=10` and **revokes the entire partial left/right CPU-world packet before Present commit**; original game COM Draw/Present, simulation, FFB, experimental GPU-eye replay and genuine original-mono fallback are preserved. Bounded diagnostic events are cross-referenced against actual same-thread original source rejection, not claimed as race-world authentication. No proprietary assets or raw game matrices are exported.
+- Synthetic C++ and Python tests and x86/x64 native builds run at exact source SHA in GitHub Actions. Check latest workflow conclusions before awarding a score. `RUNTIME_VALIDATION=UNTESTED` until Daytona + Quest 3 / VDXR actual gameplay inspection.
+- **NEXT ACTUAL DEVELOPMENT:** Establish from permitted **PRIVATE** ElSemi/Daytona evidence the real race-world-vs-HUD draw/pass caller, CPU projection stream ownership, source world/view matrix axes and meter scale. Only then add an adapter invoking the existing explicit trusted world Begin/Append/Present chain for the actual game. Do not infer it from shared D3D9 FVF/camera fits or promote unrelated preview HUD/offscreen draws to two-eye world. Preserve the direct launcher/verbose logs and native stereo GPU/original 2D fallback.
+- Keep OutRun, DX11 conversion and Uncharted Waters web-port untouched. No repeat CI for already verified exact source SHA.
+
+
 Status: IN DEVELOPMENT; desktop OpenXR native stereo still requires actual emulator + HMD runtime verification.
 
 ## Scope and SSOT
