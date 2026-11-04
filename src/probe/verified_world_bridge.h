@@ -111,6 +111,25 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTexture
     unsigned int min_vertex_index, unsigned int num_vertices,
     unsigned int start_index, unsigned int primitive_count,
     unsigned int alpha_cutoff);
+
+// Original fixed-function XYZRHW/TEX1 STREAM-0 equivalents of the trusted
+// UP CPU-projector bridge. These APIs only expand a bounded CPU-lockable VB
+// (and 16/32-bit IB) into the ACTUAL source triangle order, then reuse the
+// same-thread CPU projector proof, perspective fit, D3D9 material gate and
+// calibrated two-eye raster. Both require active explicit world ownership,
+// a separately authenticated CPU gameplay projector caller RVA and a
+// TRIANGLELIST draw of 2..8 triangles. They do not auto-hook or classify HUD.
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTextured(
+    void* d3d9_device,unsigned int start_vertex,
+    unsigned int primitive_count,
+    unsigned int authenticated_cpu_project_caller_rva,
+    unsigned int alpha_cutoff);
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
+    void* d3d9_device,int base_vertex_index,
+    unsigned int min_vertex_index,unsigned int num_vertices,
+    unsigned int start_index,unsigned int primitive_count,
+    unsigned int authenticated_cpu_project_caller_rva,
+    unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 // Source-owned upcoming original D3D9 Present frame ID (nonzero only
 // after real device hooks are installed and GPU-replay mode is disabled).

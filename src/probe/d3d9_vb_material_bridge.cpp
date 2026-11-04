@@ -4,6 +4,8 @@
 // Only CPU-readable, non-WRITEONLY FVF XYZ/TEX1 triangle lists are accepted.
 #include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
+#include "projected_up_world_source.hpp"
+#include "project_draw_correlator.hpp"
 #include "d3d9_vb_index_window.hpp"
 #include <Windows.h>
 #include <d3d9.h>
@@ -43,7 +45,8 @@ bool GuardRead(void* dst,const void* src,std::size_t size) noexcept {
 // the actual world/view/texture snapshot. No D3D9 device state is written.
 bool CopyVBWindow(IDirect3DDevice9* device,
                   const m2vr::drawprobe::VBVertexWindow& window,
-                  std::vector<std::uint8_t>& bytes,UINT& stride) {
+                  std::vector<std::uint8_t>& bytes,UINT& stride,
+                  bool projected_screen=false) {
     if(!device || !window.count || window.count>2048u)return false;
     ComOwner<IDirect3DVertexBuffer9> vb;
     UINT stream_offset=0;
@@ -51,7 +54,10 @@ bool CopyVBWindow(IDirect3DDevice9* device,
            0,&vb.ptr,&stream_offset,&stride)) || !vb.ptr)return false;
     DWORD fvf=0;
     if(FAILED(device->GetFVF(&fvf)) ||
-       !m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride).eligible)return false;
+       !(projected_screen ?
+         m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride) :
+         m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride).eligible))
+        return false;
     D3DVERTEXBUFFER_DESC desc{};
     if(FAILED(vb.ptr->GetDesc(&desc)) ||
        (desc.Usage&D3DUSAGE_WRITEONLY))return false;
@@ -105,7 +111,8 @@ bool ReadIndices(IDirect3DDevice9* device,UINT start_index,
 BOOL SubmitBufferWindow(IDirect3DDevice9* device,
                         const m2vr::drawprobe::VBVertexWindow& window,
                         UINT alpha_cutoff) {
-    if(!device || window.indices.empty() || alpha_cutoff>255u)
+    if(!device || window.indices.empty() || alpha_cutoff>255u ||
+       !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
         return FALSE;
     try {
         std::vector<std::uint8_t> vertices;
@@ -120,6 +127,40 @@ BOOL SubmitBufferWindow(IDirect3DDevice9* device,
             static_cast<UINT>(window.indices.size()),alpha_cutoff);
     }catch(...){return FALSE;}
 }
+
+// Use original D3D9 stream-0 + optional source index buffer rather than
+// mislabeling every original projected vertex as CPU-authenticated world.
+// Only the separately PROVEN game's render-thread world transaction may
+// request the extraction. The established UP projector adapter still owns
+// same-thread/Present CPU join, source caller, projection fit, texture,
+// sampler/raster policy and independent-eye submission.
+BOOL SubmitProjectedBufferWindow(
+    IDirect3DDevice9* device,
+    const m2vr::drawprobe::VBVertexWindow& window,
+    UINT expected_cpu_caller,UINT alpha_cutoff) {
+    constexpr std::size_t max_indices=
+        m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles*3u;
+    if(!device || !expected_cpu_caller || alpha_cutoff>255u ||
+       window.indices.size()<6u || window.indices.size()>max_indices ||
+       !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
+        return FALSE;
+    try {
+        std::vector<std::uint8_t> vertices;
+        UINT stride=0;
+        if(!CopyVBWindow(device,window,vertices,stride,true))
+            return FALSE;
+        DWORD fvf=0;
+        if(FAILED(device->GetFVF(&fvf)))return FALSE;
+        std::vector<std::uint8_t> ordered;
+        if(!m2vr::drawprobe::ExpandProjectedVBWindow(
+             vertices.data(),vertices.size(),fvf,stride,window,ordered))
+            return FALSE;
+        return Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+            device,ordered.data(),
+            static_cast<UINT>(window.indices.size()/3u),
+            stride,expected_cpu_caller,alpha_cutoff);
+    }catch(...){return FALSE;}
+}
 } // namespace
 
 // Mirrors DrawPrimitive's StartVertex and PrimitiveCount; TRIANGLELIST only.
@@ -127,6 +168,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTextured(
     void* device,unsigned int start_vertex,
     unsigned int primitive_count,unsigned int alpha_cutoff) {
     try {
+        if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return FALSE;
         m2vr::drawprobe::VBVertexWindow window{};
         if(!m2vr::drawprobe::RemapSequentialTriangleList(
                 start_vertex,primitive_count,window))return FALSE;
@@ -143,11 +185,51 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTextured(
     unsigned int start_index,unsigned int primitive_count,
     unsigned int alpha_cutoff) {
     try {
+        if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return FALSE;
         m2vr::drawprobe::VBVertexWindow window{};
         if(!ReadIndices(static_cast<IDirect3DDevice9*>(device),
             start_index,primitive_count,base_vertex_index,min_vertex_index,
             num_vertices,window))return FALSE;
         return SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
                                   window,alpha_cutoff);
+    }catch(...){return FALSE;}
+}
+
+// Explicit projected fixed-function VB companions. These are NEVER invoked
+// by the generic D3D9 hook; only an independently authenticated ElSemi
+// gameplay-world adapter may call them with a proven CPU projector RVA.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTextured(
+    void* device,unsigned int start_vertex,unsigned int primitive_count,
+    unsigned int expected_cpu_caller,unsigned int alpha_cutoff) {
+    try {
+        if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
+            return FALSE;
+        m2vr::drawprobe::VBVertexWindow window{};
+        if(!m2vr::drawprobe::RemapSequentialTriangleList(
+               start_vertex,primitive_count,window))
+            return FALSE;
+        return SubmitProjectedBufferWindow(
+            static_cast<IDirect3DDevice9*>(device),window,
+            expected_cpu_caller,alpha_cutoff);
+    }catch(...){return FALSE;}
+}
+
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
+    void* device,int base_vertex_index,
+    unsigned int min_vertex_index,unsigned int num_vertices,
+    unsigned int start_index,unsigned int primitive_count,
+    unsigned int expected_cpu_caller,unsigned int alpha_cutoff) {
+    try {
+        if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
+           primitive_count<2u ||
+           primitive_count>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
+            return FALSE;
+        m2vr::drawprobe::VBVertexWindow window{};
+        if(!ReadIndices(static_cast<IDirect3DDevice9*>(device),
+            start_index,primitive_count,base_vertex_index,min_vertex_index,
+            num_vertices,window))return FALSE;
+        return SubmitProjectedBufferWindow(
+            static_cast<IDirect3DDevice9*>(device),window,
+            expected_cpu_caller,alpha_cutoff);
     }catch(...){return FALSE;}
 }

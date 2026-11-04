@@ -69,5 +69,54 @@ int main(){
     CHECK(!RemapSequentialTriangleList(0,683,w));
     CHECK(!RemapSequentialTriangleList(UINT32_MAX-1,1,w));
     CHECK(!RemapSequentialTriangleList(0,0,w));
+
+    // Original indexed VB order (including repeated corners) is preserved
+    // before the authenticated CPU projector's exact screen-XY join.
+    constexpr auto projected_fvf=D3DFVF_XYZRHW|D3DFVF_TEX1;
+    const std::array<std::array<float,6>,4> projected_vertices{{
+        {{120.f,140.f,0.4f,0.5f,0.f,0.f}},
+        {{250.f,140.f,0.4f,0.5f,1.f,0.f}},
+        {{120.f,260.f,0.5f,0.4f,0.f,1.f}},
+        {{250.f,260.f,0.5f,0.4f,1.f,1.f}}
+    }};
+    VBVertexWindow projected{};
+    projected.first=7u;
+    projected.count=4u;
+    projected.indices={0u,1u,2u,2u,1u,3u};
+    std::vector<std::uint8_t> ordered{};
+    const auto* raw=reinterpret_cast<const std::uint8_t*>(
+        projected_vertices.data());
+    CHECK(m2vr::drawprobe::ExpandProjectedVBWindow(
+        raw,sizeof(projected_vertices),projected_fvf,24u,
+        projected,ordered));
+    CHECK(ordered.size()==144u);
+    std::array<float,6> ordered_corner{};
+    std::memcpy(ordered_corner.data(),ordered.data()+3u*24u,24u);
+    CHECK(ordered_corner[0]==120.f && ordered_corner[1]==260.f);
+    std::memcpy(ordered_corner.data(),ordered.data()+5u*24u,24u);
+    CHECK(ordered_corner[0]==250.f && ordered_corner[1]==260.f);
+    const auto good=ordered;
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        raw,sizeof(projected_vertices)-1u,projected_fvf,24u,
+        projected,ordered));
+    CHECK(ordered==good); // no partial output on failure
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        raw,sizeof(projected_vertices),D3DFVF_XYZ|D3DFVF_TEX1,24u,
+        projected,ordered));
+    projected.indices[5]=4u;
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        raw,sizeof(projected_vertices),projected_fvf,24u,
+        projected,ordered));
+    projected.indices[5]=3u;
+    auto invalid=projected_vertices;
+    invalid[3][3]=0.f; // projected RHW must be finite and positive
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        reinterpret_cast<const std::uint8_t*>(invalid.data()),
+        sizeof(invalid),projected_fvf,24u,projected,ordered));
+    CHECK(ordered==good);
+    projected.indices.resize(3u); // < 2 source triangles
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        raw,sizeof(projected_vertices),projected_fvf,24u,
+        projected,ordered));
     return 0;
 }

@@ -2,6 +2,7 @@
 // Pure, bounded D3D9 triangle-list index-window validation. The game owns
 // the buffers; this code only validates a previously copied index slice.
 #include <d3d9.h>
+#include "projected_up_world_source.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -76,6 +77,37 @@ inline bool RemapSequentialTriangleList(
     result.indices.reserve(count);
     for(std::uint32_t i=0;i<count;++i)result.indices.push_back(i);
     out=std::move(result);
+    return true;
+}
+
+// A projected XYZRHW vertex-buffer draw must be expanded in its ACTUAL
+// triangle-list order before same-Present CPU projection correlation. No
+// index remapping or reused vertex can skip independent screen-XY proof.
+// This is only a bounded read-only source extraction, NOT world admission.
+inline bool ExpandProjectedVBWindow(
+    const std::uint8_t* bytes,std::size_t available,
+    std::uint32_t fvf,std::uint32_t stride,
+    const VBVertexWindow& window,
+    std::vector<std::uint8_t>& expanded) {
+    constexpr std::size_t kMaxSourceJoinIndices=24u; // 8 triangles
+    if(!bytes || !ExactProjectedUPWorldFVF(fvf,stride) ||
+       !window.count || window.count>kMaxVBBridgeVertices ||
+       window.indices.size()<6u ||
+       window.indices.size()>kMaxSourceJoinIndices ||
+       window.indices.size()%3u ||
+       std::uint64_t(window.count)*stride>available)
+        return false;
+    std::vector<std::uint8_t> next(window.indices.size()*stride);
+    for(std::size_t i=0;i<window.indices.size();++i){
+        const auto index=window.indices[i];
+        if(index>=window.count)return false;
+        const auto* vertex=bytes+std::size_t(index)*stride;
+        ProjectedUPWorldVertex decoded{};
+        if(!DecodeProjectedUPWorldVertex(vertex,fvf,stride,decoded))
+            return false;
+        std::memcpy(next.data()+i*stride,vertex,stride);
+    }
+    expanded=std::move(next);
     return true;
 }
 } // namespace m2vr::drawprobe
