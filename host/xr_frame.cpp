@@ -130,6 +130,8 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
                 ?"OriginalGameMonoFallback":frame_gate_.kind()==transport::FrameKind::Diagnostic
                 ?"Diagnostic":"Unknown")<<"\n"
           <<"mono_quad_anchor_valid="<<(mono_quad_anchor_.Valid()?1:0)<<"\n"
+          <<"mono_quad_distance_m="<<mono_quad_distance_m_<<"\n"
+          <<"mono_quad_width_m="<<mono_quad_width_m_<<"\n"
           <<"native_stereo_confirmed="<<(paired_frame_fresh &&
                 frame_gate_.kind()==transport::FrameKind::GameStereo?1:0)<<"\n"
           <<"producer_health_fresh="<<(producer_health_fresh_?1:0)<<"\n"
@@ -340,7 +342,9 @@ void XrApp::draw_frame(XrTime display_time){
                 {view.pose.orientation.x,view.pose.orientation.y,
                  view.pose.orientation.z,view.pose.orientation.w}};
         };
-        if(!mono_quad_anchor_.CaptureOnce(convert(views[0]),convert(views[1]))){
+        if(!mono_quad_anchor_.CaptureOnce(
+                convert(views[0]),convert(views[1]),
+                mono_quad_distance_m_,mono_quad_width_m_)){
             mono_anchor_rejected=true;
             usable=false;
             if(!mono_anchor_warning_){
@@ -483,6 +487,19 @@ void XrApp::draw_frame(XrTime display_time){
 void XrApp::run(int max_frames){
     wizard_diag_enabled_=GetPrivateProfileIntW(L"probe",L"wizard_health_diagnostics",
                                               1,L".\\model2vr_probe.ini")!=0;
+    // The launcher copies the test INI into this private test folder.
+    // Keep geometry user-tunable without touching the emulator EXE/FFB.
+    // Bounds prevent bad INI values from placing a quad behind/at the eye.
+    const auto screen_cm=GetPrivateProfileIntW(
+        L"probe",L"daytona_mono_screen_distance_cm",165,
+        L".\\model2vr_probe.ini");
+    const auto width_cm=GetPrivateProfileIntW(
+        L"probe",L"daytona_mono_screen_width_cm",200,
+        L".\\model2vr_probe.ini");
+    mono_quad_distance_m_=static_cast<float>(
+        (std::clamp)(screen_cm,80u,350u))/100.f;
+    mono_quad_width_m_=static_cast<float>(
+        (std::clamp)(width_cm,100u,350u))/100.f;
     bool running=false,exit=false;
     int frames=0;
     while(!exit && (max_frames==0 || frames<max_frames)){

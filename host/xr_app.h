@@ -73,6 +73,8 @@ private:
     delivery::TransitionGate eye_delivery_gate_{};
     monoquad::WorldFixedAnchor mono_quad_anchor_{};
     bool mono_anchor_warning_=false;
+    float mono_quad_distance_m_=1.65f;
+    float mono_quad_width_m_=2.0f;
     bool saw_diagnostic_=false;
     bool wizard_diag_enabled_=true;
     bool startup_ready_signaled_=false;

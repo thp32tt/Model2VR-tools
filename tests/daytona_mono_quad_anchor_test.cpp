@@ -34,6 +34,22 @@ int main(){
     assert(Near(placement.position.x,-1.65f));
     assert(Near(placement.position.y,1.50f));
     assert(Near(placement.position.z,.75f));
+    // Downward initial gaze should NOT tilt/move the 2D theater below
+    // eye height or give it 3D scene camera pitch.
+    constexpr float s=0.382683432365f,c=0.923879532511f;
+    View downleft=left,downright=right;
+    downleft.orientation={s,0.f,0.f,c};
+    downright.orientation={s,0.f,0.f,c};
+    assert(CapturePlacement(downleft,downright,placement));
+    assert(Near(placement.position.y,1.50f));
+    assert(Near(placement.position.z,-.90f));
+    assert(Near(placement.orientation.x,0.f));
+    assert(Near(placement.orientation.z,0.f));
+    assert(CapturePlacement(left,right,placement,2.25f,2.5f));
+    assert(Near(placement.position.z,-1.50f));
+    assert(Near(placement.width,2.5f) && Near(placement.height,2.5f));
+    assert(!CapturePlacement(left,right,placement,0.3f,2.f));
+    assert(!CapturePlacement(left,right,placement,1.65f,8.f));
     // Nonfinite, inconsistent, wildly separated eye poses reject without
     // updating a previously valid placement.
     const auto old=placement;

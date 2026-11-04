@@ -579,3 +579,23 @@ successful original Present. Normal `GameStereo` frames retain both
 independent eye uploads and the two-eye projection layer; absent
 source frames retain the existing colored fallback diagnostics.
 Actual VDXR/Quest rendering is UNTESTED until a headset session.
+
+## Upright, seated-head-relative mono screen placement (2026-11-05)
+
+The OpenXR original-game 2D fallback is now anchored at the actual
+HMD's first eligible tracked binocular view-center, rather than the
+ambiguous `LOCAL` origin. Its initial *yaw* sets the virtual screen
+direction; head pitch/roll cannot tilt the mono screen into the floor.
+The screen stays stationary in world space while the player looks
+around. A near-vertical gaze can recover horizontal heading from the
+headset right vector; invalid/tracking-inconsistent views fail closed
+and are reported separately from original D3D9 pixel failure.
+
+The packaged `daytona_native_stereo.ini` exposes
+`[probe] daytona_mono_screen_distance_cm=165` and
+`daytona_mono_screen_width_cm=200` (bounded 80–350 cm distance,
+100–350 cm width). This only controls the flat fallback. The true
+independent stereo `GameStereo` path still uses the original
+source-pose-tagged per-eye projection and never inherits the quad
+geometry. Neither behavior proves a calibrated 6DoF Daytona camera;
+actual HMD RUNTIME_VALIDATION=UNTESTED.

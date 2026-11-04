@@ -495,3 +495,12 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
   two stereo FOV projections. Normal authenticated native
   `GameStereo` remains separate per-eye projection; missing source
   still uses colored host diagnostics. Hardware runtime UNTESTED.
+
+- The original-game *mono only* quad now captures actual HMD binocular
+  center and horizontal facing direction; its orientation is yaw-only
+  upright, not head-locked, floor-following or tied to an assumed LOCAL
+  origin. Safe bounded INI screen width/distance are parsed by x64 host.
+  A corrupt view pair logs a distinct tracked-eye-pose rejection and
+  does not masquerade as visible game pixels. Independent `GameStereo`
+  remains unaffected. Source tests compile in Win32 and Win64;
+  Quest3/VDXR runtime remains UNTESTED.
