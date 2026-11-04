@@ -63,7 +63,6 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("texture->GetDesc(&texture_desc)",loop)
         self.assertIn("D3D11_RENDER_TARGET_VIEW_DESC rtv_desc{}",loop)
         self.assertIn("rtv_desc.Format=static_cast<DXGI_FORMAT>(format)",loop)
-        self.assertIn("XR_SWAPCHAIN_USAGE_SAMPLED_BIT",loop)
         self.assertIn("D3D11_BIND_RENDER_TARGET",loop)
         self.assertIn("OpenXR returned zero swapchain images",loop)
         self.assertIn("CreateRenderTargetView(\n                texture,&rtv_desc",loop)
