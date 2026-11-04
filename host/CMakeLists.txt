@@ -11,7 +11,7 @@ set(BUILD_ALL_EXTENSIONS OFF CACHE BOOL "" FORCE)
 set(BUILD_WITH_SYSTEM_JSONCPP OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(openxr
  GIT_REPOSITORY https://github.com/KhronosGroup/OpenXR-SDK.git
- GIT_TAG release-1.1.63
+ GIT_TAG release-1.1.65
  GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(openxr)
