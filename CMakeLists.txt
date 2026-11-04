@@ -275,3 +275,12 @@ target_compile_features(daytona_shader_scene_gate_x86_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_shader_scene_gate_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_native_shader_source_pass_gate_x86
          COMMAND daytona_shader_scene_gate_x86_test)
+
+# Original full-size offscreen D3D9 3D source -> independent per-eye
+# RT/DS -> final game backbuffer StretchRect route, one source per epoch.
+add_executable(daytona_aux_surface_gate_x86_test
+               tests/daytona_auxiliary_surface_gate_test.cpp)
+target_compile_features(daytona_aux_surface_gate_x86_test PRIVATE cxx_std_20)
+target_compile_definitions(daytona_aux_surface_gate_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME daytona_auxiliary_scene_blit_route_x86
+         COMMAND daytona_aux_surface_gate_x86_test)

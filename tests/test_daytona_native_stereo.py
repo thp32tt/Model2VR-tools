@@ -160,7 +160,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("depth_hr!=D3DERR_NOTFOUND",gpu)
         self.assertIn("z_enabled!=D3DZB_FALSE",gpu)
         self.assertIn("(flags&(D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL))!=0u",gpu)
-        self.assertEqual(gpu.count("depth_bound?eyes_[eye].depth:nullptr"),2)
+        self.assertEqual(gpu.count("depth_bound?active_eyes[eye].depth:nullptr"),2)
         self.assertIn("(depth_bound?D3DCLEAR_ZBUFFER:0u)",gpu)
         self.assertEqual(gpu.count("const bool restored="),2)
         self.assertEqual(gpu.count("if(!both || !restored){Reset();return;}"),2)
@@ -338,6 +338,20 @@ class NativeStereoTest(unittest.TestCase):
                      "D3DRS_SRGBWRITEENABLE"):
             self.assertIn(item,gate)
         self.assertIn("vp.Width!=width || vp.Height!=height",gate)
+
+    def test_verified_single_offscreen_source_preserves_eye_color_chain(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        gate=(ROOT/"src/probe/daytona_auxiliary_surface_gate.hpp").read_text("utf-8")
+        self.assertIn("bool EnsureAuxiliary(",gpu)
+        self.assertIn("SourceCompatibleWithMain(",gpu)
+        self.assertIn("FullInitialColorClear(",gpu)
+        self.assertIn("RouteOriginalToMain(",gpu)
+        self.assertIn("aux_eyes_[eye].color:src",gpu)
+        self.assertIn("aux_original_->AddRef()",gpu)
+        self.assertIn("Drop(aux_original_);Drop(aux_original_depth_)",gpu)
+        self.assertIn("model2_vr_aux_surface_chain",gpu)
+        self.assertIn("D3DUSAGE_RENDERTARGET",gate)
+        self.assertIn("D3DUSAGE_DEPTHSTENCIL",gate)
 
 if __name__=="__main__":
     unittest.main()

@@ -423,3 +423,34 @@ model2_vr_scene_reject_reason report counts by rejection category,
 not frame dumps or repeated 2D source probes. Source calls, CPU
 simulation, input and the separate Generic DD FFB remain unchanged.
 Actual Daytona/Quest 3 visuals are RUNTIME_VALIDATION=UNTESTED.
+
+
+## Full-size offscreen source -> two-eye main-backbuffer chain (2026-11-04)
+
+The original emulator may draw a 3D scene into an auxiliary RT and later
+copy it into its main backbuffer. The native D3D9 mirror previously dropped
+offscreen Draw/Clear events and re-used the original *mono* offscreen source
+when replaying a final backbuffer StretchRect, potentially wiping out stereo.
+
+The experimental renderer now accepts at most ONE full-size auxiliary
+D3D9 render target per device generation, only when it has the identical
+main-backbuffer dimensions, pixel format and MSAA settings, and a matching
+real original D3D9 depth/stencil target. A complete original color Clear
+must first initialize the auxiliary pair; unsupported smaller targets,
+partial first clears, unknown depth identity, and additional auxiliary
+sources are skipped. DrawPrimitive/DrawIndexed/UP, clear and bounded
+surface writes can then mirror into the auxiliary two-eye targets. A
+successful original auxiliary->backbuffer StretchRect now uses the *cloned*
+left/right auxiliary surfaces instead of the original shared mono source.
+Each eye maintains its own depth. If the original game shared its main
+depth surface with the auxiliary RT, the mirrored eye-depth surface is
+also shared by COM reference, retaining original depth ownership.
+
+The original game Draws, FFB, render state and HRESULT are preserved.
+All cloned resources and original COM references are released before
+the next device Reset. A bounded model2_vr_aux_surface_chain diagnostic
+reports the count of mirrored auxiliary Draws and carried stereo blits.
+This is a conservative single-auxiliary color/depth parity expansion,
+NOT proof of full postprocessing/shader-texture-input fidelity, authenticated
+Daytona world camera mapping or Quest 3 headset rendering.
+RUNTIME_VALIDATION=UNTESTED.

@@ -44,6 +44,9 @@ void MirrorIndexedUP(IDirect3DDevice9* device,D3DPRIMITIVETYPE primitive,
 void MirrorClear(IDirect3DDevice9* device,DWORD count,const D3DRECT* rects,
                  DWORD flags,D3DCOLOR color,float z,DWORD stencil,
                  OriginalClear original) noexcept;
+// A single verified full-size offscreen source RT may also be mirrored
+// into independent eye RT/DS surfaces and passed through StretchRect.
+// Unsupported target/format/partial initialization stays fail-closed.
 // Preserve completed original backbuffer surface writes in eye order;
  // initial partial writes and backbuffer self-blits are fail-closed.
 void MirrorUpdateSurface(IDirect3DDevice9* device,IDirect3DSurface9* source,

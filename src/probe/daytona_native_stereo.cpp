@@ -10,6 +10,7 @@
 #include "daytona_triangle_eye_shift.hpp"
 #include "daytona_readback_scale.hpp"
 #include "daytona_surface_transfer_gate.hpp"
+#include "daytona_auxiliary_surface_gate.hpp"
 #include "logger.h"
 #include "../common/stereo_frame_ipc.h"
 #include "../common/daytona_producer_health.hpp"
@@ -87,7 +88,6 @@ public:
         IDirect3DSurface9* target=nullptr;
         if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
         const bool backbuffer=(target==backbuffer_);
-        if(!backbuffer){Drop(target);return;}
         // Device caps are immutable: Ensure() proves them once per device.
         // Recheck actual extra MRT binding for every original draw.
         for(DWORD slot=1u;slot<mrt_slots_;++slot){
@@ -117,6 +117,14 @@ public:
                 Drop(original_depth);Drop(target);return;
             }
         }
+        const bool aux=!backbuffer &&
+            target==aux_original_ && aux_eyes_[0].color &&
+            (!depth_bound || original_depth==aux_original_depth_);
+        if(!backbuffer && (!aux || !aux_frame_started_)){
+            Drop(original_depth);Drop(target);return;
+        }
+        auto& active_eyes=backbuffer?eyes_:aux_eyes_;
+        bool& active_started=backbuffer?frame_started_:aux_frame_started_;
         // A camera candidate requires an exact independently observed
         // source callsite and complete original shader-up declaration.
         bool scene=false;
@@ -174,12 +182,12 @@ public:
             // SetDepthStencilSurface(nullptr) first avoids surface size/MSAA
             // mismatch while switching the original render-target.
             if(FAILED(d->SetDepthStencilSurface(nullptr)) ||
-               FAILED(d->SetRenderTarget(0,eyes_[eye].color)) ||
-               FAILED(d->SetDepthStencilSurface(depth_bound?eyes_[eye].depth:nullptr)) ||
+               FAILED(d->SetRenderTarget(0,active_eyes[eye].color)) ||
+               FAILED(d->SetDepthStencilSurface(depth_bound?active_eyes[eye].depth:nullptr)) ||
                FAILED(d->SetViewport(&viewport))) {
                 both=false;break;
             }
-            if(!frame_started_) {
+            if(!active_started) {
                 const DWORD clear_flags=D3DCLEAR_TARGET|
                     (depth_bound?D3DCLEAR_ZBUFFER:0u);
                 if(FAILED(d->Clear(0,nullptr,clear_flags,
@@ -201,7 +209,8 @@ public:
             SUCCEEDED(depth_restore)&&SUCCEEDED(viewport_restore);
         Drop(original_depth);Drop(target);
         if(!both || !restored){Reset();return;}
-        frame_started_=true;
+        active_started=true;
+        if(aux)++mirrored_aux_draws_;
         ++mirrored_draws_;
         if(family>=1u && family<=4u)++mirrored_family_[family-1u];
         if(scene)++scene_draws_;
@@ -251,23 +260,28 @@ public:
         ScopedEyeReplay recursion_guard;
         if(!LivePoseForGameFrame() || !Ensure(d) ||
            !LivePoseForGameFrame())return;
-        if(dst!=backbuffer_ || src==backbuffer_)return;
+        const bool to_main=dst==backbuffer_;
+        const bool to_aux=dst==aux_original_ && aux_eyes_[0].color;
+        if((!to_main && !to_aux) || src==backbuffer_ ||
+           src==aux_original_)return;
         D3DSURFACE_DESC source_desc{};
         if(FAILED(src->GetDesc(&source_desc)))return;
         bool full=false;
+        auto& active_eyes=to_main?eyes_:aux_eyes_;
+        bool& active_started=to_main?frame_started_:aux_frame_started_;
         if(!m2vr::daytona::UpdateSurfaceBounds(
                src_rect,source_desc.Width,source_desc.Height,dst_point,
                width_,height_,full) ||
            !m2vr::daytona::CanMirrorSurfaceTransfer(
-               true,true,full,frame_started_))return;
+               true,true,full,active_started))return;
         bool both=true;
-        for(auto& eye:eyes_){
+        for(auto& eye:active_eyes){
             if(FAILED(original(d,src,src_rect,eye.color,dst_point))){
                 both=false;break;
             }
         }
         if(!both){Reset();return;}
-        frame_started_=true;
+        active_started=true;
         ++mirrored_updates_;
     }
     // Mirror original offscreen-to-backbuffer GPU copies in exact call order.
@@ -282,18 +296,34 @@ public:
         ScopedEyeReplay recursion_guard;
         if(!LivePoseForGameFrame() || !Ensure(d) ||
            !LivePoseForGameFrame())return;
-        if(!m2vr::daytona::CanMirrorSurfaceTransfer(
-               dst==backbuffer_,src!=backbuffer_,
+        const bool to_main=dst==backbuffer_;
+        const bool to_aux=dst==aux_original_ && aux_eyes_[0].color;
+        const auto route=m2vr::daytona::RouteOriginalToMain(
+            to_main,src==backbuffer_,src==aux_original_,
+            aux_frame_started_,
+            m2vr::daytona::FullSurfaceRect(dst_rect,width_,height_),
+            frame_started_);
+        if(to_main && route==m2vr::daytona::MainBlitSource::Skip)return;
+        if(!to_main && (!to_aux || src==dst || src==backbuffer_))return;
+        auto& active_eyes=to_main?eyes_:aux_eyes_;
+        bool& active_started=to_main?frame_started_:aux_frame_started_;
+        if(!to_main && !m2vr::daytona::CanMirrorSurfaceTransfer(
+               true,true,
                m2vr::daytona::FullSurfaceRect(dst_rect,width_,height_),
-               frame_started_))return;
+               active_started))return;
+        const bool stereo_source=to_main &&
+            route==m2vr::daytona::MainBlitSource::StereoAuxiliary;
         bool both=true;
-        for(auto& eye:eyes_){
-            if(FAILED(original(d,src,src_rect,eye.color,dst_rect,filter))){
+        for(unsigned eye=0;eye<2;++eye){
+            auto* eye_source=stereo_source?aux_eyes_[eye].color:src;
+            if(FAILED(original(d,eye_source,src_rect,
+                               active_eyes[eye].color,dst_rect,filter))){
                 both=false;break;
             }
         }
         if(!both){Reset();return;}
-        frame_started_=true;
+        if(stereo_source)++mirrored_aux_blits_;
+        active_started=true;
         ++mirrored_stretches_;
     }
     void ColorFill(IDirect3DDevice9* d,IDirect3DSurface9* dst,
@@ -304,16 +334,21 @@ public:
         ScopedEyeReplay recursion_guard;
         if(!LivePoseForGameFrame() || !Ensure(d) ||
            !LivePoseForGameFrame())return;
+        const bool to_main=dst==backbuffer_;
+        const bool to_aux=dst==aux_original_ && aux_eyes_[0].color;
+        if(!to_main && !to_aux)return;
+        auto& active_eyes=to_main?eyes_:aux_eyes_;
+        bool& active_started=to_main?frame_started_:aux_frame_started_;
         if(!m2vr::daytona::CanMirrorSurfaceTransfer(
-               dst==backbuffer_,true,
+               true,true,
                m2vr::daytona::FullSurfaceRect(rect,width_,height_),
-               frame_started_))return;
+               active_started))return;
         bool both=true;
-        for(auto& eye:eyes_){
+        for(auto& eye:active_eyes){
             if(FAILED(original(d,eye.color,rect,color))){both=false;break;}
         }
         if(!both){Reset();return;}
-        frame_started_=true;
+        active_started=true;
         ++mirrored_fills_;
     }
     void Clear(IDirect3DDevice9* d,DWORD count,const D3DRECT* rects,
@@ -327,7 +362,7 @@ public:
            !LivePoseForGameFrame())return;
         IDirect3DSurface9* target=nullptr;
         if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
-        if(target!=backbuffer_){Drop(target);return;}
+        const bool backbuffer=target==backbuffer_;
         // Never reflect a multi-target clear into an unrelated stereo eye.
         for(DWORD slot=1;slot<mrt_slots_;++slot){
             IDirect3DSurface9* other=nullptr;
@@ -345,6 +380,16 @@ public:
            (flags&(D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL))!=0u)){
             Drop(original_depth);Drop(target);return;
         }
+        if(!backbuffer){
+            if(!depth_bound || !m2vr::daytona::FullInitialColorClear(
+                   count,rects,flags,width_,height_) &&
+                   !aux_frame_started_ ||
+               !EnsureAuxiliary(d,target,original_depth)){
+                Drop(original_depth);Drop(target);return;
+            }
+        }
+        auto& active_eyes=backbuffer?eyes_:aux_eyes_;
+        bool& active_started=backbuffer?frame_started_:aux_frame_started_;
         D3DVIEWPORT9 viewport{};
         if(FAILED(d->GetViewport(&viewport))){
             Drop(original_depth);Drop(target);return;
@@ -352,8 +397,8 @@ public:
         bool both=true;
         for(unsigned eye=0;eye<2;++eye){
             if(FAILED(d->SetDepthStencilSurface(nullptr)) ||
-               FAILED(d->SetRenderTarget(0,eyes_[eye].color)) ||
-               FAILED(d->SetDepthStencilSurface(depth_bound?eyes_[eye].depth:nullptr)) ||
+               FAILED(d->SetRenderTarget(0,active_eyes[eye].color)) ||
+               FAILED(d->SetDepthStencilSurface(depth_bound?active_eyes[eye].depth:nullptr)) ||
                FAILED(d->SetViewport(&viewport)) ||
                FAILED(original(d,count,rects,flags,color,z,stencil))){
                 both=false;break;
@@ -369,7 +414,7 @@ public:
         if(!both || !restored){Reset();return;}
         // A real original Clear can occur before any Draw; preserve the
         // source clear on both eyes instead of replacing it with black.
-        frame_started_=true;
+        active_started=true;
         ++mirrored_clears_;
     }
     void PreparePresent(IDirect3DDevice9* d,std::uint64_t frame){
@@ -476,6 +521,8 @@ private:
                            scene_draws_,replay_count);
             m2vr::LogEvent("model2_vr_surface_updates",frame,
                            mirrored_stretches_,mirrored_fills_,mirrored_updates_);
+            m2vr::LogEvent("model2_vr_aux_surface_chain",frame,
+                           mirrored_aux_draws_,mirrored_aux_blits_,0u);
             if(scene_candidates_){
                 m2vr::LogEvent("model2_vr_scene_gate",frame,scene_candidates_,
                                scene_draws_,scene_rejections_[2]);
@@ -521,6 +568,8 @@ private:
         frame_started_=false;scene_draws_=0;
         mirrored_draws_=0;mirrored_clears_=0;
         mirrored_stretches_=0;mirrored_fills_=0;mirrored_updates_=0;
+        mirrored_aux_draws_=0;mirrored_aux_blits_=0;
+        aux_frame_started_=false;
         scene_candidates_=0;
         scene_rejections_.fill(0u);
         mirrored_family_.fill(0u);
@@ -538,6 +587,50 @@ private:
     D3DVIEWPORT9 ClippedViewport(D3DVIEWPORT9 vp)const noexcept{
         return Clip(vp,width_,height_);
     }
+    bool EnsureAuxiliary(IDirect3DDevice9* d,IDirect3DSurface9* target,
+                         IDirect3DSurface9* depth){
+        if(!target || !depth || target==backbuffer_ || !backbuffer_)
+            return false;
+        if(aux_original_)return aux_original_==target &&
+            aux_original_depth_==depth && aux_eyes_[0].color &&
+            aux_eyes_[1].color;
+        D3DSURFACE_DESC color_desc{},depth_desc{},main_desc{};
+        if(FAILED(target->GetDesc(&color_desc)) ||
+           FAILED(depth->GetDesc(&depth_desc)) ||
+           FAILED(backbuffer_->GetDesc(&main_desc)) ||
+           !m2vr::daytona::SourceCompatibleWithMain(
+                color_desc,depth_desc,main_desc))return false;
+        std::array<Surface,2> created{};
+        const bool shared_depth=depth==main_depth_;
+        bool ok=true;
+        for(unsigned eye=0;eye<2;++eye){
+            if(FAILED(d->CreateRenderTarget(width_,height_,color_desc.Format,
+                     color_desc.MultiSampleType,color_desc.MultiSampleQuality,
+                     FALSE,&created[eye].color,nullptr))){
+                ok=false;break;
+            }
+            if(shared_depth){
+                created[eye].depth=eyes_[eye].depth;
+                created[eye].depth->AddRef();
+            }else if(FAILED(d->CreateDepthStencilSurface(width_,height_,
+                  depth_desc.Format,depth_desc.MultiSampleType,
+                  depth_desc.MultiSampleQuality,TRUE,
+                  &created[eye].depth,nullptr))){
+                ok=false;break;
+            }
+        }
+        if(!ok){
+            for(auto& eye:created)eye.Clear();
+            return false;
+        }
+        for(unsigned eye=0;eye<2;++eye){
+            aux_eyes_[eye].color=created[eye].color;
+            aux_eyes_[eye].depth=created[eye].depth;
+        }
+        aux_original_=target;aux_original_->AddRef();
+        aux_original_depth_=depth;aux_original_depth_->AddRef();
+        return true;
+    }
     bool Ensure(IDirect3DDevice9* d){
         if(d==device_ && backbuffer_ && eyes_[0].color&&eyes_[1].color)return true;
         Reset();
@@ -551,6 +644,14 @@ private:
            (desc.Format!=D3DFMT_A8R8G8B8 && desc.Format!=D3DFMT_X8R8G8B8)){
             Drop(back);return false;
         }
+        // When initializing resources, prove the active D3D9 original
+        // depth belongs to the actual backbuffer, not an auxiliary RT.
+        IDirect3DSurface9* current=nullptr;
+        if(FAILED(d->GetRenderTarget(0,&current)) || !current ||
+           current!=back){
+            Drop(current);Drop(back);return false;
+        }
+        Drop(current);
         IDirect3DSurface9* depth=nullptr;
         if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth) {
             Drop(back);return false;
@@ -568,11 +669,13 @@ private:
             Drop(depth);Drop(back);return false;
         }
         const D3DFORMAT depth_format=dd.Format;
-        Drop(depth);
         D3DCAPS9 caps{};
         if(FAILED(d->GetDeviceCaps(&caps)) || caps.NumSimultaneousRTs<1u ||
-           caps.NumSimultaneousRTs>4u){Drop(back);return false;}
+           caps.NumSimultaneousRTs>4u){
+            Drop(depth);Drop(back);return false;
+        }
         mrt_slots_=caps.NumSimultaneousRTs;
+        main_depth_=depth;
         backbuffer_=back;device_=d;
         width_=desc.Width;height_=desc.Height;
         if(!readback_scale_.Configure(width_,height_)){
@@ -610,8 +713,10 @@ private:
             source.Pitch,output.data(),output.size());
     }
     void Reset()noexcept{
+        for(auto& eye:aux_eyes_)eye.Clear();
+        Drop(aux_original_);Drop(aux_original_depth_);
         for(auto& eye:eyes_)eye.Clear();
-        Drop(backbuffer_);
+        Drop(main_depth_);Drop(backbuffer_);
         device_=nullptr;width_=height_=0u;mrt_slots_=0u;
         readback_scale_=m2vr::daytona::ReadbackScalePlan{};
         FinishFrame();
@@ -630,6 +735,8 @@ private:
     std::uint32_t mirrored_draws_=0u,mirrored_clears_=0u;
     std::uint32_t mirrored_stretches_=0u,mirrored_fills_=0u;
     std::uint32_t mirrored_updates_=0u;
+    std::uint32_t mirrored_aux_draws_=0u,mirrored_aux_blits_=0u;
+    bool aux_frame_started_=false;
     std::array<std::uint32_t,4> mirrored_family_{};
     float shift_=0.10f;
     unsigned scene_draws_=0,scene_candidates_=0;
@@ -637,6 +744,11 @@ private:
         scene_rejections_{};
     IDirect3DDevice9* device_=nullptr; // non-owning, Reset hook releases
     IDirect3DSurface9* backbuffer_=nullptr;
+    IDirect3DSurface9* main_depth_=nullptr;
+    // One full-size, source-proven auxiliary pass per device generation.
+    IDirect3DSurface9* aux_original_=nullptr;
+    IDirect3DSurface9* aux_original_depth_=nullptr;
+    std::array<Surface,2> aux_eyes_{};
     std::array<Surface,2> eyes_{};
     std::array<std::vector<std::uint8_t>,2> scratch_{};
     std::array<std::vector<std::uint8_t>,2> rgba_{};
