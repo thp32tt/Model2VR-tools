@@ -1,3 +1,8 @@
+## Original CPU source camera rejection reason diagnostics regression — 2026-11-05
+
+- The source-route CSV report now supports the native camera-family rejection reason (code 1), with the same bounded thread/Present/Draw correlation as projected/fixed source camera failures. An orphan camera log, wrong-thread event, unsupported rejection enum or missing actual original-source failure does not become proof of a successfully tracked original game draw. Synthetic Python tests cover each distinct camera family and rejection stage.
+- Still no Quest3 HMD runtime proof; `RUNTIME_VALIDATION=UNTESTED`.
+
 ## Native CPU-space / original D3D9 camera-family isolation + source-report join — 2026-11-05
 
 - Direct CPU world triangles now explicitly lock the same original-Present source family as their original D3D9 projected or fixed-function adapter counterparts; nested source adapters remain tagged with their original provenance. Mixed world geometry cannot be silently combined into one wrong headset binocular frame. A mismatch rejects the partial original source transaction, never reruns simulation or FFB.

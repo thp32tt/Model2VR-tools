@@ -79,6 +79,16 @@ class ProbeLogTests(unittest.TestCase):
                                  31,7,10,0])
                 writer.writerow([26,126,7,"model2_vr_cpu_world_camera_pass_rejected",
                                  32,9,7,3])  # orphan, not an accepted failure
+                writer.writerow([27,127,7,"model2_vr_cpu_world_native_camera_rejected",
+                                 33,0,1,0])  # source family mix
+                writer.writerow([28,128,7,"model2_vr_cpu_world_source_rejected",
+                                 33,0,1,1])
+                writer.writerow([29,129,7,"model2_vr_cpu_world_source_failure_detail",
+                                 33,0,10,0])
+                writer.writerow([30,130,8,"model2_vr_cpu_world_camera_pass_rejected",
+                                 34,9,7,1])  # no matching thread/rejection
+                writer.writerow([31,131,7,"model2_vr_cpu_world_fixed_camera_rejected",
+                                 35,7,9,1])  # unsupported reason, invalid
             report=MODULE.analyze(path)
             routes=report["d3d9"]["native_stereo_source_route_counts"]
             self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
@@ -91,12 +101,14 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(routes["cpu_world_pose_expired"],1)
             self.assertEqual(routes["cpu_world_original_mono_backup_ready"],1)
             self.assertEqual(routes["cpu_world_mono_failed_gpu_eyes_backup"],1)
-            self.assertEqual(routes["cpu_world_partial_source_revoked"],4)
+            self.assertEqual(routes["cpu_world_partial_source_revoked"],5)
             self.assertEqual(routes["cpu_world_camera_projected_revoked"],1)
             self.assertEqual(routes["cpu_world_camera_projected_reason_7"],1)
             self.assertEqual(routes["cpu_world_camera_fixed_revoked"],1)
             self.assertEqual(routes["cpu_world_camera_fixed_reason_5"],1)
-            self.assertEqual(routes["cpu_world_failed_projection_pass"],2)
+            self.assertEqual(routes["cpu_world_camera_native_revoked"],1)
+            self.assertEqual(routes["cpu_world_camera_native_reason_1"],1)
+            self.assertEqual(routes["cpu_world_failed_projection_pass"],3)
             self.assertEqual(routes["cpu_world_rejected_source_kind_10"],1)
             self.assertEqual(routes["cpu_world_rejected_projected_indexed_vertex_buffer"],1)
             self.assertEqual(routes["cpu_world_failed_sampler"],1)
@@ -107,7 +119,7 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(revoked[0]["prior_source_triangles"],48)
             self.assertEqual(revoked[0]["original_source_draw_kind"],"projected_indexed_vertex_buffer")
             self.assertEqual(revoked[0]["original_present_frame"],15)
-            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],7)
+            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],8)
             self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",
                           MODULE.markdown(report))
             self.assertIn("HMD=UNTESTED",MODULE.markdown(report))

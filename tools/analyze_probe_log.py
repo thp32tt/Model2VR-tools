@@ -411,8 +411,9 @@ def analyze(path: Path):
                 family=("projected" if projected else
                         "fixed" if fixed else "native")
                 reason_bound=7 if projected else 6 if fixed else 1
+                reason_start=1 if native else 2
                 if (a0 <= 0 or a1 not in CPU_WORLD_REJECT_KINDS or
-                        a2 not in range(2,reason_bound+1) or
+                        a2 not in range(reason_start,reason_bound+1) or
                         not 0 <= a3 <= 2048 or
                         (native and a1 != 0)):
                     source_route_invalid_records += 1
