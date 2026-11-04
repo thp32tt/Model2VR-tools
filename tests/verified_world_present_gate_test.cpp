@@ -29,6 +29,10 @@ int main(){
     CHECK(PendingWorldHealthReason(PendingWorldPresent::Publish,true,true)==0u);
     CHECK(PendingWorldHealthReason(PendingWorldPresent::Publish,true,false)==
           m2vr::producerhealth::TransportFailed);
+    CHECK(PendingWorldHealthReason(PendingWorldPresent::Publish,true,true,false)==
+          m2vr::producerhealth::PoseExpired);
+    CHECK(PendingWorldHealthReason(PendingWorldPresent::Publish,true,false,false)==
+          m2vr::producerhealth::PoseExpired);
     CHECK(PendingWorldHealthReason(PendingWorldPresent::Drop,false,false)==
           m2vr::producerhealth::OriginalPresentFailed);
     CHECK(PendingWorldHealthReason(PendingWorldPresent::Drop,true,false)==
