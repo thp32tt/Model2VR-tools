@@ -82,6 +82,20 @@ def original_d3d9_mip_status(record, present_frame):
     return "mip_unverified"
 
 
+def original_d3d9_depth_cull_status(record, present_frame):
+    """Classify original Draw ZFUNC and culling, never gameplay-world proof."""
+    if record is None:
+        return "unobserved"
+    zenable, zfunc = (record[0] >> 32) & 0xFFFFFFFF, record[0] & 0xFFFFFFFF
+    zwrite, cull = (record[1] >> 32) & 0xFFFFFFFF, record[1] & 0xFFFFFFFF
+    if not present_frame or record[2] != present_frame:
+        return "present_mismatch"
+    if (zenable != 1 or zfunc not in (2, 3, 4, 5, 6, 7, 8) or
+            zwrite not in (0, 1) or cull not in (1, 2, 3)):
+        return "unsupported"
+    return "supported"
+
+
 def original_up_source_pass_status(context, original_present_frame):
     """Evaluate a same-witness original D3D9 main-Z pass, not world proof.
 
@@ -248,7 +262,8 @@ def analyze(path: Path):
                            "model2_d3d9_source_lighting",
                            "model2_d3d9_source_color_mask",
                            "model2_d3d9_source_blend",
-                           "model2_d3d9_source_sampler_mip"):
+                           "model2_d3d9_source_sampler_mip",
+                           "model2_d3d9_source_depth_cull"):
                 if a0 not in up_fixed_stage:
                     if len(up_fixed_stage) >= 4096:
                         up_fixed_stage.clear()
@@ -544,6 +559,7 @@ def analyze(path: Path):
     up_material_context_status = Counter()
     up_material_blend_status = Counter()
     up_material_mip_status = Counter()
+    up_material_depth_cull_status = Counter()
     up_material_examples = []
     for witness, (frame, caller, family, stride) in up_meta.items():
         source = up_source_fvf.get(witness)
@@ -643,6 +659,9 @@ def analyze(path: Path):
         if color_source=="diffuse" and alpha_source=="diffuse":
             mip_status="inert_diffuse_only"
         up_material_mip_status[mip_status] += 1
+        depth_cull_status=original_d3d9_depth_cull_status(
+            stage.get("model2_d3d9_source_depth_cull"),frame)
+        up_material_depth_cull_status[depth_cull_status] += 1
         if len(up_material_examples) < 48:
             up_material_examples.append({
                 "witness_id": witness,
@@ -671,6 +690,7 @@ def analyze(path: Path):
                 "source_stage0_result": result[0],
                 "specular_and_fog": [(extra[2] >> 32) & 0xFFFFFFFF,
                                      extra[2] & 0xFFFFFFFF],
+                "original_source_depth_cull_status": depth_cull_status,
                 "world_pass_proof": "NOT_ESTABLISHED",
             })
 
@@ -712,6 +732,8 @@ def analyze(path: Path):
                 dict(up_material_blend_status.most_common()),
             "original_up_material_mip_status":
                 dict(up_material_mip_status.most_common()),
+            "original_up_material_depth_cull_status":
+                dict(up_material_depth_cull_status.most_common()),
             "original_up_material_stage_examples": up_material_examples,
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,

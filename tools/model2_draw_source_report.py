@@ -148,6 +148,11 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
     """
     if present_frame is None or not gpu_caller:
         return None
+    if ("source_depth_cull" in data and
+            original_d3d9_depth_cull_status(
+                data["source_depth_cull"],present_frame,
+                data.get("raster")) != "supported"):
+        return None
     context = data.get("source_context")
     join = data.get("cpu_join")
     matrix = data.get("matrix_identity")
