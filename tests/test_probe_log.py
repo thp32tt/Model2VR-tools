@@ -200,6 +200,73 @@ class ProbeLogTests(unittest.TestCase):
                     ValueError,"conflicting original D3D9 alpha witness"):
                 MODULE.analyze(path)
 
+    def test_actual_up_split_alpha_blend_requires_same_source_declaration(self):
+        mode=MODULE.original_d3d9_blend_mode
+        state=MODULE.original_d3d9_separate_alpha_status
+        rgb=((1<<32)|5,(6<<32)|1,1)
+        alpha=((2<<32)|1,1,(0x144<<32)|28)
+        self.assertEqual(state(rgb,alpha,0x144,28),"supported")
+        self.assertEqual(mode(rgb,alpha,0x144,28),
+                         "source_alpha_over_separate_alpha")
+        self.assertEqual(state(rgb,None,0x144,28),"missing_source")
+        self.assertEqual(mode(rgb,None,0x144,28),"unsupported")
+        self.assertEqual(state(rgb,alpha,0x144,24),"fvf_stride_mismatch")
+        self.assertEqual(state(
+            rgb,((2<<32)|1,2,(0x144<<32)|28),0x144,28),"unsupported")
+        self.assertEqual(state(
+            rgb,((11<<32)|1,1,(0x144<<32)|28),0x144,28),"unsupported")
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/"original-up-split-alpha.csv"
+            with path.open("w",newline="",encoding="utf-8") as handle:
+                writer=csv.writer(handle)
+                writer.writerow(["seq","qpc","thread","event",
+                                 "a0","a1","a2","a3"])
+                rows=[
+                    ("model2_d3d9_up_source_fvf",31,0x144,28,7),
+                    ("model2_d3d9_up_meta",31,7,0x123,(3<<32)|28),
+                    ("model2_d3d9_source_stage0_color",31,
+                     (4<<32)|2,0,(0x144<<32)|28),
+                    ("model2_d3d9_source_stage0_alpha",31,
+                     (4<<32)|2,0,(0x144<<32)|28),
+                    ("model2_d3d9_source_stage1_specular",31,1,1,0),
+                    ("model2_d3d9_source_stage_result",31,
+                     1,1,(0x144<<32)|28),
+                    ("model2_d3d9_source_blend",31,*rgb),
+                    ("model2_d3d9_source_separate_alpha_blend",31,*alpha),
+                ]
+                for seq,row in enumerate(rows,1):
+                    writer.writerow([seq,seq+12,7,*row])
+            report=MODULE.analyze(path)["d3d9"]
+            self.assertEqual(
+                report["original_up_material_blend_status"],
+                {"source_alpha_over_separate_alpha":1})
+            self.assertEqual(
+                report["original_up_material_separate_alpha_status"],
+                {"supported":1})
+            self.assertEqual(
+                report["original_up_material_stage_examples"][0]
+                ["original_source_separate_alpha_status"],"supported")
+            self.assertEqual(
+                report["original_up_material_stage_examples"][0]
+                ["world_pass_proof"],"NOT_ESTABLISHED")
+
+    def test_conflicting_up_separate_alpha_witness_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/"conflicting-split-alpha.csv"
+            with path.open("w",newline="",encoding="utf-8") as handle:
+                writer=csv.writer(handle)
+                writer.writerow(["seq","qpc","thread","event",
+                                 "a0","a1","a2","a3"])
+                writer.writerow([1,1,7,
+                    "model2_d3d9_source_separate_alpha_blend",31,
+                    (2<<32)|1,1,(0x144<<32)|28])
+                writer.writerow([2,2,7,
+                    "model2_d3d9_source_separate_alpha_blend",31,
+                    (5<<32)|6,1,(0x144<<32)|28])
+            with self.assertRaisesRegex(
+                    ValueError,"conflicting original D3D9 alpha witness"):
+                MODULE.analyze(path)
+
     def test_original_up_fillmode_strict_source_provenance(self):
         status=MODULE.original_d3d9_fill_status
         tag=(0x144<<32)|28
