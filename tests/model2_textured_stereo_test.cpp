@@ -142,6 +142,33 @@ int main(){
     CHECK(Pixel(raster,0,512,512)==0xFF0000);
     CHECK(Pixel(raster,1,512,512)==0xFF0000);
 
+    // Original D3D9 FVF without a D3DCOLOR field provides opaque white
+    // DIFFUSE/CURRENT. The x86 source adapter must never reject an otherwise
+    // valid real-world material solely because the vertex has no color.
+    raster.Clear();
+    const std::array<std::uint8_t,4> unused_texel{12u,34u,56u,20u};
+    StereoWorldRaster::TextureRGBA default_diffuse{
+        unused_texel.data(),1u,1u,4u,255u,{}, {},false,false,
+        BlendMode::Opaque,true,true};
+    CHECK(raster.DrawTextured(manual,default_diffuse));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0xffffffu);
+        const auto& eye_rgba=raster.Eye(eye);
+        const auto pixel=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
+        CHECK(eye_rgba[pixel+3u]==255u);
+    }
+    // MODULATE with missing vertex color is identically the source texel,
+    // not a rejected or silently blackened original D3D9 primitive.
+    raster.Clear();
+    default_diffuse.alpha_cutoff=20u;
+    default_diffuse.select_diffuse_rgb=false;
+    default_diffuse.select_diffuse_alpha=false;
+    default_diffuse.modulate_rgb=true;
+    default_diffuse.modulate_alpha=true;
+    CHECK(raster.DrawTextured(manual,default_diffuse));
+    CHECK(Pixel(raster,0,512,512)==0x0c2238u);
+    CHECK(Pixel(raster,1,512,512)==0x0c2238u);
+
     // D3D9 MODULATE(TEXTURE,DIFFUSE) must use perspective-correct
     // interpolation and filter alpha BEFORE the cutoff. SELECTARG1 stays
     // backwards-compatible even with non-white source attributes.
