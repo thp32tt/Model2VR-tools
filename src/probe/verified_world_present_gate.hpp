@@ -36,6 +36,28 @@ inline constexpr OriginalStereoSourceMode SelectOriginalStereoSourceMode(
            verified_cpu_pending?OriginalStereoSourceMode::CpuPreferredGpuFallback:
                                 OriginalStereoSourceMode::GpuOnly;
 }
+// The original D3D9 Present is a physical one-way lifetime boundary.
+// An active, unarmed CPU-world eye pair whose Present has arrived can
+// never be completed after its original screen frame is already over.
+// An armed pair older than the source Present has likewise expired.
+// This is independent of world/HUD classification and does not affect
+// the authentic D3D9 Present, GPU replay or original-mono fallback.
+enum class OriginalWorldPresentExpiry : std::uint32_t {
+    None=0u, Unarmed=1u, StaleArmed=2u
+};
+inline constexpr OriginalWorldPresentExpiry DecideOriginalWorldPresentExpiry(
+    std::uint64_t source_frame,std::uint64_t original_frame,
+    bool active,bool armed) noexcept {
+    if(!active && !armed)return OriginalWorldPresentExpiry::None;
+    if(!source_frame || !original_frame)
+        return active?OriginalWorldPresentExpiry::Unarmed:
+                      OriginalWorldPresentExpiry::StaleArmed;
+    if(source_frame>original_frame)return OriginalWorldPresentExpiry::None;
+    if(active)return OriginalWorldPresentExpiry::Unarmed;
+    return source_frame<original_frame?
+        OriginalWorldPresentExpiry::StaleArmed:
+        OriginalWorldPresentExpiry::None;
+}
 enum class PendingWorldPresent : std::uint8_t {
     None, Wait, Drop, Publish
 };

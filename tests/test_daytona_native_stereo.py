@@ -35,6 +35,33 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("return family>=1u && family<=4u",gate)
         self.assertIn("(result_bits & 0x80000000u)!=0u",gate)
 
+    def test_physical_original_present_rejects_unarmed_or_stale_cpu_eye_pair(self):
+        cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        gate=(ROOT/"src/probe/verified_world_present_gate.hpp").read_text("utf-8")
+        source=(ROOT/"src/probe/verified_world_source_epoch.hpp").read_text("utf-8")
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        end=cpu.split("Model2VR_EndVerifiedWorldFrameOnOriginalPresent(){")[1].split(
+            "Model2VR_CompleteVerifiedWorldOriginalPresent(")[0]
+        complete=cpu.split("Model2VR_CompleteVerifiedWorldOriginalPresent(")[1].split(
+            "Model2VR_RejectVerifiedD3D9SourceDraw(")[0]
+        self.assertIn("Model2VR_NextOriginalD3D9PresentFrameId();",end)
+        self.assertIn("g.frame!=source_present",end)
+        self.assertIn("OriginalSourceFailure::PresentFrameMismatch",end)
+        self.assertIn("DecideOriginalWorldPresentExpiry(",complete)
+        self.assertLess(complete.index("DecideOriginalWorldPresentExpiry("),
+                        complete.index("if(!g.pending_present)return FALSE;"))
+        self.assertIn("OriginalSourceFailure::PresentUnarmed",complete)
+        self.assertIn("OriginalSourceFailure::PresentStale",complete)
+        self.assertIn("OriginalSourceFailure::PresentRejected",complete)
+        self.assertIn("OriginalSourceFailure::DeviceReset",cpu)
+        self.assertIn("model2_vr_cpu_world_physical_boundary_rejected",cpu)
+        self.assertIn("g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());",cpu)
+        self.assertIn("PresentFrameMismatch=15u",source)
+        self.assertIn("OriginalWorldPresentExpiry::StaleArmed",gate)
+        self.assertIn("const HRESULT original_result=g_present(d,a,b,w,dirty);",hooks)
+        self.assertIn("Model2VR_CompleteVerifiedWorldOriginalPresent(",hooks)
+        self.assertIn("FinishFrameAfterPresent(frame,original_result)",hooks)
+
     def test_primary_d3d9_owner_precedes_world_source_extraction(self):
         for file in ("d3d9_vb_material_bridge.cpp",
                      "d3d9_indexed_up_material_bridge.cpp",

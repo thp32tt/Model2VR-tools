@@ -73,6 +73,24 @@ DirectInput devices and wheel plugin remain separate and unchanged.
 - Stereo D3D9 resources are released ahead of device Reset.
 - Original 60Hz game emulation is not executed twice for headset refresh.
 
+## Original D3D9 Present/Reset source-frame lifetime (2026-11-05)
+
+The exact native original-Present CPU-world End now verifies the **next
+physical original D3D9 Present ID** before arming independent-eye output.
+If the real game reaches its original Present while an authenticated
+source is still active but not armed, the incomplete eye pair is
+revoked, rather than being left alive across game frames. A staged
+eye pair skipped by an earlier physical Present is likewise expired.
+A failed original Present, wrong owner or unexpected source mode, and
+an original device Reset also revoke the source epoch to prevent
+same-Present retry on a stale camera or old device. The original
+game Present/Reset is called once with its unchanged HRESULT. All
+rejected CPU-world images leave the native experimental GPU and actual
+original-backbuffer mono fallbacks intact. Bounded local logs report
+source/physical frame IDs, failure stage and Draw count, no original
+game pixels or source camera data. This is a source lifetime guard, not
+proof of Daytona race-world Draw ownership or HMD camera calibration.
+
 ## Original D3D9 physical Draw HRESULT atomicity (2026-11-05)
 
 The four intercepted original 32-bit D3D9 Draw families now forward

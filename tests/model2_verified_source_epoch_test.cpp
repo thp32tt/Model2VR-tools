@@ -44,6 +44,11 @@ int main() {
     }
     CHECK(CurrentOriginalSourceFailure()==0u); // no leak across draws
     CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::ProjectionPass)==10u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::PresentUnarmed)==11u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::PresentStale)==12u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::PresentRejected)==13u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::DeviceReset)==14u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::PresentFrameMismatch)==15u);
     {
         ScopedOriginalSourceDrawKind projected(OriginalSourceDrawKind::ProjectedPrimitiveUP);
         CHECK(!RejectOriginalSourceMaterial(OriginalSourceFailure::ProjectionPass));

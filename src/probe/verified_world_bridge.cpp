@@ -70,6 +70,26 @@ struct Bridge {
     }
 };
 Bridge g;
+// Called under the only verified CPU-world bridge mutex. Source lifetime
+// failures must revoke the original Present frame, not just discard its
+// pixels; otherwise another Begin/End could retry the same invalid frame.
+// The actual original Draw/Present, FFB and GPU/mono fallback are untouched.
+void RejectWorldAtOriginalBoundary(
+    m2vr::vrbridge::OriginalSourceFailure reason,
+    std::uint64_t physical_frame,std::uint32_t boundary) noexcept {
+    if(!(g.active||g.pending_present))return;
+    const auto rejected_frame=g.frame;
+    const auto draw_count=g.draw_count;
+    const auto old_reason=m2vr::vrbridge::g_current_original_source_failure;
+    m2vr::vrbridge::g_current_original_source_failure=reason;
+    g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
+    m2vr::vrbridge::g_current_original_source_failure=old_reason;
+    // 1=unarmed at Present, 2=stale armed, 3=invalid source selector,
+    // 4=physical Present rejected, 5=Reset, 6=wrong source frame at End.
+    // No proprietary game pixels, addresses or matrices are exported.
+    m2vr::LogEvent("model2_vr_cpu_world_physical_boundary_rejected",
+        rejected_frame,physical_frame,boundary,draw_count);
+}
 // Fault-safe boundary for pointers supplied by an external emulator module.
 // No C++ objects with destructors live inside this SEH block.
 bool GuardedCopy(void* destination,const void* source,std::size_t bytes)noexcept{
@@ -555,6 +575,16 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent(){
         g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
+    // Explicit original-Present adapter ONLY: the frame ID must be the
+    // exact physical source Present owned by the installed original hook,
+    // not an emulator tick or a stale previous source-frame number.
+    const auto source_present=Model2VR_NextOriginalD3D9PresentFrameId();
+    if(!source_present || g.frame!=source_present){
+        RejectWorldAtOriginalBoundary(
+            m2vr::vrbridge::OriginalSourceFailure::PresentFrameMismatch,
+            source_present,6u);
+        return FALSE;
+    }
     g.active=false;
     g.pending_present=true;
     return TRUE;
@@ -566,10 +596,29 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
     unsigned long long original_frame,unsigned int original_succeeded,
     unsigned int native_gpu_replay_enabled) {
     std::scoped_lock lock(g.mutex);
+    // Reject any partially composed source that crosses its actual game
+    // Present without End, or an older armed pair skipped by a Present.
+    // Previously !pending_present returned early and leaked g.active into
+    // later original game frames, blocking recovery and stale-eye safety.
+    const auto expiry=m2vr::vrbridge::DecideOriginalWorldPresentExpiry(
+        g.frame,original_frame,g.active,g.pending_present);
+    if(expiry!=m2vr::vrbridge::OriginalWorldPresentExpiry::None){
+        RejectWorldAtOriginalBoundary(
+            expiry==m2vr::vrbridge::OriginalWorldPresentExpiry::Unarmed?
+                m2vr::vrbridge::OriginalSourceFailure::PresentUnarmed:
+                m2vr::vrbridge::OriginalSourceFailure::PresentStale,
+            original_frame,static_cast<std::uint32_t>(expiry));
+        return FALSE;
+    }
     if(!g.pending_present)return FALSE;
     // 0 CPU-only, 1 GPU-only, 2 authenticated CPU preferred with GPU/mono
     // backup. Never allow an unknown internal source selector to publish.
-    if(native_gpu_replay_enabled>2u){g.Abort();return FALSE;}
+    if(native_gpu_replay_enabled>2u){
+        RejectWorldAtOriginalBoundary(
+            m2vr::vrbridge::OriginalSourceFailure::PresentRejected,
+            original_frame,3u);
+        return FALSE;
+    }
     const bool gpu_only=native_gpu_replay_enabled==1u;
     const bool gpu_fallback=native_gpu_replay_enabled==2u;
     const auto action=m2vr::vrbridge::DecidePendingWorldPresent(
@@ -605,7 +654,15 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
     m2vr::LogEvent("model2_vr_cpu_world_present_commit",g.frame,
         static_cast<unsigned int>(action),success?1u:0u,
         native_gpu_replay_enabled);
-    g.Abort();
+    if(action==m2vr::vrbridge::PendingWorldPresent::Drop){
+        // Wrong render thread, failed physical original Present or a
+        // disallowed owner must not be reopened for this same Present.
+        RejectWorldAtOriginalBoundary(
+            m2vr::vrbridge::OriginalSourceFailure::PresentRejected,
+            original_frame,4u);
+    }else{
+        g.Abort();
+    }
     return success?TRUE:FALSE;
 }
 // Called only on a rejected explicit original D3D9 source adapter.
@@ -643,7 +700,12 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Draw(
 }
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);
-    if(g.pending_present || g.active)g.Abort();
+    // A physical original device Reset invalidates all stored CPU-world
+    // image, source camera, pose and Present ownership. Do not permit
+    // rebuilding the same rejected frame on the new device generation.
+    if(g.pending_present || g.active)
+        RejectWorldAtOriginalBoundary(
+            m2vr::vrbridge::OriginalSourceFailure::DeviceReset,0u,5u);
 }
 extern "C" void __stdcall Model2VR_AbortVerifiedWorldFrame() {
     std::scoped_lock lock(g.mutex);

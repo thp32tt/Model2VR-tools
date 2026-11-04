@@ -18,6 +18,20 @@ int main(){
     CHECK(SelectOriginalStereoSourceMode(true,true)==
           OriginalStereoSourceMode::CpuPreferredGpuFallback);
     CHECK(NextOriginalPresentFrameId(0xffffffffu,true,false)==0u);
+    using E=OriginalWorldPresentExpiry;
+    CHECK(DecideOriginalWorldPresentExpiry(0u,0u,false,false)==E::None);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,41u,false,false)==E::None);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,40u,true,false)==E::None);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,40u,false,true)==E::None);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,41u,true,false)==E::Unarmed);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,42u,true,false)==E::Unarmed);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,41u,false,true)==E::None);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,42u,false,true)==E::StaleArmed);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,41u,true,true)==E::Unarmed);
+    CHECK(DecideOriginalWorldPresentExpiry(0u,41u,true,false)==E::Unarmed);
+    CHECK(DecideOriginalWorldPresentExpiry(0u,41u,false,true)==E::StaleArmed);
+    CHECK(DecideOriginalWorldPresentExpiry(41u,0u,false,true)==E::StaleArmed);
+
     CHECK(DecidePendingWorldPresent(0u,1u,true,false,true)==
           PendingWorldPresent::None);
     CHECK(DecidePendingWorldPresent(5u,4u,true,false,true)==
