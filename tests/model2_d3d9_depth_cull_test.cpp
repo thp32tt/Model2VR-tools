@@ -69,6 +69,11 @@ int main() {
     // Genuine original shader/clip state is independently required.
     // A well-formed FVF alone can NEVER certify Gouraud interpolation,
     // original clipping or CPU world-space ownership.
+    using m2vr::drawprobe::OriginalFilledTriangleEquivalent;
+    CHECK(OriginalFilledTriangleEquivalent(D3DFILL_SOLID));
+    CHECK(!OriginalFilledTriangleEquivalent(D3DFILL_WIREFRAME));
+    CHECK(!OriginalFilledTriangleEquivalent(D3DFILL_POINT));
+    CHECK(!OriginalFilledTriangleEquivalent(0u));
     using m2vr::drawprobe::OriginalVertexPipelineEquivalent;
     CHECK(OriginalVertexPipelineEquivalent(
         D3DSHADE_GOURAUD,TRUE,0u,D3DVBF_DISABLE,FALSE));
