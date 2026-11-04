@@ -64,6 +64,24 @@ def original_d3d9_blend_mode(record):
     }.get((source, destination), "unsupported")
 
 
+def original_d3d9_mip_status(record, present_frame):
+    """Only MIPFILTER NONE or a verified single original texture level.
+
+    Diagnostic material eligibility only: no camera/world ownership is
+    granted by an original source sampler or its COM resource shape.
+    """
+    if record is None:
+        return "unobserved"
+    mip, levels, frame = record
+    if frame != present_frame or not 0 < frame <= 0xFFFFFFFF:
+        return "present_mismatch"
+    if mip == 0:
+        return "mip_disabled"
+    if mip in (1, 2) and levels == 1:
+        return "single_level_equivalent"
+    return "mip_unverified"
+
+
 def original_up_source_pass_status(context, original_present_frame):
     """Evaluate a same-witness original D3D9 main-Z pass, not world proof.
 
@@ -229,7 +247,8 @@ def analyze(path: Path):
                            "model2_d3d9_source_stage_result",
                            "model2_d3d9_source_lighting",
                            "model2_d3d9_source_color_mask",
-                           "model2_d3d9_source_blend"):
+                           "model2_d3d9_source_blend",
+                           "model2_d3d9_source_sampler_mip"):
                 if a0 not in up_fixed_stage:
                     if len(up_fixed_stage) >= 4096:
                         up_fixed_stage.clear()
@@ -524,6 +543,7 @@ def analyze(path: Path):
     up_material_color_mask_status = Counter()
     up_material_context_status = Counter()
     up_material_blend_status = Counter()
+    up_material_mip_status = Counter()
     up_material_examples = []
     for witness, (frame, caller, family, stride) in up_meta.items():
         source = up_source_fvf.get(witness)
@@ -617,6 +637,12 @@ def analyze(path: Path):
         blend_status=original_d3d9_blend_mode(
             stage.get("model2_d3d9_source_blend"))
         up_material_blend_status[blend_status] += 1
+        mip_status=original_d3d9_mip_status(
+            stage.get("model2_d3d9_source_sampler_mip"),frame)
+        # Stage-zero DIFFUSE-only material never samples source texture.
+        if color_source=="diffuse" and alpha_source=="diffuse":
+            mip_status="inert_diffuse_only"
+        up_material_mip_status[mip_status] += 1
         if len(up_material_examples) < 48:
             up_material_examples.append({
                 "witness_id": witness,
@@ -636,6 +662,7 @@ def analyze(path: Path):
                 "original_source_scissor_full": (
                     context_status == "full_backbuffer_scissor_candidate"),
                 "original_source_blend_mode": blend_status,
+                "original_source_mip_status": mip_status,
                 "color_stage": [(c[0] >> 32) & 0xFFFFFFFF,
                                 c[0] & 0xFFFFFFFF, c[1]],
                 "alpha_stage": [(a[0] >> 32) & 0xFFFFFFFF,
@@ -683,6 +710,8 @@ def analyze(path: Path):
                 dict(up_material_context_status.most_common()),
             "original_up_material_blend_status":
                 dict(up_material_blend_status.most_common()),
+            "original_up_material_mip_status":
+                dict(up_material_mip_status.most_common()),
             "original_up_material_stage_examples": up_material_examples,
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,

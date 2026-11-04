@@ -34,6 +34,7 @@ NAMES = {
     "model2_d3d9_source_stage_result",
     "model2_d3d9_source_color_mask",
     "model2_d3d9_source_blend",
+    "model2_d3d9_source_sampler_mip",
 }
 
 def number(raw):
@@ -72,6 +73,24 @@ def original_d3d9_blend_mode(record):
         (7, 8): "destination_alpha_over",
         (1, 2): "preserve_destination",
     }.get((source, destination), "unsupported")
+
+
+def original_d3d9_mip_status(record, present_frame):
+    """Only MIPFILTER NONE or a verified single original texture level.
+
+    Diagnostic material eligibility only: no camera/world ownership is
+    granted by an original source sampler or its COM resource shape.
+    """
+    if record is None:
+        return "unobserved"
+    mip, levels, frame = record
+    if frame != present_frame or not 0 < frame <= 0xFFFFFFFF:
+        return "present_mismatch"
+    if mip == 0:
+        return "mip_disabled"
+    if mip in (1, 2) and levels == 1:
+        return "single_level_equivalent"
+    return "mip_unverified"
 
 
 def original_main_depth_view_candidate(flags):
@@ -214,6 +233,13 @@ def original_projected_material_candidate(data):
     if "source_blend" in data and (
             original_d3d9_blend_mode(data["source_blend"])=="unsupported"):
         return False
+    if (rgb != "DIFFUSE" or alpha != "DIFFUSE") and (
+            "source_mip" in data):
+        frame=data.get("present_frame")
+        if (frame is None or original_d3d9_mip_status(
+                data["source_mip"],frame[0]) not in
+                ("mip_disabled","single_level_equivalent")):
+            return False
     if "source_mask" in data:
         mask,tag,mask_frame=data["source_mask"]
         tagged_fvf,tagged_stride=halves(tag)
@@ -298,6 +324,8 @@ def audit_csv(path):
                 fields["source_mask"] = values
             elif event == "model2_d3d9_source_blend":
                 fields["source_blend"] = values
+            elif event == "model2_d3d9_source_sampler_mip":
+                fields["source_mip"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -315,6 +343,7 @@ def audit_csv(path):
         "original_depth_only_draw_witnesses": 0,
         "original_source_blend_modes": set(),
         "original_source_blend_unsupported_witnesses": 0,
+        "original_source_mip_status": set(),
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
@@ -360,7 +389,8 @@ def audit_csv(path):
             # analyzed by analyze_probe_log.py, not corrupt VB records.
             if set(data).issubset({"stage_color", "stage_alpha",
                                    "stage_extra", "stage_result",
-                                   "source_mask", "source_blend"}):
+                                   "source_mask", "source_blend",
+                                   "source_mip"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -415,6 +445,10 @@ def audit_csv(path):
                 entry["original_source_blend_unsupported_witnesses"]+=1
             else:
                 entry["original_source_blend_modes"].add(mode)
+        if "source_mip" in data:
+            mip_status=original_d3d9_mip_status(
+                data["source_mip"],present_frame)
+            entry["original_source_mip_status"].add(mip_status)
         # Do not join independently sampled original D3D9 Draw states.
         if all(name in data for name in ("stage_color", "stage_alpha",
                                         "stage_extra")):

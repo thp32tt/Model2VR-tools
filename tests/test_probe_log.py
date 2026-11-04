@@ -94,6 +94,8 @@ class ProbeLogTests(unittest.TestCase):
                      7, 0x3FFD, (640 << 32) | 480),
                     ("model2_d3d9_source_blend", 22,
                      (1 << 32) | 9, (1 << 32) | 1, 0),
+                    ("model2_d3d9_source_sampler_mip", 22,
+                     2, 1, 7),
                     # Wrong original next-Present frame may have identical
                     # caller and material but MUST NOT be correlated.
                     ("model2_d3d9_up_source_fvf", 23, 0x144, 28, 8),
@@ -141,6 +143,14 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(examples[0]["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(examples[0]["color_stage"], [4, 2, 0])
         self.assertEqual(examples[0]["source_stage0_result"], 1)
+
+    def test_original_up_sampler_mip_is_same_present_only(self):
+        classify=MODULE.original_d3d9_mip_status
+        self.assertEqual(classify(None,17),"unobserved")
+        self.assertEqual(classify((2,1,17),17),
+                         "single_level_equivalent")
+        self.assertEqual(classify((1,2,17),17),"mip_unverified")
+        self.assertEqual(classify((2,1,16),17),"present_mismatch")
 
     def test_original_up_source_blend_capability_is_fail_closed(self):
         classify=MODULE.original_d3d9_blend_mode

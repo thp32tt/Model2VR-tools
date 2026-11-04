@@ -313,6 +313,22 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
             (std::uint64_t{blend_enable}<<32)|blend_src,
             (std::uint64_t{blend_dst}<<32)|blend_op,
             separate_alpha);
+    // Source mip capability is read from the ACTUAL bound 2D texture at
+    // this Draw witness. It cannot authorize an otherwise unverified Draw.
+    DWORD source_mip_filter=0u;
+    if(SUCCEEDED(dev->GetSamplerState(
+           0,D3DSAMP_MIPFILTER,&source_mip_filter))){
+        IDirect3DBaseTexture9* bound=nullptr;
+        unsigned source_levels=0u;
+        if(SUCCEEDED(dev->GetTexture(0,&bound)) && bound){
+            if(bound->GetType()==D3DRTYPE_TEXTURE)
+                source_levels=bound->GetLevelCount();
+        }
+        if(bound)bound->Release();
+        m2vr::LogEvent("model2_d3d9_source_sampler_mip",witness,
+            source_mip_filter,source_levels,
+            g_present_count.load(std::memory_order_relaxed)+1u);
+    }
     DWORD color_mask=0;
     if(SUCCEEDED(dev->GetRenderState(D3DRS_COLORWRITEENABLE,&color_mask)))
         m2vr::LogEvent("model2_d3d9_source_color_mask",witness,

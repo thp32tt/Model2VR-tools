@@ -48,6 +48,8 @@ class SourceAuditTests(unittest.TestCase):
                  15, pack(0x112, 20), 17),
                 ("model2_d3d9_source_blend", 101,
                  pack(1, 9), pack(1, 1), 0),
+                ("model2_d3d9_source_sampler_mip", 101,
+                 2, 1, 17),
                 ("model2_d3d9_source_stage0_color", 101,
                  pack(4, 2), 0, pack(0x112, 20)),
                 ("model2_d3d9_source_stage0_alpha", 101,
@@ -97,6 +99,8 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["original_depth_only_draw_witnesses"], 1)
             self.assertEqual(src["original_source_blend_modes"],
                              ["multiply_color"])
+            self.assertEqual(src["original_source_mip_status"],
+                             ["single_level_equivalent"])
             self.assertEqual(
                 src["original_source_blend_unsupported_witnesses"], 0)
             self.assertEqual(src["original_source_color_mask_mismatch_witnesses"], 0)
@@ -234,6 +238,16 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p, bad)
             self.assertEqual(REPORT.audit_csv(p)["sources"][0][
                 "same_witness_joint_candidates"], 0)
+
+    def test_source_mip_provenance_cannot_invent_world_or_lod(self):
+        check=REPORT.original_d3d9_mip_status
+        self.assertEqual(check(None,17),"unobserved")
+        self.assertEqual(check((0,8,17),17),"mip_disabled")
+        self.assertEqual(check((1,1,17),17),"single_level_equivalent")
+        self.assertEqual(check((2,1,17),17),"single_level_equivalent")
+        self.assertEqual(check((2,2,17),17),"mip_unverified")
+        self.assertEqual(check((2,0,17),17),"mip_unverified")
+        self.assertEqual(check((2,1,18),17),"present_mismatch")
 
     def test_original_source_blend_requires_its_own_draw_witness(self):
         classify=REPORT.original_d3d9_blend_mode
