@@ -37,6 +37,7 @@ NAMES = {
     "model2_d3d9_source_sampler_mip",
     "model2_d3d9_source_depth_cull",
     "model2_d3d9_source_vertex_pipeline",
+    "model2_d3d9_source_fill",
 }
 
 def number(raw):
@@ -101,6 +102,20 @@ def original_d3d9_mip_status(record, present_frame, original_sampler=None):
     if mip in (1, 2) and levels == 1:
         return "single_level_equivalent"
     return "mip_unverified"
+
+
+def original_d3d9_fill_status(record, present_frame, fvf=None, stride=None):
+    """Same-Draw D3D9 FILLMODE and FVF; wireframe != binocular filled area."""
+    if record is None:
+        return "unobserved"
+    fill, frame, tag = record
+    if not present_frame or frame != present_frame:
+        return "present_mismatch"
+    original_fvf, original_stride = halves(tag)
+    if ((fvf is not None and original_fvf != fvf) or
+            (stride is not None and original_stride != stride)):
+        return "source_layout_mismatch"
+    return "solid" if fill == 3 else "unsupported"
 
 
 def original_d3d9_vertex_pipeline_status(record, present_frame):
@@ -173,6 +188,10 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
             original_d3d9_depth_cull_status(
                 data["source_depth_cull"],present_frame,
                 data.get("raster")) != "supported"):
+        return None
+    if ("source_fill" in data and
+            original_d3d9_fill_status(
+                data["source_fill"],present_frame) != "solid"):
         return None
     if ("source_vertex_pipeline" in data and
             original_d3d9_vertex_pipeline_status(
@@ -290,6 +309,13 @@ def original_projected_material_candidate(data):
     # original vertex DIFFUSE/CURRENT to preserve exact material source.
     if not has_uv and (rgb != "DIFFUSE" or alpha != "DIFFUSE"):
         return False
+    if "source_fill" in data:
+        _, orig_fvf = halves(data["origin"][1])
+        _, orig_stride = halves(data["origin"][2])
+        frame = data.get("present_frame")
+        if (frame is None or original_d3d9_fill_status(
+                data["source_fill"],frame[0],orig_fvf,orig_stride) != "solid"):
+            return False
     if "source_vertex_pipeline" in data:
         frame = data.get("present_frame")
         if (frame is None or original_d3d9_vertex_pipeline_status(
@@ -402,6 +428,8 @@ def audit_csv(path):
                 fields["source_depth_cull"] = values
             elif event == "model2_d3d9_source_vertex_pipeline":
                 fields["source_vertex_pipeline"] = values
+            elif event == "model2_d3d9_source_fill":
+                fields["source_fill"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -422,6 +450,7 @@ def audit_csv(path):
         "original_source_mip_status": set(),
         "original_source_depth_cull_status": set(),
         "original_source_vertex_pipeline_status": set(),
+        "original_source_fill_status": set(),
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
@@ -470,7 +499,8 @@ def audit_csv(path):
                                    "source_mask", "source_blend",
                                    "source_mip",
                                    "source_depth_cull",
-                                   "source_vertex_pipeline"}):
+                                   "source_vertex_pipeline",
+                                   "source_fill"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -538,6 +568,10 @@ def audit_csv(path):
                 data["source_vertex_pipeline"],present_frame)
             entry["original_source_vertex_pipeline_status"].add(
                 pipeline_status)
+        if "source_fill" in data:
+            status = original_d3d9_fill_status(
+                data["source_fill"],present_frame,fvf,stride)
+            entry["original_source_fill_status"].add(status)
         # Do not join independently sampled original D3D9 Draw states.
         if all(name in data for name in ("stage_color", "stage_alpha",
                                         "stage_extra")):
