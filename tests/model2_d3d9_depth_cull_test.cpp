@@ -160,6 +160,24 @@ int main() {
         0u,viewport,backbuffer));
     CHECK(!m2vr::drawprobe::FullBackbufferViewport(
         1u,viewport,backbuffer));
+    // D3D9 full-size scissor is an exact no-op, but a partial or
+    // unknown scissor must never contaminate independently shifted eyes.
+    RECT full_scissor{0,0,640,480};
+    CHECK(m2vr::drawprobe::FullBackbufferViewport(
+        1u,viewport,backbuffer,&full_scissor));
+    RECT cropped{1,0,640,480};
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        1u,viewport,backbuffer,&cropped));
+    cropped={0,0,639,480};
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        1u,viewport,backbuffer,&cropped));
+    cropped={-1,0,640,480};
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        1u,viewport,backbuffer,&cropped));
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        1u,viewport,backbuffer,nullptr));
+    CHECK(!m2vr::drawprobe::FullBackbufferViewport(
+        2u,viewport,backbuffer,&full_scissor));
     viewport.X=1;
     CHECK(!m2vr::drawprobe::FullBackbufferViewport(
         0u,viewport,backbuffer));

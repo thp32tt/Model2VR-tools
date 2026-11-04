@@ -87,12 +87,29 @@ inline bool EmptyExtraRenderTarget(HRESULT query, bool has_surface) noexcept {
     return query==D3DERR_NOTFOUND ||
            (SUCCEEDED(query) && !has_surface);
 }
+// The original D3D9 scissor ENABLE bit is not itself a crop: an exact
+// full-backbuffer rectangle is semantically identical to scissor disabled.
+// Any unknown rectangle, negative edge or partial crop remains unsupported.
+inline bool FullBackbufferScissor(DWORD enabled,const RECT* rectangle,
+                                  const D3DSURFACE_DESC& backbuffer) noexcept {
+    if(enabled==0u)return true;
+    return enabled==1u && rectangle &&
+           backbuffer.Width>0u && backbuffer.Height>0u &&
+           backbuffer.Width<=0x7fffffffu &&
+           backbuffer.Height<=0x7fffffffu &&
+           rectangle->left==0 && rectangle->top==0 &&
+           rectangle->right>0 && rectangle->bottom>0 &&
+           static_cast<std::uint32_t>(rectangle->right)==backbuffer.Width &&
+           static_cast<std::uint32_t>(rectangle->bottom)==backbuffer.Height;
+}
 inline bool FullBackbufferViewport(DWORD scissor_enabled,
                                    const D3DVIEWPORT9& viewport,
-                                   const D3DSURFACE_DESC& backbuffer) noexcept {
-    // This raster does not implement D3D9 viewport subrect/scissor or
-    // range-remapped depth. Never replay cropped HUD/mirror/aux draws.
-    return scissor_enabled==0u &&
+                                   const D3DSURFACE_DESC& backbuffer,
+                                   const RECT* scissor_rectangle=nullptr) noexcept {
+    // World-eye raster cannot emulate a partial source viewport, scissor
+    // crop or remapped source depth interval. Accept only a proven no-op
+    // source scissor; never promote mirror/HUD/auxiliary sources.
+    return FullBackbufferScissor(scissor_enabled,scissor_rectangle,backbuffer) &&
            backbuffer.Width>0u && backbuffer.Height>0u &&
            viewport.X==0u && viewport.Y==0u &&
            viewport.Width==backbuffer.Width &&

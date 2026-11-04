@@ -21,10 +21,23 @@ int main(){
     CHECK((bits&kSourceScissorEnabled)!=0u);
     CHECK((bits&kSourceDepthSurfaceKnown)!=0u);
     CHECK((bits&kSourceDepthSurfaceCompatible)!=0u);
+    CHECK((bits&kSourceScissorRectKnown)==0u);
+    CHECK((bits&kSourceScissorFull)==0u);
+    c.scissor_rect_known=true;c.scissor_full=true;
+    bits=EncodeOriginalDrawSourceContext(c);
+    CHECK((bits&kSourceScissorRectKnown)!=0u);
+    CHECK((bits&kSourceScissorFull)==0u); // auxiliary cannot be full main
     c.target=OriginalTargetClass::MainBackbuffer;
     bits=EncodeOriginalDrawSourceContext(c);
     CHECK((bits&kSourceTargetMask)==1u);
     CHECK((bits&kSourceViewportFull)!=0u);
+    CHECK((bits&kSourceScissorFull)!=0u);
+    c.scissor_full=false;
+    CHECK((EncodeOriginalDrawSourceContext(c)&kSourceScissorFull)==0u);
+    c.scissor_full=true;
+    c.scissor_rect_known=false;
+    CHECK((EncodeOriginalDrawSourceContext(c)&kSourceScissorFull)==0u);
+    c.scissor_rect_known=true;
     c.target_desc_known=false;
     CHECK((EncodeOriginalDrawSourceContext(c)&kSourceViewportFull)==0u);
     c.target_desc_known=true;

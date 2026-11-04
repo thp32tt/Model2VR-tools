@@ -161,6 +161,37 @@ class SourceAuditTests(unittest.TestCase):
             self.assertFalse(item["world_pass_proven"])
 
 
+    def test_original_main_scissor_bounds_fail_closed(self):
+        # Existing no-scissor evidence remains compatible. New bit 13
+        # requires scissor-read success and exact source dimensions.
+        self.assertTrue(REPORT.original_main_depth_view_candidate(0xEFD))
+        self.assertTrue(REPORT.original_main_depth_view_candidate(0x3FFD))
+        self.assertFalse(REPORT.original_main_depth_view_candidate(0xFFD))
+        self.assertFalse(REPORT.original_main_depth_view_candidate(0x1FFD))
+        self.assertFalse(REPORT.original_main_depth_view_candidate(0x2FFD))
+        self.assertFalse(REPORT.original_main_depth_view_candidate(0x3EFD))
+        self.assertFalse(REPORT.original_main_depth_view_candidate(0x3FFE))
+        self.assertFalse(REPORT.original_main_depth_view_candidate(0x4EFD))
+        self.assertFalse(REPORT.original_main_depth_view_candidate(0x2FD))
+        # Match original CPU matrix/command and Present on the SAME
+        # witness; never infer world ownership from the source scissor.
+        data={
+            "source_context": (17, 0x3FFD, pack(640, 480)),
+            "cpu_join": (pack(2, 2), 0, 0x55),
+            "matrix_identity": (0x1000, 0, 0x55),
+            "matrix_content": (0xAABB, 0, 0x1000),
+            "geometry_command": (0x77, 0, 0xAABB),
+        }
+        self.assertEqual(
+            REPORT.same_witness_projection_pass_candidate(data, 17, 0x1234),
+            (0x55, 0x1000, 0xAABB, 0x77))
+        data["source_context"]=(17, 0x1FFD, pack(640, 480))
+        self.assertIsNone(REPORT.same_witness_projection_pass_candidate(
+            data, 17, 0x1234))
+        data["source_context"]=(17, 0x3FFD, pack(640, 480))
+        self.assertIsNone(REPORT.same_witness_projection_pass_candidate(
+            data, 18, 0x1234))
+
     def test_disjoint_draw_witnesses_do_not_join(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "disjoint.csv"

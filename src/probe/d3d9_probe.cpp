@@ -231,7 +231,14 @@ void LogOriginalSourcePassContext(IDirect3DDevice9* dev,
     c.depth_write=c.depth_known && write!=0u;
     c.scissor_known=SUCCEEDED(
         dev->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor));
-    c.scissor_enabled=c.scissor_known && scissor!=0u;
+    c.scissor_enabled=c.scissor_known && scissor==1u;
+    if(c.scissor_known && scissor==1u){
+        RECT source_scissor{};
+        c.scissor_rect_known=SUCCEEDED(dev->GetScissorRect(&source_scissor));
+        c.scissor_full=c.scissor_rect_known && c.target_desc_known &&
+            c.target==OriginalTargetClass::MainBackbuffer &&
+            FullBackbufferScissor(scissor,&source_scissor,source_desc);
+    }
     IDirect3DSurface9* depth=nullptr;
     if(SUCCEEDED(dev->GetDepthStencilSurface(&depth)) && depth){
         D3DSURFACE_DESC depth_desc{};

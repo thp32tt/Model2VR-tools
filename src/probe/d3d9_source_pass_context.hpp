@@ -19,6 +19,8 @@ inline constexpr std::uint32_t kSourceScissorEnabled=1u<<8u;
 inline constexpr std::uint32_t kSourceTargetDescKnown=1u<<9u;
 inline constexpr std::uint32_t kSourceDepthSurfaceKnown=1u<<10u;
 inline constexpr std::uint32_t kSourceDepthSurfaceCompatible=1u<<11u;
+inline constexpr std::uint32_t kSourceScissorRectKnown=1u<<12u;
+inline constexpr std::uint32_t kSourceScissorFull=1u<<13u;
 struct OriginalDrawSourceContext {
     OriginalTargetClass target=OriginalTargetClass::Unknown;
     bool viewport_known=false;
@@ -28,6 +30,8 @@ struct OriginalDrawSourceContext {
     bool depth_write=false;
     bool scissor_known=false;
     bool scissor_enabled=false;
+    bool scissor_rect_known=false;
+    bool scissor_full=false;
     bool target_desc_known=false;
     bool depth_surface_known=false;
     bool depth_surface_compatible=false;
@@ -48,6 +52,13 @@ inline constexpr std::uint32_t EncodeOriginalDrawSourceContext(
         (c.depth_known && c.depth_write?kSourceDepthWrite:0u) |
         (c.scissor_known?kSourceScissorKnown:0u) |
         (c.scissor_known && c.scissor_enabled?kSourceScissorEnabled:0u) |
+        (c.scissor_known && c.scissor_enabled && c.scissor_rect_known ?
+            kSourceScissorRectKnown:0u) |
+        (c.scissor_known && c.scissor_enabled && c.scissor_rect_known &&
+         c.scissor_full && c.target_desc_known &&
+         c.source_width>0u && c.source_height>0u &&
+         c.target==OriginalTargetClass::MainBackbuffer ?
+            kSourceScissorFull:0u) |
         (c.target_desc_known?kSourceTargetDescKnown:0u) |
         (c.depth_surface_known?kSourceDepthSurfaceKnown:0u) |
         (c.depth_surface_known && c.depth_surface_compatible ?

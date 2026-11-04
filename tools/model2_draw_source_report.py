@@ -49,6 +49,24 @@ def signed32(value):
     return value - 0x100000000 if value & 0x80000000 else value
 
 
+def original_main_depth_view_candidate(flags):
+    """An exact original main-Z source pass, with optional no-op scissor.
+
+    Never classify the game world from these render-state flags alone.
+    Legacy unscissored witnesses retain their original 12-bit encoding.
+    A scissor-enabled candidate MUST carry both read-success and exact
+    full-backbuffer evidence on the SAME original Draw witness.
+    """
+    if flags & ~0x3FFF:
+        return False
+    base = flags & ~0x3100  # enabled / rect-known / full-rect flags
+    if base != 0xEFD:  # main + full viewport + compatible Z + known scissor
+        return False
+    if flags & 0x100:
+        return (flags & 0x3000) == 0x3000
+    return (flags & 0x3000) == 0
+
+
 def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
     """Correlate original Draw/CPU/matrix/command/main-Z on ONE witness.
 
@@ -67,7 +85,7 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
     width, height = halves(dims)
     if (frame != present_frame or not width or not height or
             width > 16384 or height > 16384 or
-            (flags & 3) != 1 or (flags & 0xFFC) != 0xEFC):
+            not original_main_depth_view_candidate(flags)):
         return None
     inspected, complete = halves(join[0])
     partial, ambiguous = halves(join[1])
@@ -339,7 +357,7 @@ def audit_csv(path):
             target = ctx_flags & 3
             width, height = halves(ctx_size)
             if (not ctx_frame or ctx_frame > 0xFFFFFFFF or
-                    ctx_flags > 0xFFF or target == 3 or
+                    ctx_flags > 0x3FFF or target == 3 or
                     width > 16384 or height > 16384):
                 raise ValueError("invalid D3D9 source-pass witness")
             if present_frame is None or ctx_frame != present_frame:
@@ -352,10 +370,10 @@ def audit_csv(path):
                 entry["source_contexts"].add(
                     (target, width, height, ctx_flags))
                 entry["context_present_frames"].add(ctx_frame)
-                if (target == 1 and (ctx_flags & 0xFFC) == 0xEFC):
+                if original_main_depth_view_candidate(ctx_flags):
                     # Full original viewport, Z writes, actual compatible
-                    # depth-stencil surface and confirmed disabled scissor.
-                    # None of these constitutes gameplay-world proof.
+                    # depth-stencil and either disabled or exact full-size
+                    # original scissor. Never grants gameplay-world proof.
                     entry["original_main_full_view_depth_candidates"] += 1
         # Do not join independently sampled original D3D9 Draw states.
         if all(name in data for name in ("stage_color", "stage_alpha",

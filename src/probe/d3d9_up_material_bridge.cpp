@@ -141,13 +141,18 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
     D3DSURFACE_DESC backbuffer_desc{};
     D3DVIEWPORT9 viewport{};
     DWORD scissor_enabled=1u;
+    RECT scissor_rectangle{};
     const bool full_view=same &&
         SUCCEEDED(main->GetDesc(&backbuffer_desc)) &&
         SUCCEEDED(d->GetViewport(&viewport)) &&
         SUCCEEDED(d->GetRenderState(D3DRS_SCISSORTESTENABLE,
                                     &scissor_enabled)) &&
+        (scissor_enabled==0u ||
+         (scissor_enabled==1u &&
+          SUCCEEDED(d->GetScissorRect(&scissor_rectangle)))) &&
         m2vr::drawprobe::FullBackbufferViewport(
-            scissor_enabled,viewport,backbuffer_desc);
+            scissor_enabled,viewport,backbuffer_desc,
+            scissor_enabled ? &scissor_rectangle : nullptr);
     if(current)current->Release();
     if(main)main->Release();
     if(!full_view || !NoAdditionalColorTargets(d))return false;
