@@ -323,6 +323,21 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
             (std::uint64_t{blend_enable}<<32)|blend_src,
             (std::uint64_t{blend_dst}<<32)|blend_op,
             separate_alpha);
+    // Original fixed-function vertex stage for the SAME sampled Draw.
+    // Neither source FVF nor a CPU projector match establishes the
+    // unobserved shade/clip/vertex-blend state or race-world ownership.
+    DWORD shade=0,clipping=0,clip_planes=0,vertex_blend=0,indexed_blend=0;
+    if(SUCCEEDED(dev->GetRenderState(D3DRS_SHADEMODE,&shade)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_CLIPPING,&clipping)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_CLIPPLANEENABLE,&clip_planes)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_VERTEXBLEND,&vertex_blend)) &&
+       SUCCEEDED(dev->GetRenderState(
+           D3DRS_INDEXEDVERTEXBLENDENABLE,&indexed_blend)))
+        m2vr::LogEvent("model2_d3d9_source_vertex_pipeline",witness,
+            (std::uint64_t{shade}<<32)|clipping,
+            (std::uint64_t{clip_planes}<<32)|vertex_blend,
+            (std::uint64_t{indexed_blend}<<32)|
+             (g_present_count.load(std::memory_order_relaxed)+1u));
     // Source mip capability is read from the ACTUAL bound 2D texture at
     // this Draw witness. It cannot authorize an otherwise unverified Draw.
     DWORD source_mip_filter=0u;
