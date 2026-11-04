@@ -234,15 +234,20 @@ private:
                 // Source D3D9 COLOROP/ALPHAOP MODULATE(TEXTURE,DIFFUSE):
                 // perspective-correct diffuse color, never NDC-linear.
                 std::array<double,4> diffuse{{1.,1.,1.,1.}};
+                bool diffuse_valid=true;
                 if(texture.modulate_rgb || texture.modulate_alpha){
                     for(std::size_t channel=0;channel<4;++channel){
                         const double value=(a*diffuse_over_z[0][channel]+
                             b*diffuse_over_z[1][channel]+
                             c*diffuse_over_z[2][channel])/inv;
-                        if(!std::isfinite(value))continue;
+                        if(!std::isfinite(value)){
+                            diffuse_valid=false;
+                            break;
+                        }
                         diffuse[channel]=std::clamp(value,0.,1.);
                     }
                 }
+                if(!diffuse_valid)continue; // reject before Z/color writes
                 const auto sampled_alpha=static_cast<unsigned>(
                     std::lround(double(texel.a)*
                         (texture.modulate_alpha?diffuse[3]:1.)));

@@ -54,11 +54,22 @@ int main(){
         100,latch,cal,world,diffuse_batch,diffuse_argb));
     for(const auto& eye:diffuse_batch.eyes){
         CHECK(!eye.empty());
-        const auto& first=eye.front().vertices[0].diffuse_rgba;
-        CHECK(std::abs(first[0]-64.f/255.f)<0.0001f);
-        CHECK(std::abs(first[1]-32.f/255.f)<0.0001f);
-        CHECK(std::abs(first[2]-16.f/255.f)<0.0001f);
-        CHECK(std::abs(first[3]-128.f/255.f)<0.0001f);
+        // Sutherland-Hodgman clipping cyclically rotates the polygon
+        // vertex order even when all three source vertices are inside.
+        // Check the original vertex survives in each eye, never presume
+        // it occupies the first triangle corner.
+        bool found_original=false;
+        for(const auto& tri:eye)for(const auto& vertex:tri.vertices){
+            const auto& rgba=vertex.diffuse_rgba;
+            for(float channel:rgba)
+                CHECK(std::isfinite(channel)&&channel>=0.f&&channel<=1.f);
+            if(std::abs(rgba[0]-64.f/255.f)<0.0001f &&
+               std::abs(rgba[1]-32.f/255.f)<0.0001f &&
+               std::abs(rgba[2]-16.f/255.f)<0.0001f &&
+               std::abs(rgba[3]-128.f/255.f)<0.0001f)
+                found_original=true;
+        }
+        CHECK(found_original);
     }
     std::array<std::uint8_t,64> tex{};
     for(int y=0;y<4;++y)for(int x=0;x<4;++x){
