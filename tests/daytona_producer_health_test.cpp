@@ -63,6 +63,9 @@ int main(){
  REQUIRE(InvalidatesCachedPair(failed,true,2u));
  failed.reason_mask=OriginalMonoFallback;
  REQUIRE(!InvalidatesCachedPair(failed,true,2u));
+ REQUIRE(InvalidatesCachedPair(failed,true,2u,true));
+ REQUIRE(!InvalidatesCachedPair(failed,true,3u,true));
+ REQUIRE(!InvalidatesCachedPair(failed,false,2u,true));
  reader.Close();writer.Close();
  REQUIRE(!reader.Read(got));
  return 0;

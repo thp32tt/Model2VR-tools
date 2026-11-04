@@ -61,11 +61,17 @@ constexpr bool Fresh(const Snapshot& s,std::uint64_t now,
 // A newer failed original Present must not leave the HMD displaying
 // an earlier successful eye frame as if it were the latest live game.
 constexpr bool InvalidatesCachedPair(const Snapshot& health,bool fresh,
-                                      std::uint64_t cached_frame_id)noexcept {
-    // An actually published mono source is not a failed original Present.
-    // The next host frame will consume its higher source frame ID.
-    return fresh && !OriginalMonoPublished(health.reason_mask) &&
-           health.reason_mask!=0u && health.frame_id>cached_frame_id;
+                                      std::uint64_t cached_frame_id,
+                                      bool cached_was_native_stereo=false)noexcept {
+    if(!fresh || health.frame_id<=cached_frame_id)return false;
+    // An x86 original Present switching from GameStereo to *published*
+    // original mono must immediately revoke stale projected native eyes,
+    // even before the x64 host copies the newer 4-MiB compact payload.
+    // A mono-to-mono update does not invalidate its predecessor; bounded
+    // frame age already handles a missing/stalled producer.
+    if(OriginalMonoPublished(health.reason_mask))
+        return cached_was_native_stereo;
+    return health.reason_mask!=0u;
 }
 constexpr const char* ReasonName(std::uint32_t mask)noexcept {
     if(!mask)return "PAIR_PUBLISHED";

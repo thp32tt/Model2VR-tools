@@ -320,7 +320,8 @@ void XrApp::draw_frame(XrTime display_time){
     // Re-use a *bounded* coherent previous pair, never clear on every
     // display tick, but stop presenting it if the producer stalls.
     const bool source_failed_after_pair=producerhealth::InvalidatesCachedPair(
-        producer_health_status_,producer_health_fresh_,frame_gate_.id());
+        producer_health_status_,producer_health_fresh_,frame_gate_.id(),
+        frame_gate_.kind()==transport::FrameKind::GameStereo);
     bool usable=!source_failed_after_pair &&
         frame_gate_.Cached(now,hz) &&
         eye_frame_.frame_id==frame_gate_.id() &&
