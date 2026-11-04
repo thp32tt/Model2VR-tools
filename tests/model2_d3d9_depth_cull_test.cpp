@@ -263,6 +263,8 @@ int main() {
     const auto old=raster.DrawnPixels();
     CHECK(!raster.DrawTextured(farther,invalid));
     CHECK(raster.DrawnPixels()==old);
-    CheckBoth(raster,0x0000FFu,ok);CHECK(ok);
+    // Depth-only prior Draw leaves the clear color black, not the blue
+    // that an earlier independent test section wrote before Clear().
+    CheckBoth(raster,0x000000u,ok);CHECK(ok);
     return 0;
 }
