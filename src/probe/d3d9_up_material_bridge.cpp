@@ -13,6 +13,7 @@
 #include "model2_camera_projection_fit.hpp"
 #include <Windows.h>
 #include <d3d9.h>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -252,6 +253,22 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
        !m2vr::drawprobe::AffineMatrix(world) ||
        !m2vr::drawprobe::AffineMatrix(view) ||
        !m2vr::drawprobe::StandardPerspectiveProjection(projection))
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
+    // The original D3D9 WORLD matrix changes for different race objects.
+    // Only its actual camera VIEW/PROJECTION and viewport must remain
+    // coherent with the first world Draw in this physical Present.
+    static_assert(sizeof(D3DMATRIX)==sizeof(float)*16u);
+    std::array<float,16> fixed_view{},fixed_projection{};
+    std::memcpy(fixed_view.data(),&view,sizeof(view));
+    std::memcpy(fixed_projection.data(),&projection,sizeof(projection));
+    D3DVIEWPORT9 fixed_viewport{};
+    if(FAILED(d->GetViewport(&fixed_viewport)) ||
+       !m2vr::vrbridge::AdmitVerifiedFixedD3D9SourcePass(
+            {fixed_viewport.X,fixed_viewport.Y,
+             fixed_viewport.Width,fixed_viewport.Height},
+            fixed_view,fixed_projection))
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);

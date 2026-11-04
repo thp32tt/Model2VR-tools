@@ -42,6 +42,8 @@ struct Bridge {
     std::uint64_t frame=0,last_completed=0,pose_sequence=0;
     m2vr::vrbridge::OriginalSourceFrameEpoch source_epoch{};
     m2vr::vrbridge::OriginalProjectedCameraEpoch projected_camera{};
+    m2vr::vrbridge::OriginalFixedCameraEpoch fixed_camera{};
+    m2vr::vrbridge::OriginalCameraFamilyEpoch camera_family{};
     std::uint64_t pose_published_qpc=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
@@ -62,7 +64,7 @@ struct Bridge {
         active=false;pending_present=false;
         owner=0;frame=0;pose_sequence=0;pose_published_qpc=0;
         draw_count=0;triangle_count=0;
-        projected_camera.Reset();
+        projected_camera.Reset();fixed_camera.Reset();camera_family.Reset();
         evidence={};calibration={};
     }
 };
@@ -115,10 +117,34 @@ bool AdmitVerifiedProjectedD3D9SourcePass(std::uint32_t caller,
     const m2vr::drawprobe::PerspectiveCandidate& fit) noexcept {
     std::scoped_lock lock(g.mutex);
     if(!Owner())return false;
-    const auto result=g.projected_camera.Admit(g.frame,caller,viewport,fit);
+    const bool same_family=g.camera_family.Admit(
+        g.frame,OriginalCameraSourceFamily::OriginalCPUProjected);
+    const auto result=same_family
+        ?g.projected_camera.Admit(g.frame,caller,viewport,fit)
+        :OriginalCameraPassResult::Invalid;
     if(!CameraPassAccepted(result)){
         RejectOriginalSourceMaterial(OriginalSourceFailure::ProjectionPass);
         m2vr::LogEvent("model2_vr_cpu_world_camera_pass_rejected",
+            g.frame,CurrentOriginalSourceDrawKind(),
+            static_cast<std::uint32_t>(result),g.draw_count);
+        return false;
+    }
+    return true;
+}
+bool AdmitVerifiedFixedD3D9SourcePass(
+    OriginalProjectionViewport viewport,
+    const std::array<float,16>& view,
+    const std::array<float,16>& projection) noexcept {
+    std::scoped_lock lock(g.mutex);
+    if(!Owner())return false;
+    const bool same_family=g.camera_family.Admit(
+        g.frame,OriginalCameraSourceFamily::FixedFunctionD3D9);
+    const auto result=same_family
+        ?g.fixed_camera.Admit(g.frame,viewport,view,projection)
+        :OriginalFixedCameraPassResult::Invalid;
+    if(!FixedCameraPassAccepted(result)){
+        RejectOriginalSourceMaterial(OriginalSourceFailure::ProjectionPass);
+        m2vr::LogEvent("model2_vr_cpu_world_fixed_camera_rejected",
             g.frame,CurrentOriginalSourceDrawKind(),
             static_cast<std::uint32_t>(result),g.draw_count);
         return false;
@@ -180,7 +206,7 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         if(!g.raster)
             g.raster=std::make_unique<m2vr::vr::StereoWorldRaster>();
         g.raster->Clear();
-        g.projected_camera.Reset();
+        g.projected_camera.Reset();g.fixed_camera.Reset();g.camera_family.Reset();
         g.head_origin=next_origin;
         g.camera_epoch=next_camera;
         g.frame=frame_id;

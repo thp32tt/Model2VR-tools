@@ -1,3 +1,9 @@
+## Original D3D9 fixed camera + cross-source binocular frame isolation — 2026-11-05
+
+- The verified CPU-world original D3D9 XYZ/TEX0/TEX1 source adapters now latch their VIEW and PROJECTION matrices and physical original viewport across all same-Present Draws while allowing the per-object WORLD matrix to vary. The existing projected XYZRHW CPU-projector path independently latches optical-center/focal-scale and CPU caller. Those two camera source families cannot be blended into the same x86-to-x64 binocular frame.
+- A changed camera, secondary viewport or mixed original projection family fails the explicit source Draw and revokes the whole partially rasterized CPU left/right pair before the original game's successful Present can commit it. All original D3D9 Draw/Present calls, input, steering and FFB remain unmodified. GPU/mono safe fallback still owns unknown/pass-rejected draws. Diagnostics expose only bounded reason codes and frame IDs.
+- Camera continuity does not authenticate unknown Daytona race-world geometry or calibrate game units or HMD scale. `RUNTIME_VALIDATION=UNTESTED`.
+
 ## Original projected CPU-world multi-Draw camera epoch — 2026-11-05
 
 - The original x86 D3D9 projected UP and nested indexed-UP/VB/IB/topology world-source adapters now check a single same-original-Present optical camera epoch before updating their left/right CPU eye raster. CPU projector source caller, viewport, optical center, scale and signed depth must remain consistent across consecutive draws. Legitimate model/object matrix changes remain possible.

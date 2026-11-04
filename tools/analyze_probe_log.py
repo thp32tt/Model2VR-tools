@@ -23,6 +23,7 @@ CPU_WORLD_SOURCE_FAILURES = {
     7: "stage_one_and_alpha_test",
     8: "sampler",
     9: "target_and_depth",
+    10: "projection_pass",
 }
 
 CPU_WORLD_REJECT_KINDS = {

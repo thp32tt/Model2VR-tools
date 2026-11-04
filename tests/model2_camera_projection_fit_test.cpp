@@ -70,5 +70,34 @@ int main(){
     gate.Reset();
     CHECK(gate.Admit(78u,0x5678u,vp,negative)==OriginalCameraPassResult::Initial);
     CHECK(gate.Admit(78u,0x5678u,vp,negative)==OriginalCameraPassResult::Continuation);
+    // Plain original D3D9 XYZ Draws may alter WORLD per object while the
+    // camera VIEW/PROJECTION and viewport must remain fixed until Present.
+    OriginalFixedCameraEpoch fixed;
+    std::array<float,16> view{},proj{};
+    view[0]=view[5]=view[10]=view[15]=1.f;
+    proj[0]=2.f;proj[5]=2.5f;proj[10]=1.5f;proj[11]=1.f;
+    proj[14]=-0.5f;
+    CHECK(fixed.Admit(77u,vp,view,proj)==OriginalFixedCameraPassResult::Initial);
+    CHECK(fixed.Admit(77u,vp,view,proj)==OriginalFixedCameraPassResult::Continuation);
+    CHECK(fixed.Admit(78u,vp,view,proj)==OriginalFixedCameraPassResult::FrameChanged);
+    CHECK(fixed.Admit(77u,{0u,0u,320u,240u},view,proj)==OriginalFixedCameraPassResult::ViewportChanged);
+    auto other_view=view;other_view[12]=0.25f;
+    CHECK(fixed.Admit(77u,vp,other_view,proj)==OriginalFixedCameraPassResult::ViewChanged);
+    auto other_proj=proj;other_proj[0]*=1.1f;
+    CHECK(fixed.Admit(77u,vp,view,other_proj)==OriginalFixedCameraPassResult::ProjectionChanged);
+    other_proj=proj;other_proj[0]=bad;
+    CHECK(fixed.Admit(77u,vp,view,other_proj)==OriginalFixedCameraPassResult::Invalid);
+    fixed.Reset();
+    CHECK(fixed.Admit(78u,vp,other_view,proj)==OriginalFixedCameraPassResult::Initial);
+    // A single source-pose world frame must never combine D3D9 WVP with
+    // CPU ProjectVertexToScreen or legacy native camera-space primitives.
+    OriginalCameraFamilyEpoch family;
+    CHECK(family.Admit(77u,OriginalCameraSourceFamily::OriginalCPUProjected));
+    CHECK(family.Admit(77u,OriginalCameraSourceFamily::OriginalCPUProjected));
+    CHECK(!family.Admit(77u,OriginalCameraSourceFamily::FixedFunctionD3D9));
+    CHECK(!family.Admit(78u,OriginalCameraSourceFamily::OriginalCPUProjected));
+    family.Reset();
+    CHECK(family.Admit(78u,OriginalCameraSourceFamily::FixedFunctionD3D9));
+    CHECK(!family.Admit(78u,OriginalCameraSourceFamily::Native));
     return 0;
 }
