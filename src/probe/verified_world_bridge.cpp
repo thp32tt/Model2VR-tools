@@ -267,7 +267,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTriangles(
 extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     std::scoped_lock lock(g.mutex);
     if(!Owner())return FALSE;
-    if(!g.draw_count || !g.raster || !g.raster->DrawnPixels()){
+    if(!g.draw_count || !g.raster ||
+       !g.raster->StereoPairUsable()){
         g.Abort();
         return FALSE;
     }
@@ -289,7 +290,8 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
 extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent(){
     std::scoped_lock lock(g.mutex);
     if(!Owner())return FALSE;
-    if(!g.draw_count || !g.raster || !g.raster->DrawnPixels()){
+    if(!g.draw_count || !g.raster ||
+       !g.raster->StereoPairUsable()){
         g.Abort();
         return FALSE;
     }

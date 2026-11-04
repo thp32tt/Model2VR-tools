@@ -119,6 +119,16 @@ texture is never modified, and unreadable/default-pool GPU-only originals
 still fail closed. This increases supported real material paths only when
 the separate game-world source/pass contract was already satisfied.
 
+**True two-eye CPU-world pixel validity at transport boundary (2026-11-04):**
+The separately authenticated CPU world raster now counts actual color writes
+per eye and refuses both immediate and original-Present-deferred GameStereo
+publication when either eye has no rendered pixels or when the complete two
+eye RGBA images are identical. This prevents a clipped/blank right-eye frame
+from being mislabeled as binocular VR. Clear resets both counts. Existing
+original D3D9 game Present, fixed/texture draws, GPU replay owner and FFB
+remain untouched. A valid stereo pair is still not evidence of a calibrated
+original in-game camera or headset visual confirmation.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

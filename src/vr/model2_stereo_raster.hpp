@@ -36,6 +36,7 @@ public:
         }
         triangles_=0;
         pixels_=0;
+        eye_pixels_.fill(0u);
     }
     // Entire clip result is validated by BuildClippedStereoBatch before
     // any pixels are changed. Reversed triangle winding is accepted.
@@ -105,6 +106,15 @@ public:
         return color_[index];
     }
     std::uint64_t DrawnPixels()const noexcept{return pixels_;}
+    std::uint64_t WrittenEyePixels(std::size_t eye)const noexcept {
+        return eye<2u?eye_pixels_[eye]:0u;
+    }
+    // A fully clipped eye or two visually identical images is not a
+    // verified native binocular source, even after valid Draw calls.
+    bool StereoPairUsable()const noexcept {
+        return eye_pixels_[0]!=0u && eye_pixels_[1]!=0u &&
+               color_[0]!=color_[1];
+    }
     std::uint64_t AcceptedTriangles()const noexcept{return triangles_;}
 private:
     struct Vertex {
@@ -158,6 +168,7 @@ private:
                 color_[eye][byte+2]=static_cast<std::uint8_t>(rgb&255u);
                 color_[eye][byte+3]=255;
                 ++pixels_;
+                ++eye_pixels_[eye];
             }
         }
     }
@@ -221,11 +232,13 @@ private:
                 color[pixel+2]=texel.b;
                 color[pixel+3]=255u;
                 ++pixels_;
+                ++eye_pixels_[eye];
             }
         }
     }
     std::array<std::vector<std::uint8_t>,2> color_;
     std::array<std::vector<float>,2> depth_;
     std::uint64_t triangles_=0,pixels_=0;
+    std::array<std::uint64_t,2> eye_pixels_{};
 };
 } // namespace m2vr::vr

@@ -54,7 +54,12 @@ int main() {
     CHECK(near_batch.eyes[0][0].source_triangle==0);
     CHECK(near_batch.eyes[1][0].source_triangle==0);
     StereoWorldRaster surface;
+    CHECK(!surface.StereoPairUsable());
+    CHECK(surface.WrittenEyePixels(0)==0u);
     CHECK(surface.Draw(near_batch,red,1));
+    CHECK(surface.StereoPairUsable());
+    CHECK(surface.WrittenEyePixels(0)>0u);
+    CHECK(surface.WrittenEyePixels(1)>0u);
     const Mark left=Scan(surface.Eye(0),red[0]);
     const Mark right=Scan(surface.Eye(1),red[0]);
     CHECK(left.count>1000 && right.count>1000);
@@ -68,6 +73,21 @@ int main() {
     CHECK(Scan(surface.Eye(0),blue[0]).count < left.count/2);
     CHECK(surface.AcceptedTriangles()>=4);
     CHECK(surface.DrawnPixels()>2000);
+    // Original game geometry may clip an entire eye: never publish a
+    // black eye or two identical eye buffers as native binocular VR.
+    surface.Clear();
+    auto one_eye=near_batch;
+    one_eye.eyes[1].clear();
+    CHECK(surface.Draw(one_eye,red,1));
+    CHECK(surface.WrittenEyePixels(0)>0u);
+    CHECK(surface.WrittenEyePixels(1)==0u);
+    CHECK(!surface.StereoPairUsable());
+    surface.Clear();
+    auto identical=near_batch;
+    identical.eyes[1]=identical.eyes[0];
+    CHECK(surface.Draw(identical,red,1));
+    CHECK(surface.WrittenEyePixels(1)>0u);
+    CHECK(!surface.StereoPairUsable());
     // Inverse order also obeys depth.
     surface.Clear();
     CHECK(surface.Draw(far_batch,blue,1));
