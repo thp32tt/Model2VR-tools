@@ -123,7 +123,7 @@ bool ReadIndices(IDirect3DDevice9* device,UINT start_index,
 BOOL SubmitBufferWindow(IDirect3DDevice9* device,
                         const m2vr::drawprobe::VBVertexWindow& window,
                         UINT alpha_cutoff) {
-    if(!device || window.indices.empty() || alpha_cutoff>255u ||
+    if(!device || window.indices.empty() || alpha_cutoff>256u ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
         return FALSE;
     try {
@@ -152,7 +152,7 @@ BOOL SubmitProjectedBufferWindow(
     UINT expected_cpu_caller,UINT alpha_cutoff) {
     constexpr std::size_t max_indices=
         m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles*3u;
-    if(!device || !expected_cpu_caller || alpha_cutoff>255u ||
+    if(!device || !expected_cpu_caller || alpha_cutoff>256u ||
        window.indices.size()<6u || window.indices.size()>max_indices ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
         return FALSE;
