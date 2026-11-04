@@ -5,6 +5,15 @@ using namespace m2vr::transport;
 #define CHECK(expr) do{if(!(expr)){std::fprintf(stderr,"frame gate failed at %d: %s\n",__LINE__,#expr);return 1;}}while(0)
 
 int main(){
+    // A native GameStereo source MUST identify a pose in the x64 host ring.
+    // Legacy untagged producer packets remain ABI-readable but not HMD-safe.
+    CHECK(SourcePoseMatchesFrame(FrameKind::GameStereo,123u,true));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::GameStereo,0u,true));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::GameStereo,123u,false));
+    CHECK(SourcePoseMatchesFrame(FrameKind::Diagnostic,0u,false));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::Diagnostic,123u,true));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::Invalid,0u,false));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::Invalid,123u,true));
     // Synthetic QPC hz = 1000 ticks/sec; hold is exactly 125ms.
     constexpr std::uint64_t hz=1000;
     constexpr std::uint64_t t=5000;
