@@ -9,6 +9,7 @@
 #include "daytona_eye_pose_gate.hpp"
 #include "daytona_triangle_eye_shift.hpp"
 #include "daytona_readback_scale.hpp"
+#include "daytona_original_mono_fallback.hpp"
 #include "daytona_surface_transfer_gate.hpp"
 #include "daytona_auxiliary_surface_gate.hpp"
 #include "logger.h"
@@ -548,7 +549,9 @@ public:
         if(reason && original_ok && pending_mono_ready_){
             // Only the original successful Present authorizes sending
             // a mono backbuffer. A missing/stale headset invalidates it.
-            if(LivePoseNow()){
+            const bool mono_pose_live=LivePoseNow();
+            if(m2vr::daytona::CanPublishOriginalMono(
+                   pending_mono_ready_,original_ok,false,mono_pose_live)){
                 if(!writer_ready_)writer_ready_=Model2VR_OpenStereoWriter()!=FALSE;
                 if(writer_ready_ && Model2VR_SubmitOriginalGameMonoRGBA(
                     mono_rgba_.data(),frame,m2vr::transport::kWidth,
@@ -838,17 +841,21 @@ private:
     // A verified stereo pair always wins; this is an explicit HMD flat
     // fallback for unverified scene/material/camera paths.
     bool ReadOriginalBackbuffer(IDirect3DDevice9* d) {
-        if(!d || !LivePoseNow())return false;
+        if(!d)return false;
         IDirect3DSurface9* source=nullptr;
         const HRESULT back_hr=d->GetBackBuffer(
             0u,0u,D3DBACKBUFFER_TYPE_MONO,&source);
-        if(FAILED(back_hr) || !source)return false;
+        if(FAILED(back_hr) || !source)
+            return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::GetBackbuffer,
+                                      back_hr);
         D3DSURFACE_DESC desc{};
         const HRESULT desc_hr=source->GetDesc(&desc);
         if(FAILED(desc_hr) || desc.Width<320u || desc.Width>2048u ||
            desc.Height<200u || desc.Height>2048u ||
            (desc.Format!=D3DFMT_A8R8G8B8 && desc.Format!=D3DFMT_X8R8G8B8)){
-            Drop(source);return false;
+            Drop(source);
+            return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::BackbufferLayout,
+                                      desc_hr,&desc);
         }
         // Cache resources across 60Hz game Presents. Re-create only when
         // the original swapchain layout changes (or on D3D9 Reset).
@@ -859,20 +866,26 @@ private:
             Drop(mono_resolve_);Drop(mono_staging_);
             mono_width_=mono_height_=0u;
             if(!mono_scale_.Configure(desc.Width,desc.Height)){
-                Drop(source);return false;
+                Drop(source);
+                return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::ScalePlan,
+                                          S_OK,&desc);
             }
             HRESULT create_hr=d->CreateOffscreenPlainSurface(
                 desc.Width,desc.Height,desc.Format,D3DPOOL_SYSTEMMEM,
                 &mono_staging_,nullptr);
             if(FAILED(create_hr)){
-                Drop(source);return false;
+                Drop(source);
+                return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::CreateStaging,
+                                          create_hr,&desc);
             }
             if(desc.MultiSampleType!=D3DMULTISAMPLE_NONE){
                 create_hr=d->CreateRenderTarget(
                     desc.Width,desc.Height,desc.Format,
                     D3DMULTISAMPLE_NONE,0u,FALSE,&mono_resolve_,nullptr);
                 if(FAILED(create_hr)){
-                    Drop(mono_staging_);Drop(source);return false;
+                    Drop(mono_staging_);Drop(source);
+                    return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::CreateResolve,
+                                              create_hr,&desc);
                 }
             }
             mono_width_=desc.Width;mono_height_=desc.Height;
@@ -880,30 +893,61 @@ private:
         }
         IDirect3DSurface9* readback=source;
         if(mono_resolve_){
-            if(FAILED(d->StretchRect(source,nullptr,mono_resolve_,nullptr,
-                                     D3DTEXF_NONE))){
-                Drop(source);return false;
+            const HRESULT resolved=d->StretchRect(
+                source,nullptr,mono_resolve_,nullptr,D3DTEXF_NONE);
+            if(FAILED(resolved)){
+                Drop(source);
+                return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Resolve,
+                                          resolved,&desc);
             }
             readback=mono_resolve_;
         }
-        if(FAILED(d->GetRenderTargetData(readback,mono_staging_))){
-            Drop(source);return false;
+        const HRESULT transfer=d->GetRenderTargetData(readback,mono_staging_);
+        if(FAILED(transfer)){
+            Drop(source);
+            return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Readback,
+                                      transfer,&desc);
         }
         Drop(source);
         D3DLOCKED_RECT locked{};
-        if(FAILED(mono_staging_->LockRect(&locked,nullptr,D3DLOCK_READONLY)))
-            return false;
+        const HRESULT lock_hr=mono_staging_->LockRect(
+            &locked,nullptr,D3DLOCK_READONLY);
+        if(FAILED(lock_hr))
+            return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Lock,
+                                      lock_hr,&desc);
         if(mono_rgba_.size()!=m2vr::transport::kBytesPerEye)
             mono_rgba_.resize(m2vr::transport::kBytesPerEye);
         const bool ready=mono_scale_.Convert(
             static_cast<const std::uint8_t*>(locked.pBits),locked.Pitch,
             mono_rgba_.data(),mono_rgba_.size());
         mono_staging_->UnlockRect();
-        return ready;
+        if(!ready)
+            return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Convert,
+                                      S_OK,&desc);
+        last_mono_failure_stage_=0u;last_mono_failure_hr_=0u;
+        return true;
+    }
+    bool RejectOriginalMono(m2vr::daytona::OriginalMonoFailure stage,HRESULT hr,
+                            const D3DSURFACE_DESC* desc=nullptr) noexcept {
+        const auto stage_code=static_cast<std::uint32_t>(stage);
+        const auto error=static_cast<std::uint32_t>(hr);
+        if(stage_code!=last_mono_failure_stage_ || error!=last_mono_failure_hr_){
+            m2vr::LogEvent("model2_vr_original_mono_capture_failure",
+                stage_code,error,
+                (std::uint64_t{desc?desc->Width:0u}<<32)|
+                    (desc?desc->Height:0u),
+                desc?static_cast<std::uint32_t>(desc->Format):0u);
+            m2vr::FlushLog();
+            last_mono_failure_stage_=stage_code;last_mono_failure_hr_=error;
+        }
+        return false;
     }
     void PrepareOriginalMono(IDirect3DDevice9* d,std::uint64_t frame,
                              std::uint32_t stereo_rejection) {
-        if(!frame || pending_mono_ready_ || !d)return;
+        if(pending_mono_ready_)return;
+        if(!m2vr::daytona::CanStageOriginalMono(
+                enabled_,d!=nullptr,stereo_rejection!=0u,
+                LivePoseNow(),frame))return;
         pending_mono_ready_=ReadOriginalBackbuffer(d);
         if(pending_mono_ready_){
             pending_mono_source_reason_=stereo_rejection;
@@ -926,6 +970,7 @@ private:
     void Reset()noexcept{
         Drop(mono_resolve_);Drop(mono_staging_);
         mono_width_=mono_height_=0u;
+        last_mono_failure_stage_=last_mono_failure_hr_=0u;
         mono_scale_=m2vr::daytona::ReadbackScalePlan{};
         for(auto& eye:aux_eyes_)eye.Clear();
         Drop(aux_original_);Drop(aux_original_depth_);
@@ -946,6 +991,7 @@ private:
     bool first_stereo_published_=false,first_mono_published_=false;
     bool pending_mono_ready_=false;
     std::uint32_t pending_mono_source_reason_=0u;
+    std::uint32_t last_mono_failure_stage_=0u,last_mono_failure_hr_=0u;
     std::uint32_t last_bootstrap_reason_=0u,last_bootstrap_hr_=0u;
     float ipd_scale_=1.f;
     UINT width_=0,height_=0;

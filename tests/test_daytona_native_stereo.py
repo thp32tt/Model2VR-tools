@@ -6,6 +6,25 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_original_d3d9_mono_pixel_fallback_is_end_to_end_but_not_world_proof(self):
+        source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        transport=(ROOT/"src/common/stereo_frame_ipc.h").read_text("utf-8")
+        writer=(ROOT/"src/probe/stereo_feed.cpp").read_text("utf-8")
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        decision=(ROOT/"src/probe/daytona_original_mono_fallback.hpp").read_text("utf-8")
+        self.assertIn("GetBackBuffer(",source)
+        self.assertIn("GetRenderTargetData(readback,mono_staging_)",source)
+        self.assertIn("mono_scale_.Convert(",source)
+        self.assertIn("Model2VR_SubmitOriginalGameMonoRGBA(",source)
+        self.assertIn("OriginalMonoFallback=512u", (ROOT/"src/common/daytona_producer_health.hpp").read_text("utf-8"))
+        self.assertIn("FrameKind::GameMonoFallback",writer)
+        self.assertIn("GameMonoFallback=3",transport)
+        self.assertIn("delivery_evidence.pair_is_original_mono=",host)
+        self.assertIn("CanPublishOriginalMono",source)
+        self.assertIn("original_present_ok && !stereo_published",decision)
+        self.assertIn("model2_vr_original_mono_capture_failure",source)
+        self.assertNotIn("Model2VR_SubmitStereoRGBAWithPose(\n                    mono_rgba_",source)
+
     def test_original_d3d9_eye_bootstrap_failure_has_one_root_cause(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         self.assertIn('"model2_vr_eye_bootstrap_failure"',gpu)

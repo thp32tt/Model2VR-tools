@@ -56,6 +56,14 @@ target_compile_features(model2_eye_delivery_x64_test PRIVATE cxx_std_20)
 add_test(NAME daytona_original_game_eye_delivery_x64
     COMMAND model2_eye_delivery_x64_test)
 
+# The original-game mono fallback is intentionally distinct from
+# verified GameStereo in both 32-bit and 64-bit native test builds.
+add_executable(daytona_original_mono_fallback_x64_test
+    ../tests/daytona_original_mono_fallback_test.cpp)
+target_compile_features(daytona_original_mono_fallback_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_present_mono_fallback_x64
+    COMMAND daytona_original_mono_fallback_x64_test)
+
 # Same admission contract must compile and behave identically on the
 # 64-bit Quest OpenXR host and 32-bit original Daytona renderer.
 add_executable(daytona_eye_pose_gate_x64_test ../tests/daytona_eye_pose_gate_test.cpp)

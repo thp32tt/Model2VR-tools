@@ -213,6 +213,13 @@ target_compile_features(daytona_surface_transfer_x86_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_surface_transfer_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_surface_transfer_x86 COMMAND daytona_surface_transfer_x86_test)
 
+# The game-backbuffer HMD fallback never masquerades as stereoscopic world.
+add_executable(daytona_original_mono_fallback_x86_test
+    tests/daytona_original_mono_fallback_test.cpp)
+target_compile_features(daytona_original_mono_fallback_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_present_mono_fallback_x86
+    COMMAND daytona_original_mono_fallback_x86_test)
+
 # Source D3D9 BGRA eye readback to fixed RGBA OpenXR transport.
 add_executable(daytona_readback_scale_x86_test tests/daytona_readback_scale_test.cpp)
 target_compile_features(daytona_readback_scale_x86_test PRIVATE cxx_std_20)

@@ -76,7 +76,9 @@ if not "%RESULT%"=="0" (
 )
 
 echo Daytona VR loader completed. OpenXR host startup is not proof of game pixels.
-echo If the headset shows one solid color per eye, check the host log for:
+echo If native 3D cannot be authenticated, the original Daytona backbuffer
+echo is presented as a clearly labelled 2D HMD fallback, not fake native stereo.
+echo If the headset still shows one solid color per eye, check the host log for:
 echo   Daytona VR eye delivery: ... action=...
 echo Detailed original D3D9 producer reason and Draw counters are logged there.
 echo Press F9 while OpenXR is running to append local diagnosis in logs.
