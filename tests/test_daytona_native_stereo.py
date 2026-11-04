@@ -68,6 +68,20 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
         self.assertIn("if(!both){Reset();return;}",gpu)
 
+    def test_compact_native_transport_reason_counters(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        self.assertIn('#include "logger.h"',gpu)
+        self.assertIn("model2_vr_producer_frame",gpu)
+        self.assertIn("!scene_draws_ ? 2u : 0u",gpu)
+        self.assertIn("!fresh_pose ? 16u : 0u",gpu)
+        self.assertIn("reason=64u",gpu)
+        self.assertIn("reason=128u",gpu)
+        self.assertIn("if(frame==1u || frame%120u==0u || first)",gpu)
+        self.assertIn("++mirrored_draws_",gpu)
+        self.assertIn("++mirrored_clears_",gpu)
+        self.assertIn("mrt_slots_=caps.NumSimultaneousRTs;",gpu)
+        self.assertEqual(gpu.count("GetDeviceCaps(&caps)"),1)
+
     def test_one_click_original_game_and_openxr_host_single_sim_owner(self):
         launcher=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
         legacy=(ROOT/"scripts/Run-Daytona-NativeStereo.cmd").read_text("utf-8")

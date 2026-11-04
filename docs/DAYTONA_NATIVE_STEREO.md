@@ -146,3 +146,20 @@ until their real camera evidence and vertex/shader transforms are established.
 The host still requires at least one shifted shader-UP draw and different eye
 pixels before marking a transport frame GameStereo. This is a source-path
 integration advance, not Quest 3 visual validation (UNTESTED).
+
+## One-run producer diagnostic (2026-11-04)
+
+The opt-in 32-bit renderer writes a compact `model2_vr_producer_frame` CSV
+heartbeat on the first Present, every 120 Presents thereafter and the first
+successfully published real stereo frame. Values: `a0` = original Present
+frame, `a1` = reason bitmask, `a2` = source-verified shifted scene draws,
+`a3` = (mirrored clears << 32) | mirrored primitive draws. This is not
+per-Draw probing or a repeat trace request. Reason bits: 1=no mirrored
+backbuffer draw/clear; 2=no validated shifted shader-UP scene draw;
+4=bad device/frame; 8=pose was not admitted for this frame; 16=pose
+became stale/invalid; 32=D3D9 resolve/staging readback failure;
+64=left/right RGBA identical; 128=shared-memory stereo publish failure.
+A reason mask of **0** proves an x86 pair was published and can be received
+by the x64 OpenXR host. It does not establish a calibrated physical 6DoF
+Daytona camera or a Quest 3 test. The producer calls GetDeviceCaps once per
+resource lifetime instead of once per primitive and clear.

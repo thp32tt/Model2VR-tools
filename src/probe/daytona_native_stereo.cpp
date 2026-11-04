@@ -6,6 +6,7 @@
 #include "daytona_native_stereo.hpp"
 #include "daytona_up_decl_witness.hpp"
 #include "daytona_eye_pose_gate.hpp"
+#include "logger.h"
 #include "../common/stereo_frame_ipc.h"
 #include <algorithm>
 #include <array>
@@ -45,6 +46,7 @@ public:
         std::lock_guard lock(mu_);
         enabled_=enable;
         shift_=float((std::clamp)(shift,1u,250u))/1000.f;
+        first_stereo_published_=false;
         Reset();
     }
     void ResetExternal()noexcept{
@@ -69,14 +71,9 @@ public:
         if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
         const bool backbuffer=(target==backbuffer_);
         if(!backbuffer){Drop(target);return;}
-        // Original MRT passes require a separate, fully state-captured
-        // renderer. Keep their Draw calls strictly on the original target.
-        D3DCAPS9 caps{};
-        if(FAILED(d->GetDeviceCaps(&caps)) ||
-           caps.NumSimultaneousRTs<1u || caps.NumSimultaneousRTs>4u) {
-            Drop(target);return;
-        }
-        for(DWORD slot=1u;slot<caps.NumSimultaneousRTs;++slot){
+        // Device caps are immutable: Ensure() proves them once per device.
+        // Recheck actual extra MRT binding for every original draw.
+        for(DWORD slot=1u;slot<mrt_slots_;++slot){
             IDirect3DSurface9* other=nullptr;
             const HRESULT hr=d->GetRenderTarget(slot,&other);
             const bool bound=SUCCEEDED(hr)&&other;
@@ -175,6 +172,7 @@ public:
         Drop(original_depth);Drop(target);
         if(!both){Reset();return;}
         frame_started_=true;
+        ++mirrored_draws_;
         if(scene)++scene_draws_;
     }
     void Draw(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT n,
@@ -222,10 +220,7 @@ public:
         if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
         if(target!=backbuffer_){Drop(target);return;}
         // Never reflect a multi-target clear into an unrelated stereo eye.
-        D3DCAPS9 caps{};
-        if(FAILED(d->GetDeviceCaps(&caps)) || caps.NumSimultaneousRTs<1u ||
-           caps.NumSimultaneousRTs>4u){Drop(target);return;}
-        for(DWORD slot=1;slot<caps.NumSimultaneousRTs;++slot){
+        for(DWORD slot=1;slot<mrt_slots_;++slot){
             IDirect3DSurface9* other=nullptr;
             const HRESULT hr=d->GetRenderTarget(slot,&other);
             const bool attached=SUCCEEDED(hr)&&other;
@@ -259,12 +254,22 @@ public:
         // A real original Clear can occur before any Draw; preserve the
         // source clear on both eyes instead of replacing it with black.
         frame_started_=true;
+        ++mirrored_clears_;
     }
     void Present(IDirect3DDevice9* d,std::uint64_t frame){
         if(!enabled_||!d)return;
         std::lock_guard lock(mu_);
-        if(!frame_started_ || !scene_draws_ || !frame || d!=device_ ||
-           !pose_admitted_ || !LivePoseNow()){
+        // A compact reason mask explains why a tracked HMD can still display
+        // only fallback colours. No per-Draw dumps, ROM data or private trace.
+        const bool fresh_pose=pose_admitted_ && LivePoseNow();
+        const std::uint32_t gate=
+            (!frame_started_ ? 1u : 0u) |  // no eligible backbuffer replay
+            (!scene_draws_ ? 2u : 0u) |    // no proven shifted world UP draw
+            (frame==0u || d!=device_ ? 4u : 0u) |
+            (!pose_admitted_ ? 8u : 0u) |
+            (!fresh_pose ? 16u : 0u);
+        if(gate){
+            ReportFrame(frame,gate);
             FinishFrame();return;
         }
         bool ready=true;
@@ -294,17 +299,36 @@ public:
         }
         // Do not advertise a pair as real stereo when the original shader
         // projection quantizes the tiny X-shift to identical eye pixels.
-        if(ready && rgba_[0]==rgba_[1])ready=false;
+        std::uint32_t reason=ready?0u:32u; // D3D9 resolve/readback failed
+        if(ready && rgba_[0]==rgba_[1]){
+            ready=false;
+            reason=64u; // stereo quantized to identical eye images
+        }
         if(ready){
             if(!writer_ready_)writer_ready_=Model2VR_OpenStereoWriter()!=FALSE;
-            if(writer_ready_)Model2VR_SubmitStereoRGBA(
+            if(!writer_ready_ || !Model2VR_SubmitStereoRGBA(
                 rgba_[0].data(),rgba_[1].data(),frame,
                 m2vr::transport::kWidth,m2vr::transport::kHeight,
-                m2vr::transport::kPitch);
+                m2vr::transport::kPitch))reason=128u; // IPC writer/publish failed
         }
+        ReportFrame(frame,reason);
         FinishFrame();
     }
 private:
+    void ReportFrame(std::uint64_t frame,std::uint32_t reason)noexcept{
+        if(!frame)return;
+        const bool first=reason==0u && !first_stereo_published_;
+        // Every 120 original Presents (roughly 2s at 60 Hz), plus the
+        // first successful game source. The launcher keeps the CSV locally.
+        if(frame==1u || frame%120u==0u || first){
+            const std::uint64_t replay_count=
+                (std::uint64_t{mirrored_clears_}<<32)|mirrored_draws_;
+            m2vr::LogEvent("model2_vr_producer_frame",frame,reason,
+                           scene_draws_,replay_count);
+            if(first)m2vr::FlushLog();
+        }
+        if(first)first_stereo_published_=true;
+    }
     bool LivePoseNow()noexcept {
         m2vr::pose::Frame frame{};
         if(!Model2VR_ReadPredictedEyeViews(&frame))return false;
@@ -335,6 +359,7 @@ private:
     }
     void FinishFrame()noexcept{
         frame_started_=false;scene_draws_=0;
+        mirrored_draws_=0;mirrored_clears_=0;
         pose_checked_=false;pose_admitted_=false;
     }
     static D3DVIEWPORT9 Clip(D3DVIEWPORT9 vp,UINT w,UINT h)noexcept {
@@ -380,6 +405,10 @@ private:
         }
         const D3DFORMAT depth_format=dd.Format;
         Drop(depth);
+        D3DCAPS9 caps{};
+        if(FAILED(d->GetDeviceCaps(&caps)) || caps.NumSimultaneousRTs<1u ||
+           caps.NumSimultaneousRTs>4u){Drop(back);return false;}
+        mrt_slots_=caps.NumSimultaneousRTs;
         backbuffer_=back;device_=d;
         width_=desc.Width;height_=desc.Height;
         for(auto& eye:eyes_){
@@ -432,14 +461,17 @@ private:
     void Reset()noexcept{
         for(auto& eye:eyes_)eye.Clear();
         Drop(backbuffer_);
-        device_=nullptr;width_=height_=0u;
+        device_=nullptr;width_=height_=0u;mrt_slots_=0u;
         FinishFrame();
     }
     std::mutex mu_;
     bool enabled_=false,frame_started_=false,writer_ready_=false;
     bool pose_checked_=false,pose_admitted_=false;
+    bool first_stereo_published_=false;
     float ipd_scale_=1.f;
     UINT width_=0,height_=0;
+    DWORD mrt_slots_=0u;
+    std::uint32_t mirrored_draws_=0u,mirrored_clears_=0u;
     float shift_=0.10f;
     unsigned scene_draws_=0;
     IDirect3DDevice9* device_=nullptr; // non-owning, Reset hook releases
