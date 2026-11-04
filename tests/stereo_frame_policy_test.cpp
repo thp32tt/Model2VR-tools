@@ -101,6 +101,20 @@ int main(){
     snap.eyes[1].clear();
     CHECK(gate.Accept(snap,t+148,hz));
     CHECK(gate.kind()==FrameKind::CompactMono);
+    CHECK(gate.Cached(t+147+250,hz));
+    CHECK(!gate.Cached(t+147+251,hz));
+    CHECK(gate.Decide(&compact,t+147+250,hz)==FrameUse::HoldCached);
+    CHECK(gate.Decide(&compact,t+147+251,hz)==FrameUse::Missing);
+    // Native stereo expiry remains 125ms; only explicit 2D cinema
+    // kinds are allowed the more forgiving GPU-readback hold window.
+    FrameStamp live_stereo{7,t+450,FrameKind::GameStereo,123};
+    CHECK(gate.Decide(&live_stereo,t+451,hz)==FrameUse::ReadNew);
+    snap.frame_id=7;snap.timestamp_qpc=t+450;
+    snap.kind=FrameKind::GameStereo;
+    snap.eyes[1].resize(kBytesPerEye);
+    CHECK(gate.Accept(snap,t+451,hz));
+    CHECK(gate.Cached(t+450+125,hz));
+    CHECK(!gate.Cached(t+450+126,hz));
     gate.Reset();
     CHECK(gate.id()==0);
     CHECK(!gate.Cached(t+140,1000));

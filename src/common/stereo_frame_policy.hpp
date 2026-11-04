@@ -23,12 +23,17 @@ public:
     // Allow 60 Hz producers to feed 90/120 Hz XR without flickering, but
     // never show a frozen frame indefinitely after the producer disappears.
     static constexpr std::uint64_t kMaxHoldMilliseconds=125;
+    // A flat original-game cinema image may be held slightly longer than
+    // independently projected world stereo during a slow D3D9 readback.
+    // Both paths still expire; an invalid/newer original Present revokes
+    // either cached image immediately through producer-health evidence.
+    static constexpr std::uint64_t kMaxMonoHoldMilliseconds=250;
     FrameUse Decide(const FrameStamp* stamp,std::uint64_t now,
                     std::uint64_t ticks_per_second) const noexcept {
         if(!ticks_per_second || !now)return FrameUse::Missing;
-        const auto cached_fresh = HasRecent(last_qpc_,now,ticks_per_second);
+        const auto cached_fresh = HasRecent(last_qpc_,now,ticks_per_second,kind_);
         const bool cached = last_id_!=0 && cached_fresh;
-        if(!stamp || !HasRecent(stamp->timestamp_qpc,now,ticks_per_second) ||
+        if(!stamp || !HasRecent(stamp->timestamp_qpc,now,ticks_per_second,stamp->kind) ||
            stamp->frame_id==0 ||
            !ValidSourceKind(stamp->kind))
             return cached ? FrameUse::HoldCached : FrameUse::Missing;
@@ -38,7 +43,7 @@ public:
     }
     bool Accept(const Snapshot& snapshot,std::uint64_t now,
                 std::uint64_t ticks_per_second) noexcept {
-        if(!HasRecent(snapshot.timestamp_qpc,now,ticks_per_second) ||
+        if(!HasRecent(snapshot.timestamp_qpc,now,ticks_per_second,snapshot.kind) ||
            snapshot.frame_id==0 || snapshot.frame_id<=last_id_ ||
            !ValidSourceKind(snapshot.kind) ||
            !ValidEyePayload(snapshot.kind,snapshot.eyes[0].size(),
@@ -49,7 +54,7 @@ public:
         return true;
     }
     bool Cached(std::uint64_t now,std::uint64_t ticks_per_second) const noexcept {
-        return last_id_ && HasRecent(last_qpc_,now,ticks_per_second);
+        return last_id_ && HasRecent(last_qpc_,now,ticks_per_second,kind_);
     }
     std::uint64_t id()const noexcept{return last_id_;}
     FrameKind kind()const noexcept{return kind_;}
@@ -64,11 +69,12 @@ public:
     }
 private:
     static bool HasRecent(std::uint64_t stamp,std::uint64_t now,
-                          std::uint64_t hz) noexcept {
-        // Avoid multiplication overflow: 125ms = hz/8. The 125ms hold
-        // must work at the normal 10MHz QPC frequency and at 1GHz.
+                          std::uint64_t hz,FrameKind kind) noexcept {
+        // No potentially overflowing millisecond multiply. For original
+        // mono the deadline is hz/4 (250ms); for native stereo hz/8
+        // (125ms). At 60Hz source/120Hz display, neither expires normally.
         if(!stamp || !hz || now<stamp)return false;
-        const auto allowed=hz/8;
+        const auto allowed=IsMonoGame(kind)?hz/4u:hz/8u;
         return now-stamp<=allowed;
     }
     std::uint64_t last_id_=0;
