@@ -36,6 +36,7 @@ NAMES = {
     "model2_d3d9_source_blend",
     "model2_d3d9_source_sampler_mip",
     "model2_d3d9_source_depth_cull",
+    "model2_d3d9_source_vertex_pipeline",
 }
 
 def number(raw):
