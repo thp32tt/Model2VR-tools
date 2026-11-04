@@ -176,7 +176,8 @@ def analyze(path: Path):
                            "model2_d3d9_source_stage0_alpha",
                            "model2_d3d9_source_stage1_specular",
                            "model2_d3d9_source_stage_result",
-                           "model2_d3d9_source_lighting"):
+                           "model2_d3d9_source_lighting",
+                           "model2_d3d9_source_color_mask"):
                 if a0 not in up_fixed_stage:
                     if len(up_fixed_stage) >= 4096:
                         up_fixed_stage.clear()
@@ -462,6 +463,7 @@ def analyze(path: Path):
     # MATERIAL EVIDENCE ONLY, never an authenticated gameplay camera/pass.
     up_material_status = Counter()
     up_material_source_status = Counter()
+    up_material_color_mask_status = Counter()
     up_material_examples = []
     for witness, (frame, caller, family, stride) in up_meta.items():
         source = up_source_fvf.get(witness)
@@ -533,6 +535,22 @@ def analyze(path: Path):
                 lighting_status = "lighting_disabled"
         up_material_source_status[source_status] += 1
         up_material_source_status[lighting_status] += 1
+        mask_record=stage.get("model2_d3d9_source_color_mask")
+        mask_value=None
+        mask_status="mask_unobserved"
+        if mask_record is not None:
+            value,tag,mask_frame=mask_record
+            if ((tag >> 32) != fvf or
+                    (tag & 0xFFFFFFFF) != stride or
+                    mask_frame != frame):
+                mask_status="mask_witness_or_present_mismatch"
+            elif value > 15:
+                mask_status="mask_unsupported"
+            else:
+                mask_value=value
+                mask_status=("depth_only" if value == 0 else
+                             "rgba_all" if value == 15 else "partial_rgba")
+        up_material_color_mask_status[mask_status] += 1
         if len(up_material_examples) < 48:
             up_material_examples.append({
                 "witness_id": witness,
@@ -546,6 +564,8 @@ def analyze(path: Path):
                 "alpha_source_mode": alpha_source or "unsupported",
                 "source_mode_status": source_status,
                 "lighting_status": lighting_status,
+                "original_rgba_mask": mask_value,
+                "original_rgba_mask_status": mask_status,
                 "color_stage": [(c[0] >> 32) & 0xFFFFFFFF,
                                 c[0] & 0xFFFFFFFF, c[1]],
                 "alpha_stage": [(a[0] >> 32) & 0xFFFFFFFF,
@@ -587,6 +607,8 @@ def analyze(path: Path):
             "original_up_material_stage_status": dict(up_material_status.most_common()),
             "original_up_material_source_status":
                 dict(up_material_source_status.most_common()),
+            "original_up_material_color_mask_status":
+                dict(up_material_color_mask_status.most_common()),
             "original_up_material_stage_examples": up_material_examples,
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,
