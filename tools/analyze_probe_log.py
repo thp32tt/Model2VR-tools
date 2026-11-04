@@ -9,6 +9,20 @@ import struct
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 
+# D3D9 eye-clone bootstrap failures are source-side metadata, NOT private
+# pixel dumps or evidence of an authenticated race-world pass.
+EYE_BOOTSTRAP_FAILURES = {
+    1: "BACKBUFFER_QUERY",
+    2: "BACKBUFFER_LAYOUT",
+    3: "SOURCE_TARGET_DEPTH_INCOMPATIBLE",
+    4: "MRT_CAPS",
+    5: "READBACK_SCALE_PLAN",
+    6: "EYE_COLOR_TARGET_ALLOCATION",
+    7: "EYE_DEPTH_SURFACE_ALLOCATION",
+    8: "EYE_MSAA_RESOLVE_ALLOCATION",
+    9: "EYE_CPU_STAGING_ALLOCATION",
+}
+
 
 def bits_to_float(value: int) -> float:
     return struct.unpack("<f", struct.pack("<I", value & 0xFFFFFFFF))[0]
@@ -245,6 +259,8 @@ def analyze(path: Path):
     d3d9_draw_topology = Counter()
     d3d9_draw_frames = Counter()
     d3d9_external_origin_samples = 0
+    eye_bootstrap_failure_counts = Counter()
+    eye_bootstrap_failure_examples = []
     up_meta = {}
     up_fixed_stage = {}
     up_source_fvf = {}
@@ -313,6 +329,27 @@ def analyze(path: Path):
 
             if event == "qpc_frequency":
                 qpc_frequency = a0
+            elif event == "model2_vr_eye_bootstrap_failure":
+                # First failure per reason/HRESULT, not one per original Draw.
+                # Invalid/corrupted records cannot become camera/world proof.
+                valid = (a0 in EYE_BOOTSTRAP_FAILURES and
+                         0 <= a1 <= 0xFFFFFFFF and
+                         0 <= a2 <= 0xFFFFFFFFFFFFFFFF and
+                         0 <= a3 <= 0xFFFFFFFF)
+                if not valid:
+                    eye_bootstrap_failure_counts["INVALID_RECORD"] += 1
+                else:
+                    label = EYE_BOOTSTRAP_FAILURES[a0]
+                    eye_bootstrap_failure_counts[label] += 1
+                    if len(eye_bootstrap_failure_examples) < 16:
+                        eye_bootstrap_failure_examples.append({
+                            "reason": label,
+                            "hresult_hex": f"0x{a1:08X}",
+                            "source_width": a2 >> 32,
+                            "source_height": a2 & 0xFFFFFFFF,
+                            "source_format": a3,
+                            "world_pass_proof": "NOT_ESTABLISHED",
+                        })
             elif event == "project_ctx":
                 latest_project_ctx[(int(row["thread"]), a0)] = (a1, seq)
                 if len(latest_project_ctx) > 4096:
@@ -842,6 +879,10 @@ def analyze(path: Path):
             "draw_topology_and_count": dict(d3d9_draw_topology.most_common()),
             "draw_origin_samples_per_frame": dict(d3d9_draw_frames.most_common()),
             "external_or_unknown_caller_samples": d3d9_external_origin_samples,
+            "original_eye_bootstrap_failure_counts":
+                dict(eye_bootstrap_failure_counts.most_common()),
+            "original_eye_bootstrap_failure_examples":
+                eye_bootstrap_failure_examples,
             "up_xyzw_witnesses": dict(up_witnesses.most_common()),
             "original_up_material_stage_status": dict(up_material_status.most_common()),
             "original_up_material_source_status":
@@ -987,6 +1028,15 @@ def markdown(summary):
             lines.append(f"- {sample}: {count}")
     lines.append(f"- Outside-EXE or unknown caller samples: "
                  f"{d3d9.get('external_or_unknown_caller_samples',0)}")
+    lines += ["", "### Original D3D9 stereo eye-target bootstrap failures", ""]
+    lines.append("No entry does not establish a valid native-game stereo pair.")
+    for name,count in d3d9.get("original_eye_bootstrap_failure_counts",{}).items():
+        lines.append(f"- {name}: {count}")
+    for sample in d3d9.get("original_eye_bootstrap_failure_examples",[]):
+        lines.append(
+            f"- {sample['reason']} hr={sample['hresult_hex']} "
+            f"source={sample['source_width']}x{sample['source_height']} "
+            f"format={sample['source_format']} ; WORLD PROOF UNKNOWN")
     lines += ["", "### UP vertex vs CPU project coordinate witnesses", ""]
     lines.append("Same-thread <=200ms, <=0.25px candidates are NOT proven world draws.")
     for name, count in d3d9.get("up_xyzw_witnesses", {}).items():
