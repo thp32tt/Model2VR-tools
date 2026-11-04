@@ -537,7 +537,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("static_cast<std::uint32_t>(pose_sequence)",ipc)
         self.assertIn("SourcePoseMatchesFrame(",host)
         self.assertIn("SourcePoseMatchesFrame(",gate)
-        self.assertIn("kind==FrameKind::GameStereo &&",gate)
+        self.assertIn("return IsStereoGame(kind) &&",gate)
         self.assertIn("pose_tag!=0u && exact_pose_in_host_ring",gate)
         self.assertNotIn("const bool known_pose=!stamp.pose_sequence",host)
         self.assertNotIn("const bool matched=!tag",host)
