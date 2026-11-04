@@ -102,18 +102,28 @@ D3DTA_CURRENT = 1  # documented D3D9 stage-zero == DIFFUSE
 D3DTA_TEXTURE = 2
 
 
+def original_stage_source(operation, first, second):
+    """Exact source stage0 D3DTA_CURRENT aliases vertex DIFFUSE."""
+    vertex=(D3DTA_DIFFUSE, D3DTA_CURRENT)
+    if operation in (D3DTOP_SELECTARG1, D3DTOP_SELECTARG2):
+        chosen=first if operation==D3DTOP_SELECTARG1 else second
+        if chosen==D3DTA_TEXTURE:
+            return "TEXTURE"
+        if chosen in vertex:
+            return "DIFFUSE"
+        return None
+    if operation==D3DTOP_MODULATE and (
+            (first==D3DTA_TEXTURE and second in vertex) or
+            (first in vertex and second==D3DTA_TEXTURE)):
+        return "MODULATE"
+    return None
+
+
 def original_stage_selects_texel_or_diffuse(operation, first, second, diffuse):
     # D3D9 source contract: CURRENT at stage 0 is DIFFUSE. FVF can omit
     # D3DCOLOR; its default then is opaque white (no guessed game pixel).
     # Unknown modifiers and operation types remain unsupported.
-    diffuse_args = (D3DTA_DIFFUSE, D3DTA_CURRENT)
-    if operation == D3DTOP_SELECTARG1:
-        return first == D3DTA_TEXTURE or first in diffuse_args
-    if operation == D3DTOP_SELECTARG2:
-        return second == D3DTA_TEXTURE or second in diffuse_args
-    return (operation == D3DTOP_MODULATE and
-            ((first == D3DTA_TEXTURE and second in diffuse_args) or
-             (first in diffuse_args and second == D3DTA_TEXTURE)))
+    return original_stage_source(operation, first, second) is not None
 
 
 def original_projected_material_candidate(data):
@@ -232,6 +242,7 @@ def audit_csv(path):
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
+        "projected_material_stage_modes": set(),
         "projected_material_correlated_present_frames": set(),
         "original_material_mismatched_witnesses": 0,
         "original_material_current_result_witnesses": 0,
@@ -467,6 +478,15 @@ def audit_csv(path):
             # are still all required before enabling actual XR replay.
             entry["projected_material_correlated_candidates"] += 1
             entry["projected_material_correlated_present_frames"].add(present_frame)
+            color,alpha=(data[name] for name in ("stage_color","stage_alpha"))
+            cop,cfirst=halves(color[0])
+            aop,afirst=halves(alpha[0])
+            _, raw_fvf=halves(origin[1])
+            entry["projected_material_stage_modes"].add((
+                original_stage_source(cop,cfirst,color[1]),
+                original_stage_source(aop,afirst,alpha[1]),
+                "EXPLICIT_ARGB" if raw_fvf & D3DFVF_DIFFUSE else
+                    "D3D9_DEFAULT_WHITE"))
         if joined_source is not None:
             entry["same_witness_joint_candidates"] += 1
             entry["same_witness_joint_present_frames"].add(present_frame)
