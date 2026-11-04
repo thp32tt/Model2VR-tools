@@ -37,6 +37,7 @@ using CreateDeviceFn=HRESULT (STDMETHODCALLTYPE*)(
 using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,CONST RECT*,CONST RECT*,HWND,CONST RGNDATA*);
 using ResetFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRESENT_PARAMETERS*);
+using SceneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);
 using UpdateSurfaceFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,IDirect3DSurface9*,const POINT*);
 using StretchRectFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -58,6 +59,8 @@ Create9Fn g_create9=nullptr;
 CreateDeviceFn g_create_device=nullptr;
 PresentFn g_present=nullptr;
 ResetFn g_reset=nullptr;
+SceneFn g_begin_scene=nullptr;
+SceneFn g_end_scene=nullptr;
 ClearFn g_clear=nullptr;
 UpdateSurfaceFn g_update_surface=nullptr;
 StretchRectFn g_stretch_rect=nullptr;
@@ -78,6 +81,12 @@ std::atomic<unsigned> g_present_count{0};
 // Physical original Draw order across all four API families, including
 // unsampled commands. Never inferred from per-family sample cadence.
 std::atomic<std::uint64_t> g_original_frame_draw_ordinal{0u};
+// Optional successful original BeginScene/EndScene provenance, never a
+// substitute for independently authenticated race-world/HUD ownership.
+std::atomic<unsigned> g_original_scene_ordinal{0u};
+std::atomic<bool> g_original_scene_open{false};
+std::atomic<DWORD> g_original_scene_owner_thread{0u};
+std::atomic<bool> g_original_scene_hooks_ready{false};
 std::atomic<std::uint64_t> g_witness_serial{0};
 // Only frames containing a real sampled original VB/IB Draw receive a
 // matching physical original Present outcome. No per-Draw GPU readback.
@@ -1035,13 +1044,20 @@ std::uint64_t ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
 void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
                                 void* caller,unsigned family,
                                 std::uint64_t original_frame,
-                                std::uint64_t frame_ordinal) {
+                                std::uint64_t frame_ordinal,
+                                unsigned scene_ordinal,bool scene_open) {
     if(!witness)return;
     // Capture phase BEFORE the original COM Draw; a concurrent Present
     // must not relabel the returned HRESULT with the next frame.
     m2vr::LogEvent("model2_d3d9_source_draw_phase",witness,
         original_frame,frame_ordinal,
         (std::uint64_t{CallerRva(caller)}<<32)|family);
+    // Only an installed *pair* of scene boundary hooks can assert the
+    // original device's scene epoch. Failed Begin/End or unknown hooks
+    // never silently qualify a same-scene source camera candidate.
+    if(g_original_scene_hooks_ready.load(std::memory_order_acquire))
+        m2vr::LogEvent("model2_d3d9_source_scene_phase",witness,
+            original_frame,scene_ordinal,scene_open?1u:0u);
     m2vr::LogEvent(family<=2u?"model2_d3d9_vb_original_result":
                                "model2_d3d9_up_original_result",witness,
         static_cast<std::uint32_t>(hr),CallerRva(caller),
@@ -1060,11 +1076,17 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
+    const bool source_scene_open=g_original_scene_open.load(
+        std::memory_order_relaxed) &&
+        g_original_scene_owner_thread.load(std::memory_order_relaxed)==
+        GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,1,p,count,caller)?
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
     const HRESULT hr=g_draw(d,p,start,count);
     RecordOriginalSourceResult(witness,hr,caller,1u,
-                               source_frame,source_ordinal);
+                               source_frame,source_ordinal,
+                               source_scene,source_scene_open);
     TrackOriginalD3D9DrawResult(hr,1u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorPrimitive(d,p,start,count,g_draw);
@@ -1083,11 +1105,17 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
+    const bool source_scene_open=g_original_scene_open.load(
+        std::memory_order_relaxed) &&
+        g_original_scene_owner_thread.load(std::memory_order_relaxed)==
+        GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,2,p,count,caller)?
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
     RecordOriginalSourceResult(witness,hr,caller,2u,
-                               source_frame,source_ordinal);
+                               source_frame,source_ordinal,
+                               source_scene,source_scene_open);
     TrackOriginalD3D9DrawResult(hr,2u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexed(d,p,base,min,num,start,count,g_draw_indexed);
@@ -1106,11 +1134,17 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
+    const bool source_scene_open=g_original_scene_open.load(
+        std::memory_order_relaxed) &&
+        g_original_scene_owner_thread.load(std::memory_order_relaxed)==
+        GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,3,p,count,caller)?
         ObserveUP(d,3,p,count,caller,verts,stride):0u;
     const HRESULT hr=g_draw_up(d,p,count,verts,stride);
     RecordOriginalSourceResult(witness,hr,caller,3u,
-                               source_frame,source_ordinal);
+                               source_frame,source_ordinal,
+                               source_scene,source_scene_open);
     TrackOriginalD3D9DrawResult(hr,3u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorDraw(d,p,count,verts,stride,CallerRva(caller),g_draw_up);
@@ -1129,14 +1163,44 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
+    const bool source_scene_open=g_original_scene_open.load(
+        std::memory_order_relaxed) &&
+        g_original_scene_owner_thread.load(std::memory_order_relaxed)==
+        GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,4,p,count,caller)?
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num):0u;
     const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
     RecordOriginalSourceResult(witness,hr,caller,4u,
-                               source_frame,source_ordinal);
+                               source_frame,source_ordinal,
+                               source_scene,source_scene_open);
     TrackOriginalD3D9DrawResult(hr,4u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexedUP(d,p,min,num,count,idx,fmt,verts,stride,g_draw_indexed_up);
+    return hr;
+}
+// Optional read-only scene boundary hooks: never add a scene or change
+// an original COM HRESULT. A failed original scene call is not admitted.
+HRESULT STDMETHODCALLTYPE BeginSceneHook(IDirect3DDevice9* d){
+    const HRESULT hr=g_begin_scene(d);
+    // The original game EXE owns the scene; a diagnostic or replay DLL
+    // cannot manufacture a native source scene boundary.
+    if(g_primary_device.Owns(d) && CallerRva(_ReturnAddress()) &&
+       SUCCEEDED(hr)){
+        g_original_scene_ordinal.fetch_add(1u,std::memory_order_relaxed);
+        g_original_scene_owner_thread.store(
+            GetCurrentThreadId(),std::memory_order_release);
+        g_original_scene_open.store(true,std::memory_order_release);
+    }
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE EndSceneHook(IDirect3DDevice9* d){
+    const HRESULT hr=g_end_scene(d);
+    if(g_primary_device.Owns(d) && CallerRva(_ReturnAddress()) &&
+       SUCCEEDED(hr)){
+        g_original_scene_open.store(false,std::memory_order_release);
+        g_original_scene_owner_thread.store(0u,std::memory_order_release);
+    }
     return hr;
 }
 HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
@@ -1194,6 +1258,9 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     }
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
     g_original_frame_draw_ordinal.exchange(0u,std::memory_order_relaxed);
+    g_original_scene_ordinal.exchange(0u,std::memory_order_relaxed);
+    g_original_scene_open.store(false,std::memory_order_release);
+    g_original_scene_owner_thread.store(0u,std::memory_order_release);
     // Native replay must also drain the *original* source-family counters.
     // Previously these only reset in passive 2D mode, so a long VR session
     // accumulated lifetime totals instead of per-Present evidence.
@@ -1257,6 +1324,9 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
                                      D3DPRESENT_PARAMETERS* pp){
     if(!g_primary_device.Owns(d))return g_reset(d,pp);
     g_original_frame_draw_ordinal.store(0u,std::memory_order_relaxed);
+    g_original_scene_ordinal.store(0u,std::memory_order_relaxed);
+    g_original_scene_open.store(false,std::memory_order_release);
+    g_original_scene_owner_thread.store(0u,std::memory_order_release);
     m2vr::drawprobe::NextProjectDrawEpoch();
     Model2VR_DiscardPendingWorldOnReset();
     if(g_native_stereo)m2vr::daytona::ResetResources();
@@ -1285,6 +1355,19 @@ bool HookDevice(IDirect3DDevice9* dev){
         Hook(vtable[34],reinterpret_cast<void*>(&StretchRectHook),g_stretch_rect);
     const bool fill=!g_native_stereo ||
         Hook(vtable[35],reinterpret_cast<void*>(&ColorFillHook),g_color_fill);
+    // Scene boundary observation is optional: if either COM hook cannot
+    // be installed, rollback BOTH and mark scene source unknown. This
+    // must never prevent the normal original game/mono fallback path.
+    const bool sb=Hook(
+        vtable[41],reinterpret_cast<void*>(&BeginSceneHook),g_begin_scene);
+    const bool se=Hook(
+        vtable[42],reinterpret_cast<void*>(&EndSceneHook),g_end_scene);
+    if(!(sb&&se)){
+        if(sb){MH_DisableHook(vtable[41]);MH_RemoveHook(vtable[41]);}
+        if(se){MH_DisableHook(vtable[42]);MH_RemoveHook(vtable[42]);}
+        g_begin_scene=nullptr;g_end_scene=nullptr;
+        m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
+    }
     if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
@@ -1294,6 +1377,11 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
         if(iu){MH_DisableHook(vtable[84]);MH_RemoveHook(vtable[84]);}
         if(reset){MH_DisableHook(vtable[16]);MH_RemoveHook(vtable[16]);}
+        if(sb&&se){
+            MH_DisableHook(vtable[41]);MH_RemoveHook(vtable[41]);
+            MH_DisableHook(vtable[42]);MH_RemoveHook(vtable[42]);
+        }
+        g_begin_scene=nullptr;g_end_scene=nullptr;
         if(g_native_stereo&&clear){MH_DisableHook(vtable[43]);MH_RemoveHook(vtable[43]);}
         if(g_native_stereo&&update){MH_DisableHook(vtable[30]);MH_RemoveHook(vtable[30]);}
         if(g_native_stereo&&stretch){MH_DisableHook(vtable[34]);MH_RemoveHook(vtable[34]);}
@@ -1311,6 +1399,7 @@ bool HookDevice(IDirect3DDevice9* dev){
     // Vtable methods are shared by D3D9 devices. Bind the real first
     // successfully hooked game device before declaring the hook ready.
     if(!g_primary_device.BindOnce(dev))return false;
+    g_original_scene_hooks_ready.store(sb&&se,std::memory_order_release);
     g_device_installed.store(true,std::memory_order_release);
     m2vr::LogEvent("model2_d3d9_device_hooks_ready");
     return true;

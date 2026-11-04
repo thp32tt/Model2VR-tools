@@ -30,6 +30,7 @@ JOINS = {
 META = {
     "model2_d3d9_up_source_fvf": "fvf",
     "model2_d3d9_source_draw_phase": "draw_phase",
+    "model2_d3d9_source_scene_phase": "scene_phase",
     "model2_d3d9_up_layout_frame": "layout_frame",
     "model2_d3d9_source_pass_context": "context",
     "model2_d3d9_cpu_up_matrix_identity": "matrix",
@@ -130,6 +131,11 @@ def audit_csv(path):
             kind = rec.get("kind")
             fvf_data = rec.get("fvf")
             phase = rec.get("draw_phase")
+            scene = rec.get("scene_phase")
+            scene_matches = (scene is None or
+                             (scene[0] == frame and
+                              0 <= scene[1] <= 100_000 and
+                              scene[2] in (0, 1)))
             phase_matches = (
                 phase is not None and phase[0] == frame and
                 0 < phase[1] <= 10_000_000 and
@@ -147,7 +153,8 @@ def audit_csv(path):
                 rec.get("family") != family or caller != result_caller or
                 not caller or family not in (3, 4) or
                 not source_layout_matches or
-                (phase is not None and not phase_matches)):
+                (phase is not None and not phase_matches) or
+                not scene_matches):
                 status = "source_identity_or_frame_mismatch"
             elif draw_hresult & 0x80000000:
                 status = "original_draw_failed"
@@ -163,13 +170,24 @@ def audit_csv(path):
         kind = rec.get("kind", "unknown_source")
         counts["source_kind_" + kind] += 1
         if status == "original_source_draw_and_present_succeeded":
+            if rec.get("scene_phase") is None:
+                counts["original_scene_phase_missing"] += 1
+            elif rec["scene_phase"][2] != 1 or rec["scene_phase"][1] == 0:
+                counts["original_scene_phase_inactive"] += 1
+            else:
+                counts["original_scene_phase_attested"] += 1
             if rec.get("draw_phase") is None:
                 counts["physical_draw_phase_missing"] += 1
             else:
                 counts["physical_draw_phase_authenticated"] += 1
             # Historical logs are readable, but without an original phase
             # witness cannot enter the phase-attested CPU camera shortlist.
-            if rec.get("draw_phase") is not None and camera_joined(rec, frame):
+            if (rec.get("draw_phase") is not None and
+                    rec.get("scene_phase") is not None and
+                    rec["scene_phase"][0] == frame and
+                    rec["scene_phase"][1] > 0 and
+                    rec["scene_phase"][2] == 1 and
+                    camera_joined(rec, frame)):
                 counts["same_witness_cpu_camera_present_candidate"] += 1
                 key = (kind, family, caller)
                 if key not in caller_frames and len(caller_frames) >= MAX_CALLERS:
@@ -184,6 +202,11 @@ def audit_csv(path):
                     rec["draw_phase"][1] if rec.get("draw_phase") and
                     result is not None and
                     rec["draw_phase"][0] == frame else None),
+                "original_scene_ordinal": (
+                    rec["scene_phase"][1] if rec.get("scene_phase") and
+                    result is not None and
+                    rec["scene_phase"][0] == frame and
+                    rec["scene_phase"][2] == 1 else None),
                 "original_draw_family": family,
                 "original_gpu_caller_rva_hex": f"0x{caller:08x}",
                 "source_kind": kind,
@@ -281,7 +304,16 @@ def audit_csv(path):
                 continue
             if event in META:
                 key = META[event]
-                if key == "draw_phase":
+                if key == "scene_phase":
+                    # Only an actual successful original BeginScene can
+                    # provide an active scene; inactive remains diagnostic.
+                    if (not a1 or a1 > 0xffffffff or
+                        a2 > 100_000 or a3 not in (0, 1) or
+                        (a3 == 1 and a2 == 0) or
+                        a1 <= observed_present_frame):
+                        raise ValueError("invalid original D3D9 scene phase")
+                    once(rec, key, (a1, a2, a3), a0)
+                elif key == "draw_phase":
                     if (not a1 or a1 > 0xffffffff or
                         not 0 < a2 <= 10_000_000 or
                         halves(a3)[1] not in (1, 2, 3, 4) or

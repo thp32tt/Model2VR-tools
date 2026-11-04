@@ -39,6 +39,8 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0x12345678, 0, 0x1008),
             event("model2_d3d9_cpu_up_geometry_command", witness,
                   0x120, 0, 0x12345678),
+            event("model2_d3d9_source_scene_phase", witness,
+                  frame, 1, 1),
             event("model2_d3d9_source_draw_phase", witness,
                   frame, 12, pack(caller, 3)),
             event("model2_d3d9_up_original_result", witness,
@@ -55,6 +57,8 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(
             got["counts"]["same_witness_cpu_camera_present_candidate"], 1)
         self.assertEqual(got["counts"]["physical_draw_phase_authenticated"], 1)
+        self.assertEqual(got["counts"]["original_scene_phase_attested"], 1)
+        self.assertEqual(got["examples"][0]["original_scene_ordinal"], 1)
         self.assertEqual(got["examples"][0]["original_draw_ordinal"], 12)
         self.assertEqual(got["physically_presented_same_witness_camera_callers"][0]
                          ["first_original_draw_ordinal"], 12)
@@ -119,6 +123,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             event("model2_d3d9_up_source_fvf", 31, 0x142, 24, 7),
             event("model2_world_up_candidate", 31, 0x1111,
                   0x142, pack(4, 24)),
+            event("model2_d3d9_source_scene_phase", 31, 7, 1, 1),
             event("model2_d3d9_source_draw_phase", 31,
                   7, 25, pack(0x1111, 4)),
             event("model2_d3d9_up_original_result", 31, 0,
@@ -137,6 +142,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0x12345678, 0, 0x1010),
             event("model2_d3d9_cpu_shader_geometry_command", 32,
                   0x44, 0, 0x12345678),
+            event("model2_d3d9_source_scene_phase", 32, 8, 2, 1),
             event("model2_d3d9_source_draw_phase", 32,
                   8, 26, pack(0x2222, 3)),
             event("model2_d3d9_up_original_result", 32, 0,
@@ -185,6 +191,27 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                 event("model2_d3d9_original_present_result", 7, 0, 1, 0),
                 event("model2_d3d9_original_present_result", 7, 0, 1, 0),
             ])
+
+    def test_missing_or_inactive_original_scene_cannot_claim_camera(self):
+        original = self.projected()
+        got = self.report([e for e in original
+                           if e[0] != "model2_d3d9_source_scene_phase"] +
+                          [event("model2_d3d9_original_present_result",
+                                 7, 0, 1, 0)])
+        self.assertEqual(got["counts"]["original_scene_phase_missing"], 1)
+        self.assertFalse(got["physically_presented_same_witness_camera_callers"])
+        inactive = list(original)
+        inactive[-3] = event("model2_d3d9_source_scene_phase", 21, 7, 1, 0)
+        got = self.report(inactive + [
+            event("model2_d3d9_original_present_result", 7, 0, 1, 0)])
+        self.assertEqual(got["counts"]["original_scene_phase_inactive"], 1)
+        self.assertFalse(got["physically_presented_same_witness_camera_callers"])
+        wrong = list(original)
+        wrong[-3] = event("model2_d3d9_source_scene_phase", 21, 8, 1, 1)
+        got = self.report(wrong + [
+            event("model2_d3d9_original_present_result", 7, 0, 1, 0)])
+        self.assertEqual(got["counts"]["source_identity_or_frame_mismatch"], 1)
+        self.assertFalse(got["physically_presented_same_witness_camera_callers"])
 
     def test_missing_original_phase_cannot_claim_phase_attested_camera(self):
         events = [r for r in self.projected()

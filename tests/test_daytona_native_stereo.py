@@ -75,6 +75,24 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(hooks.count("RecordOriginalSourceResult(witness,hr,caller,"),4)
         self.assertIn("const HRESULT original_result=g_present(d,a,b,w,dirty);",hooks)
 
+    def test_original_exe_scene_boundaries_are_optional_and_readonly(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        self.assertIn("using SceneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);", hooks)
+        self.assertIn("vtable[41],reinterpret_cast<void*>(&BeginSceneHook)", hooks)
+        self.assertIn("vtable[42],reinterpret_cast<void*>(&EndSceneHook)", hooks)
+        self.assertEqual(hooks.count("const HRESULT hr=g_begin_scene(d);"),1)
+        self.assertEqual(hooks.count("const HRESULT hr=g_end_scene(d);"),1)
+        self.assertEqual(hooks.count("CallerRva(_ReturnAddress())"),2)
+        self.assertIn("g_original_scene_hooks_ready.store(sb&&se", hooks)
+        self.assertIn('m2vr::LogEvent("model2_d3d9_source_scene_phase"', hooks)
+        self.assertIn("if(!(sb&&se)){", hooks)
+        self.assertIn("if(sb){MH_DisableHook(vtable[41]);MH_RemoveHook(vtable[41]);}", hooks)
+        self.assertIn("if(se){MH_DisableHook(vtable[42]);MH_RemoveHook(vtable[42]);}", hooks)
+        self.assertIn("g_original_scene_ordinal.exchange(0u", hooks)
+        self.assertIn("g_original_scene_open.store(false", hooks)
+        self.assertEqual(hooks.count("source_scene=g_original_scene_ordinal.load("),4)
+        self.assertEqual(hooks.count("source_scene,source_scene_open);"),4)
+
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):
         workflow=(ROOT/".github/workflows/daytona-native-stereo.yml").read_text("utf-8")
         script=(ROOT/"scripts/Analyze-Daytona-UP-Source.cmd").read_text("utf-8")

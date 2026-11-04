@@ -137,3 +137,28 @@ longer qualifies cross-session candidate lists. The report exposes only
 bounded local Draw ordinal ranges; even consistent race-only phase order
 is not proof of gameplay world/HUD, camera axes, units-per-meter or Quest 3
 runtime. Preserve original mono fallback, real simulation and wheel FFB.
+
+## Original D3D9 BeginScene/EndScene epoch verification (2026-11-05)
+
+The optional original Win32 primary-device scene hooks intercept COM
+`BeginScene` (vtable slot 41) and `EndScene` (slot 42) **once only**,
+return exactly the actual original HRESULT and update local scene state
+only when the successful COM call is owned by the authentic in-EXE
+caller. The independent primary-device producer and wheel FFB are not
+modified. Scene hooks are an optional pair: if either installation fails,
+**both are rolled back**, rendering proceeds through existing hooks,
+and no apparently authenticated scene provenance is emitted. A successful
+original Present or Reset closes the per-frame scene ordinal.
+
+Each sampled actual physical original Draw witness now includes
+`model2_d3d9_source_scene_phase` (witness, original next-Present ID,
+successful original BeginScene ordinal, active original scene flag).
+The local-only UP and VB/IB reports reject wrong scene/frame metadata,
+failed/closed or missing original scene provenance as an authenticated
+camera candidate, and the two-race-vs-nonrace comparison demands **two
+scene-attested** physically presented same-Draw material/CPU projector
+frames per independent race capture. Previous files remain readable for
+ordinary COM outcome diagnostics, but cannot qualify scene-attested
+candidate admission. Neither an original BeginScene nor a stable scene
+ordinal proves a specific race World3D pass, camera axes, HUD boundary,
+physical scale or Quest3 HMD success. Keep source logs and REA private.

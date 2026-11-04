@@ -19,6 +19,7 @@ NAMES = {
     "model2_d3d9_vb_source", "model2_d3d9_vb_stream",
     "model2_d3d9_vb_original_result",
     "model2_d3d9_source_draw_phase",
+    "model2_d3d9_source_scene_phase",
     "model2_d3d9_vb_draw_args", "model2_d3d9_ib_source",
     "model2_d3d9_vb_camera", "model2_d3d9_vb_camera_unknown",
     "model2_d3d9_vb_texture",
@@ -533,7 +534,15 @@ def audit_csv(path):
                     raise ValueError("witness limit exceeded")
                 witnesses[witness] = {}
             fields = witnesses[witness]
-            if event == "model2_d3d9_source_draw_phase":
+            if event == "model2_d3d9_source_scene_phase":
+                frame, scene_index, active = values
+                if (not 0 < frame <= 0xFFFFFFFF or
+                        scene_index > 100_000 or active not in (0, 1) or
+                        (active == 1 and scene_index == 0)):
+                    raise ValueError("invalid original scene phase")
+                store_original_draw_witness_field(
+                    fields, "source_scene_phase", values, witness)
+            elif event == "model2_d3d9_source_draw_phase":
                 frame, ordinal, packed = values
                 phase_caller, phase_family = halves(packed)
                 if (not 0 < frame <= 0xFFFFFFFF or
@@ -672,6 +681,12 @@ def audit_csv(path):
         "original_draw_failure_witnesses": 0,
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
+        "original_scene_phase_attested_witnesses": 0,
+        "original_scene_phase_missing_witnesses": 0,
+        "original_scene_phase_inactive_witnesses": 0,
+        "original_scene_phase_inconsistent_witnesses": 0,
+        "original_scene_ordinals": set(),
+        "original_scene_attested_physical_material_present_frames": set(),
         "original_draw_phase_attested_witnesses": 0,
         "original_draw_phase_missing_witnesses": 0,
         "original_draw_phase_inconsistent_witnesses": 0,
@@ -706,7 +721,8 @@ def audit_csv(path):
                                    "source_depth_cull",
                                    "source_vertex_pipeline",
                                    "source_fill",
-                                   "source_phase"}):
+                                   "source_phase",
+                                   "source_scene_phase"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -746,6 +762,20 @@ def audit_csv(path):
                 phase_attested = True
                 entry["original_draw_phase_attested_witnesses"] += 1
                 entry["original_draw_phase_ordinals"].add(ordinal)
+        scene = data.get("source_scene_phase")
+        scene_attested = False
+        if scene is None:
+            entry["original_scene_phase_missing_witnesses"] += 1
+        else:
+            scene_frame, scene_index, scene_active = scene
+            if scene_frame != present_frame:
+                entry["original_scene_phase_inconsistent_witnesses"] += 1
+            elif scene_active == 0 or scene_index == 0:
+                entry["original_scene_phase_inactive_witnesses"] += 1
+            else:
+                scene_attested = True
+                entry["original_scene_phase_attested_witnesses"] += 1
+                entry["original_scene_ordinals"].add(scene_index)
         # A pre-Draw CPU projector match is not evidence of a successfully
         # executed original COM Draw until its post-call HRESULT matches.
         original_success = False
@@ -1012,6 +1042,9 @@ def audit_csv(path):
                 if phase_attested:
                     entry["original_phase_attested_physical_material_present_frames"].add(
                         present_frame)
+                    if scene_attested:
+                        entry["original_scene_attested_physical_material_present_frames"].add(
+                            present_frame)
             # This qualifies a SOURCE MATERIAL candidate only. A private
             # authenticated game-world owner, camera axis/units and HMD test
             # are still all required before enabling actual XR replay.
@@ -1063,6 +1096,14 @@ def audit_csv(path):
             value["original_physically_presented_material_present_frames"])
         record["distinct_phase_attested_physically_presented_material_present_frame_count"] = len(
             value["original_phase_attested_physical_material_present_frames"])
+        record["distinct_scene_attested_physically_presented_material_present_frame_count"] = len(
+            value["original_scene_attested_physical_material_present_frames"])
+        scene_ordinals = value["original_scene_ordinals"]
+        record["original_scene_ordinal_min"] = (
+            min(scene_ordinals) if scene_ordinals else None)
+        record["original_scene_ordinal_max"] = (
+            max(scene_ordinals) if scene_ordinals else None)
+        record["distinct_original_scene_ordinals"] = len(scene_ordinals)
         ordinals = value["original_draw_phase_ordinals"]
         record["original_draw_ordinal_min"] = min(ordinals) if ordinals else None
         record["original_draw_ordinal_max"] = max(ordinals) if ordinals else None
@@ -1079,6 +1120,8 @@ def audit_csv(path):
                         "original_successful_projected_material_present_frames",
                         "original_physically_presented_material_present_frames",
                         "original_phase_attested_physical_material_present_frames",
+                        "original_scene_attested_physical_material_present_frames",
+                        "original_scene_ordinals",
                         "original_draw_phase_ordinals",
                        "same_witness_joint_present_frames"):
                 continue

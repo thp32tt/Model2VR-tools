@@ -77,6 +77,7 @@ def _enough_original_source(source):
         "distinct_successful_projected_material_present_frame_count",
         "distinct_physically_presented_material_present_frame_count",
         "distinct_phase_attested_physically_presented_material_present_frame_count",
+        "distinct_scene_attested_physically_presented_material_present_frame_count",
         "distinct_same_witness_joint_present_frame_count",
         "distinct_context_present_frame_count",
     ):
@@ -89,6 +90,9 @@ def _enough_original_source(source):
         "original_draw_result_inconsistent_witnesses",
         "original_draw_phase_missing_witnesses",
         "original_draw_phase_inconsistent_witnesses",
+        "original_scene_phase_missing_witnesses",
+        "original_scene_phase_inactive_witnesses",
+        "original_scene_phase_inconsistent_witnesses",
         "original_present_failed_witnesses",
         "original_present_missing_witnesses",
     ):
@@ -104,6 +108,14 @@ def _enough_original_source(source):
             type(distinct) is not int or
             not 0 < lo <= hi <= 10_000_000 or
             not 0 < distinct <= hi - lo + 1):
+        return False
+    scene_lo = source.get("original_scene_ordinal_min")
+    scene_hi = source.get("original_scene_ordinal_max")
+    scene_distinct = source.get("distinct_original_scene_ordinals")
+    if (type(scene_lo) is not int or type(scene_hi) is not int or
+            type(scene_distinct) is not int or
+            not 0 < scene_lo <= scene_hi <= 100_000 or
+            not 0 < scene_distinct <= scene_hi - scene_lo + 1):
         return False
     for key, allowed in (
         ("original_source_vertex_pipeline_status", {"supported"}),
@@ -168,6 +180,11 @@ def compare_sessions(race_reports, nonrace_reports):
                 "per_race_original_draw_ordinal_ranges": [
                     [session[key]["original_draw_ordinal_min"],
                      session[key]["original_draw_ordinal_max"]]
+                    for session in race
+                ],
+                "per_race_original_scene_ordinal_ranges": [
+                    [session[key]["original_scene_ordinal_min"],
+                     session[key]["original_scene_ordinal_max"]]
                     for session in race
                 ],
                 "evidence": "phase_attested_same_witness_source_candidate_only",

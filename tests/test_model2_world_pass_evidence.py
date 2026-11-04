@@ -16,6 +16,13 @@ def witness(cpu="0x004bb400", count=3):
         "original_draw_result_inconsistent_witnesses": 0,
         "distinct_physically_presented_material_present_frame_count": count,
         "distinct_phase_attested_physically_presented_material_present_frame_count": count,
+        "distinct_scene_attested_physically_presented_material_present_frame_count": count,
+        "original_scene_phase_missing_witnesses": 0,
+        "original_scene_phase_inactive_witnesses": 0,
+        "original_scene_phase_inconsistent_witnesses": 0,
+        "original_scene_ordinal_min": 1,
+        "original_scene_ordinal_max": 2,
+        "distinct_original_scene_ordinals": 2,
         "original_draw_phase_missing_witnesses": 0,
         "original_draw_phase_inconsistent_witnesses": 0,
         "original_draw_ordinal_min": 12,
@@ -58,6 +65,9 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         self.assertEqual(got["candidates"][0]
                          ["per_race_original_draw_ordinal_ranges"],
                          [[12, 20], [12, 20]])
+        self.assertEqual(got["candidates"][0]
+                         ["per_race_original_scene_ordinal_ranges"],
+                         [[1, 2], [1, 2]])
         self.assertEqual(got["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(got["hmd_runtime_validation"], "UNTESTED")
 
@@ -107,6 +117,13 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             {"original_draw_ordinal_max": 10},
             {"original_draw_ordinal_max": 10, "original_draw_ordinal_min": 20},
             {"distinct_original_draw_ordinals": 0},
+            {"distinct_scene_attested_physically_presented_material_present_frame_count": 0},
+            {"original_scene_phase_missing_witnesses": 1},
+            {"original_scene_phase_inactive_witnesses": 1},
+            {"original_scene_phase_inconsistent_witnesses": 1},
+            {"original_scene_ordinal_min": None},
+            {"original_scene_ordinal_min": 3, "original_scene_ordinal_max": 2},
+            {"distinct_original_scene_ordinals": 0},
         ):
             with self.subTest(damaged=damaged):
                 source = witness()

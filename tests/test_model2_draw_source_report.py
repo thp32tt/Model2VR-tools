@@ -31,6 +31,7 @@ class SourceAuditTests(unittest.TestCase):
                  pack(1, 0x104), pack(4096, 24)),
                 ("model2_d3d9_source_draw_phase", 201, 7, 12,
                  pack(0x1234, 1)),
+                ("model2_d3d9_source_scene_phase", 201, 7, 1, 1),
                 ("model2_d3d9_vb_original_result", 201, 0, 0x1234,
                  pack(7, 1)),
                 ("model2_d3d9_original_present_result", 7, 0, 1, 0),
@@ -38,6 +39,9 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p, events)
             src = REPORT.audit_csv(p)["sources"][0]
             self.assertEqual(src["original_draw_phase_attested_witnesses"], 1)
+            self.assertEqual(src["original_scene_phase_attested_witnesses"], 1)
+            self.assertEqual(src["original_scene_ordinal_min"], 1)
+            self.assertEqual(src["distinct_original_scene_ordinals"], 1)
             self.assertEqual(src["original_draw_phase_missing_witnesses"], 0)
             self.assertEqual(src["original_draw_ordinal_min"], 12)
             self.assertEqual(src["original_draw_ordinal_max"], 12)
@@ -61,6 +65,41 @@ class SourceAuditTests(unittest.TestCase):
                     src["original_draw_phase_inconsistent_witnesses"], 1)
                 self.assertEqual(
                     src["original_draw_result_inconsistent_witnesses"], 1)
+
+    def test_unknown_failed_or_outside_original_scene_cannot_attest_world(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "scene_phase.csv"
+            base = [
+                ("model2_d3d9_vb_present_frame", 301, 7, 1, 0),
+                ("model2_d3d9_vb_source", 301, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_source_draw_phase", 301, 7, 18,
+                 pack(0x1234, 1)),
+                ("model2_d3d9_vb_original_result", 301, 0, 0x1234,
+                 pack(7, 1)),
+                ("model2_d3d9_original_present_result", 7, 0, 1, 0),
+            ]
+            self.write_log(p, base)
+            src = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["original_scene_phase_missing_witnesses"], 1)
+            self.assertIsNone(src["original_scene_ordinal_min"])
+            self.write_log(p, base[:3] + [
+                ("model2_d3d9_source_scene_phase", 301, 7, 1, 0)
+            ] + base[3:])
+            src = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["original_scene_phase_inactive_witnesses"], 1)
+            self.assertEqual(src["original_scene_phase_attested_witnesses"], 0)
+            self.write_log(p, base[:3] + [
+                ("model2_d3d9_source_scene_phase", 301, 8, 1, 1)
+            ] + base[3:])
+            src = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(
+                src["original_scene_phase_inconsistent_witnesses"], 1)
+            self.write_log(p, base[:3] + [
+                ("model2_d3d9_source_scene_phase", 301, 7, 0, 1)
+            ] + base[3:])
+            with self.assertRaisesRegex(ValueError, "invalid original scene phase"):
+                REPORT.audit_csv(p)
 
     def test_up_and_vb_cannot_reuse_same_original_draw_ordinal(self):
         with tempfile.TemporaryDirectory() as tmp:
