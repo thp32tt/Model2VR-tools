@@ -57,8 +57,10 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
     // match the independent per-eye Gouraud/5-plane raster. The source
     // World/View matrix alone cannot reproduce GPU vertex blending or user
     // clip planes. Query the ACTUAL original Draw device; fail closed.
-    DWORD shade=0,clipping=0,clip_planes=0,vertex_blend=0,indexed_blend=0;
-    if(FAILED(d->GetRenderState(D3DRS_SHADEMODE,&shade)) ||
+    DWORD shade=0,clipping=0,clip_planes=0,vertex_blend=0,indexed_blend=0,fill=0;
+    if(FAILED(d->GetRenderState(D3DRS_FILLMODE,&fill)) ||
+       !m2vr::drawprobe::OriginalFilledTriangleEquivalent(fill) ||
+       FAILED(d->GetRenderState(D3DRS_SHADEMODE,&shade)) ||
        FAILED(d->GetRenderState(D3DRS_CLIPPING,&clipping)) ||
        FAILED(d->GetRenderState(D3DRS_CLIPPLANEENABLE,&clip_planes)) ||
        FAILED(d->GetRenderState(D3DRS_VERTEXBLEND,&vertex_blend)) ||
