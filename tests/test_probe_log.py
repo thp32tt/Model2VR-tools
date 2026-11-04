@@ -72,6 +72,54 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(summary["d3d9"]["draw_origin_samples_per_frame"]["1"], 2)
         self.assertEqual(summary["d3d9"]["external_or_unknown_caller_samples"], 1)
 
+    def test_original_up_material_requires_same_draw_fvf_and_present(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "original_up_material.csv"
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
+                rows = [
+                    ("model2_d3d9_up_source_fvf", 22, 0x144, 28, 7),
+                    ("model2_d3d9_up_meta", 22, 7, 0x123, (3 << 32) | 28),
+                    ("model2_d3d9_source_stage0_color", 22,
+                     (4 << 32) | 2, 0, (0x144 << 32) | 28),
+                    ("model2_d3d9_source_stage0_alpha", 22,
+                     (4 << 32) | 2, 0, (0x144 << 32) | 28),
+                    ("model2_d3d9_source_stage1_specular", 22, 1, 1, 0),
+                    # Wrong original next-Present frame may have identical
+                    # caller and material but MUST NOT be correlated.
+                    ("model2_d3d9_up_source_fvf", 23, 0x144, 28, 8),
+                    ("model2_d3d9_up_meta", 23, 7, 0x123, (3 << 32) | 28),
+                    ("model2_d3d9_source_stage0_color", 23,
+                     (4 << 32) | 2, 0, (0x144 << 32) | 28),
+                    ("model2_d3d9_source_stage0_alpha", 23,
+                     (4 << 32) | 2, 0, (0x144 << 32) | 28),
+                    ("model2_d3d9_source_stage1_specular", 23, 1, 1, 0),
+                    # Same frame but stale source stride is equally invalid.
+                    ("model2_d3d9_up_source_fvf", 24, 0x144, 28, 7),
+                    ("model2_d3d9_up_meta", 24, 7, 0x123, (4 << 32) | 28),
+                    ("model2_d3d9_source_stage0_color", 24,
+                     (4 << 32) | 2, 0, (0x144 << 32) | 24),
+                    ("model2_d3d9_source_stage0_alpha", 24,
+                     (4 << 32) | 2, 0, (0x144 << 32) | 28),
+                    ("model2_d3d9_source_stage1_specular", 24, 1, 1, 0),
+                ]
+                for seq, row in enumerate(rows, 1):
+                    writer.writerow([seq, seq + 10, 7, *row])
+            report = MODULE.analyze(path)
+        material = report["d3d9"]
+        counts = material["original_up_material_stage_status"]
+        self.assertEqual(counts["same_witness_stage_candidate"], 1)
+        self.assertEqual(counts["source_fvf_frame_or_stride_mismatch"], 1)
+        self.assertEqual(counts["material_fvf_or_stride_mismatch"], 1)
+        examples = material["original_up_material_stage_examples"]
+        self.assertEqual(len(examples), 1)
+        self.assertEqual(examples[0]["original_present_frame"], 7)
+        self.assertEqual(examples[0]["original_fvf"], "0x00000144")
+        self.assertEqual(examples[0]["original_stride"], 28)
+        self.assertEqual(examples[0]["world_pass_proof"], "NOT_ESTABLISHED")
+        self.assertEqual(examples[0]["color_stage"], [4, 2, 0])
+
     def test_in_process_cpu_draw_join_remains_candidate_only(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "join.csv"
