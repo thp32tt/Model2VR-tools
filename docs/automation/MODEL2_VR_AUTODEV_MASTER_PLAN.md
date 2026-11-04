@@ -504,3 +504,54 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
   does not masquerade as visible game pixels. Independent `GameStereo`
   remains unaffected. Source tests compile in Win32 and Win64;
   Quest3/VDXR runtime remains UNTESTED.
+
+## 2026-11-05 continued source milestone — compact original Daytona pixels and tracked HMD cinema quad
+
+- **Source-bearing material SHA:** `cc2d256b0361832ad7d22a86daa67dafc6dd4a48`
+  on `thp32tt/Model2VR-tools@main` (all source commits from
+  `154b0e26` through `cc2d256b` are ONE connected source milestone,
+  not independent repeated points).
+- **Implemented actual x86→x64 game-pixel path:** New original
+  `CompactMono=4` carries just one actual pre-Present D3D9 backbuffer
+  (4MiB rather than cloning 8MiB), preserving the existing 64-byte
+  seqlock/header ABI, exact original successful Present frame ID and
+  game CPU/FFB ownership. New Win64 host and native CTest policy require
+  zero right-eye payload for the compact kind, reject stale previous
+  right-eye pixels, and require two full independent eyes for authentic
+  pose-tagged `GameStereo`. Legacy `GameMonoFallback=3` keeps its old
+  two-eye packet semantics. Mixed old-host/new-x86-DLL installations are
+  unsupported; use a matched packaged pair.
+- **HMD spatial implementation:** A stationary `XrCompositionLayerQuad`
+  is placed once from the actual two-eye HMD center/orientation at the
+  start of a mono game video session, not from a guessed LOCAL-space
+  origin. Initial yaw sets heading while tilt/roll does not pitch the
+  2D screen into the floor. Original-game 2D distance/width are bounded,
+  user-configurable in the packaged `daytona_native_stereo.ini`;
+  the true game-world `GameStereo` projection is not modified.
+  Loss of tracking and source-mode changes invalidate the appropriate
+  anchor; invalid HMD geometry logs a distinct rejection.
+- **Source frame timing correctness:** When fresh x86 status says the
+  original game switched from true `GameStereo` to published mono, the
+  x64 host revokes any older native-eye pair immediately. The original
+  2D path gets a strictly bounded 250ms hold to absorb slower GPU
+  readbacks; independent real stereoscopy still uses 125ms. This
+  reduces misleading two-colour frame flicker without turning a
+  frozen source into false live game output.
+- **Validation:** a portable native GCC 14.2 compile/run against the
+  exact new `daytona_mono_quad_anchor.hpp` and its regression test
+  exposed a quaternion-sum norm bug; corrected source SHA
+  `cc2d256b0361832ad7d22a86daa67dafc6dd4a48`
+  compiled and ran **PASS** (process exit code 0). Test payload and
+  script were removed from N100 after this single tiny check.
+  Windows x86, Windows x64, bundled Daytona package, Public Python
+  and ModDev CI are **QUEUED / NOT YET VERIFIED** for this material SHA
+  as of this checkpoint. Do not infer source build success or award
+  score without exact SHA CI success. `RUNTIME_VALIDATION=UNTESTED`.
+  No private ROM/REA/EXE assets moved to the public repository.
+- **NEXT:** Authentic privately held Daytona race source evidence must
+  identify one original CPU ProjectVertexToScreen caller + active A/B
+  matrix fingerprint + geometry command + same-Present D3D9 world
+  Draw/RT ownership; derive calibrated axis and game-units-per-meter.
+  Only after that gate may the existing original x86 verified-world
+  bridge publish genuinely head-relative stereo pixels to x64 OpenXR.
+  Unknown HUD/menu/aux/sky stay safe 2D; no OutRun/web modifications.

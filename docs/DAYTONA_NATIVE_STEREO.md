@@ -522,8 +522,10 @@ independent. Runtime headset fidelity is still UNTESTED.
 When the experimental original D3D9 shader-UP source cannot produce a
 verified distinct binocular frame, the x86 producer now captures the actual
 original game's **pre-Present backbuffer**. Only successful original
-Present may publish the same captured image to both eyes under a **new
-`FrameKind::GameMonoFallback` transport identity**. This is a flat live
+Present may publish the captured image under a 2D-only mono transport
+identity. The current matching x86/x64 release publishes
+`FrameKind::CompactMono=4` as a single 4-MiB source, while retaining
+`GameMonoFallback=3` for legacy two-eye mono ABI compatibility. This is a flat live
 image, **not native stereoscopic geometry**. Genuine independently
 rasterized `GameStereo` retains priority; no original game Draw,
 Present, simulation tick or FFB command is replayed. If neither camera
@@ -569,8 +571,9 @@ actual Daytona Quest playback remain UNTESTED.
 
 An original-game 2D fallback is no longer drawn as cloned eye-wide
 `XrCompositionLayerProjection` textures. The Win64 OpenXR host now uses
-a core `XrCompositionLayerQuad` at a fixed location 1.65 metres in front
-of the OpenXR local-space origin. A single uploaded 1024x1024
+a core `XrCompositionLayerQuad` at a location computed 1.65 metres
+from the actual tracked HMD's initial two-eye center and horizontal yaw
+in OpenXR local space. A single uploaded 1024x1024
 aspect-preserved original game image is shown to both eyes as a
 2-metre-wide virtual flat screen. It is explicitly **2D** and does not
 assert head-rotation control of the Daytona camera. Its source channel
@@ -599,3 +602,34 @@ independent stereo `GameStereo` path still uses the original
 source-pose-tagged per-eye projection and never inherits the quad
 geometry. Neither behavior proves a calibrated 6DoF Daytona camera;
 actual HMD RUNTIME_VALIDATION=UNTESTED.
+
+## x86 compact video / x64 OpenXR source matching (2026-11-05)
+
+The same 64-byte IPC header format continues with an **additive**
+`FrameKind::CompactMono=4`. Its payload is exactly one original-game
+RGBA 1024x1024 eye (4MiB) with pose tag zero; there is no valid
+second-eye payload to copy or reuse. The Win64 host uploads one source
+texture into one quad layer, while `GameStereo` still requires two
+independent 4MiB eyes and a precise source pose. Legacy
+`GameMonoFallback=3` remains supported by the new host in the older
+two-buffer layout. An old host which predates `CompactMono=4` safely
+rejects its new packet, so **install both current x86 and x64 binaries
+from the same ZIP**; copying just the game probe DLL can cause the old
+host to show its coloured missing-source diagnostic again.
+
+A tracked initial two-eye pair establishes a stationary, upright
+yaw-only screen. A bug in initial quaternion combination was corrected
+by averaging the two normalized view orientations *before* checking
+the final norm; otherwise the unscaled sum length could wrongly reject
+every normal pair. The exact corrected portable C++ test compiled
+with GCC 14.2 and passed, without performing an emulator or Quest test.
+Source guard additionally revokes a previously cached native
+`GameStereo` frame when the real producer switches to fresh
+`OriginalMonoFallback` status. The 2D fallback can hold up to 250ms
+on a slow original D3D9 readback; genuine stereo still expires at
+125ms and producer failures immediately invalidate earlier frames.
+Neither path presents stale content indefinitely.
+
+**BUILD_VALIDATION:** GitHub Windows/Win64 exact-source workflows for
+`cc2d256b0361832ad7d22a86daa67dafc6dd4a48` were queued when
+this note was written, not verified SUCCESS. **RUNTIME_VALIDATION=UNTESTED**.
