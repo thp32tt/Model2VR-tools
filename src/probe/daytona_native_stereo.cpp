@@ -66,10 +66,14 @@ public:
         shift_=float((std::clamp)(shift,1u,250u))/1000.f;
         first_stereo_published_=false;
         Reset();
+        last_bootstrap_reason_=0u;
+        last_bootstrap_hr_=0u;
     }
     void ResetExternal()noexcept{
         std::lock_guard lock(mu_);
         Reset();
+        last_bootstrap_reason_=0u;
+        last_bootstrap_hr_=0u;
     }
     template<class Replay>
     void DrawAny(IDirect3DDevice9* d,D3DPRIMITIVETYPE primitive,UINT count,
@@ -685,18 +689,41 @@ private:
         aux_original_depth_=depth;aux_original_depth_->AddRef();
         return true;
     }
+    bool RejectBootstrap(std::uint32_t code,HRESULT hr,
+                         const D3DSURFACE_DESC* source=nullptr)noexcept {
+        // No repetitive GPU Draw log storm: one first failure per distinct
+        // code/HRESULT until the original device is reset or recovers.
+        // Code: 1=backbuffer query, 2=backbuffer layout, 3=source RT/DS,
+        // 4=multitarget caps, 5=scale plan, 6=color, 7=depth,
+        // 8=MSAA resolve, 9=CPU staging. HR=0 denotes a policy gate.
+        const auto original_hr=static_cast<std::uint32_t>(hr);
+        if(last_bootstrap_reason_!=code || last_bootstrap_hr_!=original_hr){
+            m2vr::LogEvent("model2_vr_eye_bootstrap_failure",code,
+                original_hr,
+                (std::uint64_t{source?source->Width:width_}<<32)|
+                    (source?source->Height:height_),
+                source?static_cast<std::uint32_t>(source->Format):0u);
+            last_bootstrap_reason_=code;
+            last_bootstrap_hr_=original_hr;
+        }
+        return false;
+    }
     bool Ensure(IDirect3DDevice9* d){
         if(d==device_ && backbuffer_ && eyes_[0].color&&eyes_[1].color)return true;
         Reset();
         IDirect3DSurface9* back=nullptr;
-        if(FAILED(d->GetBackBuffer(0,0,D3DBACKBUFFER_TYPE_MONO,&back)) ||
-           !back)return false;
+        const HRESULT back_hr=d->GetBackBuffer(
+            0,0,D3DBACKBUFFER_TYPE_MONO,&back);
+        if(FAILED(back_hr)||!back)
+            return RejectBootstrap(1u,back_hr);
         D3DSURFACE_DESC desc{};
-        if(FAILED(back->GetDesc(&desc)) ||
+        const HRESULT desc_hr=back->GetDesc(&desc);
+        if(FAILED(desc_hr) ||
            desc.Width<320u||desc.Width>2048u ||
            desc.Height<200u||desc.Height>2048u ||
            (desc.Format!=D3DFMT_A8R8G8B8 && desc.Format!=D3DFMT_X8R8G8B8)){
-            Drop(back);return false;
+            Drop(back);
+            return RejectBootstrap(2u,desc_hr,&desc);
         }
         // Original Daytona rendering can start on a full-size auxiliary
         // render target. Accept its verified format/depth layout; never
@@ -710,15 +737,18 @@ private:
            FAILED(depth->GetDesc(&dd)) ||
            !m2vr::daytona::BootstrapTargetCompatible(
                source_desc,dd,desc)){
-            Drop(depth);Drop(current);Drop(back);return false;
+            Drop(depth);Drop(current);Drop(back);
+            return RejectBootstrap(3u,S_OK,&desc);
         }
         const bool source_is_main=current==back;
         const D3DFORMAT depth_format=dd.Format;
         Drop(current);
         D3DCAPS9 caps{};
-        if(FAILED(d->GetDeviceCaps(&caps)) || caps.NumSimultaneousRTs<1u ||
+        const HRESULT caps_hr=d->GetDeviceCaps(&caps);
+        if(FAILED(caps_hr) || caps.NumSimultaneousRTs<1u ||
            caps.NumSimultaneousRTs>4u){
-            Drop(depth);Drop(back);return false;
+            Drop(depth);Drop(back);
+            return RejectBootstrap(4u,caps_hr,&desc);
         }
         mrt_slots_=caps.NumSimultaneousRTs;
         // If bootstrap began on auxiliary, postpone main DS ownership.
@@ -728,28 +758,41 @@ private:
         backbuffer_=back;device_=d;
         width_=desc.Width;height_=desc.Height;
         if(!readback_scale_.Configure(width_,height_)){
-            Reset();return false;
+            Reset();return RejectBootstrap(5u,S_OK,&desc);
         }
         for(auto& eye:eyes_){
-            if(FAILED(d->CreateRenderTarget(width_,height_,desc.Format,
-                       desc.MultiSampleType,desc.MultiSampleQuality,
-                       FALSE,&eye.color,nullptr)) ||
-               FAILED(d->CreateDepthStencilSurface(width_,height_,depth_format,
-                       desc.MultiSampleType,desc.MultiSampleQuality,
-                       TRUE,&eye.depth,nullptr))){
-                Reset();return false;
+            const HRESULT color_hr=d->CreateRenderTarget(
+                width_,height_,desc.Format,desc.MultiSampleType,
+                desc.MultiSampleQuality,FALSE,&eye.color,nullptr);
+            if(FAILED(color_hr)){
+                Reset();return RejectBootstrap(6u,color_hr,&desc);
             }
-            if(desc.MultiSampleType!=D3DMULTISAMPLE_NONE &&
-               FAILED(d->CreateRenderTarget(width_,height_,desc.Format,
-                       D3DMULTISAMPLE_NONE,0,FALSE,&eye.resolve,nullptr))){
-                Reset();return false;
+            const HRESULT depth_hr=d->CreateDepthStencilSurface(
+                width_,height_,depth_format,desc.MultiSampleType,
+                desc.MultiSampleQuality,TRUE,&eye.depth,nullptr);
+            if(FAILED(depth_hr)){
+                Reset();return RejectBootstrap(7u,depth_hr,&desc);
             }
-            if(FAILED(d->CreateOffscreenPlainSurface(width_,height_,desc.Format,
-                       D3DPOOL_SYSTEMMEM,&eye.staging,nullptr))){
-                Reset();return false;
+            if(desc.MultiSampleType!=D3DMULTISAMPLE_NONE){
+                const HRESULT resolve_hr=d->CreateRenderTarget(
+                    width_,height_,desc.Format,D3DMULTISAMPLE_NONE,0,
+                    FALSE,&eye.resolve,nullptr);
+                if(FAILED(resolve_hr)){
+                    Reset();return RejectBootstrap(8u,resolve_hr,&desc);
+                }
+            }
+            const HRESULT staging_hr=d->CreateOffscreenPlainSurface(
+                width_,height_,desc.Format,D3DPOOL_SYSTEMMEM,
+                &eye.staging,nullptr);
+            if(FAILED(staging_hr)){
+                Reset();return RejectBootstrap(9u,staging_hr,&desc);
             }
         }
         for(auto& pixels:rgba_)pixels.resize(m2vr::transport::kBytesPerEye);
+        // A successfully re-created original D3D9 source clears the cached
+        // failure, so a later device-loss epoch reports the cause again.
+        last_bootstrap_reason_=0u;
+        last_bootstrap_hr_=0u;
         return true;
     }
     bool ConvertBGRA(const D3DLOCKED_RECT& source,
@@ -779,6 +822,7 @@ private:
     bool pose_checked_=false,pose_admitted_=false;
     std::uint64_t pose_sequence_=0;
     bool first_stereo_published_=false;
+    std::uint32_t last_bootstrap_reason_=0u,last_bootstrap_hr_=0u;
     float ipd_scale_=1.f;
     UINT width_=0,height_=0;
     DWORD mrt_slots_=0u;
