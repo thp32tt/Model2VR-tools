@@ -299,6 +299,26 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("OriginalPresentFailed=256u",health)
         self.assertIn("ORIGINAL_D3D9_PRESENT_FAILED",health)
 
+    def test_original_game_eye_pair_is_never_untagged_in_x64_openxr(self):
+        producer=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        ipc=(ROOT/"src/probe/stereo_feed.cpp").read_text("utf-8")
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        gate=(ROOT/"src/common/stereo_frame_policy.hpp").read_text("utf-8")
+        self.assertIn("pose_sequence_=admitted.sequence;",producer)
+        self.assertIn("CanTagGameStereoPose(admitted.sequence)",producer)
+        self.assertIn("Model2VR_SubmitStereoRGBAWithPose(",producer)
+        self.assertIn("m2vr::transport::kPitch,pose_sequence_",producer)
+        self.assertIn("return g_writer.Publish(left_rgba,right_rgba,emulated_frame_id,",ipc)
+        self.assertIn("static_cast<std::uint32_t>(pose_sequence)",ipc)
+        self.assertIn("SourcePoseMatchesFrame(",host)
+        self.assertIn("SourcePoseMatchesFrame(",gate)
+        self.assertIn("kind==FrameKind::GameStereo &&",gate)
+        self.assertIn("pose_tag!=0u && exact_pose_in_host_ring",gate)
+        self.assertNotIn("const bool known_pose=!stamp.pose_sequence",host)
+        self.assertNotIn("const bool matched=!tag",host)
+        self.assertIn("accepted_render_pose_=*exact_views;",host)
+        self.assertIn("std::swap(eye_frame_,staging_frame_)",host)
+
     def test_live_x86_to_x64_failure_reason_channel(self):
         producer=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
