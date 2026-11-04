@@ -7,6 +7,7 @@
 #include "model2_textured_stereo.hpp"
 #include "model2_texture_sampler.hpp"
 #include "model2_raster_states.hpp"
+#include "model2_blend_states.hpp"
 #include "../common/stereo_frame_ipc.h"
 #include <algorithm>
 #include <array>
@@ -71,10 +72,11 @@ public:
         RasterPolicy raster{};
         bool modulate_rgb=false;
         bool modulate_alpha=false;
+        BlendMode blend=BlendMode::Opaque;
     };
     // Fully clipped and validated beforehand; no half-eye write on a bad
     // texture, stale frame, invalid UV, or unsupported mixed pass.
-    // Nearest clamp sampler, binary alpha test (NOT alpha blending).
+    // Original alpha-test followed by exact non-separate source blending.
     bool DrawTextured(const ClippedTexturedStereoBatch& batch,
                       const TextureRGBA& texture) noexcept {
         if(!texture.rgba || !texture.width || !texture.height ||
@@ -82,6 +84,7 @@ public:
            texture.stride!=texture.width*4u ||
            !ValidSampler(texture.sampler) ||
            !ValidRasterPolicy(texture.raster) ||
+           !ValidBlendMode(texture.blend) ||
            batch.game_frame==0 || batch.pose_sequence==0)
             return false;
         for(const auto& eye:batch.eyes){
@@ -256,12 +259,14 @@ private:
                 if(texture.raster.write_depth)
                     depth_[eye][offset]=static_cast<float>(z);
                 auto& color=color_[eye];
-                const std::array<std::uint8_t,3> rgb{texel.r,texel.g,texel.b};
+                std::array<std::uint8_t,4> src_rgba{
+                    texel.r,texel.g,texel.b,
+                    static_cast<std::uint8_t>(sampled_alpha)};
                 for(std::size_t channel=0;channel<3;++channel)
-                    color[pixel+channel]=static_cast<std::uint8_t>(
-                        std::lround(double(rgb[channel])*
+                    src_rgba[channel]=static_cast<std::uint8_t>(
+                        std::lround(double(src_rgba[channel])*
                             (texture.modulate_rgb?diffuse[channel]:1.)));
-                color[pixel+3]=255u;
+                CompositeSourceRGBA(color.data()+pixel,src_rgba,texture.blend);
                 ++pixels_;
                 ++eye_pixels_[eye];
             }

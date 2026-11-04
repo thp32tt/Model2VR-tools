@@ -86,6 +86,22 @@ Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRenderStates(
     const std::uint32_t* diffuse_argb,unsigned int modulate_rgb,
     unsigned int modulate_alpha);
 
+// Optional original D3D9 non-separate alpha blend state, world-only:
+// 0 opaque, 1 SRCALPHA/INVSRCALPHA, 2 ONE/ONE, 3 SRCALPHA/ONE,
+// 4 ONE/INVSRCALPHA. D3DBLENDOP_ADD only; unknown states are rejected
+// before this entrypoint. Legacy DiffuseRenderStates ABI is unchanged.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBlendRenderStates(
+    const float* view_space_xyz,const float* interleaved_uv,
+    unsigned int vertex_count,const std::uint32_t* triangle_indices,
+    unsigned int index_count,const unsigned char* texture_rgba,
+    unsigned int texture_width,unsigned int texture_height,
+    unsigned int texture_pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
+    const std::uint32_t* diffuse_argb,unsigned int modulate_rgb,
+    unsigned int modulate_alpha,unsigned int blend_mode);
+
 // Return TRUE only during an independently authorized current-thread world
 // transaction. Adapters must fail before reading original D3D9 draw memory.
 __declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread();
