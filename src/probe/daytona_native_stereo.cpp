@@ -26,9 +26,11 @@
 extern "C" BOOL __stdcall Model2VR_OpenStereoWriter();
 extern "C" BOOL __stdcall Model2VR_ReadPredictedEyeViews(
     m2vr::pose::Frame* output);
-extern "C" BOOL __stdcall Model2VR_SubmitStereoRGBA(
+// Associate the full original x86 GPU-eye pair with the ONE OpenXR
+// predicted view pair latched before the first game Draw of this frame.
+extern "C" BOOL __stdcall Model2VR_SubmitStereoRGBAWithPose(
     const unsigned char*,const unsigned char*,unsigned long long,
-    unsigned int,unsigned int,unsigned int);
+    unsigned int,unsigned int,unsigned int,unsigned long long);
 
 namespace {
 // The game hooks D3D9::Clear. Initializing an eye target calls Clear
@@ -522,10 +524,11 @@ public:
         }else last_failed_present_=S_OK;
         if(m2vr::producerhealth::MayPublishGameStereo(reason)){
             if(!writer_ready_)writer_ready_=Model2VR_OpenStereoWriter()!=FALSE;
-            if(!writer_ready_ || !Model2VR_SubmitStereoRGBA(
-                rgba_[0].data(),rgba_[1].data(),frame,
-                m2vr::transport::kWidth,m2vr::transport::kHeight,
-                m2vr::transport::kPitch))reason=128u;
+            if(!writer_ready_ || !pose_sequence_ ||
+               !Model2VR_SubmitStereoRGBAWithPose(
+                   rgba_[0].data(),rgba_[1].data(),frame,
+                   m2vr::transport::kWidth,m2vr::transport::kHeight,
+                   m2vr::transport::kPitch,pose_sequence_))reason=128u;
         }
         // Health is committed after the *actual original* Present outcome.
         // x64 may revoke a cached older eye frame on a newer game failure.
@@ -578,6 +581,7 @@ private:
         if(pose_checked_)return pose_admitted_;
         pose_checked_=true;
         pose_admitted_=false;
+        pose_sequence_=0;
         m2vr::pose::Frame frame{};
         if(!Model2VR_ReadPredictedEyeViews(&frame))return false;
         LARGE_INTEGER ticks{},frequency{};
@@ -587,8 +591,12 @@ private:
         const auto admitted=m2vr::daytona::AdmitLiveEyePose(
             frame,static_cast<std::uint64_t>(ticks.QuadPart),
             static_cast<std::uint64_t>(frequency.QuadPart));
-        pose_admitted_=admitted.valid;
-        if(admitted.valid)ipd_scale_=admitted.ipd_scale;
+        pose_admitted_=admitted.valid &&
+            m2vr::daytona::CanTagGameStereoPose(admitted.sequence);
+        if(pose_admitted_){
+            pose_sequence_=admitted.sequence;
+            ipd_scale_=admitted.ipd_scale;
+        }
         return pose_admitted_;
     }
     void FinishFrame()noexcept{
@@ -602,7 +610,7 @@ private:
         scene_candidates_=0;
         scene_rejections_.fill(0u);
         mirrored_family_.fill(0u);
-        pose_checked_=false;pose_admitted_=false;
+        pose_checked_=false;pose_admitted_=false;pose_sequence_=0;
     }
     static D3DVIEWPORT9 Clip(D3DVIEWPORT9 vp,UINT w,UINT h)noexcept {
         if(vp.X>=w||vp.Y>=h){vp.X=0;vp.Y=0;vp.Width=w;vp.Height=h;}
@@ -769,6 +777,7 @@ private:
     std::uint32_t pending_present_reason_=0u;
     HRESULT last_failed_present_=S_OK;
     bool pose_checked_=false,pose_admitted_=false;
+    std::uint64_t pose_sequence_=0;
     bool first_stereo_published_=false;
     float ipd_scale_=1.f;
     UINT width_=0,height_=0;
