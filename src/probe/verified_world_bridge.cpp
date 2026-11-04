@@ -8,6 +8,7 @@
 #include "daytona_source_pose_commit_gate.hpp"
 #include "verified_world_present_gate.hpp"
 #include "verified_world_source_epoch.hpp"
+#include "original_d3d9_draw_result_gate.hpp"
 #include "verified_world_source_result.hpp"
 #include "verified_world_projection_epoch.hpp"
 #include "daytona_native_stereo.hpp"
@@ -615,6 +616,30 @@ extern "C" void __stdcall Model2VR_RejectVerifiedD3D9SourceDraw(
     std::scoped_lock lock(g.mutex);
     if(g.owner==GetCurrentThreadId() && (g.active || g.pending_present))
         g.Reject(source_kind);
+}
+// An authentic original D3D9 Draw returning failed HRESULT cannot be part
+// of a successfully composed CPU-world binocular image. Revoke only the
+// separately authorized in-flight or Present-armed SAME-THREAD transaction.
+// Original game Draw, GPU stereo fallback and FFB are never re-executed.
+extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Draw(
+    std::uint32_t original_family,std::uint32_t result_bits,
+    std::uint32_t original_caller_rva) {
+    using namespace m2vr::vrbridge;
+    if(!IsFailedOriginalD3D9Draw(original_family,result_bits))return;
+    std::scoped_lock lock(g.mutex);
+    if(g.owner!=GetCurrentThreadId() || !(g.active||g.pending_present))
+        return;
+    const auto rejected_frame=g.frame;
+    // An original COM failure takes precedence over a speculative adapter
+    // material status only for this bounded rejection event. Restore TLS.
+    const auto old_reason=g_current_original_source_failure;
+    g_current_original_source_failure=OriginalSourceFailure::Device;
+    g.Reject(FailedOriginalD3D9SourceKind(original_family));
+    g_current_original_source_failure=old_reason;
+    // Only the original EXE-relative caller RVA and HRESULT are emitted:
+    // no scene vertices, source game pixels or private matrix contents.
+    m2vr::LogEvent("model2_vr_cpu_world_original_draw_failed",
+        rejected_frame,original_family,result_bits,original_caller_rva);
 }
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);
