@@ -17,7 +17,8 @@ void XrApp::create_swapchains(){
         chain.width=source_pid_ ? transport::kWidth : view_configs_[eye].recommendedImageRectWidth;
         chain.height=source_pid_ ? transport::kHeight : view_configs_[eye].recommendedImageRectHeight;
         XrSwapchainCreateInfo create{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-        create.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |\n                          XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+        create.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
+                          XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
         create.format=format;create.sampleCount=1;
         create.width=chain.width;create.height=chain.height;
         create.faceCount=1;create.arraySize=1;create.mipCount=1;
