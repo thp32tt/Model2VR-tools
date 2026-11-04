@@ -571,6 +571,13 @@ int main(){
     CHECK(raster.DrawTextured(manual,exact_alpha));
     CHECK(raster.WrittenEyePixels(0)>0u);
     const auto prior_alpha_pixels=raster.DrawnPixels();
+    exact_alpha.alpha_compare=AlphaCompare::Greater;
+    exact_alpha.alpha_reference=17u;
+    CHECK(!raster.DrawTextured(manual,exact_alpha)); // 128 cutoff conflicts
+    exact_alpha.alpha_cutoff=0u;
+    exact_alpha.alpha_compare=AlphaCompare::LegacyCutoff;
+    CHECK(!raster.DrawTextured(manual,exact_alpha)); // legacy ref must be 0
+    exact_alpha.alpha_reference=0u;
     exact_alpha.alpha_compare=static_cast<AlphaCompare>(9u);
     CHECK(!raster.DrawTextured(manual,exact_alpha));
     CHECK(raster.DrawnPixels()==prior_alpha_pixels);
