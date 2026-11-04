@@ -163,6 +163,29 @@ Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderS
     unsigned int write_rgba_mask,unsigned int alpha_compare,
     unsigned int alpha_reference);
 
+// Actual x86 D3D9 SEPARATEALPHABLENDENABLE with independent ADD alpha
+// factors is supported only by this additional opt-in verified-world ABI.
+// Separate factor codes: 0 ZERO, 1 ONE, 2 SRCALPHA/SRCCOLOR,
+// 3 INVSRCALPHA/INVSRCCOLOR, 4 DESTALPHA/DESTCOLOR,
+// 5 INVDESTALPHA/INVDESTCOLOR. When separate_alpha_enabled=0 the
+// canonical unused factors MUST be 1/0. Unsupported D3D9 source factors,
+// operations and world owners reject before either OpenXR eye is written.
+// The old MaterialColorMaskAlphaCompareRenderStates export is unchanged.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates(
+    const float* view_space_xyz,const float* interleaved_uv,
+    unsigned int vertex_count,const std::uint32_t* triangle_indices,
+    unsigned int index_count,const unsigned char* texture_rgba,
+    unsigned int texture_width,unsigned int texture_height,
+    unsigned int texture_pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
+    const std::uint32_t* diffuse_argb,unsigned int rgb_source,
+    unsigned int alpha_source,unsigned int blend_mode,
+    unsigned int write_rgba_mask,unsigned int alpha_compare,
+    unsigned int alpha_reference,unsigned int separate_alpha_enabled,
+    unsigned int separate_alpha_src,unsigned int separate_alpha_dst);
+
 // Return TRUE only during an independently authorized current-thread world
 // transaction. Adapters must fail before reading original D3D9 draw memory.
 __declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread();
