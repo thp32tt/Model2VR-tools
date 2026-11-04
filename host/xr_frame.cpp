@@ -249,17 +249,20 @@ void XrApp::draw_frame(XrTime display_time){
             const bool stamp_ok=shared_frames_.Peek(stamp);
             const auto action=frame_gate_.Decide(stamp_ok?&stamp:nullptr,now,hz);
             if(action==transport::FrameUse::ReadNew){
-                // Avoid 8MiB read for stamped frames whose actual projection
-                // view pair has already fallen out of the host's pose ring.
-                const bool known_pose=!stamp.pose_sequence ||
-                    (stamp.kind==transport::FrameKind::GameStereo &&
-                     pose_history_.Find(stamp.pose_sequence)!=nullptr);
+                // Never accept untagged old GameStereo as a known-pose
+                // native binocular output. The Win32 producer now tags each
+                // original Draw/Present pair with its latched OpenXR views.
+                // Avoid 8MiB read for source pairs whose projection views
+                // have already fallen out of the host's pose ring.
+                const bool known_pose=transport::SourcePoseMatchesFrame(
+                    stamp.kind,stamp.pose_sequence,
+                    stamp.pose_sequence!=0u &&
+                        pose_history_.Find(stamp.pose_sequence)!=nullptr);
                 if(known_pose && shared_frames_.ReadReusable(staging_frame_)){
                     const auto tag=staging_frame_.pose_sequence;
                     const auto* exact_views=pose_history_.Find(tag);
-                    const bool matched=!tag ||
-                       (staging_frame_.kind==transport::FrameKind::GameStereo &&
-                        exact_views!=nullptr);
+                    const bool matched=transport::SourcePoseMatchesFrame(
+                        staging_frame_.kind,tag,tag!=0u && exact_views!=nullptr);
                     if(matched && frame_gate_.Accept(staging_frame_,now,hz)){
                     if(staging_frame_.kind==transport::FrameKind::Diagnostic &&
                        !saw_diagnostic_){
