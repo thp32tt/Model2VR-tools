@@ -75,6 +75,11 @@ if not "%RESULT%"=="0" (
   exit /b %RESULT%
 )
 
-echo Daytona VR started.
+echo Daytona VR loader completed. OpenXR host startup is not proof of game pixels.
+echo If the headset shows one solid color per eye, check the host log for:
+echo   Daytona VR eye delivery: ... action=...
+echo Detailed original D3D9 producer reason and Draw counters are logged there.
+echo Press F9 while OpenXR is running to append local diagnosis in logs.
+>>"%LAUNCHLOG%" echo LOADER_COMPLETE_ONLY: see OpenXR host eye delivery status before declaring native game stereo
 echo Logs: "%~dp0logs"
 exit /b 0
