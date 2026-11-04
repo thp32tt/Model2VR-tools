@@ -238,3 +238,52 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
 - **Genuine DrawPrimitive/DrawIndexedPrimitive VB/IB input:** New opt-in verified-world-only list/strip/fan source adapters and passive original CPU projector witness paths correctly decode N+2 source elements, signed BaseVertexIndex, 16/32-bit indexed source and winding parity. Original D3D9 methods still execute only once. An independent, calibrated CPU game-world ownership transaction is required; raw FVF, topology and CPU projection fit alone are NOT permission for world rendering.
 - **Validation for exact SHA:** Public tools CI `41797377751` SUCCESS, ModDev toolkit `41797377590` SUCCESS, Windows x86 probe build + native regression suite `41797377666` SUCCESS, Daytona original Win32 source + Win64 OpenXR host build/package `41797377730` SUCCESS. Do not rerun this exact SHA. Older intermediate test failures were fixed in subsequent source commits.
 - **Hard blockers remain:** Original Daytona race-world Draw caller and geometry command/matrix A/B provenance, calibrated camera axes and units-per-meter, genuine shader-UP world material ownership, actual headset appearance and performance. `RUNTIME_VALIDATION=UNTESTED`. No private emulator binary/ROM/REA data was copied into this public repository, and OutRun/UW2 were not modified. Next source work should gather private matrix/pass proof and supply it exclusively through the explicit world-only adapter, never auto-promote unknown HUD/auxiliary Draws.
+
+
+## Extended original D3D9 material/active-matrix source fidelity — 2026-11-04
+
+- **Source-bearing SHA:** `594bde6dbf14b5969065f4441870e028bc7276c0`.
+  Connected implementation commits: `b3638eda`, `0783f5d2`,
+  `27af40a5`, `22a71c4c`, `867299cf`, `b6f5209a`,
+  `508e8457`, `62e76fd9`, `594bde6d`. They form one connected
+  development checkpoint, not nine separately credited scores. This
+  documentation-only bookkeeping commit does not change source validation.
+- **Actual source material:** The original Windows x86 D3D9 source adapter
+  checks exact non-separate alpha blend factors, disables all unsupported
+  equations/operations, and carries supported SOURCEALPHA/INVSOURCEALPHA,
+  ONE/ONE, SOURCEALPHA/ONE, ONE/INVSOURCEALPHA and ONE/ZERO policies through
+  the separately authorized CPU world-frame export. The new exported ABI
+  preserves the old opaque entrypoints. Per-eye texture raster performs
+  perspective-correct texel/diffuse selection, alpha test and subsequent
+  exact bounded color/alpha composition; ONE/ZERO retains source alpha.
+  Float-quantized Z comparisons preserve valid original LEQUAL coplanar
+  redraws. Neither original D3D9 Draw call nor the game tick/FFB is replayed.
+- **Texture materials and addressing:** Original CPU-lockable RGB332,
+  R8G8B8, X4R4G4B4, A8, A4L4, and D3DTADDRESS_MIRRORONCE now feed the
+  same verified per-eye texture stage, bounded by the source texture
+  snapshot and strict fixed-function sampler gate. Unknown GPU-only
+  textures, shaders and multi-stage material operations still fail closed.
+- **CPU projector provenance:** The original x86 projector hook captures
+  the active geometry matrix identity before each source projection. The
+  same-thread, same-Present CPU-to-original-UP/shader-UP/VB triangle join
+  rejects any mixed-matrix source batch; the private local CSV / offline
+  report can distinguish mixed, unknown and homogeneous matrix candidates.
+  Matching coordinates, callsites and matrices STILL DO NOT by themselves
+  authenticate a Daytona race-world pass or camera.
+- **Validation distinction:** The exact earlier source-bearing SHA
+  `508e8457` passed Public tools, ModDev, Win32 x86 probe/CTest and
+  Daytona Win32 producer + Win64 OpenXR packaging Actions. The source
+  and Python tooling checkpoint `62e76fd9` passed Public, ModDev and
+  Win32 x86 probe CI. **The final `594bde6d` SHA must be checked
+  independently**; a previous SHA's success does not prove a new SHA.
+  `RUNTIME_VALIDATION=UNTESTED`: the original Daytona race-world caller
+  and geometry command, branch A/B camera selection, axis/scale, scene/HUD
+  ownership, real shader material and Quest 3+VDXR HMD output are NOT proven.
+- **Next source milestone:** Use authorized PRIVATE genuine Daytona race
+  traces and REA to correlate original Draw caller + source matrix identity
+  + full game Present/viewport/RT and authentic projector camera axes. Only
+  after verifying gameplay-world ownership and units-per-meter may the
+  explicit existing world-only CPU stereo adapter be enabled for those
+  original Draws. Unknown 2D/menu/HUD/aux stays in original safe mono;
+  launcher diagnostics and FFB remain isolated. Do not rerun a passing
+  exact-SHA CI, repeat earlier samples, or double-credit this checkpoint.
