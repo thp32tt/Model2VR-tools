@@ -40,28 +40,57 @@ def original_stage_source(op: int, first: int, second: int):
     return None
 
 
-def original_d3d9_blend_mode(record):
-    """Classify read-only original non-separate D3D9 ADD blend evidence.
+def original_d3d9_separate_alpha_status(blend, separate, fvf, stride):
+    """Same-Draw original RGB/alpha split evidence; NEVER world proof."""
+    if blend is None:
+        return "orphan" if separate is not None else "unobserved"
+    enabled=(blend[0] >> 32)
+    separate_enabled=blend[2]
+    if enabled==0:
+        return "unexpected_alpha" if separate is not None else "inert"
+    if enabled!=1 or separate_enabled not in (0,1):
+        return "unsupported"
+    if separate_enabled==0:
+        return "unexpected_alpha" if separate is not None else "inactive"
+    if separate is None:
+        return "missing_source"
+    source=(separate[0] >> 32)
+    destination=separate[0] & 0xFFFFFFFF
+    operation=separate[1]
+    tag=separate[2]
+    if (tag >> 32)!=fvf or (tag & 0xFFFFFFFF)!=stride:
+        return "fvf_stride_mismatch"
+    if operation!=1 or source not in range(1,11) or (
+            destination not in range(1,11)):
+        return "unsupported"
+    return "supported"
 
-    This is a same-Draw material capability hint, not gameplay-world proof.
-    """
+
+def original_d3d9_blend_mode(record, separate=None, fvf=None, stride=None):
+    """Original RGB/alpha ADD sample; separate requires same FVF/stride."""
     if record is None:
         return "unobserved"
-    enabled, source = record[0] >> 32, record[0] & 0xFFFFFFFF
-    destination, operation = record[1] >> 32, record[1] & 0xFFFFFFFF
-    separate = record[2]
-    if enabled == 0:
-        return "opaque"
-    if enabled != 1 or operation != 1 or separate != 0:
+    enabled=(record[0] >> 32)
+    src=(record[0] & 0xFFFFFFFF)
+    dst=(record[1] >> 32)
+    op=(record[1] & 0xFFFFFFFF)
+    state=original_d3d9_separate_alpha_status(
+        record,separate,fvf,stride)
+    if enabled==0:
+        return "opaque" if state=="inert" else "unsupported"
+    if enabled!=1 or op!=1 or state not in ("inactive","supported"):
         return "unsupported"
-    return {
-        (2, 1): "replace_rgba", (5, 6): "source_alpha_over",
-        (2, 2): "additive", (5, 2): "source_alpha_add",
-        (2, 6): "premultiplied_over",
-        (9, 1): "multiply_color", (1, 3): "multiply_color",
-        (7, 8): "destination_alpha_over",
-        (1, 2): "preserve_destination",
-    }.get((source, destination), "unsupported")
+    rgb={
+        (2,1):"replace_rgba", (5,6):"source_alpha_over",
+        (2,2):"additive", (5,2):"source_alpha_add",
+        (2,6):"premultiplied_over",
+        (9,1):"multiply_color", (1,3):"multiply_color",
+        (7,8):"destination_alpha_over",
+        (1,2):"preserve_destination",
+    }.get((src,dst),"unsupported")
+    if rgb=="unsupported":
+        return rgb
+    return rgb+"_separate_alpha" if state=="supported" else rgb
 
 
 def original_d3d9_alpha_compare_status(record, fvf, stride):
@@ -310,6 +339,7 @@ def analyze(path: Path):
                            "model2_d3d9_source_lighting",
                            "model2_d3d9_source_color_mask",
                            "model2_d3d9_source_blend",
+                           "model2_d3d9_source_separate_alpha_blend",
                            "model2_d3d9_source_alpha_compare",
                            "model2_d3d9_source_sampler_mip",
                            "model2_d3d9_source_depth_cull",
@@ -320,7 +350,9 @@ def analyze(path: Path):
                         up_fixed_stage.clear()
                     up_fixed_stage[a0] = {}
                 prior=up_fixed_stage[a0].get(event)
-                if (event=="model2_d3d9_source_alpha_compare" and
+                if (event in (
+                        "model2_d3d9_source_alpha_compare",
+                        "model2_d3d9_source_separate_alpha_blend") and
                         prior is not None and prior!=(a1,a2,a3)):
                     raise ValueError(
                         f"conflicting original D3D9 alpha witness {a0}")
@@ -614,6 +646,7 @@ def analyze(path: Path):
     up_material_color_mask_status = Counter()
     up_material_context_status = Counter()
     up_material_blend_status = Counter()
+    up_material_separate_alpha_status = Counter()
     up_material_alpha_compare_status = Counter()
     up_material_mip_status = Counter()
     up_material_depth_cull_status = Counter()
@@ -709,8 +742,14 @@ def analyze(path: Path):
         source_context=up_source_context.get(witness)
         context_status=original_up_source_pass_status(source_context,frame)
         up_material_context_status[context_status] += 1
+        blend_record=stage.get("model2_d3d9_source_blend")
+        separate_record=stage.get(
+            "model2_d3d9_source_separate_alpha_blend")
+        separate_status=original_d3d9_separate_alpha_status(
+            blend_record,separate_record,fvf,stride)
+        up_material_separate_alpha_status[separate_status] += 1
         blend_status=original_d3d9_blend_mode(
-            stage.get("model2_d3d9_source_blend"))
+            blend_record,separate_record,fvf,stride)
         up_material_blend_status[blend_status] += 1
         alpha_compare_status=original_d3d9_alpha_compare_status(
             stage.get("model2_d3d9_source_alpha_compare"),fvf,stride)
@@ -749,6 +788,7 @@ def analyze(path: Path):
                 "original_source_scissor_full": (
                     context_status == "full_backbuffer_scissor_candidate"),
                 "original_source_blend_mode": blend_status,
+                "original_source_separate_alpha_status": separate_status,
                 "original_source_alpha_compare_status": alpha_compare_status,
                 "original_source_mip_status": mip_status,
                 "color_stage": [(c[0] >> 32) & 0xFFFFFFFF,
@@ -801,6 +841,8 @@ def analyze(path: Path):
                 dict(up_material_context_status.most_common()),
             "original_up_material_blend_status":
                 dict(up_material_blend_status.most_common()),
+            "original_up_material_separate_alpha_status":
+                dict(up_material_separate_alpha_status.most_common()),
             "original_up_material_alpha_compare_status":
                 dict(up_material_alpha_compare_status.most_common()),
             "original_up_material_mip_status":
