@@ -46,6 +46,43 @@ Automation should resume with **actual missing camera/source renderer
 functionality** rather than re-implementing the already validated
 Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
 
+## Latest connected camera/pose implementation — 2026-11-04
+
+- **Source-bearing SHA:** `2bebe7205698594066e434382317141281223107` (five connected
+  material commits: `47dfe51`, `5802eba`, `4579f7d`, `aaa2cb4`, `2bebe72`).
+  This is one coherent source integration, not five separate reward events.
+- The separately authenticated **CPU verified-world bridge** now anchors
+  real OpenXR LOCAL tracking to its first valid HMD eye midpoint/orientation;
+  preserves independent 6DoF eye translation, rotation and asymmetric FOV;
+  rejects old or identical tracked-eye pairs; maintains a stable calibration
+  axis/units/near-plane across a game camera epoch; and rejects non-perspective
+  D3D9 source HUD/orthographic projections. Nothing blindly declares an
+  unverified generic FVF or Draw call to be world.
+- The x86→x64 GameStereo wire ABI remains 64-byte-header compatible. Verified
+  CPU-world images carry an optional nonzero exact source pose sequence
+  (legacy GPU replay remains untagged). The x64 OpenXR host retains a bounded
+  32-pose view-history ring, matches the original rendering pair, and uses
+  its source poses/FOV in the projection layer; it rejects unknown/stale
+  sequence tags. Recenter does not rewind monotonically increasing IPC
+  frame IDs. Win32/Win64 regression targets exercise pose matching and
+  camera admission. The Daytona package workflow now watches these real
+  source paths and releases a new Windows test ZIP on their changes.
+- **Exact source SHA validation:** Windows x86 probe, OpenXR x64 host,
+  Daytona x86+x64 native stereo package, Public tools CI and ModDev CI
+  have all passed. The separate Generic DD FFB integrated package check
+  is not a prerequisite for accepting source HMD camera fidelity and may
+  be checked independently. **RUNTIME_VALIDATION=UNTESTED** (no user's
+  emulator+Quest 3 session was run).
+- **NEXT ACTUAL DEV:** Correlate the original ElSemi CPU TransformPoint /
+  ProjectVertexToScreen world/camera caller with its actual Draw/texture
+  topology; confirm in-game camera axes, game-units-per-meter and per-pass
+  world vs HUD classification through authentic evidence kept PRIVATE.
+  Only then connect the calibrated world renderer into the live Daytona
+  shader/D3D9 replay path. The existing GPU shader-UP X-only source shift
+  remains an uncalibrated experimental path, NOT full in-game 6DoF.
+  Continue 2D safe fallback and FFB isolation. Do not repeat old SHA CI,
+  request identical passive probe logs, or score this feature twice.
+
 ## Next implementation sequence
 
 1. Read `README.md`, `docs/DEVELOPMENT_STATUS.md`, current `host/`, `src/`, `scripts/Run-Daytona-VR.bat`, `scripts/Run-Daytona-NativeStereo.cmd`, actual test fixtures and recent main commits. Identify the exact unfinished integration or reproducible failure; modify code first.
