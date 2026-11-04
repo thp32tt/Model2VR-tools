@@ -11,6 +11,8 @@ struct ProjectCaptureRecord {
     const void* original_point=nullptr;
     std::array<float,3> source_xyz{};
     std::uint32_t source_caller_rva=0;
+    // Original active matrix identity sampled before the CPU projector.
+    std::uint32_t matrix_identity=0;
     bool emit_log=false;
     bool capture=false;
 };

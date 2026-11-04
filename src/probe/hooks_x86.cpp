@@ -114,6 +114,8 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
         if(raw>=base && raw-base<g_exe_size){
             record->source_xyz={x,y,z};
             record->source_caller_rva=static_cast<std::uint32_t>(raw-base);
+            record->matrix_identity=
+                ReadStateRva(g_config.active_matrix_ptr_rva);
             record->capture=true;
         }
     }
@@ -152,7 +154,8 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* /*eax_after_original*/) 
         const float projected[3]{x,y,z};
         m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
             m2vr::drawprobe::CurrentProjectDrawEpoch(),
-            record.source_caller_rva,record.source_xyz.data(),projected);
+            record.source_caller_rva,record.source_xyz.data(),projected,
+            record.matrix_identity);
     }
     if(emit_log)
         m2vr::LogEvent("project_after",reinterpret_cast<std::uintptr_t>(point),

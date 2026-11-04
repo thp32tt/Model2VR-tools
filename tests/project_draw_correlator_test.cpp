@@ -9,9 +9,10 @@
 using namespace m2vr::drawprobe;
 static void Capture(ProjectDrawCorrelator& c,std::uint64_t epoch,
                     std::uint32_t caller,float sx,float sy,
-                    float vx,float vy,float vz){
+                    float vx,float vy,float vz,
+                    std::uint32_t matrix_identity=0u){
     const float view[3]{vx,vy,vz},screen[3]{sx,sy,0.5f};
-    c.Capture(epoch,caller,view,screen);
+    c.Capture(epoch,caller,view,screen,matrix_identity);
 }
 int main(){
     ProjectDrawCorrelator c{};
@@ -52,6 +53,35 @@ int main(){
         44u,two_faces,6u);
     CHECK(mixed_batch.complete==2u &&
           mixed_batch.common_source_caller_rva==0u);
+    // CPU points from different original geometry matrices cannot be
+    // aggregated into one guessed world camera despite equal callers.
+    ProjectDrawCorrelator matrices{};
+    for(unsigned i=0;i<6;++i)
+        Capture(matrices,84u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f,0x1000u);
+    const auto single_matrix=matrices.MatchTriangleList(84u,two_faces,6u);
+    CHECK(single_matrix.CompleteSameSource());
+    CHECK(single_matrix.common_matrix_identity==0x1000u);
+    ProjectDrawCorrelator mixed_matrices{};
+    for(unsigned i=0;i<6;++i)
+        Capture(mixed_matrices,85u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f,
+                i<3u?0x1000u:0x2000u);
+    const auto switched=mixed_matrices.MatchTriangleList(
+        85u,two_faces,6u);
+    CHECK(switched.complete==2u && switched.mixed_matrix_identity);
+    CHECK(!switched.CompleteSameSource());
+    ProjectDrawCorrelator intra_triangle{};
+    for(unsigned i=0;i<6;++i)
+        Capture(intra_triangle,86u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f,
+                i==1u?0x2000u:0x1000u);
+    const auto mixed_inside=intra_triangle.MatchTriangleList(
+        86u,two_faces,6u);
+    CHECK(mixed_inside.mixed_matrix_identity);
+    CHECK(!mixed_inside.CompleteSameSource());
+    CHECK(!intra_triangle.Match(86u,two_faces,3u).Complete());
+    CHECK(!matrices.MatchTriangleList(87u,two_faces,6u).CompleteSameSource());
     Capture(multi,43u,0x55u,10.f,11.f,9.f,9.f,9.f);
     const auto conflicting_batch=multi.MatchTriangleList(
         43u,two_faces,6u);
