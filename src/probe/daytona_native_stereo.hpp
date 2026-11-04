@@ -70,5 +70,10 @@ void FinishFrameAfterPresent(std::uint64_t frame,
 // Drop only the matching staged experimental GPU eye data when the
 // authenticated CPU-world frame already published after original Present.
 void DiscardPreparedFrameAfterCpuWorld(std::uint64_t frame) noexcept;
+// Unified original-game source health writer. The authenticated CPU world
+// reports through this single mapping; GPU replay keeps backup ownership.
+void ReportVerifiedCpuWorldPresent(std::uint64_t frame,
+                                   std::uint32_t reason,
+                                   std::uint32_t draw_count) noexcept;
 void ResetResources() noexcept;
 }

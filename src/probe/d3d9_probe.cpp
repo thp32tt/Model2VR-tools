@@ -1146,10 +1146,12 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // wins only after its original HRESULT succeeds and pose stays live.
     const bool verified_cpu_pending=verified_cpu_pending_pre &&
         Model2VR_HasVerifiedWorldPendingForOriginalPresent(frame)!=FALSE;
+    const auto stereo_mode=m2vr::vrbridge::SelectOriginalStereoSourceMode(
+        g_native_stereo,verified_cpu_pending);
     const bool verified_cpu_published=
         Model2VR_CompleteVerifiedWorldOriginalPresent(
             frame,SUCCEEDED(original_result)?1u:0u,
-            g_native_stereo && !verified_cpu_pending ? 1u : 0u)!=FALSE;
+            static_cast<unsigned int>(stereo_mode))!=FALSE;
     if(g_native_stereo){
         if(verified_cpu_published){
             // Do not publish a second GameStereo packet for this frame or

@@ -529,6 +529,19 @@ public:
         pending_present_reason_=reason;
         if(reason)PrepareOriginalMono(d,frame,reason);
     }
+    void ReportVerifiedCpuWorld(std::uint64_t frame,std::uint32_t reason,
+                                std::uint32_t draw_count)noexcept{
+        if(!frame)return;
+        std::lock_guard lock(mu_);
+        if(!health_.Valid())health_.Create(GetCurrentProcessId());
+        if(health_.Valid()){
+            const std::array<std::uint32_t,4> none{};
+            // No speculative GPU Draw family attribution for CPU-world
+            // frames. Both source paths now advance the same frame sequence.
+            health_.Publish(frame,reason,reason==0u?draw_count:0u,
+                            0u,0u,none);
+        }
+    }
     void DiscardPreparedForCpuWorld(std::uint64_t frame)noexcept{
         if(!enabled_ || !frame)return;
         std::lock_guard lock(mu_);
@@ -1184,6 +1197,11 @@ void FinishFrameAfterPresent(std::uint64_t frame,HRESULT hr)noexcept{
 }
 void DiscardPreparedFrameAfterCpuWorld(std::uint64_t frame)noexcept{
     try{g_eye.DiscardPreparedForCpuWorld(frame);}
+    catch(...){g_eye.ResetExternal();}
+}
+void ReportVerifiedCpuWorldPresent(std::uint64_t frame,std::uint32_t reason,
+                                   std::uint32_t draw_count)noexcept{
+    try{g_eye.ReportVerifiedCpuWorld(frame,reason,draw_count);}
     catch(...){g_eye.ResetExternal();}
 }
 void ResetResources()noexcept{g_eye.ResetExternal();}

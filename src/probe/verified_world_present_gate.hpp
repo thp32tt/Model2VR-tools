@@ -25,6 +25,17 @@ inline bool PreferPendingCpuWorld(std::uint64_t pending_frame,
     return armed && original_render_thread && pending_frame!=0u &&
            pending_frame==original_frame;
 }
+// The CPU world may run alone, be excluded by a GPU-owned frame, or be
+// preferred over GPU replay with the original backbuffer reserved for failure.
+enum class OriginalStereoSourceMode : std::uint32_t {
+    CpuOnly=0u, GpuOnly=1u, CpuPreferredGpuFallback=2u
+};
+inline constexpr OriginalStereoSourceMode SelectOriginalStereoSourceMode(
+    bool gpu_native_replay,bool verified_cpu_pending) noexcept {
+    return !gpu_native_replay?OriginalStereoSourceMode::CpuOnly:
+           verified_cpu_pending?OriginalStereoSourceMode::CpuPreferredGpuFallback:
+                                OriginalStereoSourceMode::GpuOnly;
+}
 enum class PendingWorldPresent : std::uint8_t {
     None, Wait, Drop, Publish
 };

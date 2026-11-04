@@ -7,6 +7,7 @@
 #include "daytona_eye_pose_gate.hpp"
 #include "daytona_source_pose_commit_gate.hpp"
 #include "verified_world_present_gate.hpp"
+#include "daytona_native_stereo.hpp"
 #include "../common/daytona_producer_health.hpp"
 #include "logger.h"
 #include <Windows.h>
@@ -31,7 +32,8 @@ struct Bridge {
     m2vr::vr::Model2FramePoseLatch latch;
     m2vr::vr::Model2HeadRecenter head_origin;
     m2vr::vr::Model2CameraEpochContract camera_epoch;
-    m2vr::producerhealth::Link producer_health;
+    // Original CPU-world and GPU fallback share one EyeClones producer
+    // status writer; a second Link would fail Create() on the same PID.
     m2vr::vr::Model2CameraCalibration calibration{};
     m2vr::vr::DrawEvidence evidence{};
     std::uint64_t frame=0,last_completed=0,pose_sequence=0;
@@ -481,10 +483,14 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
     unsigned int native_gpu_replay_enabled) {
     std::scoped_lock lock(g.mutex);
     if(!g.pending_present)return FALSE;
+    // 0 CPU-only, 1 GPU-only, 2 authenticated CPU preferred with GPU/mono
+    // backup. Never allow an unknown internal source selector to publish.
+    if(native_gpu_replay_enabled>2u){g.Abort();return FALSE;}
+    const bool gpu_only=native_gpu_replay_enabled==1u;
+    const bool gpu_fallback=native_gpu_replay_enabled==2u;
     const auto action=m2vr::vrbridge::DecidePendingWorldPresent(
         g.frame,original_frame,original_succeeded!=0u,
-        native_gpu_replay_enabled!=0u,
-        g.owner==GetCurrentThreadId());
+        gpu_only,g.owner==GetCurrentThreadId());
     if(action==m2vr::vrbridge::PendingWorldPresent::Wait)return FALSE;
     const bool pose_live=action==m2vr::vrbridge::PendingWorldPresent::Publish
         && OriginalWorldPoseLive();
@@ -499,21 +505,15 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
                 m2vr::transport::kPitch,g.pose_sequence);
         if(success)g.last_completed=g.frame;
     }
-    // GPU native replay already owns the process health channel; an
-    // unverified overlapping CPU frame must not stomp its diagnosis.
-    if(!native_gpu_replay_enabled) {
-        if(!g.producer_health.Valid())
-            g.producer_health.Create(GetCurrentProcessId());
-        if(g.producer_health.Valid()){
-            const auto reason=m2vr::vrbridge::PendingWorldHealthReason(
-                action,original_succeeded!=0u,success,pose_live);
-            // This describes proven CPU-world draws, never fabricated GPU
-            // DP/DIP/UP family counts. The host can distinguish a failed
-            // original Present from stale or disconnected HMD tracking.
-            const std::array<std::uint32_t,4> none{};
-            g.producer_health.Publish(original_frame,reason,
-                success?g.draw_count:0u,0u,0u,none);
-        }
+    // Publish source health through the ONE original-device producer
+    // shared-memory writer. If CPU failed with GPU fallback armed, let the
+    // GPU/real-backbuffer path report the same frame AFTER this function.
+    // Otherwise two writers/duplicate frame IDs would corrupt host health.
+    if(!gpu_only && (!gpu_fallback || success)) {
+        const auto reason=m2vr::vrbridge::PendingWorldHealthReason(
+            action,original_succeeded!=0u,success,pose_live);
+        m2vr::daytona::ReportVerifiedCpuWorldPresent(
+            original_frame,reason,success?g.draw_count:0u);
     }
     if(action==m2vr::vrbridge::PendingWorldPresent::Publish && !pose_live)
         m2vr::LogEvent("model2_vr_cpu_world_source_pose_expired",

@@ -22,13 +22,14 @@ class NativeStereoTest(unittest.TestCase):
             "HRESULT STDMETHODCALLTYPE ResetHook(")[0]
         self.assertEqual(section.count("g_present(d,a,b,w,dirty)"),1)
         before=section.index("const HRESULT original_result=g_present(")
-        ownership=section.index("Model2VR_HasVerifiedWorldPendingForOriginalPresent(frame)")
+        ownership=section.index("const bool verified_cpu_pending=verified_cpu_pending_pre")
         cpu_commit=section.index("Model2VR_CompleteVerifiedWorldOriginalPresent(")
         gpu_finish=section.index("FinishFrameAfterPresent(frame,original_result)")
         self.assertLess(before,ownership)
         self.assertLess(ownership,cpu_commit)
         self.assertLess(cpu_commit,gpu_finish)
-        self.assertIn("g_native_stereo && !verified_cpu_pending ? 1u : 0u",section)
+        self.assertIn("SelectOriginalStereoSourceMode(",section)
+        self.assertIn("static_cast<unsigned int>(stereo_mode)",section)
         self.assertIn("DiscardPreparedFrameAfterCpuWorld(frame);",section)
         self.assertIn("verified_cpu_pending_pre",section)
         self.assertIn("PrepareFrameBeforePresent(d,frame,verified_cpu_pending_pre)",section)
@@ -41,6 +42,10 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("g.owner==GetCurrentThreadId()",world)
         self.assertIn("pending_present_frame_==frame)FinishFrame();",gpu)
         self.assertIn("Model2VR_HasVerifiedWorldPendingForOriginalPresent(",hdr)
+        self.assertIn("ReportVerifiedCpuWorldPresent(",world)
+        self.assertNotIn("g.producer_health",world)
+        self.assertIn("if(!gpu_only && (!gpu_fallback || success))",world)
+        self.assertIn("health_.Publish(frame,reason,reason==0u?draw_count:0u,",gpu)
 
     def test_original_stereo_source_pose_stays_live_until_present(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
@@ -261,7 +266,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("const HRESULT hr=g_draw_up(d,p,count,verts,stride);",hooks)
         self.assertIn("if(SUCCEEDED(hr) && g_native_stereo)",hooks)
         self.assertIn("m2vr::daytona::MirrorDraw(",hooks)
-        self.assertIn("m2vr::daytona::PrepareFrameBeforePresent(d,frame)",hooks)
+        self.assertIn("m2vr::daytona::PrepareFrameBeforePresent(d,frame,verified_cpu_pending_pre)",hooks)
         self.assertIn("m2vr::daytona::FinishFrameAfterPresent(frame,original_result)",hooks)
         self.assertIn("m2vr::daytona::ResetResources()",hooks)
         self.assertIn("g_native_stereo=native_stereo",hooks)
@@ -481,7 +486,7 @@ class NativeStereoTest(unittest.TestCase):
         begin=hooks.index("HRESULT STDMETHODCALLTYPE PresentHook(")
         end=hooks.index("HRESULT STDMETHODCALLTYPE ResetHook(",begin)
         body=hooks[begin:end]
-        self.assertLess(body.index("PrepareFrameBeforePresent(d,frame)"),
+        self.assertLess(body.index("PrepareFrameBeforePresent(d,frame,verified_cpu_pending_pre)"),
                         body.index("const HRESULT original_result=g_present("))
         self.assertLess(body.index("const HRESULT original_result=g_present("),
                         body.index("FinishFrameAfterPresent(frame,original_result)"))

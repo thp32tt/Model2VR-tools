@@ -12,6 +12,11 @@ int main(){
     CHECK(!PreferPendingCpuWorld(5u,5u,false,true));
     CHECK(!PreferPendingCpuWorld(5u,5u,true,false));
     CHECK(!PreferPendingCpuWorld(0u,0u,true,true));
+    CHECK(SelectOriginalStereoSourceMode(false,false)==OriginalStereoSourceMode::CpuOnly);
+    CHECK(SelectOriginalStereoSourceMode(false,true)==OriginalStereoSourceMode::CpuOnly);
+    CHECK(SelectOriginalStereoSourceMode(true,false)==OriginalStereoSourceMode::GpuOnly);
+    CHECK(SelectOriginalStereoSourceMode(true,true)==
+          OriginalStereoSourceMode::CpuPreferredGpuFallback);
     CHECK(NextOriginalPresentFrameId(0xffffffffu,true,false)==0u);
     CHECK(DecidePendingWorldPresent(0u,1u,true,false,true)==
           PendingWorldPresent::None);
