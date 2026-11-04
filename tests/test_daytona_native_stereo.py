@@ -120,6 +120,13 @@ class NativeStereoTest(unittest.TestCase):
         cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         source=(ROOT/"src/probe/verified_world_source_epoch.hpp").read_text("utf-8")
         self.assertIn("OriginalSourceFailure::OriginalSceneFailed",cpu)
+        original_scene=cpu.split("Model2VR_RejectFailedOriginalD3D9Scene(")[1].split(
+            "Model2VR_DiscardPendingWorldOnReset(")[0]
+        self.assertIn("Model2VR_NextOriginalD3D9PresentFrameId();",original_scene)
+        self.assertIn("if(failed_present)g.source_epoch.Revoke(failed_present);",
+                      original_scene)
+        self.assertIn("const bool owned=(g.owner==GetCurrentThreadId())",
+                      original_scene)
         self.assertIn("g.Reject(CurrentOriginalSourceDrawKind());",cpu)
         self.assertIn("model2_vr_cpu_world_original_scene_failed",cpu)
         self.assertIn("OriginalSceneFailed=16u",source)

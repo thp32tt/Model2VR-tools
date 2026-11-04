@@ -703,24 +703,33 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Draw(
 }
 // A failed authentic primary-device BeginScene or EndScene cannot be
 // part of a fully composited original-world eye pair for this same thread.
-// Preserve the original COM HRESULT; revoke only the pending CPU pair.
+// Preserve the original COM HRESULT; revoke any owned CPU pair AND prevent
+// this physical source Present from being re-armed later in the frame.
 extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Scene(
     std::uint32_t transition,std::uint32_t result_bits,
     std::uint32_t original_caller_rva){
     using namespace m2vr::vrbridge;
     if((transition!=1u && transition!=2u) ||
        (result_bits&0x80000000u)==0u || !original_caller_rva)return;
+    // Even when no CPU transaction is active yet, this failed genuine
+    // original scene permanently rejects its physical Present epoch.
+    // A subsequent Begin on the same source frame must not re-arm stereo
+    // after a GPU scene HRESULT failure; the NEXT physical frame may recover.
+    const auto failed_present=Model2VR_NextOriginalD3D9PresentFrameId();
     std::scoped_lock lock(g.mutex);
-    if(g.owner!=GetCurrentThreadId() || !(g.active||g.pending_present))
-        return;
+    const bool owned=(g.owner==GetCurrentThreadId()) &&
+                     (g.active || g.pending_present);
     const auto rejected_frame=g.frame;
-    const auto old_reason=g_current_original_source_failure;
-    g_current_original_source_failure=OriginalSourceFailure::OriginalSceneFailed;
-    g.Reject(CurrentOriginalSourceDrawKind());
-    g_current_original_source_failure=old_reason;
-    // No game textures/ROM bytes or world transforms are recorded.
-    m2vr::LogEvent("model2_vr_cpu_world_original_scene_failed",
-        rejected_frame,transition,result_bits,original_caller_rva);
+    if(owned){
+        const auto old_reason=g_current_original_source_failure;
+        g_current_original_source_failure=OriginalSourceFailure::OriginalSceneFailed;
+        g.Reject(CurrentOriginalSourceDrawKind());
+        g_current_original_source_failure=old_reason;
+        // No game texture bytes or world transforms are recorded.
+        m2vr::LogEvent("model2_vr_cpu_world_original_scene_failed",
+            rejected_frame,transition,result_bits,original_caller_rva);
+    }
+    if(failed_present)g.source_epoch.Revoke(failed_present);
 }
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);
