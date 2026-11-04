@@ -27,6 +27,8 @@ on:
       - 'config/daytona_native_stereo.ini'
       - 'scripts/Run-Daytona-NativeStereo.cmd'
       - 'scripts/Run-Daytona-VR.bat'
+      - 'scripts/Summarize-Daytona-Diagnostics.ps1'
+      - 'tests/test_daytona_diagnostics.py'
       - 'src/common/daytona_host_ready.hpp'
       - 'tests/test_daytona_native_stereo.py'
       - 'tests/daytona_wizard_health_test.cpp'
@@ -46,6 +48,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate original-game and FFB-safe stereo integration
         run: python -m unittest discover -s tests -p test_daytona_native_stereo.py -v
+      - name: Validate one-run source diagnosis and summary report
+        run: python -m unittest discover -s tests -p test_daytona_diagnostics.py -v
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
       - name: Build original game hook/loader
@@ -103,6 +107,7 @@ jobs:
           Copy-Item config/daytona_native_stereo.ini stage/
           Copy-Item scripts/Run-Daytona-NativeStereo.cmd stage/
           Copy-Item scripts/Run-Daytona-VR.bat stage/
+          Copy-Item scripts/Summarize-Daytona-Diagnostics.ps1 stage/
           Copy-Item docs/DAYTONA_NATIVE_STEREO.md stage/README-KO.md
           Copy-Item docs/vr_wizard/PLAYTEST.md stage/PLAYTEST-WIZARD.md
           Copy-Item docs/vr_wizard/PHASE_PLAN.md stage/VR-WIZARD-STATUS.md

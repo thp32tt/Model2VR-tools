@@ -65,6 +65,9 @@ public:
         enabled_=enable;
         shift_=float((std::clamp)(shift,1u,250u))/1000.f;
         first_stereo_published_=false;
+        diag_attempts_=diag_shape_=diag_caller_=diag_shader_=0u;
+        diag_state_=diag_shift_=diag_pose_=diag_resources_=0u;
+        diag_eye_=0u;diag_witness_count_=0u;diag_witness_.fill(0u);
         Reset();
     }
     void ResetExternal()noexcept{
@@ -81,12 +84,28 @@ public:
         if(!enabled_||!d||count==0||count>8192u||g_in_eye_replay)return;
         std::lock_guard lock(mu_);
         ScopedEyeReplay recursion_guard;
+        ++diag_attempts_;
+        // Bounded callsite evidence; never store game vertices or textures.
+        if(family==3u && source && diag_witness_count_<diag_witness_.size()){
+            const std::uint64_t sig=(std::uint64_t{caller}<<32)|
+                (std::uint64_t{stride}<<16)|static_cast<std::uint32_t>(primitive);
+            const auto end=diag_witness_.begin()+diag_witness_count_;
+            if(std::find(diag_witness_.begin(),end,sig)==end){
+                diag_witness_[diag_witness_count_++]=sig;
+                DWORD fvf=0xffffffffu;
+                if(FAILED(d->GetFVF(&fvf)))fvf=0xffffffffu;
+                m2vr::LogEvent("model2_vr_diag_up_source",caller,
+                    (std::uint64_t{static_cast<std::uint32_t>(primitive)}<<32)|count,
+                    (std::uint64_t{stride}<<32)|fvf,0u);
+            }
+        }
         // The OpenXR host supplies a coherent, fresh two-eye tracking pair.
         // Never allocate GPU resources, readback, or re-render when the Quest
         // host is absent, disconnected, stale or returning identical eyes.
         // Latch once per emulator frame, not every game Draw.
-        if(!LivePoseForGameFrame() || !Ensure(d) ||
-           !LivePoseForGameFrame())return;
+        if(!LivePoseForGameFrame()){++diag_pose_;return;}
+        if(!Ensure(d)){++diag_resources_;return;}
+        if(!LivePoseForGameFrame()){++diag_pose_;return;}
         IDirect3DSurface9* target=nullptr;
         if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
         const bool backbuffer=(target==backbuffer_);
@@ -141,8 +160,11 @@ public:
         bool scene=false;
         const bool bounded_up=source && stride>=16u && stride<=256u && count<=512u;
         const std::size_t bytes=bounded_up?std::size_t{count}*3u*stride:0u;
+        if(bounded_up && primitive==D3DPT_TRIANGLELIST &&
+           stride==32u && bytes<=49152u)++diag_shape_;
         if(bounded_up && caller==0x000BABADu && primitive==D3DPT_TRIANGLELIST &&
            stride==32u && bytes<=49152u) {
+            ++diag_caller_;
             DWORD fvf=1,z=0,alpha=1;
             IDirect3DVertexShader9* vs=nullptr;
             IDirect3DPixelShader9* ps=nullptr;
@@ -161,6 +183,7 @@ public:
             }
             Drop(vs);Drop(ps);Drop(decl);
             if(scene){
+                ++diag_shader_;
                 ++scene_candidates_;
                 const auto verdict=m2vr::daytona::CheckShaderUPCandidate(
                     d,original_vp,width_,height_);
@@ -168,7 +191,7 @@ public:
                     const auto index=static_cast<std::size_t>(verdict);
                     if(index<scene_rejections_.size())++scene_rejections_[index];
                     scene=false; // pass is copied flat rather than stereo
-                }
+                }else ++diag_state_;
             }
         }
         if(scene) {
@@ -185,6 +208,7 @@ public:
                     scratch_[0].data(),scratch_[1].data(),bytes,count,
                     eye_offset);
                 scene=stats.shifted>0u;
+                if(scene)++diag_shift_;
             }
         }
         const D3DVIEWPORT9 viewport=ClippedViewport(original_vp);
@@ -221,7 +245,7 @@ public:
         const bool restored=SUCCEEDED(detach)&&SUCCEEDED(target_restore)&&
             SUCCEEDED(depth_restore)&&SUCCEEDED(viewport_restore);
         Drop(original_depth);Drop(target);
-        if(!both || !restored){Reset();return;}
+        if(!both || !restored){++diag_eye_;Reset();return;}
         // The synthetic first-draw clear initializes both color and Z.
         if(depth_bound && !active_started)depth_ready=true;
         active_started=true;
@@ -562,6 +586,12 @@ private:
                         m2vr::LogEvent("model2_vr_scene_reject_reason",frame,
                                        reason,scene_rejections_[reason],0u);
             }
+            m2vr::LogEvent("model2_vr_diag_source_gates",frame,
+                (std::uint64_t{diag_shape_}<<32)|diag_caller_,
+                (std::uint64_t{diag_shader_}<<32)|diag_state_,
+                (std::uint64_t{diag_shift_}<<32)|diag_attempts_);
+            m2vr::LogEvent("model2_vr_diag_source_drops",frame,
+                diag_pose_,diag_resources_,diag_eye_);
             if(first)m2vr::FlushLog();
         }
         if(first)first_stereo_published_=true;
@@ -789,6 +819,11 @@ private:
     bool aux_frame_started_=false;
     bool main_depth_ready_=false,aux_depth_ready_=false;
     std::array<std::uint32_t,4> mirrored_family_{};
+    std::uint32_t diag_attempts_=0u,diag_shape_=0u,diag_caller_=0u;
+    std::uint32_t diag_shader_=0u,diag_state_=0u,diag_shift_=0u;
+    std::uint32_t diag_pose_=0u,diag_resources_=0u,diag_eye_=0u;
+    std::array<std::uint64_t,12> diag_witness_{};
+    std::size_t diag_witness_count_=0u;
     float shift_=0.10f;
     unsigned scene_draws_=0,scene_candidates_=0;
     std::array<std::uint32_t,m2vr::daytona::kShaderCandidateReasons>

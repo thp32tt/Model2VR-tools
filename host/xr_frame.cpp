@@ -218,6 +218,7 @@ void XrApp::draw_frame(XrTime display_time){
         // Read the real x86 D3D9 reason mask; never confuse a tracked
         // headset with a successfully produced Daytona binocular frame.
         if(!producer_health_.Valid())producer_health_.Open(source_pid_);
+        static std::uint64_t last_problem_report_frame=0u;
         producerhealth::Snapshot latest{};
         const bool fresh=producer_health_.Valid() &&
             producer_health_.Read(latest) &&
@@ -225,7 +226,9 @@ void XrApp::draw_frame(XrTime display_time){
         if(fresh){
             producer_health_status_=latest;
             if(!producer_health_fresh_ ||
-               latest.reason_mask!=producer_health_last_reason_){
+               latest.reason_mask!=producer_health_last_reason_ ||
+               (latest.reason_mask!=0u &&
+                latest.frame_id>=last_problem_report_frame+120u)){
                 std::cout<<"Daytona VR producer health: "
                          <<producerhealth::ReasonName(latest.reason_mask)
                          <<" reason_mask="<<latest.reason_mask
@@ -239,6 +242,7 @@ void XrApp::draw_frame(XrTime display_time){
                          <<" mirror_clears="<<latest.mirrored_clears
                          <<std::endl;
                 producer_health_last_reason_=latest.reason_mask;
+                last_problem_report_frame=latest.frame_id;
             }
         } else if(producer_health_fresh_){
             std::cout<<"Daytona VR producer health: STALE_OR_DISCONNECTED"<<std::endl;

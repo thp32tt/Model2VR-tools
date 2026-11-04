@@ -63,6 +63,10 @@ if errorlevel 1 (
 "%~dp0Model2VRLoader.exe" "%EMULATOR%" >>"%LAUNCHLOG%" 2>&1
 set "RESULT=%ERRORLEVEL%"
 >>"%LAUNCHLOG%" echo loader_exit=%RESULT%
+if exist "%~dp0Summarize-Daytona-Diagnostics.ps1" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Summarize-Daytona-Diagnostics.ps1" -LogDir "%~dp0logs" -LauncherLog "%LAUNCHLOG%" -Stamp "%STAMP%"
+  if errorlevel 1 >>"%LAUNCHLOG%" echo DIAGNOSTIC_SUMMARY_FAILED
+)
 
 if not "%RESULT%"=="0" (
   echo.
