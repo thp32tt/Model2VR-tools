@@ -142,6 +142,27 @@ Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskRenderStates(
     unsigned int alpha_source,unsigned int blend_mode,
     unsigned int write_rgba_mask);
 
+// Exact original D3D9 alpha comparison for an explicitly authenticated
+// original source Draw. mode: 0=legacy byte >= alpha_cutoff; 1..8 match
+// D3DCMP_NEVER, LESS, EQUAL, LESSEQUAL, GREATER, NOTEQUAL,
+// GREATEREQUAL, ALWAYS. Exact modes require alpha_cutoff=0 and
+// alpha_reference=0..255; legacy mode requires alpha_reference=0.
+// The existing ColorMaskRenderStates export and binary ABI are unchanged.
+// This entrypoint never authorizes an unknown world/HUD Draw by itself.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskAlphaCompareRenderStates(
+    const float* view_space_xyz,const float* interleaved_uv,
+    unsigned int vertex_count,const std::uint32_t* triangle_indices,
+    unsigned int index_count,const unsigned char* texture_rgba,
+    unsigned int texture_width,unsigned int texture_height,
+    unsigned int texture_pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
+    const std::uint32_t* diffuse_argb,unsigned int rgb_source,
+    unsigned int alpha_source,unsigned int blend_mode,
+    unsigned int write_rgba_mask,unsigned int alpha_compare,
+    unsigned int alpha_reference);
+
 // Return TRUE only during an independently authorized current-thread world
 // transaction. Adapters must fail before reading original D3D9 draw memory.
 __declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread();
