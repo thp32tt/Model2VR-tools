@@ -30,6 +30,7 @@ add_library(model2vr_probe SHARED
   src/probe/verified_world_bridge.cpp
   src/probe/d3d9_up_material_bridge.cpp
   src/probe/d3d9_vb_material_bridge.cpp
+  src/probe/d3d9_indexed_up_material_bridge.cpp
   src/probe/d3d9_probe.cpp
   src/probe/daytona_native_stereo.cpp
 )
@@ -271,6 +272,14 @@ add_executable(model2_d3d9_vb_window_test tests/model2_d3d9_vb_window_test.cpp)
 target_compile_features(model2_d3d9_vb_window_test PRIVATE cxx_std_20)
 target_compile_definitions(model2_d3d9_vb_window_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME model2_real_d3d9_vb_ib_source_window COMMAND model2_d3d9_vb_window_test)
+# Exact D3D9 Indexed-UP source MinVertexIndex and projected triangle order.
+add_executable(model2_d3d9_indexed_up_window_test
+    tests/model2_d3d9_indexed_up_window_test.cpp)
+target_compile_features(model2_d3d9_indexed_up_window_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_d3d9_indexed_up_window_test PRIVATE
+    NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME model2_real_d3d9_indexed_up_source_window
+    COMMAND model2_d3d9_indexed_up_window_test)
 # Verify per-family first-seen caller evidence and low-overhead periodic probe.
 add_executable(model2_draw_origin_gate_test tests/draw_origin_gate_test.cpp)
 target_compile_features(model2_draw_origin_gate_test PRIVATE cxx_std_20)

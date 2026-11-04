@@ -1,0 +1,97 @@
+// Proof-owned original indexed-UP source -> existing calibrated two-eye
+// textured renderer. This neither hooks nor invokes a second original Draw.
+#include "verified_world_bridge.h"
+#include "d3d9_indexed_up_window.hpp"
+#include "d3d9_vb_index_window.hpp"
+#include "project_draw_correlator.hpp"
+#include <Windows.h>
+#include <d3d9.h>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <vector>
+namespace {
+bool ProtectedCopy(void* dst,const void* src,std::size_t size) noexcept {
+    if(!dst || !src || !size || size>512u*1024u)return false;
+    __try {std::memcpy(dst,src,size);return true;}
+    __except(EXCEPTION_EXECUTE_HANDLER){return false;}
+}
+bool CaptureIndexedUP(
+    IDirect3DDevice9* device,unsigned min_vertex,unsigned vertex_count,
+    unsigned triangle_count,const void* indices,D3DFORMAT format,
+    const void* vertices,unsigned stride,
+    std::vector<std::uint8_t>& source,
+    std::vector<std::uint32_t>& relative) {
+    using namespace m2vr::drawprobe;
+    if(!device || !indices || !vertices || !stride || stride>256u ||
+       !vertex_count || vertex_count>kMaxIndexedUPVertices ||
+       !triangle_count || triangle_count>kMaxIndexedUPTriangles ||
+       (format!=D3DFMT_INDEX16 && format!=D3DFMT_INDEX32))
+        return false;
+    const std::size_t width=format==D3DFMT_INDEX16?2u:4u;
+    const std::size_t index_bytes=std::size_t(triangle_count)*3u*width;
+    const std::size_t vertex_bytes=std::size_t(vertex_count)*stride;
+    if(vertex_bytes>512u*1024u)return false;
+    std::vector<std::uint8_t> original_indices(index_bytes);
+    std::vector<std::uint8_t> original_vertices(vertex_bytes);
+    if(!ProtectedCopy(original_indices.data(),indices,index_bytes) ||
+       !ProtectedCopy(original_vertices.data(),vertices,vertex_bytes) ||
+       !RemapIndexedUPTriangleList(original_indices.data(),index_bytes,
+           format,min_vertex,vertex_count,triangle_count,relative))
+        return false;
+    source=std::move(original_vertices);
+    return true;
+}
+} // namespace
+
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTextured(
+    void* device,unsigned min_vertex,unsigned vertex_count,
+    unsigned triangles,const void* indices,unsigned format,
+    const void* vertices,unsigned stride,unsigned alpha_cutoff) {
+    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
+       alpha_cutoff>255u)return FALSE;
+    try {
+        std::vector<std::uint8_t> source;
+        std::vector<std::uint32_t> relative;
+        if(!CaptureIndexedUP(static_cast<IDirect3DDevice9*>(device),
+            min_vertex,vertex_count,triangles,indices,
+            static_cast<D3DFORMAT>(format),vertices,stride,source,relative))
+            return FALSE;
+        // Existing UP route verifies XYZ/TEX1, world/view/projection,
+        // original texture/sampler/Z state and owned stereo frame.
+        return Model2VR_AppendVerifiedD3D9UPTextured(
+            device,source.data(),vertex_count,stride,relative.data(),
+            static_cast<unsigned>(relative.size()),alpha_cutoff);
+    }catch(...){return FALSE;}
+}
+
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTextured(
+    void* device,unsigned min_vertex,unsigned vertex_count,
+    unsigned triangles,const void* indices,unsigned format,
+    const void* vertices,unsigned stride,unsigned cpu_caller,
+    unsigned alpha_cutoff) {
+    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
+       !cpu_caller || alpha_cutoff>255u || triangles<2u ||
+       triangles>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
+        return FALSE;
+    try {
+        std::vector<std::uint8_t> source,expanded;
+        std::vector<std::uint32_t> relative;
+        auto* d=static_cast<IDirect3DDevice9*>(device);
+        if(!CaptureIndexedUP(d,min_vertex,vertex_count,triangles,
+            indices,static_cast<D3DFORMAT>(format),vertices,stride,
+            source,relative))return FALSE;
+        DWORD fvf=0;
+        if(FAILED(d->GetFVF(&fvf)))return FALSE;
+        m2vr::drawprobe::VBVertexWindow window{};
+        window.first=0u;window.count=vertex_count;
+        window.indices=std::move(relative);
+        if(!m2vr::drawprobe::ExpandProjectedVBWindow(
+            source.data(),source.size(),fvf,stride,window,expanded))
+            return FALSE;
+        // Exact original triangle order then same-thread/Present CPU
+        // projector join, perspective fit and texture/Z/pose checks.
+        return Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+            device,expanded.data(),triangles,stride,cpu_caller,alpha_cutoff);
+    }catch(...){return FALSE;}
+}

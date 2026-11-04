@@ -130,6 +130,25 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9Indexed
     unsigned int start_index,unsigned int primitive_count,
     unsigned int authenticated_cpu_project_caller_rva,
     unsigned int alpha_cutoff);
+// Original DrawIndexedPrimitiveUP's source pointer begins at MinVertexIndex.
+// Both APIs require a separately proven frame and are NEVER generic hooks;
+// source is copied, 16/32-bit indices normalized, and unknown HUD refused.
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTextured(
+    void* d3d9_device,unsigned int min_vertex_index,
+    unsigned int num_vertices,unsigned int primitive_count,
+    const void* original_indices,unsigned int index_format,
+    const void* original_vertices,unsigned int stride_bytes,
+    unsigned int alpha_cutoff);
+// For XYZRHW/TEX1, additionally require 2..8 unambiguous original CPU
+// projected triangles, same render thread/Present and authenticated caller.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedProjectedD3D9IndexedUPTextured(
+    void* d3d9_device,unsigned int min_vertex_index,
+    unsigned int num_vertices,unsigned int primitive_count,
+    const void* original_indices,unsigned int index_format,
+    const void* original_vertices,unsigned int stride_bytes,
+    unsigned int authenticated_cpu_project_caller_rva,
+    unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 // Source-owned upcoming original D3D9 Present frame ID (nonzero only
 // after real device hooks are installed and GPU-replay mode is disabled).
