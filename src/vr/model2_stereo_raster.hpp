@@ -126,8 +126,16 @@ public:
     // A fully clipped eye or two visually identical images is not a
     // verified native binocular source, even after valid Draw calls.
     bool StereoPairUsable()const noexcept {
-        return eye_pixels_[0]!=0u && eye_pixels_[1]!=0u &&
-               color_[0]!=color_[1];
+        if(!eye_pixels_[0] || !eye_pixels_[1])return false;
+        // OpenXR eye-color proof is RGB, not a difference solely in the
+        // original destination alpha plane. A masked alpha-only Draw
+        // cannot turn an otherwise identical black pair into true stereo.
+        const auto& left=color_[0];
+        const auto& right=color_[1];
+        for(std::size_t i=0;i<left.size();i+=4u)
+            if(left[i]!=right[i] || left[i+1u]!=right[i+1u] ||
+               left[i+2u]!=right[i+2u])return true;
+        return false;
     }
     std::uint64_t AcceptedTriangles()const noexcept{return triangles_;}
 private:
@@ -283,7 +291,7 @@ private:
                 // do not establish visible binocular color coverage.
                 CompositeSourceRGBA(color.data()+pixel,src_rgba,
                     texture.blend,texture.raster.write_rgba_mask);
-                if(texture.raster.write_rgba_mask) {
+                if(texture.raster.write_rgba_mask&0x07u) {
                     ++pixels_;
                     ++eye_pixels_[eye];
                 }
