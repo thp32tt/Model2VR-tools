@@ -151,11 +151,24 @@ void TrackFailedOriginalD3D9Scene(HRESULT hr,std::uint32_t transition,
             transition,static_cast<std::uint32_t>(hr));
 }
 HRESULT TrackOriginalD3D9DrawResult(HRESULT hr,std::uint32_t family,
-                                    void* caller) noexcept {
-    if(m2vr::vrbridge::IsFailedOriginalD3D9Draw(
-        family,static_cast<std::uint32_t>(hr)))
-        Model2VR_RejectFailedOriginalD3D9Draw(
-            family,static_cast<std::uint32_t>(hr),CallerRva(caller));
+                                    void* caller,IDirect3DDevice9* device) noexcept {
+    // Only authentic game EXE calls on the primary device can poison
+    // this physical Present. Ignore secondary, overlay and mirror calls.
+    if(!m2vr::vrbridge::IsFailedOriginalD3D9Draw(
+           family,static_cast<std::uint32_t>(hr)) ||
+       !g_primary_device.Owns(device))return hr;
+    const auto original_caller_rva=CallerRva(caller);
+    if(!original_caller_rva)return hr;
+    const auto frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    m2vr::LogEvent("model2_d3d9_original_draw_failed",frame,
+        family,static_cast<std::uint32_t>(hr),original_caller_rva);
+    Model2VR_RejectFailedOriginalD3D9Draw(
+        family,static_cast<std::uint32_t>(hr),original_caller_rva);
+    // Even an unsampled failed original Draw discards speculative eyes.
+    // Original game Draw/Present/FFB execute only once; retain mono backup.
+    if(g_native_stereo)
+        m2vr::daytona::MarkFailedOriginalDraw(
+            family,static_cast<std::uint32_t>(hr));
     return hr;
 }
 bool Sample(IDirect3DDevice9* dev,unsigned family,
@@ -1094,7 +1107,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     void* caller=_ReturnAddress();
     if(!g_primary_device.Owns(d))
         return TrackOriginalD3D9DrawResult(
-            g_draw(d,p,start,count),1u,caller);
+            g_draw(d,p,start,count),1u,caller,d);
     g_draws.fetch_add(1,std::memory_order_relaxed);
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
@@ -1110,7 +1123,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     RecordOriginalSourceResult(witness,hr,caller,1u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open);
-    TrackOriginalD3D9DrawResult(hr,1u,caller);
+    TrackOriginalD3D9DrawResult(hr,1u,caller,d);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorPrimitive(d,p,start,count,g_draw);
     return hr;
@@ -1123,7 +1136,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     void* caller=_ReturnAddress();
     if(!g_primary_device.Owns(d))
         return TrackOriginalD3D9DrawResult(
-            g_draw_indexed(d,p,base,min,num,start,count),2u,caller);
+            g_draw_indexed(d,p,base,min,num,start,count),2u,caller,d);
     g_indexed.fetch_add(1,std::memory_order_relaxed);
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
@@ -1139,7 +1152,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     RecordOriginalSourceResult(witness,hr,caller,2u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open);
-    TrackOriginalD3D9DrawResult(hr,2u,caller);
+    TrackOriginalD3D9DrawResult(hr,2u,caller,d);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexed(d,p,base,min,num,start,count,g_draw_indexed);
     return hr;
@@ -1152,7 +1165,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     void* caller=_ReturnAddress();
     if(!g_primary_device.Owns(d))
         return TrackOriginalD3D9DrawResult(
-            g_draw_up(d,p,count,verts,stride),3u,caller);
+            g_draw_up(d,p,count,verts,stride),3u,caller,d);
     g_up.fetch_add(1,std::memory_order_relaxed);
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
@@ -1168,7 +1181,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     RecordOriginalSourceResult(witness,hr,caller,3u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open);
-    TrackOriginalD3D9DrawResult(hr,3u,caller);
+    TrackOriginalD3D9DrawResult(hr,3u,caller,d);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorDraw(d,p,count,verts,stride,CallerRva(caller),g_draw_up);
     return hr;
@@ -1181,7 +1194,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     void* caller=_ReturnAddress();
     if(!g_primary_device.Owns(d))
         return TrackOriginalD3D9DrawResult(
-            g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller);
+            g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller,d);
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
@@ -1197,7 +1210,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     RecordOriginalSourceResult(witness,hr,caller,4u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open);
-    TrackOriginalD3D9DrawResult(hr,4u,caller);
+    TrackOriginalD3D9DrawResult(hr,4u,caller,d);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexedUP(d,p,min,num,count,idx,fmt,verts,stride,g_draw_indexed_up);
     return hr;

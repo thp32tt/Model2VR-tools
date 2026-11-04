@@ -80,5 +80,9 @@ void ReportVerifiedCpuWorldPresent(std::uint64_t frame,
 // original backbuffer remains eligible for clearly tagged MONO fallback.
 void MarkFailedOriginalScene(std::uint32_t transition,
                              std::uint32_t original_hresult) noexcept;
+// A failed primary-device game EXE Draw in any of four families invalidates
+// speculative GPU eyes, but never changes the original Draw HRESULT.
+void MarkFailedOriginalDraw(std::uint32_t family,
+                            std::uint32_t original_hresult) noexcept;
 void ResetResources() noexcept;
 }

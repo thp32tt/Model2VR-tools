@@ -134,13 +134,28 @@ class NativeStereoTest(unittest.TestCase):
         gpu_api=(ROOT/"src/probe/daytona_native_stereo.hpp").read_text("utf-8")
         self.assertIn("MarkFailedOriginalScene",gpu_api)
         self.assertIn("m2vr::daytona::MarkFailedOriginalScene(",hooks)
-        self.assertIn("source_scene_failed_=true;",gpu)
-        self.assertIn("source_scene_failed_=false;",gpu)
-        self.assertEqual(gpu.count("if(source_scene_failed_)return;"),5)
+        self.assertIn("source_original_failed_=true;",gpu)
+        self.assertIn("source_original_failed_=false;",gpu)
+        self.assertEqual(gpu.count("if(source_original_failed_)return;"),5)
+        self.assertIn("void MarkFailedOriginalDraw(std::uint32_t family,",gpu)
+        self.assertIn("m2vr::daytona::MarkFailedOriginalDraw(",hooks)
+        self.assertIn("model2_d3d9_original_draw_failed",hooks)
+        self.assertIn("model2_vr_gpu_original_draw_failed",gpu)
+        self.assertIn("MarkFailedOriginalDraw",gpu_api)
+        self.assertIn("OriginalDrawFailed=17u",source)
+        original_draw=cpu.split("Model2VR_RejectFailedOriginalD3D9Draw(")[1].split(
+            "Model2VR_RejectFailedOriginalD3D9Scene(")[0]
+        self.assertIn("Model2VR_NextOriginalD3D9PresentFrameId();",original_draw)
+        self.assertIn("if(failed_present)g.source_epoch.Revoke(failed_present);",
+                      original_draw)
+        self.assertIn("const bool owned=(g.owner==GetCurrentThreadId())",original_draw)
+        self.assertEqual(hooks.count("TrackOriginalD3D9DrawResult(hr,"),4)
+        self.assertIn("!g_primary_device.Owns(device)",hooks)
+        self.assertIn("if(!original_caller_rva)return hr;",hooks)
         replay_clear=gpu.split("    void Clear(IDirect3DDevice9*")[1].split(
             "    void PreparePresent(")[0]
-        self.assertIn("if(source_scene_failed_)return;",replay_clear)
-        self.assertIn("if(source_scene_failed_){",gpu)
+        self.assertIn("if(source_original_failed_)return;",replay_clear)
+        self.assertIn("if(source_original_failed_){",gpu)
         self.assertIn("pending_present_reason_=m2vr::producerhealth::NoVerifiedScene;",gpu)
         self.assertIn("PrepareOriginalMono(d,frame,pending_present_reason_);",gpu)
         self.assertIn("model2_vr_gpu_original_scene_failed",gpu)

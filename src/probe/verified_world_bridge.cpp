@@ -677,29 +677,31 @@ extern "C" void __stdcall Model2VR_RejectVerifiedD3D9SourceDraw(
     if(g.owner==GetCurrentThreadId() && (g.active || g.pending_present))
         g.Reject(source_kind);
 }
-// An authentic original D3D9 Draw returning failed HRESULT cannot be part
-// of a successfully composed CPU-world binocular image. Revoke only the
-// separately authorized in-flight or Present-armed SAME-THREAD transaction.
-// Original game Draw, GPU stereo fallback and FFB are never re-executed.
+// Any failed authentic original D3D9 Draw revokes the whole physical
+// Present, including when the CPU-world adapter has not begun yet.
+// Never execute the game's Draw, Present, simulation or FFB again.
 extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Draw(
     std::uint32_t original_family,std::uint32_t result_bits,
     std::uint32_t original_caller_rva) {
     using namespace m2vr::vrbridge;
-    if(!IsFailedOriginalD3D9Draw(original_family,result_bits))return;
+    if(!IsFailedOriginalD3D9Draw(original_family,result_bits) ||
+       !original_caller_rva)return;
+    const auto failed_present=Model2VR_NextOriginalD3D9PresentFrameId();
     std::scoped_lock lock(g.mutex);
-    if(g.owner!=GetCurrentThreadId() || !(g.active||g.pending_present))
-        return;
+    const bool owned=(g.owner==GetCurrentThreadId()) &&
+                     (g.active || g.pending_present);
     const auto rejected_frame=g.frame;
-    // An original COM failure takes precedence over a speculative adapter
-    // material status only for this bounded rejection event. Restore TLS.
-    const auto old_reason=g_current_original_source_failure;
-    g_current_original_source_failure=OriginalSourceFailure::Device;
-    g.Reject(FailedOriginalD3D9SourceKind(original_family));
-    g_current_original_source_failure=old_reason;
-    // Only the original EXE-relative caller RVA and HRESULT are emitted:
-    // no scene vertices, source game pixels or private matrix contents.
-    m2vr::LogEvent("model2_vr_cpu_world_original_draw_failed",
-        rejected_frame,original_family,result_bits,original_caller_rva);
+    if(owned){
+        const auto old_reason=g_current_original_source_failure;
+        g_current_original_source_failure=OriginalSourceFailure::OriginalDrawFailed;
+        g.Reject(FailedOriginalD3D9SourceKind(original_family));
+        g_current_original_source_failure=old_reason;
+        // EXE-relative caller/HRESULT only; never private game pixels.
+        m2vr::LogEvent("model2_vr_cpu_world_original_draw_failed",
+            rejected_frame,original_family,result_bits,original_caller_rva);
+    }
+    // A late CPU-world Begin must not re-arm this incomplete source frame.
+    if(failed_present)g.source_epoch.Revoke(failed_present);
 }
 // A failed authentic primary-device BeginScene or EndScene cannot be
 // part of a fully composited original-world eye pair for this same thread.

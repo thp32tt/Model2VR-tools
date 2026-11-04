@@ -25,6 +25,13 @@ int main(){
     CHECK(frames.Revoke(41u));
     CHECK(!frames.Revoke(41u));
     CHECK(!frames.CanBegin(41u,40u));
+    // Unsampled original Draw failure BEFORE the verified CPU Begin must
+    // forbid the rest of that physical Present, not the next frame.
+    OriginalSourceFrameEpoch prebegin{};
+    CHECK(prebegin.Revoke(41u));
+    CHECK(!prebegin.CanBegin(41u,40u));
+    CHECK(prebegin.CanBegin(42u,40u));
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalDrawFailed)==17u);
     CHECK(frames.CanBegin(42u,40u));
     return 0;
 }
