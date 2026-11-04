@@ -232,6 +232,31 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(REPORT.audit_csv(p)["world_pass_proof"],
                              "NOT_ESTABLISHED")
 
+    def test_projected_material_candidates_require_exact_original_stage(self):
+        # This is only fixed-function source evidence, never gameplay world
+        # authorization; the original CPU camera/pass is still unknown.
+        data = {
+            "origin": (0x44, pack(1, 0x144), pack(2048, 28)),
+            "stage_color": (pack(4, 2), 0, pack(0x144, 28)),
+            "stage_alpha": (pack(4, 2), 0, pack(0x144, 28)),
+            "stage_extra": (1, 1, pack(0, 0)),
+        }
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(4, 2), 1, pack(0x144, 28))
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(4, 0), 2, pack(0x144, 28))
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["stage_extra"] = (1, 1, pack(1, 0))
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["stage_extra"] = (1, 1, pack(0, 0))
+        data["origin"] = (0x44, pack(1, 0x104), pack(2048, 24))
+        data["stage_color"] = (pack(4, 0), 2, pack(0x104, 24))
+        data["stage_alpha"] = (pack(4, 2), 0, pack(0x104, 24))
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(2, 2), 0, pack(0x104, 24))
+        data["stage_alpha"] = (pack(2, 2), 0, pack(0x104, 24))
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+
     def test_reject_corruption_and_never_infer_runtime_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "probe.csv"

@@ -102,5 +102,44 @@ int main(){
         reinterpret_cast<const std::uint8_t*>(strip.data()),
         sizeof(strip)-1u,D3DFMT_INDEX16,500u,10000u,4u,ordered_source));
     CHECK(ordered_source==std::vector<std::uint32_t>({1,2,3,4}));
+    // Real projected indexed-UP DIFFUSE and optional SPECULAR source:
+    // 32-bit packed colors are not position floats; reordered triangle
+    // vertices must keep true ARGB, RHW, and float2 UV for both XR eyes.
+    const auto argb_fvf=D3DFVF_XYZRHW|D3DFVF_DIFFUSE|
+                        D3DFVF_SPECULAR|D3DFVF_TEX1;
+    std::array<std::array<std::uint8_t,32>,4> color_vertices{};
+    for(std::size_t i=0;i<color_vertices.size();++i){
+        const float pos[4]={100.f+float(i)*50.f,140.f,0.5f,0.25f};
+        const std::uint32_t diffuse_color=0x11000000u |
+                                           (std::uint32_t(i)<<16u);
+        const std::uint32_t specular_color=0xffffffffu;
+        const float texture_uv[2]={float(i)*0.25f,0.75f};
+        std::memcpy(color_vertices[i].data(),pos,sizeof(pos));
+        std::memcpy(color_vertices[i].data()+16u,&diffuse_color,4u);
+        std::memcpy(color_vertices[i].data()+20u,&specular_color,4u);
+        std::memcpy(color_vertices[i].data()+24u,texture_uv,sizeof(texture_uv));
+    }
+    window.first=0u;window.count=4u;window.indices=expected;
+    CHECK(ExpandProjectedVBWindow(
+        reinterpret_cast<const std::uint8_t*>(color_vertices.data()),
+        sizeof(color_vertices),argb_fvf,32u,window,expanded));
+    CHECK(expanded.size()==192u);
+    for(std::size_t i=0;i<6u;++i){
+        ProjectedUPWorldVertex projected_corner{};
+        CHECK(DecodeProjectedUPWorldVertex(
+            expanded.data()+i*32u,argb_fvf,32u,projected_corner));
+        const std::size_t source_index=expected[i];
+        CHECK(projected_corner.has_diffuse &&
+              projected_corner.has_specular &&
+              projected_corner.diffuse_argb==
+                  (0x11000000u|(std::uint32_t(source_index)<<16u)) &&
+              projected_corner.uv[0]==float(source_index)*0.25f &&
+              projected_corner.uv[1]==0.75f);
+    }
+    const auto last_valid=expanded;
+    CHECK(!ExpandProjectedVBWindow(
+        reinterpret_cast<const std::uint8_t*>(color_vertices.data()),
+        sizeof(color_vertices)-1u,argb_fvf,32u,window,expanded));
+    CHECK(expanded==last_valid);
     return 0;
 }
