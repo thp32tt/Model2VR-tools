@@ -267,7 +267,10 @@ class SourceAuditTests(unittest.TestCase):
             "stage_result": (1, 1, pack(0x144, 28)),
         }
         self.assertTrue(REPORT.original_projected_material_candidate(data))
+        # Stage0 CURRENT=DIFFUSE is an exact D3D9 equivalence.
         data["stage_color"] = (pack(4, 2), 1, pack(0x144, 28))
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(4, 2), 3, pack(0x144, 28))
         self.assertFalse(REPORT.original_projected_material_candidate(data))
         data["stage_color"] = (pack(4, 0), 2, pack(0x144, 28))
         self.assertTrue(REPORT.original_projected_material_candidate(data))
@@ -281,6 +284,8 @@ class SourceAuditTests(unittest.TestCase):
         # Without explicit vertex D3DCOLOR, D3D9 defines diffuse=white.
         self.assertTrue(REPORT.original_projected_material_candidate(data))
         data["stage_color"] = (pack(4, 2), 1, pack(0x104, 24))
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["stage_color"] = (pack(4, 2), 3, pack(0x104, 24))
         self.assertFalse(REPORT.original_projected_material_candidate(data))
         data["stage_color"] = (pack(4, 2), 0, pack(0x104, 24))
         data["stage_alpha"] = (pack(4, 1), 2, pack(0x104, 24))
