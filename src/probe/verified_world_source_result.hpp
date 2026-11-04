@@ -7,7 +7,11 @@
 namespace m2vr::vrbridge {
 inline BOOL CompleteOriginalD3D9SourceDraw(
     BOOL result,OriginalSourceDrawKind source_kind) noexcept {
-    if(result==FALSE)Model2VR_RejectVerifiedD3D9SourceDraw(static_cast<unsigned int>(source_kind));
+    if(result==FALSE) {
+        const auto outer=CurrentOriginalSourceDrawKind();
+        Model2VR_RejectVerifiedD3D9SourceDraw(
+            outer?outer:static_cast<unsigned int>(source_kind));
+    }
     return result;
 }
 } // namespace m2vr::vrbridge

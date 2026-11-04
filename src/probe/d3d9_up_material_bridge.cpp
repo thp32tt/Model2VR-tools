@@ -204,6 +204,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     void* device, const void* source, unsigned int count,
     unsigned int stride, const std::uint32_t* triangle_indices,
     unsigned int index_count,unsigned int alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
     auto* d=static_cast<IDirect3DDevice9*>(device);
     m2vr::vr::SamplerPolicy sampler{};
     m2vr::vr::RasterPolicy raster{};
@@ -326,6 +328,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     void* device,const void* original_vertices,unsigned int triangles,
     unsigned int stride,unsigned int expected_cpu_caller,unsigned int cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
     auto* d=static_cast<IDirect3DDevice9*>(device);
     constexpr std::uint32_t kMaxTriangles=
         static_cast<std::uint32_t>(

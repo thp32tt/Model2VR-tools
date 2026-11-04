@@ -73,6 +73,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTopologyTextured(
     void* device,unsigned type,unsigned min_vertex,unsigned vertex_count,
     unsigned triangles,const void* indices,unsigned format,
     const void* vertices,unsigned stride,unsigned alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::TopologyIndexedUP);
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        alpha_cutoff>256u)return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
@@ -105,6 +107,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyT
     unsigned triangles,const void* indices,unsigned format,
     const void* vertices,unsigned stride,unsigned cpu_caller,
     unsigned alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        !cpu_caller || alpha_cutoff>256u || triangles<2u ||
        triangles>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
@@ -151,6 +155,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTextured(
     void* device,unsigned min_vertex,unsigned vertex_count,
     unsigned triangles,const void* indices,unsigned format,
     const void* vertices,unsigned stride,unsigned alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::IndexedUP);
     return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (Model2VR_AppendVerifiedD3D9IndexedUPTopologyTextured(
         device,D3DPT_TRIANGLELIST,min_vertex,vertex_count,triangles,
@@ -162,6 +168,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTextured(
     unsigned triangles,const void* indices,unsigned format,
     const void* vertices,unsigned stride,unsigned cpu_caller,
     unsigned alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedIndexedUP);
     return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyTextured(
         device,D3DPT_TRIANGLELIST,min_vertex,vertex_count,triangles,

@@ -8,6 +8,7 @@
 #include "daytona_source_pose_commit_gate.hpp"
 #include "verified_world_present_gate.hpp"
 #include "verified_world_source_epoch.hpp"
+#include "verified_world_source_result.hpp"
 #include "daytona_native_stereo.hpp"
 #include "../common/daytona_producer_health.hpp"
 #include "logger.h"
@@ -181,7 +182,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
        index_count>3u*2048u ||
        index_count/3u>2048u-g.triangle_count ||
        g.draw_count>=2048u) {
-        if(Owner())g.Reject(0u);
+        if(Owner())g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
     try {
@@ -194,21 +195,21 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
                         std::size_t(index_count)*sizeof(std::uint32_t)) ||
            !GuardedCopy(safe_colors.data(),colors,
                         std::size_t(index_count/3u)*sizeof(std::uint32_t))){
-            g.Reject(0u);return FALSE;
+            g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());return FALSE;
         }
         m2vr::vr::ClippedStereoBatch clipped{};
         if(!m2vr::vr::BuildClippedStereoBatch(
             vertices.data(),vertices.size(),safe_indices.data(),index_count,
             g.frame,g.latch,g.calibration,g.evidence,clipped) ||
            !g.raster->Draw(clipped,safe_colors.data(),index_count/3u)) {
-            g.Reject(0u);
+            g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
             return FALSE;
         }
         ++g.draw_count;
         g.triangle_count+=index_count/3u;
         return TRUE;
     }catch(...){
-        g.Reject(0u);
+        g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
 }
@@ -254,7 +255,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
        rgb_source>2u || alpha_source>2u || blend_mode>8u ||
        write_rgba_mask>15u ||
        ((rgb_source!=0u || alpha_source!=0u) && !diffuse_argb)) {
-        if(Owner())g.Reject(0u);
+        if(Owner())g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
     try {
@@ -275,7 +276,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
                                            safe_texture.size())) ||
            (diffuse_argb && !GuardedCopy(safe_diffuse.data(),diffuse_argb,
                             safe_diffuse.size()*sizeof(std::uint32_t)))) {
-            g.Reject(0u);return FALSE;
+            g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());return FALSE;
         }
         m2vr::vr::ClippedTexturedStereoBatch clipped{};
         if(!m2vr::vr::BuildTexturedStereoBatch(
@@ -283,7 +284,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
               safe_indices.data(),safe_indices.size(),g.frame,g.latch,
               g.calibration,g.evidence,clipped,
               safe_diffuse.empty()?nullptr:safe_diffuse.data())) {
-            g.Reject(0u);return FALSE;
+            g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());return FALSE;
         }
         m2vr::vr::StereoWorldRaster::TextureRGBA texture{
             source_texture?safe_texture.data():nullptr,
@@ -310,13 +311,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
              static_cast<m2vr::vr::AlphaBlendFactor>(separate_alpha_dst)}
         };
         if(!g.raster->DrawTextured(clipped,texture)) {
-            g.Reject(0u);return FALSE;
+            g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());return FALSE;
         }
         ++g.draw_count;
         g.triangle_count+=index_count/3u;
         return TRUE;
     }catch(...){
-        g.Reject(0u);return FALSE;
+        g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());return FALSE;
     }
 }
 // Preserve the exact previous alpha-compare/material ABI for all already
@@ -453,7 +454,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     if(!Owner())return FALSE;
     if(!g.draw_count || !g.raster ||
        !g.raster->StereoPairUsable() || !OriginalWorldPoseLive()){
-        g.Reject(0u);
+        g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
     // One game frame, two independently clipped/depth-tested images.
@@ -476,7 +477,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent(){
     if(!Owner())return FALSE;
     if(!g.draw_count || !g.raster ||
        !g.raster->StereoPairUsable() || !OriginalWorldPoseLive()){
-        g.Reject(0u);
+        g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
     g.active=false;

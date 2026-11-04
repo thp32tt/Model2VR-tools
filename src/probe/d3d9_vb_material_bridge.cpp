@@ -184,6 +184,8 @@ BOOL SubmitProjectedBufferWindow(
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTextured(
     void* device,unsigned int start_vertex,
     unsigned int primitive_count,unsigned int alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::VertexBuffer);
     try {
         if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
@@ -209,6 +211,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTextured(
     unsigned int min_vertex_index,unsigned int num_vertices,
     unsigned int start_index,unsigned int primitive_count,
     unsigned int alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::IndexedVertexBuffer);
     try {
         if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
@@ -234,6 +238,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTextured(
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTextured(
     void* device,unsigned int start_vertex,unsigned int primitive_count,
     unsigned int expected_cpu_caller,unsigned int alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedVertexBuffer);
     try {
         if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
@@ -260,6 +266,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
     unsigned int min_vertex_index,unsigned int num_vertices,
     unsigned int start_index,unsigned int primitive_count,
     unsigned int expected_cpu_caller,unsigned int alpha_cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedIndexedVertexBuffer);
     try {
         if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
            primitive_count<2u ||
@@ -288,6 +296,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
 // safety, and binocular renderer remain the only admission/commit path.
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTopologyTextured(
     void* device,unsigned type,unsigned start,unsigned count,unsigned cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::TopologyVertexBuffer);
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::TopologyVertexBuffer);
@@ -309,6 +319,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTopologyTextured(
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTopologyTextured(
     void* device,unsigned type,int base,unsigned min,unsigned num,
     unsigned start,unsigned count,unsigned cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::TopologyIndexedVertexBuffer);
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::TopologyIndexedVertexBuffer);
@@ -330,6 +342,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTopologyTextured(
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured(
     void* device,unsigned type,unsigned start,unsigned count,
     unsigned caller,unsigned cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyVertexBuffer);
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        !caller || count<2u ||
        count>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
@@ -354,6 +368,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTopologyTextured(
     void* device,unsigned type,int base,unsigned min,unsigned num,
     unsigned start,unsigned count,unsigned caller,unsigned cutoff) {
+    const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedVertexBuffer);
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        !caller || count<2u ||
        count>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)

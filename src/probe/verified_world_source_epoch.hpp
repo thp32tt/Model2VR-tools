@@ -25,6 +25,29 @@ enum class OriginalSourceDrawKind : std::uint32_t {
     TopologyIndexedUP=15u,
     ProjectedTopologyIndexedUP=16u,
 };
+// Source provenance belongs to the ORIGINAL outermost D3D9 adapter, not
+// to a nested UP/vertex-buffer helper. This local-only tag carries neither
+// world permission nor image bytes across process/IPC boundaries.
+inline thread_local OriginalSourceDrawKind g_current_original_source_kind=
+    OriginalSourceDrawKind::NativeCpuRaster;
+inline std::uint32_t CurrentOriginalSourceDrawKind() noexcept {
+    return static_cast<std::uint32_t>(g_current_original_source_kind);
+}
+class ScopedOriginalSourceDrawKind final {
+public:
+    explicit ScopedOriginalSourceDrawKind(OriginalSourceDrawKind next) noexcept
+        : previous_(g_current_original_source_kind) {
+        if(previous_==OriginalSourceDrawKind::NativeCpuRaster)
+            g_current_original_source_kind=next;
+    }
+    ~ScopedOriginalSourceDrawKind() noexcept {
+        g_current_original_source_kind=previous_;
+    }
+    ScopedOriginalSourceDrawKind(const ScopedOriginalSourceDrawKind&)=delete;
+    ScopedOriginalSourceDrawKind& operator=(const ScopedOriginalSourceDrawKind&)=delete;
+private:
+    OriginalSourceDrawKind previous_;
+};
 class OriginalSourceFrameEpoch {
 public:
     constexpr bool CanBegin(std::uint64_t frame,

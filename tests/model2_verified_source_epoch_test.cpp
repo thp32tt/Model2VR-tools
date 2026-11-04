@@ -7,6 +7,24 @@ int main() {
     CHECK(static_cast<std::uint32_t>(OriginalSourceDrawKind::NativeCpuRaster)==0u);
     CHECK(static_cast<std::uint32_t>(OriginalSourceDrawKind::ProjectedIndexedVertexBuffer)==10u);
     CHECK(static_cast<std::uint32_t>(OriginalSourceDrawKind::ProjectedTopologyIndexedUP)==16u);
+    using m2vr::vrbridge::ScopedOriginalSourceDrawKind;
+    using m2vr::vrbridge::CurrentOriginalSourceDrawKind;
+    CHECK(CurrentOriginalSourceDrawKind()==0u);
+    {
+        ScopedOriginalSourceDrawKind a(OriginalSourceDrawKind::TopologyIndexedUP);
+        CHECK(CurrentOriginalSourceDrawKind()==15u);
+        {
+            ScopedOriginalSourceDrawKind b(OriginalSourceDrawKind::PrimitiveUP);
+            CHECK(CurrentOriginalSourceDrawKind()==15u); // outer original source
+        }
+        CHECK(CurrentOriginalSourceDrawKind()==15u);
+    }
+    CHECK(CurrentOriginalSourceDrawKind()==0u);
+    {
+        ScopedOriginalSourceDrawKind a(OriginalSourceDrawKind::VertexBuffer);
+        CHECK(CurrentOriginalSourceDrawKind()==7u);
+    }
+    CHECK(CurrentOriginalSourceDrawKind()==0u);
     m2vr::vrbridge::OriginalSourceFrameEpoch epoch;
     CHECK(!epoch.CanBegin(0u,0u));
     CHECK(epoch.CanBegin(13u,12u));
