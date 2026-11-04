@@ -72,6 +72,19 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(hooks.count("RecordOriginalSourceResult(witness,hr,caller,"),4)
         self.assertIn("const HRESULT original_result=g_present(d,a,b,w,dirty);",hooks)
 
+    def test_release_bundles_private_log_only_up_source_evidence_helper(self):
+        workflow=(ROOT/".github/workflows/daytona-native-stereo.yml").read_text("utf-8")
+        script=(ROOT/"scripts/Analyze-Daytona-UP-Source.cmd").read_text("utf-8")
+        self.assertIn("tools/model2_up_draw_outcomes.py stage/Analyze-OriginalUP-Present.py",
+                      workflow)
+        self.assertIn("scripts/Analyze-Daytona-UP-Source.cmd stage/",workflow)
+        self.assertIn("test_model2_up_draw_outcomes.py",workflow)
+        self.assertIn("daytona_vr_startup_*.csv",script)
+        self.assertIn("--output",script)
+        self.assertIn("ONLY on this computer",script)
+        self.assertNotIn("curl ",script)
+        self.assertNotIn("Invoke-WebRequest",script)
+
     def test_physical_original_present_rejects_unarmed_or_stale_cpu_eye_pair(self):
         cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         gate=(ROOT/"src/probe/verified_world_present_gate.hpp").read_text("utf-8")

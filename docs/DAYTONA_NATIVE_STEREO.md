@@ -1,3 +1,23 @@
+## Private original-UP physical Draw/Present evidence helper (2026-11-05)
+
+The matched Win32/Win64 release ZIP now contains an optional offline tool:
+`Analyze-Daytona-UP-Source.cmd` and `Analyze-OriginalUP-Present.py`.
+After launching Daytona locally, the CMD helper locates the latest x86
+`logs/daytona_vr_startup_*.csv` (or accepts a private CSV pathname as
+its first argument) and writes a JSON summary under the same `logs/`
+directory. It requires locally installed Python 3, never uploads any
+original Daytona trace, and never changes the emulator, GPU replay or FFB.
+
+The report correlates source-shader/XYZ/XYZRHW witness IDs with authentic
+original Win32 UP/IndexedUP Draw HRESULT and successful original physical
+Present. It separately identifies failed/missing outputs and same-witness
+CPU projector/matrix/geometry source candidates. Neither a successful
+Draw/Present nor a fitted matrix authorizes gameplay World3D; genuine
+race-vs-title/HUD proof, game units/metre and tracked headset optics are
+still mandatory. `RUNTIME_VALIDATION=UNTESTED` without real Quest3/VDXR
+race runtime observation.
+
+
 # Daytona USA — experimental native two-eye GPU rendering for Quest 3
 
 **This is NOT the old screen-capture theater.** The 32-bit Model 2 emulator

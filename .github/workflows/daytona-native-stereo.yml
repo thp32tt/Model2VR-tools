@@ -33,6 +33,10 @@ on:
       - 'scripts/Run-Daytona-VR.bat'
       - 'src/common/daytona_host_ready.hpp'
       - 'tests/test_daytona_native_stereo.py'
+      - 'tests/test_model2_up_draw_outcomes.py'
+      - 'tools/model2_up_draw_outcomes.py'
+      - 'scripts/Analyze-Daytona-UP-Source.cmd'
+      - 'docs/MODEL2_WORLD_PASS_EVIDENCE.md'
       - 'tests/daytona_wizard_health_test.cpp'
       - 'docs/vr_wizard/**'
       - 'docs/DAYTONA_NATIVE_STEREO.md'
@@ -50,6 +54,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate original-game and FFB-safe stereo integration
         run: python -m unittest discover -s tests -p test_daytona_native_stereo.py -v
+      - name: Verify authentic source UP HRESULT and original Present evidence
+        run: python -m unittest discover -s tests -p test_model2_up_draw_outcomes.py -v
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
       - name: Build original game hook/loader
@@ -108,6 +114,9 @@ jobs:
           Copy-Item scripts/Run-Daytona-NativeStereo.cmd stage/
           Copy-Item scripts/Run-Daytona-VR.bat stage/
           Copy-Item docs/DAYTONA_NATIVE_STEREO.md stage/README-KO.md
+          Copy-Item tools/model2_up_draw_outcomes.py stage/Analyze-OriginalUP-Present.py
+          Copy-Item scripts/Analyze-Daytona-UP-Source.cmd stage/
+          Copy-Item docs/MODEL2_WORLD_PASS_EVIDENCE.md stage/ORIGINAL-WORLD-SOURCE-EVIDENCE.md
           Copy-Item docs/vr_wizard/PLAYTEST.md stage/PLAYTEST-WIZARD.md
           Copy-Item docs/vr_wizard/PHASE_PLAN.md stage/VR-WIZARD-STATUS.md
           $components=@(
