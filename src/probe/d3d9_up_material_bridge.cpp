@@ -44,7 +44,8 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
                            m2vr::drawprobe::FixedStageSource& alpha_source,
                            m2vr::vr::BlendMode& blend_mode,
                            unsigned int& alpha_compare,
-                           unsigned int& alpha_reference) {
+                           unsigned int& alpha_reference,
+                           m2vr::vr::SeparateAlphaBlend& separate_policy) {
     if(!d)return false;
     IDirect3DVertexShader9* vs=nullptr;
     if(FAILED(d->GetVertexShader(&vs)))return false;
@@ -86,6 +87,7 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
         return false;
     DWORD z=0,blend_enable=1,fog=1,lighting=1,specular=1;
     DWORD blend_src=0,blend_dst=0,blend_op=0,separate_alpha=1;
+    DWORD alpha_blend_src=0,alpha_blend_dst=0,alpha_blend_op=0;
     if(FAILED(d->GetRenderState(D3DRS_ZENABLE,&z)) ||
        FAILED(d->GetRenderState(D3DRS_ALPHABLENDENABLE,&blend_enable)) ||
        FAILED(d->GetRenderState(D3DRS_SRCBLEND,&blend_src)) ||
@@ -98,9 +100,14 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        z!=D3DZB_TRUE || fog || specular ||
        !m2vr::drawprobe::FixedStageOriginalLightingEquivalent(
            lighting,source_fvf) ||
-       !m2vr::drawprobe::DecodeBlendPolicy(
+       (blend_enable==1u && separate_alpha==1u &&
+        (FAILED(d->GetRenderState(D3DRS_SRCBLENDALPHA,&alpha_blend_src)) ||
+         FAILED(d->GetRenderState(D3DRS_DESTBLENDALPHA,&alpha_blend_dst)) ||
+         FAILED(d->GetRenderState(D3DRS_BLENDOPALPHA,&alpha_blend_op)))) ||
+       !m2vr::drawprobe::DecodeBlendWithSeparateAlphaPolicy(
             blend_enable,blend_src,blend_dst,blend_op,separate_alpha,
-            blend_mode))return false;
+            alpha_blend_src,alpha_blend_dst,alpha_blend_op,
+            blend_mode,separate_policy))return false;
     DWORD colorop=0,arg=0,arg2=0,alphaop=0,alphaarg=0,alphaarg2=0;
     if(FAILED(d->GetTextureStageState(0,D3DTSS_COLOROP,&colorop)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_COLORARG1,&arg)) ||
@@ -203,6 +210,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     m2vr::drawprobe::FixedStageSource alpha_source=
         m2vr::drawprobe::FixedStageSource::Texture;
     m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
+    m2vr::vr::SeparateAlphaBlend separate_policy{};
     unsigned int alpha_compare=0u,alpha_reference=0u;
     if(!d || !Model2VR_IsOriginalPrimaryD3D9Device(d) ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
@@ -219,7 +227,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     if(!layout.eligible ||
        !FixedFunctionMaterial(d,alpha_cutoff,fvf,sampler,raster,
                               rgb_source,alpha_source,blend_mode,
-                              alpha_compare,alpha_reference) ||
+                              alpha_compare,alpha_reference,
+                              separate_policy) ||
        !m2vr::drawprobe::FixedStageUVAvailableForSources(
            layout.has_uv,rgb_source,alpha_source))
         return FALSE;
@@ -307,6 +316,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     m2vr::drawprobe::FixedStageSource alpha_source=
         m2vr::drawprobe::FixedStageSource::Texture;
     m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
+    m2vr::vr::SeparateAlphaBlend separate_policy{};
     unsigned int alpha_compare=0u,alpha_reference=0u;
     // Original projected D3D9 FVF may carry a packed D3DCOLOR before UV.
     // When source FVF omits DIFFUSE, D3D9 defines opaque-white default
@@ -316,7 +326,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
        !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride) ||
        !FixedFunctionMaterial(d,cutoff,fvf,sampler,raster,
                               rgb_source,alpha_source,blend_mode,
-                              alpha_compare,alpha_reference) ||
+                              alpha_compare,alpha_reference,
+                              separate_policy) ||
        !m2vr::drawprobe::FixedStageUVAvailableForSources(
            (fvf&D3DFVF_TEXCOUNT_MASK)==D3DFVF_TEX1,
            rgb_source,alpha_source))return FALSE;
