@@ -195,6 +195,60 @@ inline bool DecodeBlendPolicy(DWORD enable,DWORD src,DWORD dst,
     else return false;
     return true;
 }
+// The original D3D9 SRCBLENDALPHA / DESTBLENDALPHA equations use
+// independent scalars for the destination ALPHA byte only. This strict
+// mapping accepts D3D9 color aliases solely where alpha is identical;
+// SRCALPHASAT, BOTH* and unmodelled operations continue to fail closed.
+inline bool DecodeOriginalSeparateAlphaFactor(
+    DWORD raw,m2vr::vr::AlphaBlendFactor& out) noexcept {
+    using m2vr::vr::AlphaBlendFactor;
+    switch(raw) {
+    case D3DBLEND_ZERO:out=AlphaBlendFactor::Zero;return true;
+    case D3DBLEND_ONE:out=AlphaBlendFactor::One;return true;
+    case D3DBLEND_SRCALPHA:
+    case D3DBLEND_SRCCOLOR:out=AlphaBlendFactor::SourceAlpha;return true;
+    case D3DBLEND_INVSRCALPHA:
+    case D3DBLEND_INVSRCCOLOR:
+        out=AlphaBlendFactor::InverseSourceAlpha;return true;
+    case D3DBLEND_DESTALPHA:
+    case D3DBLEND_DESTCOLOR:
+        out=AlphaBlendFactor::DestinationAlpha;return true;
+    case D3DBLEND_INVDESTALPHA:
+    case D3DBLEND_INVDESTCOLOR:
+        out=AlphaBlendFactor::InverseDestinationAlpha;return true;
+    default:return false;
+    }
+}
+inline bool DecodeBlendWithSeparateAlphaPolicy(
+    DWORD enable,DWORD rgb_src,DWORD rgb_dst,DWORD rgb_op,
+    DWORD separate,DWORD alpha_src,DWORD alpha_dst,DWORD alpha_op,
+    m2vr::vr::BlendMode& out_rgb,
+    m2vr::vr::SeparateAlphaBlend& out_alpha) noexcept {
+    using m2vr::vr::SeparateAlphaBlend;
+    using m2vr::vr::AlphaBlendFactor;
+    if(enable==0u) {
+        // D3DRS_ALPHABLENDENABLE=FALSE makes every stale blend register
+        // semantically inert, including stale SEPARATEALPHABLENDENABLE.
+        out_rgb=m2vr::vr::BlendMode::Opaque;
+        out_alpha=SeparateAlphaBlend{};
+        return true;
+    }
+    if(enable!=1u || separate>1u)return false;
+    m2vr::vr::BlendMode rgb{};
+    if(!DecodeBlendPolicy(enable,rgb_src,rgb_dst,rgb_op,0u,rgb))
+        return false;
+    SeparateAlphaBlend decoded{};
+    if(separate==1u) {
+        decoded.enabled=true;
+        if(alpha_op!=D3DBLENDOP_ADD ||
+           !DecodeOriginalSeparateAlphaFactor(alpha_src,decoded.source) ||
+           !DecodeOriginalSeparateAlphaFactor(alpha_dst,decoded.destination))
+            return false;
+    }
+    out_rgb=rgb;
+    out_alpha=decoded;
+    return true;
+}
 inline bool AlphaCutoffMatches(DWORD alpha_enable,DWORD alpha_func,
                                DWORD alpha_ref,
                                unsigned int requested_cutoff) noexcept {
