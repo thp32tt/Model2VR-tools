@@ -249,6 +249,23 @@ inline bool DecodeBlendWithSeparateAlphaPolicy(
     out_alpha=decoded;
     return true;
 }
+// Original COLORWRITEENABLE is applied AFTER source alpha blending.
+// If alpha write is physically masked out, stale/unsupported D3D9
+// separate-alpha registers have no pixel effect. The authenticated RGB
+// blend state remains mandatory. Never infer a world pass from this no-op.
+inline bool DecodeMaskedSeparateAlphaPolicy(
+    DWORD enable,DWORD rgb_src,DWORD rgb_dst,DWORD rgb_op,
+    DWORD original_separate,DWORD alpha_src,DWORD alpha_dst,DWORD alpha_op,
+    DWORD original_color_mask,m2vr::vr::BlendMode& out_rgb,
+    m2vr::vr::SeparateAlphaBlend& out_alpha) noexcept {
+    if(original_color_mask>0x0fu)return false;
+    const DWORD effective_separate =
+        (original_color_mask&D3DCOLORWRITEENABLE_ALPHA)!=0u ?
+        original_separate : 0u;
+    return DecodeBlendWithSeparateAlphaPolicy(
+        enable,rgb_src,rgb_dst,rgb_op,effective_separate,
+        alpha_src,alpha_dst,alpha_op,out_rgb,out_alpha);
+}
 inline bool AlphaCutoffMatches(DWORD alpha_enable,DWORD alpha_func,
                                DWORD alpha_ref,
                                unsigned int requested_cutoff) noexcept {
