@@ -261,6 +261,11 @@ def analyze(path: Path):
     d3d9_external_origin_samples = 0
     eye_bootstrap_failure_counts = Counter()
     eye_bootstrap_failure_examples = []
+    # Which REAL x86 producer path reached the source Present boundary?
+    # A successful transport publish is never HMD camera calibration proof.
+    source_route_counts = Counter()
+    source_route_examples = []
+    source_route_invalid_records = 0
     up_meta = {}
     up_fixed_stage = {}
     up_source_fvf = {}
@@ -350,6 +355,50 @@ def analyze(path: Path):
                             "source_format": a3,
                             "world_pass_proof": "NOT_ESTABLISHED",
                         })
+            elif event == "model2_vr_cpu_world_present_commit":
+                # a0=original Present, a1=decision 0 NONE,1 WAIT,2 DROP,
+                # 3 PUBLISH; a2=actual IPC result; a3=0 CPU_ONLY,
+                # 1 GPU_ONLY, 2 CPU_PREFERRED_WITH_GPU_FALLBACK.
+                if (a0 <= 0 or a1 not in (0,1,2,3) or a2 not in (0,1)
+                        or a3 not in (0,1,2) or (a2 and a1 != 3)):
+                    source_route_invalid_records += 1
+                else:
+                    label = ("verified_cpu_world_ipc_published" if a2
+                             else "verified_cpu_world_not_published")
+                    source_route_counts[label] += 1
+                    source_route_counts[f"cpu_world_mode_{a3}"] += 1
+                    if len(source_route_examples) < 16:
+                        source_route_examples.append({
+                            "original_present_frame": a0,
+                            "route": label,
+                            "present_decision": a1,
+                            "source_mode": a3,
+                            "hmd_runtime_validation": "UNTESTED",
+                        })
+            elif event == "model2_vr_producer_frame":
+                # Original D3D9 GPU replay only; CPU-world source uses a
+                # separate bounded commit event above. These are actual
+                # producer report records, not inferred world ownership.
+                if a0 <= 0 or not 0 <= a1 <= 2047 or not 0 <= a2 <= 0xFFFFFFFF:
+                    source_route_invalid_records += 1
+                else:
+                    label = ("gpu_eyes_published" if a1 == 0
+                             else "original_game_mono_published" if a1 == 512
+                             else "gpu_or_mono_producer_rejected")
+                    source_route_counts[label] += 1
+                    if len(source_route_examples) < 16:
+                        source_route_examples.append({
+                            "original_present_frame": a0,
+                            "route": label,
+                            "reason_mask": a1,
+                            "hmd_runtime_validation": "UNTESTED",
+                        })
+            elif event == "model2_vr_original_mono_readback_unavailable":
+                source_route_counts["original_mono_readback_unavailable"] += 1
+            elif event == "model2_vr_original_present_failed":
+                source_route_counts["original_game_present_failed"] += 1
+            elif event == "model2_vr_cpu_world_source_pose_expired":
+                source_route_counts["cpu_world_pose_expired"] += 1
             elif event == "project_ctx":
                 latest_project_ctx[(int(row["thread"]), a0)] = (a1, seq)
                 if len(latest_project_ctx) > 4096:
@@ -883,6 +932,11 @@ def analyze(path: Path):
                 dict(eye_bootstrap_failure_counts.most_common()),
             "original_eye_bootstrap_failure_examples":
                 eye_bootstrap_failure_examples,
+            "native_stereo_source_route_counts":
+                dict(source_route_counts.most_common()),
+            "native_stereo_source_route_examples": source_route_examples,
+            "native_stereo_source_route_invalid_records":
+                source_route_invalid_records,
             "up_xyzw_witnesses": dict(up_witnesses.most_common()),
             "original_up_material_stage_status": dict(up_material_status.most_common()),
             "original_up_material_source_status":
@@ -1037,6 +1091,18 @@ def markdown(summary):
             f"- {sample['reason']} hr={sample['hresult_hex']} "
             f"source={sample['source_width']}x{sample['source_height']} "
             f"format={sample['source_format']} ; WORLD PROOF UNKNOWN")
+    lines += ["", "### Original D3D9 Present -> x86 IPC -> OpenXR source route", ""]
+    lines.append("Transport source publication is NOT gameplay-world/camera or Quest HMD proof.")
+    for name,count in d3d9.get("native_stereo_source_route_counts",{}).items():
+        lines.append(f"- {name}: {count}")
+    lines.append("- Invalid source route records: "
+                 f"{d3d9.get('native_stereo_source_route_invalid_records',0)}")
+    for sample in d3d9.get("native_stereo_source_route_examples",[]):
+        lines.append(f"- original Present={sample['original_present_frame']} "
+                     f"route={sample['route']} "
+                     f"mode={sample.get('source_mode','GPU')} "
+                     f"reason={sample.get('reason_mask','N/A')} "
+                     "HMD=UNTESTED")
     lines += ["", "### UP vertex vs CPU project coordinate witnesses", ""]
     lines.append("Same-thread <=200ms, <=0.25px candidates are NOT proven world draws.")
     for name, count in d3d9.get("up_xyzw_witnesses", {}).items():

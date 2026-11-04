@@ -18,6 +18,44 @@ def fbits(value):
 
 
 class ProbeLogTests(unittest.TestCase):
+    def test_native_cpu_gpu_original_mono_source_route_diagnostics(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/"source_routes.csv"
+            with path.open("w",newline="",encoding="utf-8") as handle:
+                writer=csv.writer(handle)
+                writer.writerow(["seq","qpc","thread","event",
+                                 "a0","a1","a2","a3"])
+                writer.writerow([1,101,7,"model2_vr_cpu_world_present_commit",
+                                 9,3,1,2])
+                writer.writerow([2,102,7,"model2_vr_cpu_world_present_commit",
+                                 10,3,0,2])
+                writer.writerow([3,103,7,"model2_vr_cpu_world_source_pose_expired",
+                                 10,3,99,0])
+                writer.writerow([4,104,7,"model2_vr_producer_frame",
+                                 10,512,0,0])
+                writer.writerow([5,105,7,"model2_vr_producer_frame",
+                                 11,0,4,2])
+                writer.writerow([6,106,7,"model2_vr_original_mono_readback_unavailable",
+                                 12,1024,0,0])
+                writer.writerow([7,107,7,"model2_vr_original_present_failed",
+                                 13,0,0,0])
+                writer.writerow([8,108,7,"model2_vr_cpu_world_present_commit",
+                                 14,2,1,2])
+            report=MODULE.analyze(path)
+            routes=report["d3d9"]["native_stereo_source_route_counts"]
+            self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
+            self.assertEqual(routes["verified_cpu_world_not_published"],1)
+            self.assertEqual(routes["cpu_world_mode_2"],2)
+            self.assertEqual(routes["original_game_mono_published"],1)
+            self.assertEqual(routes["gpu_eyes_published"],1)
+            self.assertEqual(routes["original_mono_readback_unavailable"],1)
+            self.assertEqual(routes["original_game_present_failed"],1)
+            self.assertEqual(routes["cpu_world_pose_expired"],1)
+            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],1)
+            self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",
+                          MODULE.markdown(report))
+            self.assertIn("HMD=UNTESTED",MODULE.markdown(report))
+
     def test_original_d3d9_eye_bootstrap_source_cause_summary(self):
         with tempfile.TemporaryDirectory() as td:
             path=Path(td)/"startup.csv"
