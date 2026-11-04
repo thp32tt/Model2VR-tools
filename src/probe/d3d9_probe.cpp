@@ -309,6 +309,16 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
        SUCCEEDED(dev->GetRenderState(D3DRS_COLORVERTEX,&color_vertex)))
         m2vr::LogEvent("model2_d3d9_source_lighting",witness,
             lighting,color_vertex,(std::uint64_t{fvf}<<32)|stride);
+    // Capture original alpha compare on the SAME genuine Draw witness.
+    // Preserve exact FVF/stride so a later or unrelated material sample
+    // cannot be joined to this source or accidentally authorize a world.
+    DWORD alpha_enabled=0u,alpha_function=0u,alpha_reference=0u;
+    if(SUCCEEDED(dev->GetRenderState(D3DRS_ALPHATESTENABLE,&alpha_enabled)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_ALPHAFUNC,&alpha_function)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_ALPHAREF,&alpha_reference)))
+        m2vr::LogEvent("model2_d3d9_source_alpha_compare",witness,
+            (std::uint64_t{alpha_enabled}<<32)|alpha_function,
+            alpha_reference,(std::uint64_t{fvf}<<32)|stride);
     // Read original D3D9 blend factors under the SAME Draw witness.
     // Passive capture only; no input, FFB or original render modification.
     DWORD blend_enable=0,blend_src=0,blend_dst=0,blend_op=0;
