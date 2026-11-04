@@ -41,6 +41,8 @@ def analyze(path: Path):
     up_meta = {}
     up_witnesses = Counter()
     up_candidate_kinds = Counter()
+    joined_gpu_cpu = Counter()
+    joined_cpu_callers = Counter()
     up_candidates = []
     recent_cpu = deque(maxlen=4096)
     latest_project_ctx = {}
@@ -155,6 +157,25 @@ def analyze(path: Path):
                             "age_qpc_ticks": age,
                             "confidence": "candidate_only_not_world_proof",
                         })
+            elif event in ("model2_d3d9_cpu_up_join",
+                           "model2_d3d9_cpu_shader_up_join"):
+                # a0=draw witness ID, a1=unambiguous matched positions
+                # (0..3), a2=ambiguous positions, a3=CPU caller RVA or
+                # zero when unknown/mixed. No event authenticates world.
+                kind = ("shader_clip_candidate" if
+                        event.endswith("shader_up_join") else
+                        "xyzrhw_candidate")
+                if a1 > 3 or a2 > 3 or a1+a2 > 3:
+                    joined_gpu_cpu[f"{kind}:invalid"] += 1
+                elif a1 == 3 and a2 == 0 and a3:
+                    joined_gpu_cpu[f"{kind}:full_same_cpu_caller_candidate"] += 1
+                    joined_cpu_callers[f"0x{a3:08X}"] += 1
+                elif a2:
+                    joined_gpu_cpu[f"{kind}:ambiguous"] += 1
+                elif a1:
+                    joined_gpu_cpu[f"{kind}:partial_candidate"] += 1
+                else:
+                    joined_gpu_cpu[f"{kind}:unmatched_or_unknown"] += 1
             elif event == "model2_d3d9_draw_origin":
                 frame, family, caller = a0, a1, a2
                 # a3 keeps the full unsigned 64-bit (primitive count, topology).
@@ -231,6 +252,9 @@ def analyze(path: Path):
             "up_xyzw_witnesses": dict(up_witnesses.most_common()),
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,
+            "in_process_cpu_draw_join": dict(joined_gpu_cpu.most_common()),
+            "in_process_cpu_source_callers": dict(joined_cpu_callers.most_common()),
+            "in_process_join_world_proof": "NOT_ESTABLISHED",
             "sampled_viewports": dict(d3d9_viewports.most_common()),
             "sampled_scissors": dict(d3d9_scissors.most_common()),
             "sampled_targets": dict(d3d9_targets.most_common()),

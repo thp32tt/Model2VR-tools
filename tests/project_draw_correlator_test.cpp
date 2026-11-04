@@ -57,5 +57,30 @@ int main(){
     const ProjectedDrawVertex repeated[3]{{100.f,150.f},{100.f,150.f},{100.f,150.f}};
     const auto reused=c.Match(8,repeated,3);
     CHECK(reused.matched==1u && reused.ambiguous==2u);
+    // Standard D3D9 viewport hypothesis for a shader POSITION0 clip
+    // vector: pure candidate evidence, never an automatic world flag.
+    const float center_clip[4]{0.f,0.f,0.5f,1.f};
+    ProjectedDrawVertex center{};
+    CHECK(CandidateClipToViewport(center_clip,0u,0u,640u,480u,center));
+    CHECK(center.x==320.f && center.y==240.f);
+    ProjectDrawCorrelator shader{};
+    Capture(shader,99u,0x44u,320.f,240.f,1.f,2.f,3.f);
+    const float upper_left[4]{-1.f,1.f,0.5f,1.f};
+    const float lower_left[4]{-1.f,-1.f,0.5f,1.f};
+    ProjectedDrawVertex shader_points[3]{};
+    CHECK(CandidateClipToViewport(center_clip,0,0,640,480,shader_points[0]));
+    CHECK(CandidateClipToViewport(upper_left,0,0,640,480,shader_points[1]));
+    CHECK(CandidateClipToViewport(lower_left,0,0,640,480,shader_points[2]));
+    Capture(shader,99u,0x44u,0.f,0.f,4.f,5.f,6.f);
+    Capture(shader,99u,0x44u,0.f,480.f,7.f,8.f,9.f);
+    CHECK(shader.Match(99u,shader_points,3).Complete());
+    float invalid_clip[4]{0.f,0.f,0.5f,0.f};
+    CHECK(!CandidateClipToViewport(invalid_clip,0,0,640,480,center));
+    invalid_clip[3]=-1.f;
+    CHECK(!CandidateClipToViewport(invalid_clip,0,0,640,480,center));
+    invalid_clip[3]=std::numeric_limits<float>::infinity();
+    CHECK(!CandidateClipToViewport(invalid_clip,0,0,640,480,center));
+    CHECK(!CandidateClipToViewport(center_clip,0,0,0,480,center));
+    CHECK(!CandidateClipToViewport(center_clip,0,0,640,0,center));
     return 0;
 }

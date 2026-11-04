@@ -12,6 +12,31 @@ namespace m2vr::drawprobe {
 struct ProjectedDrawVertex {
     float x=0.f, y=0.f;
 };
+// Only a diagnostic screen-coordinate hypothesis for a known shader-UP
+// POSITION0 clip vector. Actual shader transforms may differ; a match
+// does not calibrate the game camera or authenticate a world draw.
+inline bool CandidateClipToViewport(const float clip[4],
+                                    std::uint32_t x,std::uint32_t y,
+                                    std::uint32_t width,std::uint32_t height,
+                                    ProjectedDrawVertex& out) noexcept {
+    if(!clip || !width || !height ||
+       width>16384u || height>16384u ||
+       x>16384u || y>16384u)return false;
+    for(std::size_t i=0;i<4;++i)
+        if(!std::isfinite(clip[i]))return false;
+    const float w=clip[3];
+    if(w<0.05f || w>65536.f)return false;
+    const float nx=clip[0]/w,ny=clip[1]/w;
+    if(!std::isfinite(nx) || !std::isfinite(ny) ||
+       std::abs(nx)>1.25f || std::abs(ny)>1.25f)return false;
+    const float px=static_cast<float>(x)+
+        (nx+1.f)*(static_cast<float>(width)*0.5f);
+    const float py=static_cast<float>(y)+
+        (1.f-ny)*(static_cast<float>(height)*0.5f);
+    if(!std::isfinite(px)||!std::isfinite(py))return false;
+    out={px,py};
+    return true;
+}
 struct ProjectedSourceJoin {
     std::uint32_t matched=0;
     std::uint32_t ambiguous=0;
@@ -57,7 +82,8 @@ public:
                               std::size_t count) const noexcept {
         ProjectedSourceJoin result{};
         if(!epoch || epoch!=epoch_ || !vertices || count!=3u)return result;
-        std::array<std::size_t,3> chosen{};
+        std::array<std::size_t,3> chosen{
+            kCapacity,kCapacity,kCapacity};
         std::uint32_t common_caller=0u;
         for(std::size_t v=0;v<count;++v){
             const auto& pos=vertices[v];

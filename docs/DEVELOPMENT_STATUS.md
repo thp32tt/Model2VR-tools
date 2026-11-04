@@ -31,6 +31,20 @@ OpenXR host, architecture-crossing CTests, Python integration tests
 and runnable ZIP packaging. These are synthetic/static/build checks,
 not proof of source camera calibration or a game/HMD playtest.
 
+**Live CPU-projector/D3D9 source join (2026-11-04):** A bounded
+same-thread, same-Present/Reset-epoch ring now retains non-sensitive CPU
+ProjectVertexToScreen input and projected positions for only 256 recent
+vertices. Sampled actual XYZRHW UP source and exact known Daytona shader-UP
+POSITION0 (clip-to-viewport hypothesis) are checked for distinct, matching
+projected XY. Native stereo mode no longer suppresses these bounded
+read-only D3D9 samples. Results are emitted as candidate-only metadata
+("model2_d3d9_cpu_up_join" / "model2_d3d9_cpu_shader_up_join") with
+ambiguous, partial and full-source-callsite distinctions. Any shader
+transformation, cached cross-frame geometry, other-thread buffer owner,
+viewport or missing camera proof fails closed. This is a concrete missing
+CPU-to-draw topology bridge, **not** world/HUD classification or verified
+head-relative 6DoF. No private original executable data is shipped.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

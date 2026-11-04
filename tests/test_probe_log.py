@@ -72,6 +72,26 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(summary["d3d9"]["draw_origin_samples_per_frame"]["1"], 2)
         self.assertEqual(summary["d3d9"]["external_or_unknown_caller_samples"], 1)
 
+    def test_in_process_cpu_draw_join_remains_candidate_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "join.csv"
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
+                writer.writerow([1, 10, 7, "model2_d3d9_cpu_up_join", 22, 3, 0, 0xABC])
+                writer.writerow([2, 11, 7, "model2_d3d9_cpu_up_join", 23, 2, 1, 0])
+                writer.writerow([3, 12, 7, "model2_d3d9_cpu_shader_up_join", 24, 3, 0, 0xDEF])
+                writer.writerow([4, 13, 7, "model2_d3d9_cpu_shader_up_join", 25, 0, 0, 0])
+            d3d9 = MODULE.analyze(path)["d3d9"]
+        counts = d3d9["in_process_cpu_draw_join"]
+        self.assertEqual(counts["xyzrhw_candidate:full_same_cpu_caller_candidate"], 1)
+        self.assertEqual(counts["xyzrhw_candidate:ambiguous"], 1)
+        self.assertEqual(counts["shader_clip_candidate:full_same_cpu_caller_candidate"], 1)
+        self.assertEqual(counts["shader_clip_candidate:unmatched_or_unknown"], 1)
+        self.assertEqual(d3d9["in_process_join_world_proof"], "NOT_ESTABLISHED")
+        self.assertEqual(d3d9["in_process_cpu_source_callers"],
+                         {"0x00000ABC": 1, "0x00000DEF": 1})
+
     def test_up_witness_correlates_only_prior_same_thread_coordinates(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "up.csv"

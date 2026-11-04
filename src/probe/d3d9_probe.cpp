@@ -426,6 +426,30 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
         m2vr::LogEvent("model2_d3d9_up_uv",id,i,
             m2vr::drawprobe::PackPair(v.texcoord[0],v.texcoord[1]),0u);
     }
+    // Hypothesis only: evaluate the original 32-byte shader-UP POSITION0
+    // as clip-space, compare its viewport pixels to native CPU projector
+    // witnesses from the same thread/Present epoch. Unknown shader WVP
+    // must never be promoted to a calibrated 6DoF game camera.
+    D3DVIEWPORT9 vp{};
+    if(SUCCEEDED(dev->GetViewport(&vp)) &&
+       vp.MinZ==0.f && vp.MaxZ==1.f){
+        std::array<m2vr::drawprobe::ProjectedDrawVertex,3> screen{};
+        bool candidate=true;
+        for(unsigned i=0;i<3u;++i){
+            if(!m2vr::drawprobe::CandidateClipToViewport(
+                   samples[i].position.data(),vp.X,vp.Y,
+                   vp.Width,vp.Height,screen[i])){
+                candidate=false;break;
+            }
+        }
+        if(candidate){
+            const auto join=m2vr::drawprobe::ThreadProjectDrawCorrelator().Match(
+                m2vr::drawprobe::CurrentProjectDrawEpoch(),
+                screen.data(),screen.size());
+            m2vr::LogEvent("model2_d3d9_cpu_shader_up_join",id,
+                join.matched,join.ambiguous,join.source_caller_rva);
+        }
+    }
 }
 
 // Source-only D3D9 DrawPrimitive/DrawIndexedPrimitive provenance.
