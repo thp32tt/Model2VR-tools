@@ -34,7 +34,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9PrimitiveUPTopologyTextured
     void* device,unsigned type,unsigned triangles,
     const void* source_vertices,unsigned stride,unsigned alpha_cutoff) {
     if(!device || !source_vertices || !stride || stride>256u ||
-       alpha_cutoff>255u ||
+       alpha_cutoff>256u ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
         return FALSE;
     try {
@@ -56,7 +56,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopolog
     const void* source_vertices,unsigned stride,
     unsigned authenticated_cpu_project_caller_rva,unsigned alpha_cutoff) {
     if(!device || !source_vertices || !authenticated_cpu_project_caller_rva ||
-       !stride || stride>256u || alpha_cutoff>255u ||
+       !stride || stride>256u || alpha_cutoff>256u ||
        triangles<2u ||
        triangles>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
