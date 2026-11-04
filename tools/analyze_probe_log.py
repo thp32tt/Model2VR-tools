@@ -345,9 +345,11 @@ def analyze(path: Path):
                         cpu_geometry_command_sources[key] += 1
             elif event == "project_geometry_command":
                 if (a0 > 0xFFFFFFFF or a1 > 0xFFFFFFFF or
-                        a2 > 0xFFFFFFFF or a3 not in (0, 1)):
+                        a2 > 0xFFFFFFFF or a3 not in (0, 1, 2)):
                     projector_geometry_command_status["invalid"] += 1
-                elif a3:
+                elif a3 == 2:
+                    projector_geometry_command_status["projector_command_mutated"] += 1
+                elif a3 == 1:
                     projector_geometry_command_status["projector_matrix_mutated"] += 1
                 elif not a1 or not a2:
                     projector_geometry_command_status["unknown"] += 1

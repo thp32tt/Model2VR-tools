@@ -65,6 +65,7 @@ int main(){
                 float(i+1),float(i+2),5.f,0x1000u);
     const auto single_matrix=matrices.MatchTriangleList(84u,two_faces,6u);
     CHECK(single_matrix.CompleteSameSource());
+    CHECK(!single_matrix.StableOriginalProjectionProvenance());
     CHECK(single_matrix.common_matrix_identity==0x1000u);
     ProjectDrawCorrelator mixed_matrices{};
     for(unsigned i=0;i<6;++i)
@@ -99,6 +100,7 @@ int main(){
     const auto stable_content=consistent_content.MatchTriangleList(
         87u,two_faces,6u);
     CHECK(stable_content.CompleteSameSource());
+    CHECK(stable_content.StableOriginalProjectionProvenance());
     CHECK(stable_content.common_matrix_fingerprint==0xAABBCCDDu);
     std::array<float,16> original_matrix{};
     original_matrix[0]=1.f;original_matrix[5]=1.f;
@@ -123,6 +125,7 @@ int main(){
                 i<3u?0x12u:0x13u);
     const auto cmds=command_witness.MatchTriangleList(88u,two_faces,6u);
     CHECK(cmds.CompleteSameSource() && cmds.mixed_geometry_command);
+    CHECK(!cmds.StableOriginalProjectionProvenance());
     CHECK(cmds.common_matrix_fingerprint==0xAABBCCDDu);
     CHECK(cmds.common_geometry_command==0x12u);
     ProjectDrawCorrelator stable_command{};
@@ -130,6 +133,7 @@ int main(){
         Capture(stable_command,88u,0x55u,two_faces[i].x,two_faces[i].y,
                 float(i+1),float(i+2),5.f,0x1000u,0xAABBCCDDu,0x12u);
     const auto stable=stable_command.MatchTriangleList(88u,two_faces,6u);
+    CHECK(stable.StableOriginalProjectionProvenance());
     CHECK(stable.CompleteSameSource() && !stable.mixed_geometry_command &&
           stable.common_geometry_command==0x12u);
     ProjectDrawCorrelator intra_triangle{};

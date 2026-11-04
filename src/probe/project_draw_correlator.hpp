@@ -64,6 +64,15 @@ struct ProjectedTriangleBatchJoin {
             common_source_caller_rva!=0u &&
             camera_sample_count==std::size_t(complete)*3u;
     }
+    // Stronger admission for the opt-in original projected-world raster.
+    // Passive reports may keep unknown-matrix candidates, but they must
+    // not become independent-eye world pixels without stable original
+    // matrix contents AND a coherent per-batch geometry command.
+    // Neither condition alone is a game-world/HUD ownership proof.
+    bool StableOriginalProjectionProvenance() const noexcept {
+        return CompleteSameSource() && common_matrix_identity!=0u &&
+            common_matrix_fingerprint!=0u && !mixed_geometry_command;
+    }
 };
 struct ProjectedSourceJoin {
     std::uint32_t matched=0;

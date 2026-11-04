@@ -243,7 +243,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         const auto joined=m2vr::drawprobe::ThreadProjectDrawCorrelator()
             .MatchTriangleList(m2vr::drawprobe::CurrentProjectDrawEpoch(),
                                screen.data(),count);
-        if(!joined.CompleteSameSource() ||
+        if(!joined.StableOriginalProjectionProvenance() ||
            joined.common_source_caller_rva!=expected_cpu_caller)
             return FALSE;
         const auto fit=m2vr::drawprobe::FitSourcePerspective(

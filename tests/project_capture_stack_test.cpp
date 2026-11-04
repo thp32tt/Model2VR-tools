@@ -17,6 +17,7 @@ int main(){
     outer->matrix_fingerprint=0x12345678u;
     outer->geometry_stream_pointer=0x10000u;
     outer->geometry_command_word=0x789ABC12u;
+    outer->geometry_command_valid=true;
     CHECK(stack.Begin(&source_b,false));
     auto* inner=stack.Top();
     CHECK(inner && inner->original_point==&source_b);
@@ -36,6 +37,8 @@ int main(){
     CHECK(completed.matrix_fingerprint==0x12345678u);
     CHECK(completed.geometry_stream_pointer==0x10000u);
     CHECK(completed.geometry_command_word==0x789ABC12u);
+    CHECK(completed.geometry_command_valid);
+    CHECK(!stack.Top());
     CHECK(completed.source_xyz[2]==3.f);
     CHECK(stack.Depth()==0u);
     // Any overflow chain must consume its own matching unwinds and

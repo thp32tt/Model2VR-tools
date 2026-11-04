@@ -67,6 +67,18 @@ std::uint64_t FloatBits(float value) {
     return std::bit_cast<std::uint32_t>(value);
 }
 
+bool ReadGeometryCommandWord(std::uint32_t pointer,
+                             std::uint32_t& word) noexcept {
+    if(pointer<0x10000u)return false;
+    __try {
+        word=*reinterpret_cast<const volatile std::uint32_t*>(
+            static_cast<std::uintptr_t>(pointer));
+        return true;
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 std::uint32_t ReadStateRva(std::uint32_t rva) {
     if (!g_exe_base || rva == 0 || rva > g_exe_size || g_exe_size-rva < 4) return 0;
     return SafeReadU32(g_exe_base + rva);
@@ -140,11 +152,9 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
             // stream pointer; reading its first word is diagnostic only.
             record->geometry_stream_pointer=
                 ReadStateRva(g_config.geometry_stream_ptr_rva);
-            if(record->geometry_stream_pointer>=0x10000u)
-                record->geometry_command_word=SafeReadU32(
-                    reinterpret_cast<const std::uint8_t*>(
-                        static_cast<std::uintptr_t>(
-                            record->geometry_stream_pointer)));
+            record->geometry_command_valid=ReadGeometryCommandWord(
+                record->geometry_stream_pointer,
+                record->geometry_command_word);
             record->capture=true;
         }
     }
@@ -185,19 +195,35 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* /*eax_after_original*/) 
         // matrix snapshot changed during the original call.
         const auto after_identity=ReadStateRva(g_config.active_matrix_ptr_rva);
         const auto after_fingerprint=ReadSourceMatrixFingerprint(after_identity);
-        const bool changed=after_identity!=record.matrix_identity ||
+        const bool matrix_changed=after_identity!=record.matrix_identity ||
             (record.matrix_fingerprint!=0u &&
              after_fingerprint!=record.matrix_fingerprint);
+        const auto after_stream=ReadStateRva(
+            g_config.geometry_stream_ptr_rva);
+        std::uint32_t after_command=0u;
+        const bool after_command_valid=ReadGeometryCommandWord(
+            after_stream,after_command);
+        // A CPU projector cannot certify source/Draw correspondence if
+        // its active geometry-command stream is rewritten in the middle of
+        // the ORIGINAL call, even when the matrix bytes remain identical.
+        const bool geometry_changed=
+            after_stream!=record.geometry_stream_pointer ||
+            after_command_valid!=record.geometry_command_valid ||
+            (after_command_valid &&
+             after_command!=record.geometry_command_word);
         if(emit_log){
             m2vr::LogEvent("project_matrix_content",
                 record.source_caller_rva,record.matrix_identity,
                 record.matrix_fingerprint,
-                changed?2u:(record.matrix_fingerprint?1u:0u));
+                matrix_changed?2u:(record.matrix_fingerprint?1u:0u));
+            // 0=stable/unknown, 1=matrix drift, 2=geometry command drift.
+            // These status codes are diagnostics, NOT world classification.
             m2vr::LogEvent("project_geometry_command",
                 record.source_caller_rva,record.geometry_stream_pointer,
-                record.geometry_command_word,changed?1u:0u);
+                record.geometry_command_word,
+                geometry_changed?2u:(matrix_changed?1u:0u));
         }
-        if(!changed){
+        if(!matrix_changed && !geometry_changed){
             const float projected[3]{x,y,z};
             m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
                 m2vr::drawprobe::CurrentProjectDrawEpoch(),

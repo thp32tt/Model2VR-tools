@@ -20,6 +20,8 @@ struct ProjectCaptureRecord {
     // It is a *candidate* command context, not a world-pass bit.
     std::uint32_t geometry_stream_pointer=0;
     std::uint32_t geometry_command_word=0;
+    // A legitimate zero command is distinct from an unreadable stream.
+    bool geometry_command_valid=false;
     bool emit_log=false;
     bool capture=false;
 };
