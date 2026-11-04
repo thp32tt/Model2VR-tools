@@ -56,9 +56,9 @@ class NativeStereoTest(unittest.TestCase):
                             section.index(f"const HRESULT hr={original};"))
             self.assertLess(section.index(f"const HRESULT hr={original};"),
                             section.index(
-                                f"RecordOriginalSourceResult(witness,hr,caller,{family}u);"))
+                                f"RecordOriginalSourceResult(witness,hr,caller,{family}u,"))
             self.assertLess(
-                section.index(f"RecordOriginalSourceResult(witness,hr,caller,{family}u);"),
+                section.index(f"RecordOriginalSourceResult(witness,hr,caller,{family}u,"),
                 section.index(f"TrackOriginalD3D9DrawResult(hr,{family}u,caller);"))
         self.assertIn("std::uint64_t ObserveUP(",hooks)
         self.assertIn("std::uint64_t ObserveWorldUP(",hooks)
@@ -67,6 +67,9 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("return ObserveWorldUP(",hooks)
         self.assertIn("return sample_id;",hooks)
         self.assertIn("model2_d3d9_up_original_result",hooks)
+        self.assertIn("model2_d3d9_source_draw_phase",hooks)
+        self.assertIn("g_original_frame_draw_ordinal.exchange(0u",hooks)
+        self.assertEqual(hooks.count("source_ordinal=g_original_frame_draw_ordinal.fetch_add("),4)
         self.assertIn("g_original_source_result_samples.exchange(",hooks)
         self.assertIn("model2_d3d9_original_present_result",hooks)
         self.assertEqual(hooks.count("RecordOriginalSourceResult(witness,hr,caller,"),4)
