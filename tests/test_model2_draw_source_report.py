@@ -185,6 +185,70 @@ class SourceAuditTests(unittest.TestCase):
                     ValueError,"conflicting original alpha witness"):
                 REPORT.audit_csv(p)
 
+    def test_source_separate_alpha_same_draw_fvf_and_rgb_mode(self):
+        state=REPORT.original_d3d9_separate_alpha_status
+        blend=REPORT.original_d3d9_blend_mode
+        rgb=(pack(1,5),pack(6,1),1)
+        separate=(pack(2,1),1,pack(0x144,28))
+        self.assertEqual(state(rgb,separate,0x144,28),"supported")
+        self.assertEqual(blend(rgb,separate,0x144,28),
+                         "source_alpha_over_separate_alpha")
+        self.assertEqual(state(rgb,None,0x144,28),"missing_source")
+        self.assertEqual(blend(rgb,None,0x144,28),"unsupported")
+        self.assertEqual(state(rgb,separate,0x144,24),"fvf_stride_mismatch")
+        self.assertEqual(blend(rgb,separate,0x144,24),"unsupported")
+        self.assertEqual(state(rgb,(pack(11,1),1,pack(0x144,28)),
+                               0x144,28),"unsupported")
+        self.assertEqual(state(rgb,(pack(2,1),2,pack(0x144,28)),
+                               0x144,28),"unsupported")
+        self.assertEqual(state((pack(1,5),pack(6,1),0),
+                               separate,0x144,28),"unexpected_alpha")
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"separate.csv"
+            self.write_log(p,[
+                ("model2_d3d9_vb_source",27,0x1234,
+                 pack(1,0x144),pack(2048,28)),
+                ("model2_d3d9_vb_present_frame",27,17,1,0),
+                ("model2_d3d9_source_blend",27,*rgb),
+                ("model2_d3d9_source_separate_alpha_blend",27,*separate),
+            ])
+            report=REPORT.audit_csv(p)
+            src=report["sources"][0]
+            self.assertEqual(src["original_source_blend_modes"],
+                             ["source_alpha_over_separate_alpha"])
+            self.assertEqual(src["original_source_separate_alpha_status"],
+                             ["supported"])
+            self.assertEqual(src["original_source_separate_alpha_invalid_witnesses"],0)
+            self.assertFalse(src["world_pass_proven"])
+            # Same GPU Draw ID with another FVF is never a valid source.
+            separate_bad=(pack(2,1),1,pack(0x144,24))
+            self.write_log(p,[
+                ("model2_d3d9_vb_source",27,0x1234,
+                 pack(1,0x144),pack(2048,28)),
+                ("model2_d3d9_vb_present_frame",27,17,1,0),
+                ("model2_d3d9_source_blend",27,*rgb),
+                ("model2_d3d9_source_separate_alpha_blend",27,*separate_bad),
+            ])
+            broken=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(
+                broken["original_source_separate_alpha_status"],
+                ["fvf_stride_mismatch"])
+            self.assertEqual(
+                broken["original_source_blend_unsupported_witnesses"],1)
+
+    def test_conflicting_separate_alpha_witness_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"conflict.csv"
+            self.write_log(p,[
+                ("model2_d3d9_source_separate_alpha_blend",3,
+                 pack(2,1),1,pack(0x144,28)),
+                ("model2_d3d9_source_separate_alpha_blend",3,
+                 pack(5,6),1,pack(0x144,28)),
+            ])
+            with self.assertRaisesRegex(
+                    ValueError,"conflicting separate-alpha Draw witness"):
+                REPORT.audit_csv(p)
+
     def test_in_place_matrix_drift_is_not_authentic_world_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "matrix.csv"
