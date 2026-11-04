@@ -135,9 +135,12 @@ def original_projected_material_candidate(data):
     _, packed_fvf, packed_size = data["origin"]
     _, fvf = halves(packed_fvf)
     _, stride = halves(packed_size)
-    if ((fvf & ~(D3DFVF_DIFFUSE | D3DFVF_SPECULAR)) !=
-            (D3DFVF_XYZRHW | D3DFVF_TEX1) or
-            stride != 24 + (4 if fvf & D3DFVF_DIFFUSE else 0) +
+    layout=fvf & ~(D3DFVF_DIFFUSE | D3DFVF_SPECULAR)
+    has_uv=layout == (D3DFVF_XYZRHW | D3DFVF_TEX1)
+    if (layout not in (D3DFVF_XYZRHW,
+                       D3DFVF_XYZRHW | D3DFVF_TEX1) or
+            stride != 16 + (8 if has_uv else 0) +
+                        (4 if fvf & D3DFVF_DIFFUSE else 0) +
                         (4 if fvf & D3DFVF_SPECULAR else 0)):
         return False
     c, a, e = (data[name] for name in
@@ -156,10 +159,27 @@ def original_projected_material_candidate(data):
         return False
     co, c1 = halves(c[0])
     ao, a1 = halves(a[0])
-    return (original_stage_selects_texel_or_diffuse(
-                co, c1, c[1], bool(fvf & D3DFVF_DIFFUSE)) and
-            original_stage_selects_texel_or_diffuse(
-                ao, a1, a[1], bool(fvf & D3DFVF_DIFFUSE)))
+    rgb=original_stage_source(co,c1,c[1])
+    alpha=original_stage_source(ao,a1,a[1])
+    if rgb is None or alpha is None:
+        return False
+    # D3D9 TEX0 has no UV bytes: both stage-zero channels must select
+    # original vertex DIFFUSE/CURRENT to preserve exact material source.
+    if not has_uv and (rgb != "DIFFUSE" or alpha != "DIFFUSE"):
+        return False
+    if "source_mask" in data:
+        mask,tag,mask_frame=data["source_mask"]
+        tagged_fvf,tagged_stride=halves(tag)
+        frame=data.get("present_frame")
+        if (not 1 <= mask <= 15 or
+                tagged_fvf != fvf or tagged_stride != stride or
+                frame is None or mask_frame != frame[0]):
+            return False
+        if "write_color" in data:
+            old_mask=halves(data["write_color"][0])[1]
+            if old_mask != mask:
+                return False
+    return True
 
 
 def audit_csv(path):
