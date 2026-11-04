@@ -172,6 +172,19 @@ class SourceAuditTests(unittest.TestCase):
         self.assertEqual(alpha((pack(1,9),127,pack(0x144,28)),
                                0x144,28),"unsupported")
 
+    def test_duplicate_original_alpha_source_witness_conflict_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"duplicate-alpha.csv"
+            self.write_log(p,[
+                ("model2_d3d9_source_alpha_compare",19,
+                 pack(1,2),127,pack(0x144,28)),
+                ("model2_d3d9_source_alpha_compare",19,
+                 pack(1,3),127,pack(0x144,28)),
+            ])
+            with self.assertRaisesRegex(
+                    ValueError,"conflicting original alpha witness"):
+                REPORT.audit_csv(p)
+
     def test_in_place_matrix_drift_is_not_authentic_world_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "matrix.csv"
