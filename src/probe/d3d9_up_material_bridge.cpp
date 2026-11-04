@@ -64,7 +64,7 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        !m2vr::drawprobe::DecodeRasterPolicy(cull,zfunc,zwrite,
           stencil,dbias,sbias,srgb_write,color_mask,raster))
         return false;
-    DWORD z=0,blend_enable=1,fog=1,lighting=1;
+    DWORD z=0,blend_enable=1,fog=1,lighting=1,specular=1;
     DWORD blend_src=0,blend_dst=0,blend_op=0,separate_alpha=1;
     if(FAILED(d->GetRenderState(D3DRS_ZENABLE,&z)) ||
        FAILED(d->GetRenderState(D3DRS_ALPHABLENDENABLE,&blend_enable)) ||
@@ -74,7 +74,8 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        FAILED(d->GetRenderState(D3DRS_SEPARATEALPHABLENDENABLE,&separate_alpha)) ||
        FAILED(d->GetRenderState(D3DRS_FOGENABLE,&fog)) ||
        FAILED(d->GetRenderState(D3DRS_LIGHTING,&lighting)) ||
-       z!=D3DZB_TRUE || fog || lighting ||
+       FAILED(d->GetRenderState(D3DRS_SPECULARENABLE,&specular)) ||
+       z!=D3DZB_TRUE || fog || lighting || specular ||
        !m2vr::drawprobe::DecodeBlendPolicy(
             blend_enable,blend_src,blend_dst,blend_op,separate_alpha,
             blend_mode))return false;

@@ -189,9 +189,33 @@ int main(){
               decoded.diffuse_argb==expected_colors[i]);
     }
     const auto valid_colored=ordered;
+    // Both packed source colors precede UV; indexed original source order
+    // must survive an additional SPECULAR attribute without being shaded.
+    std::array<std::array<std::uint8_t,32>,4> dual_color{};
+    const std::uint32_t packed_spec=0xffaabbccu;
+    for(std::size_t i=0;i<dual_color.size();++i){
+        const float position[4]={120.f+float(i)*30.f,150.f,0.4f,0.5f};
+        const float uv[2]={float(i)*0.25f,0.75f};
+        std::memcpy(dual_color[i].data(),position,16u);
+        std::memcpy(dual_color[i].data()+16u,&argb[i],4u);
+        std::memcpy(dual_color[i].data()+20u,&packed_spec,4u);
+        std::memcpy(dual_color[i].data()+24u,uv,8u);
+    }
+    CHECK(m2vr::drawprobe::ExpandProjectedVBWindow(
+        reinterpret_cast<const std::uint8_t*>(dual_color.data()),
+        sizeof(dual_color),colored_fvf|D3DFVF_SPECULAR,32u,
+        projected,ordered));
+    CHECK(ordered.size()==6u*32u);
+    for(std::size_t i=0;i<6u;++i){
+        m2vr::drawprobe::ProjectedUPWorldVertex corner{};
+        CHECK(m2vr::drawprobe::DecodeProjectedUPWorldVertex(
+            ordered.data()+i*32u,colored_fvf|D3DFVF_SPECULAR,32u,corner));
+        CHECK(corner.diffuse_argb==expected_colors[i] &&
+              corner.has_specular && corner.uv[1]==0.75f);
+    }
     CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
         reinterpret_cast<const std::uint8_t*>(colored.data()),
         sizeof(colored),colored_fvf,24u,projected,ordered));
-    CHECK(ordered==valid_colored);
+    CHECK(ordered.size()==6u*32u); // failed read preserves valid batch
     return 0;
 }

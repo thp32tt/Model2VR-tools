@@ -14,8 +14,12 @@ int main(){
     CHECK(!ExactProjectedUPWorldFVF(D3DFVF_XYZ|D3DFVF_TEX1,24u));
     CHECK(ExactProjectedUPWorldFVF(fvf|D3DFVF_DIFFUSE,28u));
     CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_DIFFUSE,24u));
-    CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_SPECULAR,28u));
-    CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,32u));
+    CHECK(ExactProjectedUPWorldFVF(fvf|D3DFVF_SPECULAR,28u));
+    CHECK(ExactProjectedUPWorldFVF(
+        fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,32u));
+    CHECK(!ExactProjectedUPWorldFVF(fvf|D3DFVF_SPECULAR,24u));
+    CHECK(!ExactProjectedUPWorldFVF(
+        fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,28u));
     const std::array<float,6> packed{120.f,140.f,0.5f,0.25f,0.4f,0.7f};
     ProjectedUPWorldVertex v{};
     CHECK(DecodeProjectedUPWorldVertex(packed.data(),fvf,24,v));
@@ -32,8 +36,31 @@ int main(){
     std::memcpy(with_diffuse.data()+20u,colored_uv.data(),8u);
     CHECK(DecodeProjectedUPWorldVertex(with_diffuse.data(),
         fvf|D3DFVF_DIFFUSE,28u,v));
-    CHECK(v.has_diffuse && v.diffuse_argb==argb &&
+    CHECK(v.has_diffuse && !v.has_specular &&
+          v.diffuse_argb==argb &&
           v.screen_xy[0]==120.f && v.uv[1]==0.7f);
+    // D3D9 packed SPECULAR follows DIFFUSE and precedes TEX1. A NaN-like
+    // bit pattern is legal packed color, never a float attribute.
+    std::array<std::uint8_t,32> combined{};
+    const std::uint32_t specular=0xffffffffu;
+    std::memcpy(combined.data(),rhw.data(),16u);
+    std::memcpy(combined.data()+16u,&argb,4u);
+    std::memcpy(combined.data()+20u,&specular,4u);
+    std::memcpy(combined.data()+24u,colored_uv.data(),8u);
+    CHECK(DecodeProjectedUPWorldVertex(combined.data(),
+        fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,32u,v));
+    CHECK(v.has_diffuse && v.has_specular && v.diffuse_argb==argb &&
+          v.uv[0]==0.4f && v.uv[1]==0.7f);
+    std::array<std::uint8_t,28> specular_only{};
+    std::memcpy(specular_only.data(),rhw.data(),16u);
+    std::memcpy(specular_only.data()+16u,&specular,4u);
+    std::memcpy(specular_only.data()+20u,colored_uv.data(),8u);
+    CHECK(DecodeProjectedUPWorldVertex(specular_only.data(),
+        fvf|D3DFVF_SPECULAR,28u,v));
+    CHECK(!v.has_diffuse && v.has_specular &&
+          v.diffuse_argb==0xffffffffu && v.uv[1]==0.7f);
+    CHECK(!DecodeProjectedUPWorldVertex(combined.data(),
+        fvf|D3DFVF_DIFFUSE|D3DFVF_SPECULAR,28u,v));
     CHECK(!DecodeProjectedUPWorldVertex(with_diffuse.data(),
         fvf|D3DFVF_DIFFUSE,24u,v));
     const float nan=(std::numeric_limits<float>::quiet_NaN)();
