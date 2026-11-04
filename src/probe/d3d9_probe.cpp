@@ -231,7 +231,9 @@ void LogOriginalSourcePassContext(IDirect3DDevice9* dev,
     c.depth_write=c.depth_known && write!=0u;
     c.scissor_known=SUCCEEDED(
         dev->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor));
-    c.scissor_enabled=c.scissor_known && scissor==1u;
+    // Treat any nonzero original value as enabled for provenance.
+    // Unknown values must fail closed, never masquerade as disabled.
+    c.scissor_enabled=c.scissor_known && scissor!=0u;
     if(c.scissor_known && scissor==1u){
         RECT source_scissor{};
         c.scissor_rect_known=SUCCEEDED(dev->GetScissorRect(&source_scissor));
