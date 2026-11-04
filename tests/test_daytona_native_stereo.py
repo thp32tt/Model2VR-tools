@@ -39,7 +39,8 @@ class NativeStereoTest(unittest.TestCase):
                       (ROOT/"src/common/daytona_producer_health.hpp").read_text("utf-8"))
         self.assertIn("PrepareOriginalMono(d,frame,pending_present_reason_);",gpu)
         self.assertIn("ChooseCpuWorldBackup(",gpu)
-        self.assertIn("CpuWorldBackupPath::GpuEyesRequired",gpu)
+        self.assertIn("CpuWorldBackupPath::GpuEyesRequired",
+                      (ROOT/"src/probe/daytona_original_mono_fallback.hpp").read_text("utf-8"))
         self.assertIn("model2_vr_cpu_world_backup",gpu)
         self.assertIn("pending_present_reason_=0u;",gpu)
         self.assertIn("PreferPendingCpuWorld(",world)
