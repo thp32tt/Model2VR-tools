@@ -454,3 +454,12 @@ This is a conservative single-auxiliary color/depth parity expansion,
 NOT proof of full postprocessing/shader-texture-input fidelity, authenticated
 Daytona world camera mapping or Quest 3 headset rendering.
 RUNTIME_VALIDATION=UNTESTED.
+
+
+The full initial auxiliary Clear additionally requires the original
+active viewport to cover the entire offscreen target. In D3D9 a
+Clear(Count=0) can be viewport-scoped; treating a cropped viewport
+as complete would expose uninitialized auxiliary eye pixels and
+incorrectly greenlight a later stereo source blit. Initial subview
+clears now remain fail-closed; established auxiliary frames continue
+to preserve later partial clear rectangles.

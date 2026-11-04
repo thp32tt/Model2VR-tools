@@ -25,8 +25,13 @@ int main(){
     CHECK(!SourceCompatibleWithMain(offscreen,mismatch,main));
     mismatch=depth;mismatch.Usage=0;
     CHECK(!SourceCompatibleWithMain(offscreen,mismatch,main));
-    RECT wrong{0,0,100,100};
     D3DRECT full{0,0,800,600},partial{0,0,300,600};
+    const D3DVIEWPORT9 view{0,0,800,600,0.f,1.f};
+    CHECK(FullOriginalViewport(view,800,600));
+    auto subview=view;subview.Width=400;
+    CHECK(!FullOriginalViewport(subview,800,600));
+    subview=view;subview.Y=50;
+    CHECK(!FullOriginalViewport(subview,800,600));
     CHECK(FullInitialColorClear(0,nullptr,D3DCLEAR_TARGET,800,600));
     CHECK(FullInitialColorClear(1,&full,D3DCLEAR_TARGET,800,600));
     CHECK(!FullInitialColorClear(1,&partial,D3DCLEAR_TARGET,800,600));

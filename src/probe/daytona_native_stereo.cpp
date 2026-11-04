@@ -380,20 +380,23 @@ public:
            (flags&(D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL))!=0u)){
             Drop(original_depth);Drop(target);return;
         }
+        D3DVIEWPORT9 viewport{};
+        if(FAILED(d->GetViewport(&viewport))){
+            Drop(original_depth);Drop(target);return;
+        }
         if(!backbuffer){
-            if(!depth_bound || !m2vr::daytona::FullInitialColorClear(
-                   count,rects,flags,width_,height_) &&
-                   !aux_frame_started_ ||
+            const bool initialized=aux_frame_started_ ||
+                (m2vr::daytona::FullOriginalViewport(
+                     viewport,width_,height_) &&
+                 m2vr::daytona::FullInitialColorClear(
+                     count,rects,flags,width_,height_));
+            if(!depth_bound || !initialized ||
                !EnsureAuxiliary(d,target,original_depth)){
                 Drop(original_depth);Drop(target);return;
             }
         }
         auto& active_eyes=backbuffer?eyes_:aux_eyes_;
         bool& active_started=backbuffer?frame_started_:aux_frame_started_;
-        D3DVIEWPORT9 viewport{};
-        if(FAILED(d->GetViewport(&viewport))){
-            Drop(original_depth);Drop(target);return;
-        }
         bool both=true;
         for(unsigned eye=0;eye<2;++eye){
             if(FAILED(d->SetDepthStencilSurface(nullptr)) ||

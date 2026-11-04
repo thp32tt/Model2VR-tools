@@ -20,6 +20,11 @@ inline bool SourceCompatibleWithMain(const D3DSURFACE_DESC& source,
            depth.MultiSampleType==source.MultiSampleType &&
            depth.MultiSampleQuality==source.MultiSampleQuality;
 }
+inline bool FullOriginalViewport(const D3DVIEWPORT9& viewport,
+                                 UINT width,UINT height)noexcept {
+    return width>0 && height>0 && viewport.X==0 && viewport.Y==0 &&
+           viewport.Width==width && viewport.Height==height;
+}
 inline bool FullInitialColorClear(DWORD count,const D3DRECT* rects,
                                   DWORD flags,UINT width,UINT height)noexcept {
     if(!(flags&D3DCLEAR_TARGET)||!width||!height)return false;

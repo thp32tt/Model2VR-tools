@@ -69,7 +69,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("original(d,p,start,n)",gpu)
         self.assertIn("original(d,p,base,min,num,start,n)",gpu)
         self.assertIn("original(d,p,min,num,n,indices,format,vertices,stride)",gpu)
-        self.assertIn("frame_started_=true;",gpu)
+        self.assertIn("active_started=true;",gpu)
+        self.assertIn("auto& active_eyes=backbuffer?eyes_:aux_eyes_;",gpu)
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
         self.assertIn("if(!both || !restored){Reset();return;}",gpu)
 
@@ -345,6 +346,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("bool EnsureAuxiliary(",gpu)
         self.assertIn("SourceCompatibleWithMain(",gpu)
         self.assertIn("FullInitialColorClear(",gpu)
+        self.assertIn("FullOriginalViewport(",gpu)
         self.assertIn("RouteOriginalToMain(",gpu)
         self.assertIn("aux_eyes_[eye].color:src",gpu)
         self.assertIn("aux_original_->AddRef()",gpu)
