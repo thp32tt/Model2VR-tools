@@ -6,6 +6,7 @@
 #include <Windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
+#include "../src/common/daytona_host_pixel_format.hpp"
 
 #include <array>
 #include <cstdint>
@@ -101,6 +102,62 @@ int main(){
     rtv->GetDesc(&observed_rtv);
     REQUIRE(observed_rtv.Format==DXGI_FORMAT_R8G8B8A8_UNORM);
 
-    std::puts("D3D11 typeless OpenXR upload contract PASS");
+    // Some OpenXR runtimes enumerate BGRA8 but not RGBA8. Verify the real
+    // D3D11 WARP upload into a typeless runtime texture + typed BGRA view:
+    // x86 producer RGBA bytes must be swizzled BEFORE UpdateSubresource.
+    D3D11_TEXTURE2D_DESC bgra_desc=desc;
+    bgra_desc.Format=DXGI_FORMAT_B8G8R8A8_TYPELESS;
+    ComPtr<ID3D11Texture2D> bgra_texture;
+    REQUIRE_HR(device->CreateTexture2D(&bgra_desc,nullptr,&bgra_texture));
+    auto bgra_rtv_desc=rtv_desc;
+    bgra_rtv_desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;
+    ComPtr<ID3D11RenderTargetView> bgra_rtv;
+    REQUIRE_HR(device->CreateRenderTargetView(
+        bgra_texture.Get(),&bgra_rtv_desc,&bgra_rtv));
+    std::array<std::uint8_t,4u*4u*4u> bgra_upload{};
+    REQUIRE(m2vr::hostcolor::ConvertRgbaToBgra(
+        pixels.data(),pixels.size(),bgra_upload.data(),bgra_upload.size()));
+    context->UpdateSubresource(
+        bgra_texture.Get(),0,nullptr,bgra_upload.data(),4u*4u,0);
+    auto bgra_staging_desc=bgra_desc;
+    bgra_staging_desc.Usage=D3D11_USAGE_STAGING;
+    bgra_staging_desc.BindFlags=0;
+    bgra_staging_desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> bgra_staging;
+    REQUIRE_HR(device->CreateTexture2D(
+        &bgra_staging_desc,nullptr,&bgra_staging));
+    context->CopyResource(bgra_staging.Get(),bgra_texture.Get());
+    REQUIRE_HR(context->Map(
+        bgra_staging.Get(),0,D3D11_MAP_READ,0,&mapped));
+    same=true;
+    for(unsigned y=0;y<4 && same;++y){
+        const auto* row=static_cast<const std::uint8_t*>(mapped.pData)+
+                        static_cast<std::size_t>(y)*mapped.RowPitch;
+        for(unsigned x=0;x<16u;++x){
+            if(row[x]!=bgra_upload[static_cast<std::size_t>(y)*16u+x]){
+                same=false;break;
+            }
+        }
+    }
+    context->Unmap(bgra_staging.Get(),0);
+    REQUIRE(same);
+    bgra_texture->GetDesc(&observed);
+    REQUIRE(observed.Format==DXGI_FORMAT_B8G8R8A8_TYPELESS);
+    bgra_rtv->GetDesc(&observed_rtv);
+    REQUIRE(observed_rtv.Format==DXGI_FORMAT_B8G8R8A8_UNORM);
+    // A typed BGRA RTV must write red in the physical *third* byte,
+    // not silently interpret our RGBA pixels as blue on the Quest.
+    const float pure_red[4]={1.f,0.f,0.f,1.f};
+    context->ClearRenderTargetView(bgra_rtv.Get(),pure_red);
+    context->CopyResource(bgra_staging.Get(),bgra_texture.Get());
+    REQUIRE_HR(context->Map(
+        bgra_staging.Get(),0,D3D11_MAP_READ,0,&mapped));
+    const auto* first=static_cast<const std::uint8_t*>(mapped.pData);
+    const bool red_is_bgra=first[0]==0u && first[1]==0u &&
+                           first[2]==255u && first[3]==255u;
+    context->Unmap(bgra_staging.Get(),0);
+    REQUIRE(red_is_bgra);
+
+    std::puts("D3D11 typeless RGBA8/BGRA8 OpenXR upload contract PASS");
     return 0;
 }
