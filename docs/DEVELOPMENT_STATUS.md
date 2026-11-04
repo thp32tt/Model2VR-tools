@@ -26,6 +26,34 @@ not a direction to restart the same 2D capture loop.
   optional F9 capture. Existing 2D safe mode and separate wheel/FFB
   owner remain intact.
 
+**Original D3D9 separate-alpha world-material continuity (2026-11-04):**
+The opt-in verified x86 original-source UP/indexed-UP/VB/IB projected/unprojected
+triangle-list/strip/fan chain now reads authentic per-Draw
+`D3DRS_SEPARATEALPHABLENDENABLE`, `SRCBLENDALPHA`,
+`DESTBLENDALPHA` and `BLENDOPALPHA`, independently from the original
+RGB `SRCBLEND/DESTBLEND/BLENDOP`. The new additive external world-only
+API `Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates`
+preserves the old exported ABI and submits the two original color/alpha
+equations into the already pose-latched left/right RGBA/depth raster and
+x86 GameStereo → Win64 OpenXR transport. Exact ADD operations and
+byte-alpha factor ZERO/ONE/SRCALPHA/INVSRCALPHA/DESTALPHA/INVDESTALPHA
+(with D3D9 SRCCOLOR/DESTCOLOR single-alpha-component aliases) are supported;
+unsupported RGB operations, independent alpha ops and unknown source
+materials fail closed. The original alpha comparison happens before
+depth/color compositing; channel masking happens after blending. If
+the authenticated original `COLORWRITEENABLE` masks alpha, otherwise
+irrelevant separate-alpha registers do not disqualify an exact RGB Draw.
+The read-only x86 Draw hook records original alpha blend factors and
+FVF/stride on the same source witness; UP and VB offline analyzers reject
+foreign/contradictory state while identifying mask-proven inert modes.
+Synthetic tests include RGB unchanged with split-alpha writes,
+different left/right destination alpha, alpha-only false stereo and
+same-Draw matrix/material provenance. No unknown Daytona race-world
+caller or camera basis becomes authorized from these material checks.
+The original game Draw/Present/FFB and 2D fallback are unchanged.
+`RUNTIME_VALIDATION=UNTESTED` until genuine private gameplay-world
+ownership/camera evidence and Quest 3/VDXR optics are verified.
+
 **Original D3D9 alpha-test fidelity (2026-11-04):** The verified-world
 source path now reads actual `ALPHATESTENABLE`, `ALPHAFUNC` and
 `ALPHAREF` from the original x86 D3D9 Draw. A caller that independently
