@@ -55,6 +55,10 @@ target_compile_features(daytona_eye_pose_gate_x64_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_eye_pose_gate_x64_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_live_openxr_binocular_pose_gate_x64
          COMMAND daytona_eye_pose_gate_x64_test)
+add_executable(daytona_triangle_shift_x64_test ../tests/daytona_triangle_eye_shift_test.cpp)
+target_compile_features(daytona_triangle_shift_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_verified_triangle_eye_shift_x64
+         COMMAND daytona_triangle_shift_x64_test)
 
 
 # VDXR/OpenXR D3D11 returns typeless swapchain resources. Exercise the exact

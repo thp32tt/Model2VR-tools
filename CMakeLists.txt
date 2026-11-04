@@ -191,6 +191,11 @@ target_compile_features(daytona_up_decl_witness_test PRIVATE cxx_std_20)
 target_compile_definitions(daytona_up_decl_witness_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME daytona_real_d3d9_decl_position_source_guard
     COMMAND daytona_up_decl_witness_test)
+# Source-verified shader-UP source geometry: shift safe triangles alone.
+add_executable(daytona_triangle_shift_x86_test tests/daytona_triangle_eye_shift_test.cpp)
+target_compile_features(daytona_triangle_shift_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_verified_triangle_eye_shift_x86
+         COMMAND daytona_triangle_shift_x86_test)
 
 # Read-only, allocation-free UP vertex witness parser; no emulator runtime.
 add_executable(model2_up_witness_test tests/model2_up_witness_test.cpp)

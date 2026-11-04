@@ -6,6 +6,7 @@
 #include "daytona_native_stereo.hpp"
 #include "daytona_up_decl_witness.hpp"
 #include "daytona_eye_pose_gate.hpp"
+#include "daytona_triangle_eye_shift.hpp"
 #include "logger.h"
 #include "../common/stereo_frame_ipc.h"
 #include "../common/daytona_producer_health.hpp"
@@ -144,25 +145,14 @@ public:
             scene=GuardedCopy(scratch_[0].data(),source,bytes);
             if(scene) {
                 std::memcpy(scratch_[1].data(),scratch_[0].data(),bytes);
-                for(std::size_t offset=0;offset<bytes;offset+=32u) {
-                    float x=0.f,w=0.f;
-                    std::memcpy(&x,scratch_[0].data()+offset,sizeof x);
-                    std::memcpy(&w,scratch_[0].data()+offset+12u,sizeof w);
-                    // Real Daytona v4 traces include negative and mixed W
-                    // triangles. Shifting their clip-like X can reverse
-                    // depth/disparity, so keep the original flat source.
-                    if(!std::isfinite(x) ||
-                       !m2vr::daytona::SafeStereoHomogeneousW(w)){
-                        scene=false;break;
-                    }
-                    const float eye_offset=shift_*ipd_scale_;
-                    const float left=x+eye_offset,right=x-eye_offset;
-                    if(!std::isfinite(left)||!std::isfinite(right)){
-                        scene=false;break;
-                    }
-                    std::memcpy(scratch_[0].data()+offset,&left,sizeof left);
-                    std::memcpy(scratch_[1].data()+offset,&right,sizeof right);
-                }
+                // Preserve negative/mixed/near-zero W TRIANGLES flat,
+                // but do not let a single behind-camera triangle cancel
+                // stereo for other safe triangles in the same original draw.
+                const float eye_offset=shift_*ipd_scale_;
+                const auto stats=m2vr::daytona::ShiftSafeUPTriangles(
+                    scratch_[0].data(),scratch_[1].data(),bytes,count,
+                    eye_offset);
+                scene=stats.shifted>0u;
             }
         }
         const D3DVIEWPORT9 viewport=ClippedViewport(original_vp);

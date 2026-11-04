@@ -288,3 +288,24 @@ from failed VR admission without asking for another full trace.
 
 The normal game still executes each original Draw exactly once.
 Existing 2D draw frame logs and steering/FFB are unchanged.
+
+## Triangle-scoped shader-UP eye separation (2026-11-04)
+
+Previously one unsafe W value anywhere in a verified shader-UP
+`DrawPrimitiveUP` call cancelled stereo for every triangle in that
+entire original Draw. The native producer now makes the decision for
+each **complete triangle** independently, after a bounded/guarded
+copy of original vertices. It shifts X only if all three source
+POSITION0 X values and homogeneous W values satisfy the established
+finite/positive W gate and the proposed left/right X remain finite.
+Negative, mixed-sign, NaN, near-zero and out-of-range W triangles
+retain **every original byte** in both eyes, including colors and UVs.
+One bad triangle no longer forces adjacent valid triangles flat.
+
+No source vertex, original game VB/IB, shader, emulator simulation,
+control or FFB state is modified. A draw earns a verified shifted
+scene count only when at least one complete triangle actually received
+independent left/right X values. New Win32 and Win64 native CTests
+exercise mixed-W batches, bounded byte sizes, invalid offsets and
+preservation of unshifted material bytes. This is still experimental
+source-space stereo, NOT proven calibrated 6DoF or HMD validation.
