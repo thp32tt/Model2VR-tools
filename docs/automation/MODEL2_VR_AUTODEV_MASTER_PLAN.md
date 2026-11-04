@@ -186,3 +186,46 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
   other original shader-UP and indexed-UP material classes only after their
   exact per-draw vertex provenance and CPU camera math have been proven.
 
+
+## Original Indexed-UP and UP strip/fan native OpenXR source integration (2026-11-04)
+
+- **Latest source-bearing SHA:** `b810eed5062c380b6ea31adb7cab7f84b12a6efa`. This is
+  ONE connected D3D9 source-topology milestone, not one award per commit.
+  Connected implementation commits: `c3c8155` (original 16/32-bit
+  Indexed-UP source extraction + explicit verified-world projected and XYZ
+  material adapters), `7ca4a5e` (legal nonzero MinVertexIndex passive source
+  observation), `4cb0c9d` (same-Present offline witness correlation),
+  `7bfc088` (read only referenced 2,048-or-fewer contiguous UP vertices
+  out of up to 65,536 declared), `d2dae31` (original nonindexed
+  DrawPrimitiveUP TRIANGLELIST/STRIP/FAN source winding to the proven
+  textured two-eye route), `cd8dd99` (16/32-bit indexed strip/fan expansion
+  through the same source-world path with original TRIANGLELIST ABI preserved),
+  `1ecae83` (read-only original strip/fan CPU projector joins),
+  `b810eed` (sampled original indexed-UP topology+Present evidence).
+- The original D3D9 `DrawIndexedPrimitiveUP` source data starts at the
+  MinVertexIndex-declared vertex span; index values are normalized to this
+  span before guarded copying. Strip odd-triangle winding and fan base
+  vertices retain original D3D9 semantics. The source is never replayed into
+  an additional original game Draw or a second emulator/FFB tick.
+- Explicit world-only entrypoints still require an independently verified
+  current render-thread, authentic source gameplay world frame, camera
+  calibration, original D3D9 material/raster state, projected-point source
+  caller and same-Present correlation where necessary. These APIs reuse
+  existing independent eye textured raster, pose-tagged GameStereo IPC and
+  Win64 OpenXR compositor. Unknown GPU shader paths, FVF=0 materials,
+  title/HUD/aux and unidentified original Draws stay in the safe 2D path.
+- Original sample logs now identify Indexed-UP legal nonzero source windows
+  and list/strip/fan topology, preserving original Present provenance and
+  CPU projector candidate joins. Offline reports never assert gameplay
+  world ownership: `world_pass_proof=NOT_ESTABLISHED`.
+- **Validation:** Exact source SHA `b810eed`: C++/Python synthetic gates,
+  Windows x86 probe, Daytona Win32 producer + Win64 OpenXR package,
+  Public tools and ModDev CI should be checked for exact-sha outcomes;
+  do not re-run old validated SHAs. **RUNTIME_VALIDATION=UNTESTED** until
+  genuine Daytona + Quest 3 / VDXR session shows calibrated two-eye world.
+- **NEXT ACTUAL DEV:** Authenticate private original gameplay geometry
+  command/matrix selection and real D3D9 source Draw callsite/pass ownership,
+  calibrate view axes and game-units-per-meter, then enable only proven
+  race-world Draw submission via the already explicit adapters. Until then
+  never infer world proof from FVF, topology or projected-XY match alone.
+
