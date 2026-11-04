@@ -75,7 +75,7 @@ def original_d3d9_blend_mode(record):
     }.get((source, destination), "unsupported")
 
 
-def original_d3d9_mip_status(record, present_frame):
+def original_d3d9_mip_status(record, present_frame, original_sampler=None):
     """Only MIPFILTER NONE or a verified single original texture level.
 
     Diagnostic material eligibility only: no camera/world ownership is
@@ -86,6 +86,14 @@ def original_d3d9_mip_status(record, present_frame):
     mip, levels, frame = record
     if frame != present_frame or not 0 < frame <= 0xFFFFFFFF:
         return "present_mismatch"
+    if original_sampler is not None:
+        # Original VB sampler independently logged mip/sRGB state under
+        # this SAME Draw ID. Reject a discrepancy rather than combining
+        # two different snapshots into a fabricated source material.
+        _, srgb_and_mip = original_sampler[0], original_sampler[2]
+        observed_mip, observed_srgb=halves(srgb_and_mip)
+        if mip!=observed_mip or observed_srgb!=0:
+            return "sampler_state_mismatch"
     if mip == 0:
         return "mip_disabled"
     if mip in (1, 2) and levels == 1:
@@ -237,7 +245,8 @@ def original_projected_material_candidate(data):
             "source_mip" in data):
         frame=data.get("present_frame")
         if (frame is None or original_d3d9_mip_status(
-                data["source_mip"],frame[0]) not in
+                data["source_mip"],frame[0],
+                data.get("sampler")) not in
                 ("mip_disabled","single_level_equivalent")):
             return False
     if "source_mask" in data:
@@ -447,7 +456,7 @@ def audit_csv(path):
                 entry["original_source_blend_modes"].add(mode)
         if "source_mip" in data:
             mip_status=original_d3d9_mip_status(
-                data["source_mip"],present_frame)
+                data["source_mip"],present_frame,data.get("sampler"))
             entry["original_source_mip_status"].add(mip_status)
         # Do not join independently sampled original D3D9 Draw states.
         if all(name in data for name in ("stage_color", "stage_alpha",

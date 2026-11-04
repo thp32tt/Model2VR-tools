@@ -49,7 +49,7 @@ class SourceAuditTests(unittest.TestCase):
                 ("model2_d3d9_source_blend", 101,
                  pack(1, 9), pack(1, 1), 0),
                 ("model2_d3d9_source_sampler_mip", 101,
-                 2, 1, 17),
+                 0, 1, 17),
                 ("model2_d3d9_source_stage0_color", 101,
                  pack(4, 2), 0, pack(0x112, 20)),
                 ("model2_d3d9_source_stage0_alpha", 101,
@@ -100,7 +100,7 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["original_source_blend_modes"],
                              ["multiply_color"])
             self.assertEqual(src["original_source_mip_status"],
-                             ["single_level_equivalent"])
+                             ["mip_disabled"])
             self.assertEqual(
                 src["original_source_blend_unsupported_witnesses"], 0)
             self.assertEqual(src["original_source_color_mask_mismatch_witnesses"], 0)
@@ -245,6 +245,15 @@ class SourceAuditTests(unittest.TestCase):
         self.assertEqual(check((0,8,17),17),"mip_disabled")
         self.assertEqual(check((1,1,17),17),"single_level_equivalent")
         self.assertEqual(check((2,1,17),17),"single_level_equivalent")
+        self.assertEqual(check((2,1,17),17,
+                         (pack(1,1),pack(2,2),pack(2,0))),
+                         "single_level_equivalent")
+        self.assertEqual(check((2,1,17),17,
+                         (pack(1,1),pack(2,2),pack(1,0))),
+                         "sampler_state_mismatch")
+        self.assertEqual(check((2,1,17),17,
+                         (pack(1,1),pack(2,2),pack(2,1))),
+                         "sampler_state_mismatch")
         self.assertEqual(check((2,2,17),17),"mip_unverified")
         self.assertEqual(check((2,0,17),17),"mip_unverified")
         self.assertEqual(check((2,1,18),17),"present_mismatch")
