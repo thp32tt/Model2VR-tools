@@ -86,6 +86,8 @@ class ProbeLogTests(unittest.TestCase):
                     ("model2_d3d9_source_stage0_alpha", 22,
                      (4 << 32) | 2, 0, (0x144 << 32) | 28),
                     ("model2_d3d9_source_stage1_specular", 22, 1, 1, 0),
+                    ("model2_d3d9_source_stage_result", 22,
+                     1, 1, (0x144 << 32) | 28),
                     # Wrong original next-Present frame may have identical
                     # caller and material but MUST NOT be correlated.
                     ("model2_d3d9_up_source_fvf", 23, 0x144, 28, 8),
@@ -95,6 +97,8 @@ class ProbeLogTests(unittest.TestCase):
                     ("model2_d3d9_source_stage0_alpha", 23,
                      (4 << 32) | 2, 0, (0x144 << 32) | 28),
                     ("model2_d3d9_source_stage1_specular", 23, 1, 1, 0),
+                    ("model2_d3d9_source_stage_result", 23,
+                     1, 1, (0x144 << 32) | 28),
                     # Same frame but stale source stride is equally invalid.
                     ("model2_d3d9_up_source_fvf", 24, 0x144, 28, 7),
                     ("model2_d3d9_up_meta", 24, 7, 0x123, (4 << 32) | 28),
@@ -103,6 +107,8 @@ class ProbeLogTests(unittest.TestCase):
                     ("model2_d3d9_source_stage0_alpha", 24,
                      (4 << 32) | 2, 0, (0x144 << 32) | 28),
                     ("model2_d3d9_source_stage1_specular", 24, 1, 1, 0),
+                    ("model2_d3d9_source_stage_result", 24,
+                     1, 1, (0x144 << 32) | 28),
                 ]
                 for seq, row in enumerate(rows, 1):
                     writer.writerow([seq, seq + 10, 7, *row])
@@ -119,6 +125,7 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(examples[0]["original_stride"], 28)
         self.assertEqual(examples[0]["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(examples[0]["color_stage"], [4, 2, 0])
+        self.assertEqual(examples[0]["source_stage0_result"], 1)
 
     def test_in_process_cpu_draw_join_remains_candidate_only(self):
         with tempfile.TemporaryDirectory() as td:

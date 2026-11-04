@@ -137,7 +137,8 @@ def analyze(path: Path):
                     up_source_fvf.clear()
             elif event in ("model2_d3d9_source_stage0_color",
                            "model2_d3d9_source_stage0_alpha",
-                           "model2_d3d9_source_stage1_specular"):
+                           "model2_d3d9_source_stage1_specular",
+                           "model2_d3d9_source_stage_result"):
                 if a0 not in up_fixed_stage:
                     if len(up_fixed_stage) >= 4096:
                         up_fixed_stage.clear()
@@ -436,11 +437,16 @@ def analyze(path: Path):
             continue
         required = ("model2_d3d9_source_stage0_color",
                     "model2_d3d9_source_stage0_alpha",
-                    "model2_d3d9_source_stage1_specular")
+                    "model2_d3d9_source_stage1_specular",
+                    "model2_d3d9_source_stage_result")
         if not all(name in stage for name in required):
             up_material_status["missing_original_stage"] += 1
             continue
-        c, a, extra = (stage[name] for name in required)
+        c, a, extra, result = (stage[name] for name in required)
+        if (result[0] != 1 or (result[2] >> 32) != fvf or
+                (result[2] & 0xFFFFFFFF) != stride):
+            up_material_status["source_stage_result_not_current"] += 1
+            continue
         if ((c[2] >> 32) != fvf or (c[2] & 0xFFFFFFFF) != stride or
                 (a[2] >> 32) != fvf or (a[2] & 0xFFFFFFFF) != stride or
                 c[1] > 0xFFFFFFFF or a[1] > 0xFFFFFFFF or
@@ -461,6 +467,7 @@ def analyze(path: Path):
                 "alpha_stage": [(a[0] >> 32) & 0xFFFFFFFF,
                                 a[0] & 0xFFFFFFFF, a[1]],
                 "second_stage": [extra[0], extra[1]],
+                "source_stage0_result": result[0],
                 "specular_and_fog": [(extra[2] >> 32) & 0xFFFFFFFF,
                                      extra[2] & 0xFFFFFFFF],
                 "world_pass_proof": "NOT_ESTABLISHED",
