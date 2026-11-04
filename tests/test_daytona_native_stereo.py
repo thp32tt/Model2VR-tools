@@ -213,7 +213,8 @@ class NativeStereoTest(unittest.TestCase):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         # Draw, Clear and surface transfers must re-admit
         # a fresh stereo pose after Ensure() may reset frame state.
-        self.assertGreaterEqual(gpu.count("!LivePoseForGameFrame())return;"),5)
+        self.assertGreaterEqual(gpu.count("!LivePoseForGameFrame())return;") +
+                                gpu.count("if(!LivePoseForGameFrame()){++diag_pose_;return;}"),5)
         self.assertIn("Reset();\n        IDirect3DSurface9* back=nullptr;",gpu)
         self.assertIn("pose_checked_=false;pose_admitted_=false;",gpu)
 
@@ -278,7 +279,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(gpu.count("depth_bound?active_eyes[eye].depth:nullptr"),2)
         self.assertIn("(depth_bound && !depth_ready?D3DCLEAR_ZBUFFER:0u)",gpu)
         self.assertEqual(gpu.count("const bool restored="),2)
-        self.assertEqual(gpu.count("if(!both || !restored){Reset();return;}"),2)
+        self.assertEqual(gpu.count("if(!both || !restored){Reset();return;}") +
+                         gpu.count("if(!both || !restored){++diag_eye_;Reset();return;}"),2)
         # A depthless UI may only overlay an already proven original game's
         # eye resources, not create an arbitrary guessed depth format.
         self.assertIn("FAILED(d->GetDepthStencilSurface(&depth)) || !depth ||",gpu)
