@@ -13,6 +13,12 @@ constexpr std::uint32_t kMagic=0x3250564Du; // "MVP2"
 constexpr std::uint32_t kVersion=1;
 constexpr std::uint32_t kOrientationValid=0x1u;
 constexpr std::uint32_t kPositionValid=0x2u;
+// Mirrors OpenXR XrViewStateFlags bit values; no frame/IPC layout change.
+constexpr std::uint32_t kOrientationTracked=0x4u;
+constexpr std::uint32_t kPositionTracked=0x8u;
+constexpr std::uint32_t kFullSixDofTracked=
+    kOrientationValid|kPositionValid|
+    kOrientationTracked|kPositionTracked;
 struct EyeView {
     float position_m[3]{};
     float orientation_xyzw[4]{0,0,0,1};

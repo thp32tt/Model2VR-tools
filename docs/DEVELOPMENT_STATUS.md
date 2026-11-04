@@ -129,6 +129,16 @@ original D3D9 game Present, fixed/texture draws, GPU replay owner and FFB
 remain untouched. A valid stereo pair is still not evidence of a calibrated
 original in-game camera or headset visual confirmation.
 
+**Real OpenXR tracked-vs-last-known VALID 6DoF admission (2026-11-04):**
+The verified CPU-game-world renderer now requires both OpenXR eye
+orientation/position TRACKED flags as well as VALID state, timestamps,
+physical inter-eye baseline, finite quaternion and calibrated pass proof.
+OpenXR wire flags are checked against the SDK bit values without changing
+the shared x86/x64 structure. A temporarily lost HMD track with a last
+known valid pose cannot masquerade as a live head-relative game camera.
+The experimental GPU X-only source shift retains its existing legacy
+compatibility path and the original simulation/FFB is unaffected.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

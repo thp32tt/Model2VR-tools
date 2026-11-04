@@ -68,4 +68,14 @@ inline EyePoseAdmission AdmitLiveEyePose(
     out.ipd_scale=(std::clamp)(ipd/0.064f,0.6f,1.5f);
     return out;
 }
+// The separately authenticated head-relative CPU-world path must never
+// treat a last-known VALID but untracked HMD view as a live 6DoF camera.
+// The less strict GPU legacy shift gate remains ABI-compatible.
+inline EyePoseAdmission AdmitTrackedWorldEyePose(
+    const pose::Frame& frame,std::uint64_t now_qpc,
+    std::uint64_t qpc_hz) noexcept {
+    if((frame.view_flags & pose::kFullSixDofTracked)!=
+        pose::kFullSixDofTracked)return {};
+    return AdmitLiveEyePose(frame,now_qpc,qpc_hz);
+}
 } // namespace m2vr::daytona

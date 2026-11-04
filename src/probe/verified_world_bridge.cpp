@@ -99,7 +99,7 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         if(!QueryPerformanceCounter(&now) ||
            !QueryPerformanceFrequency(&frequency) ||
            now.QuadPart<=0 || frequency.QuadPart<=0 ||
-           !m2vr::daytona::AdmitLiveEyePose(
+           !m2vr::daytona::AdmitTrackedWorldEyePose(
                predicted,static_cast<std::uint64_t>(now.QuadPart),
                static_cast<std::uint64_t>(frequency.QuadPart)).valid)
             return FALSE;

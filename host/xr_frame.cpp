@@ -5,6 +5,14 @@
 #include <fstream>
 #include <stdexcept>
 namespace m2vr::host {
+static_assert(static_cast<std::uint32_t>(
+    XR_VIEW_STATE_ORIENTATION_VALID_BIT)==pose::kOrientationValid);
+static_assert(static_cast<std::uint32_t>(
+    XR_VIEW_STATE_POSITION_VALID_BIT)==pose::kPositionValid);
+static_assert(static_cast<std::uint32_t>(
+    XR_VIEW_STATE_ORIENTATION_TRACKED_BIT)==pose::kOrientationTracked);
+static_assert(static_cast<std::uint32_t>(
+    XR_VIEW_STATE_POSITION_TRACKED_BIT)==pose::kPositionTracked);
 void XrApp::create_swapchains(){
     std::uint32_t count=0;
     check(xrEnumerateSwapchainFormats(session_,0,&count,nullptr),"swapchain formats count");

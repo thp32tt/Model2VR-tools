@@ -13,6 +13,7 @@
     std::fprintf(stderr,"HMD pose gate failed at %d: %s\n",__LINE__,#expr); \
     std::exit(1); } } while(0)
 using m2vr::daytona::AdmitLiveEyePose;
+using m2vr::daytona::AdmitTrackedWorldEyePose;
 static m2vr::pose::Frame ValidTestPose(){
     m2vr::pose::Frame f{};
     f.sequence=15;
@@ -45,6 +46,17 @@ int main(){
     auto f=ValidTestPose();
     auto r=AdmitLiveEyePose(f,now,hz);
     CHECK(r.valid && r.sequence==15);
+    // A live GUI pose can remain VALID after tracking is lost, but it
+    // must NOT be accepted as a calibrated CPU-world 6DoF source.
+    CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    f.view_flags|=m2vr::pose::kOrientationTracked |
+                  m2vr::pose::kPositionTracked;
+    CHECK(AdmitTrackedWorldEyePose(f,now,hz).valid);
+    f.view_flags&=~m2vr::pose::kPositionTracked;
+    CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    f.view_flags|=m2vr::pose::kPositionTracked;
+    f.view_flags&=~m2vr::pose::kOrientationTracked;
+    CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
     CHECK(std::abs(r.ipd_scale-1.f)<0.001f);
     f.sequence=0;CHECK(!AdmitLiveEyePose(f,now,hz).valid);
     f=ValidTestPose();f.view_flags=m2vr::pose::kOrientationValid;
