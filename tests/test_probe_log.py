@@ -185,6 +185,21 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(status(((1 << 32) | 3,256,tag),
                                 0x144,28),"unsupported")
 
+    def test_duplicate_up_alpha_witness_cannot_hide_conflicting_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/"duplicate-up-alpha.csv"
+            with path.open("w",newline="",encoding="utf-8") as handle:
+                writer=csv.writer(handle)
+                writer.writerow(["seq","qpc","thread","event",
+                                 "a0","a1","a2","a3"])
+                writer.writerow([1,1,7,"model2_d3d9_source_alpha_compare",
+                                 101,(1<<32)|2,128,(0x144<<32)|28])
+                writer.writerow([2,2,7,"model2_d3d9_source_alpha_compare",
+                                 101,(1<<32)|5,128,(0x144<<32)|28])
+            with self.assertRaisesRegex(
+                    ValueError,"conflicting original D3D9 alpha witness"):
+                MODULE.analyze(path)
+
     def test_original_up_fillmode_strict_source_provenance(self):
         status=MODULE.original_d3d9_fill_status
         tag=(0x144<<32)|28
