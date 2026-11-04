@@ -27,7 +27,9 @@ int main(){
     CHECK(!OriginalStereoPoseStillLiveAtPresent({0x100000000ull,ticket.published_qpc},p,now,hz));
     p.sequence=99u;
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
-    p.sequence=133u;
+    p.sequence=131u;
+    CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.sequence=132u;
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
     p.sequence=102u;p.published_qpc=999999999ull;
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
