@@ -39,6 +39,8 @@ def analyze(path: Path):
     d3d9_draw_frames = Counter()
     d3d9_external_origin_samples = 0
     up_meta = {}
+    up_fixed_stage = {}
+    up_source_fvf = {}
     shader_up_meta = {}
     shader_up_frames = {}
     cpu_draw_edges = Counter()
@@ -126,6 +128,21 @@ def analyze(path: Path):
                 project_screen["x"].append(bits_to_float(a1))
                 project_screen["y"].append(bits_to_float(a2))
                 project_screen["depth"].append(bits_to_float(a3))
+            elif event == "model2_d3d9_up_source_fvf":
+                # Captured from exact source D3D9 Draw with same witness ID.
+                # Original FVF and Present frame are not inferred from
+                # another sample, even when caller RVAs happen to match.
+                up_source_fvf[a0] = (a1, a2, a3)
+                if len(up_source_fvf) > 4096:
+                    up_source_fvf.clear()
+            elif event in ("model2_d3d9_source_stage0_color",
+                           "model2_d3d9_source_stage0_alpha",
+                           "model2_d3d9_source_stage1_specular"):
+                if a0 not in up_fixed_stage:
+                    if len(up_fixed_stage) >= 4096:
+                        up_fixed_stage.clear()
+                    up_fixed_stage[a0] = {}
+                up_fixed_stage[a0][event] = (a1, a2, a3)
             elif event == "model2_d3d9_up_meta":
                 # a0=capture ID, a1=upcoming frame, a2=caller RVA,
                 # a3=(draw family << 32)|stride.
@@ -402,6 +419,53 @@ def analyze(path: Path):
                     ffb_transitions[f"0x{previous_ffb:02X}->0x{command:02X}"] += 1
                 previous_ffb = command
 
+    # A complete stage record from the same original UP Draw is still
+    # MATERIAL EVIDENCE ONLY, never an authenticated gameplay camera/pass.
+    up_material_status = Counter()
+    up_material_examples = []
+    for witness, (frame, caller, family, stride) in up_meta.items():
+        source = up_source_fvf.get(witness)
+        stage = up_fixed_stage.get(witness, {})
+        if source is None:
+            continue # old probe logs remain compatible
+        fvf, fvf_stride, source_frame = source
+        if (source_frame != frame or fvf_stride != stride or
+                family not in (3, 4) or fvf > 0xFFFFFFFF or
+                stride == 0 or stride > 256):
+            up_material_status["source_fvf_frame_or_stride_mismatch"] += 1
+            continue
+        required = ("model2_d3d9_source_stage0_color",
+                    "model2_d3d9_source_stage0_alpha",
+                    "model2_d3d9_source_stage1_specular")
+        if not all(name in stage for name in required):
+            up_material_status["missing_original_stage"] += 1
+            continue
+        c, a, extra = (stage[name] for name in required)
+        if ((c[2] >> 32) != fvf or (c[2] & 0xFFFFFFFF) != stride or
+                (a[2] >> 32) != fvf or (a[2] & 0xFFFFFFFF) != stride or
+                c[1] > 0xFFFFFFFF or a[1] > 0xFFFFFFFF or
+                extra[0] > 0xFFFFFFFF or extra[1] > 0xFFFFFFFF):
+            up_material_status["material_fvf_or_stride_mismatch"] += 1
+            continue
+        up_material_status["same_witness_stage_candidate"] += 1
+        if len(up_material_examples) < 48:
+            up_material_examples.append({
+                "witness_id": witness,
+                "original_present_frame": frame,
+                "original_gpu_draw_caller_rva": f"0x{caller:08X}",
+                "original_draw_family": family,
+                "original_fvf": f"0x{fvf:08X}",
+                "original_stride": stride,
+                "color_stage": [(c[0] >> 32) & 0xFFFFFFFF,
+                                c[0] & 0xFFFFFFFF, c[1]],
+                "alpha_stage": [(a[0] >> 32) & 0xFFFFFFFF,
+                                a[0] & 0xFFFFFFFF, a[1]],
+                "second_stage": [extra[0], extra[1]],
+                "specular_and_fog": [(extra[2] >> 32) & 0xFFFFFFFF,
+                                     extra[2] & 0xFFFFFFFF],
+                "world_pass_proof": "NOT_ESTABLISHED",
+            })
+
     return {
         "source": str(path),
         "events": dict(event_counts.most_common()),
@@ -429,6 +493,8 @@ def analyze(path: Path):
             "draw_origin_samples_per_frame": dict(d3d9_draw_frames.most_common()),
             "external_or_unknown_caller_samples": d3d9_external_origin_samples,
             "up_xyzw_witnesses": dict(up_witnesses.most_common()),
+            "original_up_material_stage_status": dict(up_material_status.most_common()),
+            "original_up_material_stage_examples": up_material_examples,
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,
             "in_process_cpu_draw_join": dict(joined_gpu_cpu.most_common()),
