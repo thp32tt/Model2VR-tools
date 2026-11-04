@@ -40,6 +40,29 @@ def original_stage_source(op: int, first: int, second: int):
     return None
 
 
+def exact_original_world_source_fvf(fvf: int, stride: int) -> bool:
+    # Source-layout diagnostic parity with the strict x86 D3D9 decoders.
+    # XYZ or XYZRHW, optional packed DIFFUSE/SPECULAR, TEX0/TEX1 only.
+    # XYZ may also contain NORMAL/PSIZE; no extra texcoord formats.
+    tex = fvf & 0xF00
+    if tex not in (0, 0x100) or stride <= 0 or stride > 256:
+        return False
+    if (fvf & 0x400E) == 0x4:
+        allowed = 0x4 | 0x40 | 0x80 | 0x100
+        needed = 16 + (4 if fvf & 0x40 else 0)
+        needed += 4 if fvf & 0x80 else 0
+    elif (fvf & 0x400E) == 0x2:
+        allowed = 0x2 | 0x10 | 0x20 | 0x40 | 0x80 | 0x100
+        needed = 12 + (12 if fvf & 0x10 else 0)
+        needed += 4 if fvf & 0x20 else 0
+        needed += 4 if fvf & 0x40 else 0
+        needed += 4 if fvf & 0x80 else 0
+    else:
+        return False
+    return (fvf & ~allowed) == 0 and stride == needed + (
+        8 if tex == 0x100 else 0)
+
+
 def analyze(path: Path):
     event_counts = Counter()
     active_matrices = Counter()
@@ -480,7 +503,9 @@ def analyze(path: Path):
             alpha_source in ("texture", "modulate"))
         # The original must write CURRENT and disable stage1. The source
         # adapter still validates actual texture and raster state separately.
-        if color_source is None or alpha_source is None:
+        if not exact_original_world_source_fvf(fvf, stride):
+            source_status = "ineligible_source_layout"
+        elif color_source is None or alpha_source is None:
             source_status = "unsupported_source_operation"
         elif extra[0] != 1 or extra[1] != 1 or (
                 extra[2] != 0):

@@ -157,6 +157,32 @@ int main(){
         const auto pixel=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
         CHECK(eye_rgba[pixel+3u]==255u);
     }
+    // Real TEX0 + D3DCOLOR supplies no UV bytes. The original x86
+    // adapter synthesizes zero UV only after proof that both stage0
+    // output channels select DIFFUSE/CURRENT. Exercise original packed
+    // D3DCOLOR -> clipped independently shifted eyes -> real 8-bit RGBA.
+    raster.Clear();
+    const std::uint32_t tex0_argb[]{0x604080c0u,0x604080c0u,0x604080c0u};
+    const float tex0_absent_uv[]{0.f,0.f,0.f,0.f,0.f,0.f};
+    ClippedTexturedStereoBatch tex0_world{};
+    CHECK(BuildTexturedStereoBatch(near_vertices.data(),
+        tex0_absent_uv,3,indices,3,100,latch,cal,world,
+        tex0_world,tex0_argb));
+    CHECK(!tex0_world.eyes[0].empty() &&
+          !tex0_world.eyes[1].empty());
+    CHECK(tex0_world.eyes[0][0].vertices[0].position.ndc_x !=
+          tex0_world.eyes[1][0].vertices[0].position.ndc_x);
+    StereoWorldRaster::TextureRGBA tex0_diffuse{
+        unused_texel.data(),1u,1u,4u,1u,{}, {},false,false,
+        BlendMode::ReplaceRGBA,true,true};
+    CHECK(raster.DrawTextured(tex0_world,tex0_diffuse));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0x4080c0u);
+        const auto& rgba=raster.Eye(eye);
+        const auto pixel=(std::size_t(512)*StereoWorldRaster::Width+512u)*4u;
+        CHECK(rgba[pixel+3u]==0x60u);
+    }
+
     // MODULATE with missing vertex color is identically the source texel,
     // not a rejected or silently blackened original D3D9 primitive.
     raster.Clear();

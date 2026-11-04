@@ -127,6 +127,22 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(examples[0]["color_stage"], [4, 2, 0])
         self.assertEqual(examples[0]["source_stage0_result"], 1)
 
+    def test_exact_world_fvf_layout_is_diagnostic_only(self):
+        check = MODULE.exact_original_world_source_fvf
+        self.assertTrue(check(0x44, 20)) # XYZRHW, DIFFUSE, TEX0
+        self.assertTrue(check(0x144, 28)) # XYZRHW, DIFFUSE, TEX1
+        self.assertTrue(check(0x42, 16)) # XYZ, DIFFUSE, TEX0
+        self.assertTrue(check(0x102, 20)) # XYZ, TEX1
+        self.assertTrue(check(0x52, 28)) # XYZ, NORMAL, DIFFUSE, TEX0
+        self.assertFalse(check(0x44, 28)) # inventing absent UV bytes
+        self.assertFalse(check(0x144, 20)) # missing UV memory
+        self.assertFalse(check(0x104, 20)) # invalid RHW/TEX1 stride
+        self.assertFalse(check(0x204, 24)) # unsupported TEX2
+        self.assertFalse(check(0x40044, 20)) # unsupported UV encoding
+        self.assertFalse(check(0x46, 20)) # conflicting XYZRHW/XYZ
+        self.assertFalse(check(0x44, 0))
+        self.assertFalse(check(0x44, 260))
+
     def test_tex0_source_lighting_and_missing_uv_are_never_world_proof(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "original_tex0.csv"
