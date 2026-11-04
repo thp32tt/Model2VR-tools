@@ -84,6 +84,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn('DecodeMaskedSeparateAlphaPolicy(',source)
         self.assertIn('DecodeOriginalSeparateAlphaFactor(',decoder)
         self.assertIn('"model2_d3d9_source_separate_alpha_blend"',dx9)
+        self.assertIn("source_write_mask&D3DCOLORWRITEENABLE_ALPHA",dx9)
+        self.assertIn("D3DRS_SRCBLENDALPHA,&asrc",dx9)
         api="Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates("
         self.assertEqual(source.count(api),2)
         self.assertIn(api,header)
