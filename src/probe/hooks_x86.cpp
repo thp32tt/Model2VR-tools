@@ -2,6 +2,7 @@
 
 #include "logger.h"
 #include "project_draw_correlator.hpp"
+#include "project_capture_stack.hpp"
 #include <array>
 #include "signature.h"
 
@@ -26,11 +27,7 @@ std::uint32_t g_exe_size = 0;
 
 std::atomic<std::uint64_t> g_transform_counter{0};
 std::atomic<std::uint64_t> g_project_counter{0};
-thread_local bool g_project_sample_after=false;
-thread_local bool g_project_capture_after=false;
-thread_local const void* g_project_capture_point=nullptr;
-thread_local std::array<float,3> g_project_source{};
-thread_local std::uint32_t g_project_source_caller=0u;
+thread_local m2vr::drawprobe::ProjectCaptureStack g_project_capture_stack{};
 std::atomic<std::uint64_t> g_ffb_counter{0};
 
 extern "C" void* g_original_transform_point = nullptr;
@@ -97,16 +94,17 @@ extern "C" void __cdecl M2VR_OnTransformPoint(void* point, std::uint32_t caller)
 }
 
 extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) {
-    g_project_sample_after=ShouldSample(g_project_counter,g_config.project_sample_every);
-    // Capture view-space candidate coordinates without logging all vertices.
-    // Only the opt-in D3D9 probe keeps a short thread-local association ring.
-    g_project_capture_after=false;
-    g_project_capture_point=nullptr;
-    if(!g_project_sample_after && !g_config.d3d9_read_only_probe)return;
+    const bool sampled=ShouldSample(
+        g_project_counter,g_config.project_sample_every);
+    // Push even unsampled invocations: their matching after-call must not
+    // pop a parent projector record if the game calls this recursively.
+    if(!g_project_capture_stack.Begin(point,sampled))return;
+    auto* record=g_project_capture_stack.Top();
+    if(!sampled && !g_config.d3d9_read_only_probe)return;
 
     float x=0,y=0,z=0;
     if(!SafeReadPoint(point,x,y,z)){
-        if(g_project_sample_after)
+        if(sampled)
             m2vr::LogEvent("project_read_fault",reinterpret_cast<std::uintptr_t>(point));
         return;
     }
@@ -114,13 +112,12 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
         const auto raw=static_cast<std::uintptr_t>(caller);
         const auto base=reinterpret_cast<std::uintptr_t>(g_exe_base);
         if(raw>=base && raw-base<g_exe_size){
-            g_project_source={x,y,z};
-            g_project_source_caller=static_cast<std::uint32_t>(raw-base);
-            g_project_capture_point=point;
-            g_project_capture_after=true;
+            record->source_xyz={x,y,z};
+            record->source_caller_rva=static_cast<std::uint32_t>(raw-base);
+            record->capture=true;
         }
     }
-    if(!g_project_sample_after)return;
+    if(!sampled)return;
     const auto active_matrix=ReadStateRva(g_config.active_matrix_ptr_rva);
     m2vr::LogEvent("project_ctx",reinterpret_cast<std::uintptr_t>(point),
                    caller-reinterpret_cast<std::uintptr_t>(g_exe_base),
@@ -130,14 +127,15 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
 }
 // Capture a bounded same-thread source/projected pair immediately after the
 // original CPU projector. This is not a calibrated world or HUD classifier.
-extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* point) {
-    const bool emit_log=g_project_sample_after;
-    const bool capture=g_project_capture_after && point &&
-                       point==g_project_capture_point;
-    g_project_sample_after=false;
-    g_project_capture_after=false;
-    g_project_capture_point=nullptr;
+extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* /*eax_after_original*/) {
+    m2vr::drawprobe::ProjectCaptureRecord record{};
+    if(!g_project_capture_stack.Finish(record))return;
+    const bool emit_log=record.emit_log;
+    const bool capture=record.capture && record.original_point;
     if(!emit_log && !capture)return;
+    // The original trampoline is free to replace EAX with a return value.
+    // Read the actual input pointer saved BEFORE calling original code.
+    const void* point=record.original_point;
     if(!point){if(emit_log)m2vr::LogEvent("project_after_fault");return;}
     float x=0,y=0,z=0;
     __try {
@@ -154,7 +152,7 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* point) {
         const float projected[3]{x,y,z};
         m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
             m2vr::drawprobe::CurrentProjectDrawEpoch(),
-            g_project_source_caller,g_project_source.data(),projected);
+            record.source_caller_rva,record.source_xyz.data(),projected);
     }
     if(emit_log)
         m2vr::LogEvent("project_after",reinterpret_cast<std::uintptr_t>(point),
@@ -197,8 +195,9 @@ __declspec(naked) void ProjectVertexDetour() {
         add esp, 8
         popad
         popfd
-        // Use the relocated original trampoline, then record actual screen
-        // coordinates without changing the model's projection.
+        // Use the relocated original trampoline, then read the input point
+        // saved by the pre-call stack (EAX after return is not a pointer
+        // contract). Original registers and flags are unchanged.
         call dword ptr [g_original_project_vertex]
         pushfd
         pushad

@@ -224,6 +224,13 @@ add_executable(model2_project_draw_join_test tests/project_draw_correlator_test.
 target_compile_features(model2_project_draw_join_test PRIVATE cxx_std_20)
 add_test(NAME model2_cpu_project_to_original_draw_join
     COMMAND model2_project_draw_join_test)
+# Preserve exact CPU projector pre-call input across nested trampoline calls.
+# A returned EAX value is not a trusted pointer to ProjectVertexToScreen.
+add_executable(model2_project_capture_stack_test
+  tests/project_capture_stack_test.cpp)
+target_compile_features(model2_project_capture_stack_test PRIVATE cxx_std_20)
+add_test(NAME model2_cpu_project_original_pointer_reentrancy
+  COMMAND model2_project_capture_stack_test)
 # Exact D3D9 DrawPrimitive/DrawIndexedPrimitive source VB/IB index remapping.
 add_executable(model2_d3d9_vb_window_test tests/model2_d3d9_vb_window_test.cpp)
 target_compile_features(model2_d3d9_vb_window_test PRIVATE cxx_std_20)

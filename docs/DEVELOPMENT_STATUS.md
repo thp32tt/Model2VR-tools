@@ -56,6 +56,16 @@ claiming world ownership. A guarded source read must remain inside its 64KiB
 sample cap. Multi-triangle provenance is still candidate evidence, **not**
 game camera calibration, verified HUD/world separation, or 6DoF HMD proof.
 
+**CPU projector x86 trampoline provenance safety (2026-11-04):**
+The ProjectVertexToScreen pre-call original input pointer and CPU source
+caller are preserved in a bounded thread-local nesting stack. The after-call
+handler no longer mistakes an arbitrary returned EAX for the input pointer;
+nested calls and stack overflow fail closed without overwriting an outer
+source/draw witness. Portable C++ regression covers nesting, return-pointer
+independence and overflow unwind. The original emulator transform and its
+register/flags trampoline remain untouched, and CPU values never become
+automatic verified gameplay world proof.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP
