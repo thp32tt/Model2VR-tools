@@ -32,6 +32,7 @@ NAMES = {
     "model2_d3d9_source_stage0_alpha",
     "model2_d3d9_source_stage1_specular",
     "model2_d3d9_source_stage_result",
+    "model2_d3d9_source_color_mask",
 }
 
 def number(raw):
@@ -247,6 +248,8 @@ def audit_csv(path):
                 fields["stage_extra"] = values
             elif event == "model2_d3d9_source_stage_result":
                 fields["stage_result"] = values
+            elif event == "model2_d3d9_source_color_mask":
+                fields["source_mask"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -259,6 +262,9 @@ def audit_csv(path):
         "has_camera_matrix": False,
         "sampler_modes": set(), "alpha_test_modes": set(),
         "raster_modes": set(), "color_write_modes": set(),
+        "original_source_color_mask_modes": set(),
+        "original_source_color_mask_mismatch_witnesses": 0,
+        "original_depth_only_draw_witnesses": 0,
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
@@ -303,7 +309,8 @@ def audit_csv(path):
             # carry VB source origin. Those genuine UP witness IDs are
             # analyzed by analyze_probe_log.py, not corrupt VB records.
             if set(data).issubset({"stage_color", "stage_alpha",
-                                   "stage_extra", "stage_result"}):
+                                   "stage_extra", "stage_result",
+                                   "source_mask"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -379,6 +386,22 @@ def audit_csv(path):
                     if (arg==D3DTA_CURRENT and result_fvf==fvf and
                             result_stride==stride):
                         entry["original_material_current_result_witnesses"]+=1
+        # Same Draw witness, FVF/stride and original Present are required
+        # before recording the real D3D9 mask as original source evidence.
+        if "source_mask" in data:
+            mask,tag,mask_frame=data["source_mask"]
+            tagged_fvf,tagged_stride=halves(tag)
+            legacy_mask=(halves(data["write_color"][0])[1]
+                         if "write_color" in data else None)
+            if (mask > 15 or tagged_fvf != fvf or
+                    tagged_stride != stride or
+                    present_frame is None or mask_frame != present_frame or
+                    (legacy_mask is not None and legacy_mask != mask)):
+                entry["original_source_color_mask_mismatch_witnesses"] += 1
+            else:
+                entry["original_source_color_mask_modes"].add(mask)
+                if mask == 0:
+                    entry["original_depth_only_draw_witnesses"] += 1
         if "stream" in data:
             offset_usage, _, _ = data["stream"]
             _, usage = halves(offset_usage)
