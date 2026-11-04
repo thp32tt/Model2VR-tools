@@ -163,6 +163,16 @@ class ProbeLogTests(unittest.TestCase):
                                  0x555, 0x1000, 0xABC123, 1])
                 writer.writerow([10, 10, 1, "project_matrix_content",
                                  0x555, 0x1000, 0xABC123, 2])
+                writer.writerow([11, 11, 1, "model2_d3d9_cpu_up_geometry_command",
+                                 21, 0xABC, 0, 0xABC123])
+                writer.writerow([12, 12, 1, "model2_d3d9_cpu_up_geometry_command",
+                                 22, 0xDEF, 1, 0xABC123])
+                writer.writerow([13, 13, 1, "model2_d3d9_cpu_vb_geometry_command",
+                                 24, 0, 0, 0x123456])
+                writer.writerow([14, 14, 1, "project_geometry_command",
+                                 0x555, 0x2000, 0xABC, 0])
+                writer.writerow([15, 15, 1, "project_geometry_command",
+                                 0x555, 0x2000, 0xDEF, 1])
             d3d9 = MODULE.analyze(path)["d3d9"]
         kinds = d3d9["in_process_cpu_matrix_join_status"]
         self.assertEqual(kinds["up:single_matrix_candidate"], 1)
@@ -180,6 +190,17 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(
             d3d9["original_projector_matrix_snapshot_status"],
             {"stable": 1, "mutated": 1})
+        self.assertEqual(
+            d3d9["original_projector_geometry_command_status"],
+            {"sampled": 1, "projector_matrix_mutated": 1})
+        command_status = d3d9["in_process_cpu_geometry_command_status"]
+        self.assertEqual(command_status["up:single_command_candidate"], 1)
+        self.assertEqual(command_status["up:mixed_commands"], 1)
+        self.assertEqual(
+            command_status["vb:command_or_matrix_unknown"], 1)
+        self.assertEqual(
+            d3d9["in_process_cpu_geometry_command_sources"][0]["world_pass_proof"],
+            "NOT_ESTABLISHED")
         self.assertEqual(len(d3d9["in_process_cpu_matrix_content_sources"]), 2)
         self.assertTrue(all(x["world_pass_proof"] == "NOT_ESTABLISHED"
                             for x in d3d9["in_process_cpu_matrix_content_sources"]))

@@ -25,6 +25,7 @@ NAMES = {
     "model2_d3d9_cpu_vb_join_batch",
     "model2_d3d9_cpu_vb_matrix_identity",
     "model2_d3d9_cpu_vb_matrix_content",
+    "model2_d3d9_cpu_vb_geometry_command",
     "model2_d3d9_vb_present_frame",
 }
 
@@ -92,6 +93,8 @@ def audit_csv(path):
                 fields["matrix_identity"] = values
             elif event == "model2_d3d9_cpu_vb_matrix_content":
                 fields["matrix_content"] = values
+            elif event == "model2_d3d9_cpu_vb_geometry_command":
+                fields["geometry_command"] = values
             elif event == "model2_d3d9_vb_present_frame":
                 fields["present_frame"] = values
             elif event == "model2_d3d9_vb_camera":
@@ -117,6 +120,11 @@ def audit_csv(path):
         "cpu_matrix_content_unavailable_batches": 0,
         "cpu_matrix_content_fingerprints": set(),
         "matrix_consistent_present_frames": set(),
+        "cpu_geometry_command_candidate_batches": 0,
+        "cpu_geometry_command_mixed_batches": 0,
+        "cpu_geometry_command_unavailable_batches": 0,
+        "cpu_geometry_command_words": set(),
+        "geometry_command_present_frames": set(),
         "present_frames": set(),
         "correlated_present_frames": set(),
         "candidate_only": True,
@@ -224,6 +232,38 @@ def audit_csv(path):
                     if present_frame is not None:
                         entry["matrix_consistent_present_frames"].add(
                             present_frame)
+        if "geometry_command" in data:
+            command, mixed, fingerprint = data["geometry_command"]
+            content_record = data.get("matrix_content")
+            matrix_record = data.get("matrix_identity")
+            join_record = data.get("cpu_join")
+            if (command > 0xFFFFFFFF or mixed not in (0, 1)
+                    or fingerprint > 0xFFFFFFFF):
+                raise ValueError("invalid CPU geometry command witness")
+            if mixed:
+                entry["cpu_geometry_command_mixed_batches"] += 1
+            elif (not command or not fingerprint or not content_record
+                  or not matrix_record or not join_record
+                  or content_record[1] or content_record[0] != fingerprint
+                  or not matrix_record[0] or matrix_record[1]):
+                entry["cpu_geometry_command_unavailable_batches"] += 1
+            else:
+                packed, errors, caller = join_record
+                inspected, complete = halves(packed)
+                partial, ambiguous = halves(errors)
+                if (inspected >= 2 and inspected <= 8
+                        and complete == inspected and not partial
+                        and not ambiguous and caller
+                        and matrix_record[2] == caller
+                        and content_record[2] == matrix_record[0]):
+                    entry["cpu_geometry_command_candidate_batches"] += 1
+                    entry["cpu_geometry_command_words"].add(
+                        f"0x{command:08x}")
+                    if present_frame is not None:
+                        entry["geometry_command_present_frames"].add(
+                            present_frame)
+                else:
+                    entry["cpu_geometry_command_unavailable_batches"] += 1
         if "texture" in data:
             fmt, width, height = data["texture"]
             entry["texture_formats"].add(fmt)
@@ -240,11 +280,14 @@ def audit_csv(path):
         record["distinct_present_frame_count"] = len(value["present_frames"])
         record["distinct_matrix_consistent_present_frame_count"] = len(
             value["matrix_consistent_present_frames"])
+        record["distinct_geometry_command_present_frame_count"] = len(
+            value["geometry_command_present_frames"])
         record["distinct_correlated_present_frame_count"] = len(
             value["correlated_present_frames"])
         for key, item in value.items():
             if key in ("present_frames", "correlated_present_frames",
-                       "matrix_consistent_present_frames"):
+                       "matrix_consistent_present_frames",
+                       "geometry_command_present_frames"):
                 continue
             if isinstance(item, set):
                 record[key] = sorted([list(v) if isinstance(v, tuple) else v for v in item])

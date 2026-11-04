@@ -57,6 +57,9 @@ def analyze(path: Path):
     cpu_matrix_content_status = Counter()
     cpu_matrix_content_sources = Counter()
     projector_matrix_snapshot_status = Counter()
+    cpu_geometry_command_status = Counter()
+    cpu_geometry_command_sources = Counter()
+    projector_geometry_command_status = Counter()
     up_candidates = []
     recent_cpu = deque(maxlen=4096)
     latest_project_ctx = {}
@@ -317,6 +320,39 @@ def analyze(path: Path):
                 else:
                     status = ("unknown", "stable", "mutated")[a3]
                     projector_matrix_snapshot_status[status] += 1
+            elif event in ("model2_d3d9_cpu_up_geometry_command",
+                             "model2_d3d9_cpu_shader_geometry_command",
+                             "model2_d3d9_cpu_vb_geometry_command"):
+                # The active stream pointer may advance between polygons.
+                # Command word and matrix digest are diagnostic context;
+                # neither identifies a gameplay world pass by itself.
+                family = {
+                    "model2_d3d9_cpu_up_geometry_command": "up",
+                    "model2_d3d9_cpu_shader_geometry_command": "shader_up",
+                    "model2_d3d9_cpu_vb_geometry_command": "vb",
+                }[event]
+                if a1 > 0xFFFFFFFF or a2 not in (0, 1) or a3 > 0xFFFFFFFF:
+                    cpu_geometry_command_status[f"{family}:invalid"] += 1
+                elif a2:
+                    cpu_geometry_command_status[f"{family}:mixed_commands"] += 1
+                elif not a1 or not a3:
+                    cpu_geometry_command_status[f"{family}:command_or_matrix_unknown"] += 1
+                else:
+                    cpu_geometry_command_status[f"{family}:single_command_candidate"] += 1
+                    key = (family, a1, a3)
+                    if (key in cpu_geometry_command_sources or
+                            len(cpu_geometry_command_sources) < 4096):
+                        cpu_geometry_command_sources[key] += 1
+            elif event == "project_geometry_command":
+                if (a0 > 0xFFFFFFFF or a1 > 0xFFFFFFFF or
+                        a2 > 0xFFFFFFFF or a3 not in (0, 1)):
+                    projector_geometry_command_status["invalid"] += 1
+                elif a3:
+                    projector_geometry_command_status["projector_matrix_mutated"] += 1
+                elif not a1 or not a2:
+                    projector_geometry_command_status["unknown"] += 1
+                else:
+                    projector_geometry_command_status["sampled"] += 1
             elif event == "model2_d3d9_draw_origin":
                 frame, family, caller = a0, a1, a2
                 # a3 keeps the full unsigned 64-bit (primitive count, topology).
@@ -402,6 +438,18 @@ def analyze(path: Path):
                 dict(cpu_matrix_content_status.most_common()),
             "original_projector_matrix_snapshot_status":
                 dict(projector_matrix_snapshot_status.most_common()),
+            "original_projector_geometry_command_status":
+                dict(projector_geometry_command_status.most_common()),
+            "in_process_cpu_geometry_command_status":
+                dict(cpu_geometry_command_status.most_common()),
+            "in_process_cpu_geometry_command_sources": [
+                {"draw_family": family, "geometry_command_word": f"0x{word:08X}",
+                 "matrix_content_fingerprint": f"0x{fingerprint:08X}",
+                 "candidate_joins": count,
+                 "world_pass_proof": "NOT_ESTABLISHED"}
+                for (family, word, fingerprint), count
+                in cpu_geometry_command_sources.most_common(64)
+            ],
             "in_process_cpu_matrix_content_sources": [
                 {"draw_family": family,
                  "matrix_identity": f"0x{matrix:08X}",
@@ -549,6 +597,17 @@ def markdown(summary):
             f"content {source['matrix_content_fingerprint']}: "
             f"{source['same_content_candidates']} candidate Draw joins; "
             "WORLD PROOF UNKNOWN")
+    lines += ["", "### Original geometry command / matrix candidate correlation", ""]
+    lines.append("Commands and matrix fingerprints require private gameplay phase proof.")
+    for key in ("original_projector_geometry_command_status",
+                "in_process_cpu_geometry_command_status"):
+        for name, count in d3d9.get(key, {}).items():
+            lines.append(f"- {key} {name}: {count}")
+    for source in d3d9.get("in_process_cpu_geometry_command_sources", []):
+        lines.append(
+            f"- {source['draw_family']} command {source['geometry_command_word']} "
+            f"matrix {source['matrix_content_fingerprint']}: "
+            f"{source['candidate_joins']} candidates; WORLD PROOF UNKNOWN")
     lines += ["", "### Viewport, scissor and render-target samples", ""]
     for key in ("sampled_viewports", "sampled_scissors", "sampled_targets"):
         lines.append(f"#### {key}")
