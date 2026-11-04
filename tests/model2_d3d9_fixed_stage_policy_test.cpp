@@ -59,6 +59,14 @@ int main(){
     CHECK(!DecodeFixedStageSource(
         D3DTOP_ADD,D3DTA_TEXTURE,D3DTA_DIFFUSE,source));
     CHECK(source==before); // failure never partially mutates policy
+    CHECK(FixedStagePairIsDiffuseOnly(
+        FixedStageSource::Diffuse,FixedStageSource::Diffuse));
+    CHECK(!FixedStagePairIsDiffuseOnly(
+        FixedStageSource::Diffuse,FixedStageSource::Texture));
+    CHECK(!FixedStageUsesTexture(FixedStageSource::Diffuse));
+    CHECK(FixedStageUsesTexture(FixedStageSource::Modulate));
+    CHECK(FixedStageUsesDiffuse(FixedStageSource::Modulate));
+    CHECK(!FixedStageUsesDiffuse(FixedStageSource::Texture));
     CHECK(ValidFixedStageSource(FixedStageSource::Diffuse));
     CHECK(!ValidFixedStageSource(static_cast<FixedStageSource>(5u)));
     return 0;

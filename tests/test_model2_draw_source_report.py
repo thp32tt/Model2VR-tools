@@ -277,6 +277,14 @@ class SourceAuditTests(unittest.TestCase):
         data["stage_color"] = (pack(2, 2), 0, pack(0x104, 24))
         data["stage_alpha"] = (pack(2, 2), 0, pack(0x104, 24))
         self.assertTrue(REPORT.original_projected_material_candidate(data))
+        # Untextured RGB and alpha DIFFUSE are source-equivalent even when
+        # stage-zero has no bound texture. A missing FVF diffuse still fails.
+        data["origin"] = (0x44, pack(1, 0x144), pack(2048, 28))
+        data["stage_color"] = (pack(2, 0), 2, pack(0x144, 28))
+        data["stage_alpha"] = (pack(3, 2), 0, pack(0x144, 28))
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["stage_alpha"] = (pack(3, 2), 0, pack(0x104, 24))
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):
         with tempfile.TemporaryDirectory() as tmp:

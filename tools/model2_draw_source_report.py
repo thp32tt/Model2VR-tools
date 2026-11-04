@@ -101,10 +101,10 @@ D3DTA_TEXTURE = 2
 
 
 def original_stage_selects_texel_or_diffuse(operation, first, second, diffuse):
-    if operation == D3DTOP_SELECTARG1 and first == D3DTA_TEXTURE:
-        return True
-    if operation == D3DTOP_SELECTARG2 and second == D3DTA_TEXTURE:
-        return True
+    if operation == D3DTOP_SELECTARG1:
+        return first == D3DTA_TEXTURE or (diffuse and first == D3DTA_DIFFUSE)
+    if operation == D3DTOP_SELECTARG2:
+        return second == D3DTA_TEXTURE or (diffuse and second == D3DTA_DIFFUSE)
     return (operation == D3DTOP_MODULATE and diffuse and
             ((first, second) in ((D3DTA_TEXTURE, D3DTA_DIFFUSE),
                                  (D3DTA_DIFFUSE, D3DTA_TEXTURE))))
