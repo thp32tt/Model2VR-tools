@@ -63,6 +63,22 @@ class ProbeLogTests(unittest.TestCase):
                                  15,10,8,0])  # duplicate detail, consumed
                 writer.writerow([19,119,7,"model2_vr_cpu_world_source_failure_detail",
                                  77,10,8,0])  # no matching source reject
+                # A fresh original camera source switched in a later Draw.
+                # The guard record only counts with matching source-rejected.
+                writer.writerow([20,120,7,"model2_vr_cpu_world_camera_pass_rejected",
+                                 30,9,7,2])  # projected optical change
+                writer.writerow([21,121,7,"model2_vr_cpu_world_source_rejected",
+                                 30,9,2,4])
+                writer.writerow([22,122,7,"model2_vr_cpu_world_source_failure_detail",
+                                 30,9,10,0])
+                writer.writerow([23,123,7,"model2_vr_cpu_world_fixed_camera_rejected",
+                                 31,7,5,1])  # fixed VIEW change
+                writer.writerow([24,124,7,"model2_vr_cpu_world_source_rejected",
+                                 31,7,1,2])
+                writer.writerow([25,125,7,"model2_vr_cpu_world_source_failure_detail",
+                                 31,7,10,0])
+                writer.writerow([26,126,7,"model2_vr_cpu_world_camera_pass_rejected",
+                                 32,9,7,3])  # orphan, not an accepted failure
             report=MODULE.analyze(path)
             routes=report["d3d9"]["native_stereo_source_route_counts"]
             self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
@@ -75,7 +91,12 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(routes["cpu_world_pose_expired"],1)
             self.assertEqual(routes["cpu_world_original_mono_backup_ready"],1)
             self.assertEqual(routes["cpu_world_mono_failed_gpu_eyes_backup"],1)
-            self.assertEqual(routes["cpu_world_partial_source_revoked"],2)
+            self.assertEqual(routes["cpu_world_partial_source_revoked"],4)
+            self.assertEqual(routes["cpu_world_camera_projected_revoked"],1)
+            self.assertEqual(routes["cpu_world_camera_projected_reason_7"],1)
+            self.assertEqual(routes["cpu_world_camera_fixed_revoked"],1)
+            self.assertEqual(routes["cpu_world_camera_fixed_reason_5"],1)
+            self.assertEqual(routes["cpu_world_failed_projection_pass"],2)
             self.assertEqual(routes["cpu_world_rejected_source_kind_10"],1)
             self.assertEqual(routes["cpu_world_rejected_projected_indexed_vertex_buffer"],1)
             self.assertEqual(routes["cpu_world_failed_sampler"],1)

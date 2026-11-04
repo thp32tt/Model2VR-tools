@@ -1,3 +1,9 @@
+## Native CPU-space / original D3D9 camera-family isolation + source-report join — 2026-11-05
+
+- Direct CPU world triangles now explicitly lock the same original-Present source family as their original D3D9 projected or fixed-function adapter counterparts; nested source adapters remain tagged with their original provenance. Mixed world geometry cannot be silently combined into one wrong headset binocular frame. A mismatch rejects the partial original source transaction, never reruns simulation or FFB.
+- The CSV report joins camera rejection reasons with an actual matching same-thread original D3D9 source-rejection event before reporting a failed camera source. Bare diagnostics are NOT interpreted as authenticated world or HMD proof; the original source-failure stage `projection_pass=10` receives a distinct explicit label.
+- `RUNTIME_VALIDATION=UNTESTED`.
+
 ## Original D3D9 fixed camera + cross-source binocular frame isolation — 2026-11-05
 
 - The verified CPU-world original D3D9 XYZ/TEX0/TEX1 source adapters now latch their VIEW and PROJECTION matrices and physical original viewport across all same-Present Draws while allowing the per-object WORLD matrix to vary. The existing projected XYZRHW CPU-projector path independently latches optical-center/focal-scale and CPU caller. Those two camera source families cannot be blended into the same x86-to-x64 binocular frame.

@@ -96,6 +96,19 @@ m2vr::vr::DrawEvidence EvidenceFromProof(std::uint32_t flags)noexcept{
     return e;
 }
 bool Owner()noexcept{return g.active && g.owner==GetCurrentThreadId();}
+// Internal original source adapters retain their own camera families.
+// Native caller-supplied CPU-space triangles must not be silently mixed with
+// a proven D3D9 camera inside the SAME eye-pose frame transaction.
+bool NativeCameraFamilyAccepted() noexcept {
+    if(m2vr::vrbridge::CurrentOriginalSourceDrawKind()!=0u)return true;
+    if(g.camera_family.Admit(g.frame,
+        m2vr::vrbridge::OriginalCameraSourceFamily::Native))return true;
+    m2vr::vrbridge::RejectOriginalSourceMaterial(
+        m2vr::vrbridge::OriginalSourceFailure::ProjectionPass);
+    m2vr::LogEvent("model2_vr_cpu_world_native_camera_rejected",
+        g.frame,0u,1u,g.draw_count);
+    return false;
+}
 // A newer HMD pose cannot revive geometry drawn using an expired source.
 bool OriginalWorldPoseLive()noexcept {
     if(!g.pose_sequence || !g.pose_published_qpc)return false;
@@ -309,6 +322,14 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
        write_rgba_mask>15u ||
        ((rgb_source!=0u || alpha_source!=0u) && !diffuse_argb)) {
         if(Owner())g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
+        return FALSE;
+    }
+    if(!NativeCameraFamilyAccepted()){
+        g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
+        return FALSE;
+    }
+    if(!NativeCameraFamilyAccepted()){
+        g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
     }
     try {

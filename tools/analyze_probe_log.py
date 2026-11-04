@@ -305,6 +305,9 @@ def analyze(path: Path):
     # same logger thread, original Present and source Draw. Otherwise a
     # stray CSV record may falsely imply a rejected game world source.
     source_rejection_witnesses = {}
+    # Pre-reject camera guard breadcrumbs become authoritative only when
+    # the SAME original source Draw actually fails on the SAME thread/frame.
+    source_camera_guard_witnesses = {}
     up_meta = {}
     up_fixed_stage = {}
     up_source_fvf = {}
@@ -394,6 +397,30 @@ def analyze(path: Path):
                             "source_format": a3,
                             "world_pass_proof": "NOT_ESTABLISHED",
                         })
+            elif event in (
+                    "model2_vr_cpu_world_camera_pass_rejected",
+                    "model2_vr_cpu_world_fixed_camera_rejected",
+                    "model2_vr_cpu_world_native_camera_rejected"):
+                # Report *reason enum*, not original CPU vertices or VIEW
+                # matrices. These records precede source-rejected on the
+                # same logger thread; by themselves they prove NO failed
+                # source or authenticated race-world geometry.
+                projected=event.endswith("camera_pass_rejected")
+                fixed=event.endswith("fixed_camera_rejected")
+                native=event.endswith("native_camera_rejected")
+                family=("projected" if projected else
+                        "fixed" if fixed else "native")
+                reason_bound=7 if projected else 6 if fixed else 1
+                if (a0 <= 0 or a1 not in CPU_WORLD_REJECT_KINDS or
+                        a2 not in range(2,reason_bound+1) or
+                        not 0 <= a3 <= 2048 or
+                        (native and a1 != 0)):
+                    source_route_invalid_records += 1
+                else:
+                    source_camera_guard_witnesses[
+                        (int(row["thread"]),a0,a1)] = (seq,family,a2)
+                    if len(source_camera_guard_witnesses)>512:
+                        source_camera_guard_witnesses.clear()
             elif event == "model2_vr_cpu_world_source_rejected":
                 # a0=physical original Present frame; a1=explicit adapter
                 # kind (0 native CPU raster, 1..16 original D3D9 families);
@@ -405,7 +432,18 @@ def analyze(path: Path):
                     source_route_invalid_records += 1
                 else:
                     source_route_counts["cpu_world_partial_source_revoked"] += 1
-                    source_rejection_witnesses[(int(row["thread"]),a0,a1)] = seq
+                    source_key=(int(row["thread"]),a0,a1)
+                    camera_record=source_camera_guard_witnesses.pop(source_key,None)
+                    if camera_record is not None:
+                        camera_seq,camera_family,camera_reason=camera_record
+                        if 0 < seq-camera_seq <= 32:
+                            source_route_counts[
+                                f"cpu_world_camera_{camera_family}_revoked"] += 1
+                            source_route_counts[
+                                f"cpu_world_camera_{camera_family}_reason_{camera_reason}"] += 1
+                        else:
+                            source_route_invalid_records += 1
+                    source_rejection_witnesses[source_key] = seq
                     if len(source_rejection_witnesses)>512:
                         source_rejection_witnesses.clear()
                     source_route_counts[f"cpu_world_rejected_source_kind_{a1}"] += 1
