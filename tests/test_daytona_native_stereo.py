@@ -74,6 +74,9 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("Model2VR_ArmVerifiedOriginalD3D9Draw(",api)
         self.assertIn("Model2VR_NextOriginalD3D9DrawOrdinal()",hooks)
         self.assertIn("Model2VR_CurrentOriginalD3D9SceneOrdinal()",hooks)
+        ordinal=hooks.split("Model2VR_NextOriginalD3D9DrawOrdinal(){")[1].split(
+            "Model2VR_CurrentOriginalD3D9SceneOrdinal(){")[0]
+        self.assertIn("!Model2VR_CurrentOriginalD3D9SceneOrdinal()",ordinal)
         self.assertIn("ordinal!=expected_.ordinal",guard)
         self.assertIn("TryTakeAuthenticatedOriginalDraw(",bridge)
         self.assertIn("bool genuine_scene_open",guard)

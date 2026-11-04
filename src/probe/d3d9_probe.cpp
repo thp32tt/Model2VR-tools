@@ -1555,7 +1555,11 @@ Model2VR_IsOriginalPrimaryD3D9Device(const void* device){
 }
 extern "C" __declspec(dllexport) unsigned long long __stdcall
 Model2VR_NextOriginalD3D9DrawOrdinal(){
-    if(!g_device_installed.load(std::memory_order_acquire))return 0u;
+    // A source ordinal is meaningful only inside the genuine EXE-owned
+    // successful primary BeginScene, on the original render thread.
+    // Do not let an asynchronous/overlay caller arm a future game Draw.
+    if(!g_device_installed.load(std::memory_order_acquire) ||
+       !Model2VR_CurrentOriginalD3D9SceneOrdinal())return 0u;
     const auto prior=g_original_frame_draw_ordinal.load(
         std::memory_order_acquire);
     return prior<10000000u ? prior+1u : 0u;
