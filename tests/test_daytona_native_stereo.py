@@ -74,8 +74,12 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("d->StretchRect(eyes_[eye].color,nullptr",gpu)
         self.assertIn("readback_source=eyes_[eye].resolve",gpu)
         self.assertIn("GetRenderTargetData(readback_source",gpu)
-        self.assertIn("Model2VR_SubmitStereoRGBA(",gpu)
+        self.assertIn("Model2VR_SubmitStereoRGBAWithPose(",gpu)
         self.assertIn("Model2VR_OpenStereoWriter()",gpu)
+        self.assertIn("pose_sequence_=admitted.sequence;",gpu)
+        self.assertIn("m2vr::transport::kPitch,pose_sequence_",gpu)
+        self.assertIn("CanTagGameStereoPose(admitted.sequence)",gpu)
+        self.assertIn("pose_checked_=false;pose_admitted_=false;pose_sequence_=0;",gpu)
         self.assertIn("std::memcpy(scratch_[1].data(),scratch_[0].data(),bytes)",gpu)
         self.assertIn("const float eye_offset=shift_*ipd_scale_",gpu)
         shift=(ROOT/"src/probe/daytona_triangle_eye_shift.hpp").read_text("utf-8")
@@ -286,11 +290,11 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("return original_result;",body)
         pre=gpu.split("void PreparePresent(")[1].split("void FinishPresent(")[0]
         post=gpu.split("void FinishPresent(")[1].split("private:")[0]
-        self.assertNotIn("Model2VR_SubmitStereoRGBA(",pre)
-        self.assertIn("Model2VR_SubmitStereoRGBA(",post)
+        self.assertNotIn("Model2VR_SubmitStereoRGBAWithPose(",pre)
+        self.assertIn("Model2VR_SubmitStereoRGBAWithPose(",post)
         self.assertLess(post.index("FinalPresentReason("),
-                        post.index("Model2VR_SubmitStereoRGBA("))
-        self.assertLess(post.index("Model2VR_SubmitStereoRGBA("),
+                        post.index("Model2VR_SubmitStereoRGBAWithPose("))
+        self.assertLess(post.index("Model2VR_SubmitStereoRGBAWithPose("),
                         post.index("ReportFrame(frame,reason);"))
         self.assertIn("OriginalPresentFailed=256u",health)
         self.assertIn("ORIGINAL_D3D9_PRESENT_FAILED",health)
