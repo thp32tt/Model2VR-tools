@@ -45,6 +45,14 @@ void CloseLog() {
     }
 }
 
+void FlushLog() {
+    std::scoped_lock lock(g_log_mutex);
+    if (g_log) {
+        std::fflush(g_log);
+        g_last_flush_tick=GetTickCount64();
+    }
+}
+
 void LogEvent(
     std::string_view event,
     std::uint64_t a0,
