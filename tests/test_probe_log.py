@@ -85,6 +85,16 @@ class ProbeLogTests(unittest.TestCase):
                 writer.writerow([2, 11, 7, "model2_d3d9_cpu_up_join", 23, 2, 1, 0])
                 writer.writerow([3, 12, 7, "model2_d3d9_cpu_shader_up_join", 24, 3, 0, 0xDEF])
                 writer.writerow([4, 13, 7, "model2_d3d9_cpu_shader_up_join", 25, 0, 0, 0])
+                # Two source triangles from original exact shader-UP draw;
+                # first triangle's legacy event must not be counted twice.
+                writer.writerow([5, 14, 7, "model2_d3d9_cpu_shader_up_join_batch",
+                                 24, (2 << 32) | 2, 0, 0xDEF])
+                writer.writerow([6, 15, 7, "model2_d3d9_cpu_up_join_batch",
+                                 22, (3 << 32) | 2, (1 << 32), 0xABC])
+                writer.writerow([7, 16, 7, "model2_d3d9_cpu_up_join_batch",
+                                 23, (9 << 32) | 9, 0, 0])
+                writer.writerow([8, 17, 7, "model2_d3d9_cpu_up_join_batch",
+                                 99, (1 << 32) | 1, 0, 0xEEE])
             d3d9 = MODULE.analyze(path)["d3d9"]
         counts = d3d9["in_process_cpu_draw_join"]
         self.assertEqual(counts["xyzrhw_candidate:full_same_cpu_caller_candidate"], 1)
@@ -103,6 +113,21 @@ class ProbeLogTests(unittest.TestCase):
                             for edge in edges))
         self.assertEqual(d3d9["in_process_cpu_source_callers"],
                          {"0x00000ABC": 1, "0x00000DEF": 1})
+        batch = d3d9["in_process_cpu_batch_join"]
+        self.assertEqual(batch["xyzrhw_candidate:invalid"], 1)
+        self.assertEqual(batch["xyzrhw_candidate:sampled_draws"], 2)
+        self.assertEqual(batch["xyzrhw_candidate:inspected_triangles"], 4)
+        self.assertEqual(batch["xyzrhw_candidate:complete_triangles"], 3)
+        self.assertEqual(batch["shader_clip_candidate:complete_triangles"], 2)
+        self.assertEqual(batch["xyzrhw_candidate:missing_gpu_origin"], 1)
+        edges = d3d9["in_process_cpu_batch_edges"]
+        self.assertEqual(len(edges), 2)
+        self.assertEqual(
+            {(e["d3d9_caller_rva"], e["complete_triangle_candidates"])
+             for e in edges},
+            {("0x00000111", 2), ("0x00000222", 2)})
+        self.assertTrue(all(e["world_pass_proof"] == "NOT_ESTABLISHED"
+                            for e in edges))
 
     def test_up_witness_correlates_only_prior_same_thread_coordinates(self):
         with tempfile.TemporaryDirectory() as td:

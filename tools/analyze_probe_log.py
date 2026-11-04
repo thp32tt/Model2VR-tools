@@ -47,6 +47,11 @@ def analyze(path: Path):
     up_candidate_kinds = Counter()
     joined_gpu_cpu = Counter()
     joined_cpu_callers = Counter()
+    # Multi-triangle source joins have a separate counter: older per-first-
+    # triangle events are preserved, so never count that first member twice.
+    cpu_batch_joins = Counter()
+    cpu_batch_edges = Counter()
+    cpu_batch_frames = defaultdict(set)
     up_candidates = []
     recent_cpu = deque(maxlen=4096)
     latest_project_ctx = {}
@@ -206,6 +211,52 @@ def analyze(path: Path):
                     joined_gpu_cpu[f"{kind}:partial_candidate"] += 1
                 else:
                     joined_gpu_cpu[f"{kind}:unmatched_or_unknown"] += 1
+            elif event in ("model2_d3d9_cpu_up_join_batch",
+                           "model2_d3d9_cpu_shader_up_join_batch"):
+                # Packed source values:
+                #   a0=original Draw witness, a1=(inspected << 32)|complete
+                #   a2=(partial << 32)|ambiguous, a3=common CPU caller RVA
+                # An event is diagnostic candidate evidence only.
+                category = ("shader_clip_candidate" if
+                            "shader_up" in event else "xyzrhw_candidate")
+                inspected, complete = a1 >> 32, a1 & 0xFFFFFFFF
+                partial, ambiguous = a2 >> 32, a2 & 0xFFFFFFFF
+                valid = (1 <= inspected <= 8 and
+                         complete <= inspected and partial <= inspected and
+                         ambiguous <= inspected and
+                         complete + partial <= inspected and
+                         (not complete or ambiguous <= inspected - complete) and
+                         (not a3 or (complete > 0 and a3 <= 0xFFFFFFFF)))
+                if not valid:
+                    cpu_batch_joins[f"{category}:invalid"] += 1
+                    continue
+                cpu_batch_joins[f"{category}:sampled_draws"] += 1
+                cpu_batch_joins[f"{category}:inspected_triangles"] += inspected
+                cpu_batch_joins[f"{category}:complete_triangles"] += complete
+                cpu_batch_joins[f"{category}:partial_triangles"] += partial
+                cpu_batch_joins[f"{category}:ambiguous_triangles"] += ambiguous
+                if not a3 or not complete:
+                    continue
+                if category == "xyzrhw_candidate":
+                    witness = up_meta.get(a0)
+                    frame = witness[0] if witness else None
+                    draw_caller = witness[1] if witness else None
+                    family = witness[2] if witness else None
+                else:
+                    witness = shader_up_meta.get(a0)
+                    frame = shader_up_frames.get(a0)
+                    draw_caller = witness[0] if witness else None
+                    family = witness[1] if witness else None
+                if not draw_caller or family not in (3, 4):
+                    cpu_batch_joins[f"{category}:missing_gpu_origin"] += 1
+                    continue
+                edge = (category, family, draw_caller, a3)
+                if edge not in cpu_batch_edges and len(cpu_batch_edges) >= 4096:
+                    cpu_batch_joins[f"{category}:edge_limit"] += 1
+                    continue
+                cpu_batch_edges[edge] += complete
+                if frame is not None and len(cpu_batch_frames[edge]) < 4096:
+                    cpu_batch_frames[edge].add(frame)
             elif event == "model2_d3d9_draw_origin":
                 frame, family, caller = a0, a1, a2
                 # a3 keeps the full unsigned 64-bit (primitive count, topology).
@@ -284,6 +335,17 @@ def analyze(path: Path):
             "up_cpu_projection_candidates": up_candidates,
             "in_process_cpu_draw_join": dict(joined_gpu_cpu.most_common()),
             "in_process_cpu_source_callers": dict(joined_cpu_callers.most_common()),
+            "in_process_cpu_batch_join": dict(cpu_batch_joins.most_common()),
+            "in_process_cpu_batch_edges": [
+                {"projection_hypothesis": key[0],
+                 "draw_family": key[1],
+                 "d3d9_caller_rva": f"0x{key[2]:08X}",
+                 "cpu_project_caller_rva": f"0x{key[3]:08X}",
+                 "complete_triangle_candidates": count,
+                 "distinct_present_frames": len(cpu_batch_frames[key]),
+                 "world_pass_proof": "NOT_ESTABLISHED"}
+                for key, count in cpu_batch_edges.most_common(64)
+            ],
             "in_process_cpu_draw_edges": [
                 {"projection_hypothesis": key[0],
                  "draw_family": key[1],
@@ -374,6 +436,16 @@ def markdown(summary):
             f"{edge['full_triangle_candidates']} triangles across "
             f"{edge['distinct_present_frames']} frames; WORLD PROOF UNKNOWN"
         )
+    lines += ["", "### Bounded multi-triangle original CPU-to-GPU joins", ""]
+    lines.append("Maximum eight source triangles per sampled Draw; candidate only.")
+    for name, count in d3d9.get("in_process_cpu_batch_join", {}).items():
+        lines.append(f"- {name}: {count}")
+    for edge in d3d9.get("in_process_cpu_batch_edges", []):
+        lines.append(
+            f"- {edge['projection_hypothesis']} GPU {edge['d3d9_caller_rva']} "
+            f"-> CPU {edge['cpu_project_caller_rva']}: "
+            f"{edge['complete_triangle_candidates']} complete candidates across "
+            f"{edge['distinct_present_frames']} frames; WORLD PROOF UNKNOWN")
     lines += ["", "### Viewport, scissor and render-target samples", ""]
     for key in ("sampled_viewports", "sampled_scissors", "sampled_targets"):
         lines.append(f"#### {key}")

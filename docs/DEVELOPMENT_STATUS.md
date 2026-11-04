@@ -87,6 +87,15 @@ source. GPU Draw family counters remain zero for the separate CPU renderer.
 The x64 host can now revoke a stale previous pair on a newer failed original
 CPU Present. A true game-world camera source still requires independent proof.
 
+**One-pass multi-triangle CPU/D3D9 source-report analysis (2026-11-04):**
+The existing local `analyze_probe_log.py` now parses original binary
+in-process batch join aggregates separately from legacy first-triangle
+events, rejects impossible counts, bounds caller edges and tracked frame
+metadata, and reports matched/partial/ambiguous triangles without confusing
+candidate vertices with a gameplay world proof. The included synthetic
+regression checks shader-UP/XYZRHW batch provenance and invalid/missing
+caller cases. No additional user log collection is required for this change.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP
