@@ -99,6 +99,19 @@ inline bool DecodeRasterPolicy(DWORD cull_mode,DWORD zfunc,
     out=value;
     return true;
 }
+// A camera-calibrated software world raster reproduces Gouraud vertex RGBA
+// and the five frustum planes. An original FLAT/PHONG Draw, an application
+// clip plane or indexed/matrix-blended positions would generate DIFFERENT
+// pixels even with identical FVF/texture. Never silently replay those draws.
+// These are pipeline equivalence checks only, not proof of Daytona world.
+inline bool OriginalVertexPipelineEquivalent(
+    DWORD shade_mode,DWORD clipping,DWORD enabled_clip_planes,
+    DWORD vertex_blend,DWORD indexed_vertex_blend) noexcept {
+    return shade_mode==D3DSHADE_GOURAUD &&
+           clipping==TRUE && enabled_clip_planes==0u &&
+           vertex_blend==D3DVBF_DISABLE &&
+           indexed_vertex_blend==FALSE;
+}
 // Original depth must share the physical game color target's dimensions
 // and sample layout. A depth-disabled HUD/auxiliary surface must never be
 // promoted into a calibrated world pass merely by its viewport.
