@@ -33,6 +33,7 @@ NAMES = {
     "model2_d3d9_source_stage1_specular",
     "model2_d3d9_source_stage_result",
     "model2_d3d9_source_color_mask",
+    "model2_d3d9_source_blend",
 }
 
 def number(raw):
@@ -47,6 +48,30 @@ def halves(value):
 def signed32(value):
     value &= 0xFFFFFFFF
     return value - 0x100000000 if value & 0x80000000 else value
+
+
+def original_d3d9_blend_mode(record):
+    """Classify read-only original non-separate D3D9 ADD blend evidence.
+
+    This is a same-Draw material capability hint, not gameplay-world proof.
+    """
+    if record is None:
+        return "unobserved"
+    enabled, source = record[0] >> 32, record[0] & 0xFFFFFFFF
+    destination, operation = record[1] >> 32, record[1] & 0xFFFFFFFF
+    separate = record[2]
+    if enabled == 0:
+        return "opaque"
+    if enabled != 1 or operation != 1 or separate != 0:
+        return "unsupported"
+    return {
+        (2, 1): "replace_rgba", (5, 6): "source_alpha_over",
+        (2, 2): "additive", (5, 2): "source_alpha_add",
+        (2, 6): "premultiplied_over",
+        (9, 1): "multiply_color", (1, 3): "multiply_color",
+        (7, 8): "destination_alpha_over",
+        (1, 2): "preserve_destination",
+    }.get((source, destination), "unsupported")
 
 
 def original_main_depth_view_candidate(flags):
@@ -186,6 +211,9 @@ def original_projected_material_candidate(data):
     # original vertex DIFFUSE/CURRENT to preserve exact material source.
     if not has_uv and (rgb != "DIFFUSE" or alpha != "DIFFUSE"):
         return False
+    if "source_blend" in data and (
+            original_d3d9_blend_mode(data["source_blend"])=="unsupported"):
+        return False
     if "source_mask" in data:
         mask,tag,mask_frame=data["source_mask"]
         tagged_fvf,tagged_stride=halves(tag)
@@ -268,6 +296,8 @@ def audit_csv(path):
                 fields["stage_result"] = values
             elif event == "model2_d3d9_source_color_mask":
                 fields["source_mask"] = values
+            elif event == "model2_d3d9_source_blend":
+                fields["source_blend"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -283,6 +313,8 @@ def audit_csv(path):
         "original_source_color_mask_modes": set(),
         "original_source_color_mask_mismatch_witnesses": 0,
         "original_depth_only_draw_witnesses": 0,
+        "original_source_blend_modes": set(),
+        "original_source_blend_unsupported_witnesses": 0,
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
@@ -328,7 +360,7 @@ def audit_csv(path):
             # analyzed by analyze_probe_log.py, not corrupt VB records.
             if set(data).issubset({"stage_color", "stage_alpha",
                                    "stage_extra", "stage_result",
-                                   "source_mask"}):
+                                   "source_mask", "source_blend"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -375,6 +407,14 @@ def audit_csv(path):
                     # depth-stencil and either disabled or exact full-size
                     # original scissor. Never grants gameplay-world proof.
                     entry["original_main_full_view_depth_candidates"] += 1
+        # Blend evidence belongs to this exact original VB Draw witness.
+        # Unknown/unsupported states remain diagnostics only.
+        if "source_blend" in data:
+            mode=original_d3d9_blend_mode(data["source_blend"])
+            if mode=="unsupported":
+                entry["original_source_blend_unsupported_witnesses"]+=1
+            else:
+                entry["original_source_blend_modes"].add(mode)
         # Do not join independently sampled original D3D9 Draw states.
         if all(name in data for name in ("stage_color", "stage_alpha",
                                         "stage_extra")):

@@ -299,6 +299,20 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
        SUCCEEDED(dev->GetRenderState(D3DRS_COLORVERTEX,&color_vertex)))
         m2vr::LogEvent("model2_d3d9_source_lighting",witness,
             lighting,color_vertex,(std::uint64_t{fvf}<<32)|stride);
+    // Read original D3D9 blend factors under the SAME Draw witness.
+    // Passive capture only; no input, FFB or original render modification.
+    DWORD blend_enable=0,blend_src=0,blend_dst=0,blend_op=0;
+    DWORD separate_alpha=0;
+    if(SUCCEEDED(dev->GetRenderState(D3DRS_ALPHABLENDENABLE,&blend_enable)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_SRCBLEND,&blend_src)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_DESTBLEND,&blend_dst)) &&
+       SUCCEEDED(dev->GetRenderState(D3DRS_BLENDOP,&blend_op)) &&
+       SUCCEEDED(dev->GetRenderState(
+           D3DRS_SEPARATEALPHABLENDENABLE,&separate_alpha)))
+        m2vr::LogEvent("model2_d3d9_source_blend",witness,
+            (std::uint64_t{blend_enable}<<32)|blend_src,
+            (std::uint64_t{blend_dst}<<32)|blend_op,
+            separate_alpha);
     DWORD color_mask=0;
     if(SUCCEEDED(dev->GetRenderState(D3DRS_COLORWRITEENABLE,&color_mask)))
         m2vr::LogEvent("model2_d3d9_source_color_mask",witness,

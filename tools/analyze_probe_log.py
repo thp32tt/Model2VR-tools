@@ -40,6 +40,30 @@ def original_stage_source(op: int, first: int, second: int):
     return None
 
 
+def original_d3d9_blend_mode(record):
+    """Classify read-only original non-separate D3D9 ADD blend evidence.
+
+    This is a same-Draw material capability hint, not gameplay-world proof.
+    """
+    if record is None:
+        return "unobserved"
+    enabled, source = record[0] >> 32, record[0] & 0xFFFFFFFF
+    destination, operation = record[1] >> 32, record[1] & 0xFFFFFFFF
+    separate = record[2]
+    if enabled == 0:
+        return "opaque"
+    if enabled != 1 or operation != 1 or separate != 0:
+        return "unsupported"
+    return {
+        (2, 1): "replace_rgba", (5, 6): "source_alpha_over",
+        (2, 2): "additive", (5, 2): "source_alpha_add",
+        (2, 6): "premultiplied_over",
+        (9, 1): "multiply_color", (1, 3): "multiply_color",
+        (7, 8): "destination_alpha_over",
+        (1, 2): "preserve_destination",
+    }.get((source, destination), "unsupported")
+
+
 def original_up_source_pass_status(context, original_present_frame):
     """Evaluate a same-witness original D3D9 main-Z pass, not world proof.
 
@@ -204,7 +228,8 @@ def analyze(path: Path):
                            "model2_d3d9_source_stage1_specular",
                            "model2_d3d9_source_stage_result",
                            "model2_d3d9_source_lighting",
-                           "model2_d3d9_source_color_mask"):
+                           "model2_d3d9_source_color_mask",
+                           "model2_d3d9_source_blend"):
                 if a0 not in up_fixed_stage:
                     if len(up_fixed_stage) >= 4096:
                         up_fixed_stage.clear()
@@ -498,6 +523,7 @@ def analyze(path: Path):
     up_material_source_status = Counter()
     up_material_color_mask_status = Counter()
     up_material_context_status = Counter()
+    up_material_blend_status = Counter()
     up_material_examples = []
     for witness, (frame, caller, family, stride) in up_meta.items():
         source = up_source_fvf.get(witness)
@@ -588,6 +614,9 @@ def analyze(path: Path):
         source_context=up_source_context.get(witness)
         context_status=original_up_source_pass_status(source_context,frame)
         up_material_context_status[context_status] += 1
+        blend_status=original_d3d9_blend_mode(
+            stage.get("model2_d3d9_source_blend"))
+        up_material_blend_status[blend_status] += 1
         if len(up_material_examples) < 48:
             up_material_examples.append({
                 "witness_id": witness,
@@ -606,6 +635,7 @@ def analyze(path: Path):
                 "original_main_depth_context_status": context_status,
                 "original_source_scissor_full": (
                     context_status == "full_backbuffer_scissor_candidate"),
+                "original_source_blend_mode": blend_status,
                 "color_stage": [(c[0] >> 32) & 0xFFFFFFFF,
                                 c[0] & 0xFFFFFFFF, c[1]],
                 "alpha_stage": [(a[0] >> 32) & 0xFFFFFFFF,
@@ -651,6 +681,8 @@ def analyze(path: Path):
                 dict(up_material_color_mask_status.most_common()),
             "original_up_material_context_status":
                 dict(up_material_context_status.most_common()),
+            "original_up_material_blend_status":
+                dict(up_material_blend_status.most_common()),
             "original_up_material_stage_examples": up_material_examples,
             "up_cpu_projection_candidate_counts": dict(up_candidate_kinds.most_common()),
             "up_cpu_projection_candidates": up_candidates,
