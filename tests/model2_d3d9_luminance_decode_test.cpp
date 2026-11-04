@@ -13,14 +13,16 @@ int main() {
     const std::array<std::uint8_t,4> l8{{0,64,128,255}};
     std::array<std::uint8_t,16> rgba{};
     CHECK(DecodeLuminanceRowRGBA(l8.data(),rgba.data(),4u,D3DFMT_L8));
-    CHECK(rgba==std::array<std::uint8_t,16>{{
-        0,0,0,255, 64,64,64,255, 128,128,128,255, 255,255,255,255}});
+    const std::array<std::uint8_t,16> expected_l8{{
+        0,0,0,255, 64,64,64,255, 128,128,128,255, 255,255,255,255}};
+    CHECK(rgba==expected_l8);
     const std::array<std::uint8_t,8> a8l8{{
         255,0, 128,64, 64,128, 0,255
     }};
     CHECK(DecodeLuminanceRowRGBA(a8l8.data(),rgba.data(),4u,D3DFMT_A8L8));
-    CHECK(rgba==std::array<std::uint8_t,16>{{
-        255,255,255,0, 128,128,128,64, 64,64,64,128, 0,0,0,255}});
+    const std::array<std::uint8_t,16> expected_a8l8{{
+        255,255,255,0, 128,128,128,64, 64,64,64,128, 0,0,0,255}};
+    CHECK(rgba==expected_a8l8);
     const auto prior=rgba;
     CHECK(!DecodeLuminanceRowRGBA(a8l8.data(),rgba.data(),4u,D3DFMT_A8));
     CHECK(rgba==prior);
