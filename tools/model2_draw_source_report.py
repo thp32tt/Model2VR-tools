@@ -189,10 +189,17 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
                 data["source_depth_cull"],present_frame,
                 data.get("raster")) != "supported"):
         return None
-    if ("source_fill" in data and
-            original_d3d9_fill_status(
-                data["source_fill"],present_frame) != "solid"):
-        return None
+    if "source_fill" in data:
+        # A same-Present SOLID bit with a different original declaration
+        # cannot qualify the CPU projector + D3D9 Draw as one source.
+        origin=data.get("origin")
+        if not origin:
+            return None
+        _, fvf=halves(origin[1])
+        _, stride=halves(origin[2])
+        if original_d3d9_fill_status(
+                data["source_fill"],present_frame,fvf,stride) != "solid":
+            return None
     if ("source_vertex_pipeline" in data and
             original_d3d9_vertex_pipeline_status(
                 data["source_vertex_pipeline"],present_frame) != "supported"):
