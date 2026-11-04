@@ -5,6 +5,7 @@
 #include "draw_origin_gate.hpp"
 #include "project_draw_correlator.hpp"
 #include "d3d9_source_pass_context.hpp"
+#include "d3d9_sampler_states.hpp"
 #include "model2_camera_projection_fit.hpp"
 #include "d3d9_primary_device_owner.hpp"
 #include "verified_world_present_gate.hpp"
@@ -231,6 +232,15 @@ void LogOriginalSourcePassContext(IDirect3DDevice9* dev,
     c.scissor_known=SUCCEEDED(
         dev->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor));
     c.scissor_enabled=c.scissor_known && scissor!=0u;
+    IDirect3DSurface9* depth=nullptr;
+    if(SUCCEEDED(dev->GetDepthStencilSurface(&depth)) && depth){
+        D3DSURFACE_DESC depth_desc{};
+        c.depth_surface_known=SUCCEEDED(depth->GetDesc(&depth_desc));
+        c.depth_surface_compatible=c.depth_surface_known &&
+            c.target_desc_known &&
+            CompatibleOriginalDepthSurface(source_desc,depth_desc);
+    }
+    if(depth)depth->Release();
     m2vr::LogEvent("model2_d3d9_source_pass_context",witness,
         g_present_count.load(std::memory_order_relaxed)+1u,
         EncodeOriginalDrawSourceContext(c),

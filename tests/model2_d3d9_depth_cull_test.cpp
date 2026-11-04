@@ -100,6 +100,31 @@ int main() {
     CHECK(!DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ONE,
         D3DBLENDOP_ADD,1,decoded_blend));
 
+    // Only the original game's compatible main depth-stencil surface
+    // may be used as provenance for a projected binocular world draw.
+    D3DSURFACE_DESC main_color{}, main_depth{};
+    main_color.Width=640;main_color.Height=480;
+    main_color.MultiSampleType=D3DMULTISAMPLE_4_SAMPLES;
+    main_color.MultiSampleQuality=1u;
+    main_depth=main_color;
+    main_depth.Usage=D3DUSAGE_DEPTHSTENCIL;
+    CHECK(m2vr::drawprobe::CompatibleOriginalDepthSurface(
+        main_color,main_depth));
+    main_depth.Height=479u;
+    CHECK(!m2vr::drawprobe::CompatibleOriginalDepthSurface(
+        main_color,main_depth));
+    main_depth.Height=480u;main_depth.MultiSampleQuality=0u;
+    CHECK(!m2vr::drawprobe::CompatibleOriginalDepthSurface(
+        main_color,main_depth));
+    main_depth.MultiSampleQuality=1u;main_depth.Usage=0u;
+    CHECK(!m2vr::drawprobe::CompatibleOriginalDepthSurface(
+        main_color,main_depth));
+    CHECK(m2vr::drawprobe::EmptyExtraRenderTarget(
+        D3DERR_NOTFOUND,false));
+    CHECK(m2vr::drawprobe::EmptyExtraRenderTarget(S_OK,false));
+    CHECK(!m2vr::drawprobe::EmptyExtraRenderTarget(S_OK,true));
+    CHECK(!m2vr::drawprobe::EmptyExtraRenderTarget(E_FAIL,false));
+
     // Source alpha test equivalences are evaluated on integer RGBA8
     // texels before either independent-eye blend/depth write.
     using m2vr::drawprobe::AlphaCutoffMatches;

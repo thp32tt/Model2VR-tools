@@ -66,6 +66,24 @@ inline bool DecodeRasterPolicy(DWORD cull_mode,DWORD zfunc,
     out=value;
     return true;
 }
+// Original depth must share the physical game color target's dimensions
+// and sample layout. A depth-disabled HUD/auxiliary surface must never be
+// promoted into a calibrated world pass merely by its viewport.
+inline bool CompatibleOriginalDepthSurface(
+    const D3DSURFACE_DESC& color,
+    const D3DSURFACE_DESC& depth) noexcept {
+    return color.Width>0u && color.Height>0u &&
+        depth.Width==color.Width && depth.Height==color.Height &&
+        depth.MultiSampleType==color.MultiSampleType &&
+        depth.MultiSampleQuality==color.MultiSampleQuality &&
+        (depth.Usage&D3DUSAGE_DEPTHSTENCIL)!=0u;
+}
+// D3D9 returns D3DERR_NOTFOUND for an unbound additional target.
+// Other failures are UNKNOWN, not an assurance of single-target rendering.
+inline bool EmptyExtraRenderTarget(HRESULT query, bool has_surface) noexcept {
+    return query==D3DERR_NOTFOUND ||
+           (SUCCEEDED(query) && !has_surface);
+}
 inline bool FullBackbufferViewport(DWORD scissor_enabled,
                                    const D3DVIEWPORT9& viewport,
                                    const D3DSURFACE_DESC& backbuffer) noexcept {

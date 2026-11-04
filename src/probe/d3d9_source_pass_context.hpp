@@ -17,6 +17,8 @@ inline constexpr std::uint32_t kSourceDepthWrite=1u<<6u;
 inline constexpr std::uint32_t kSourceScissorKnown=1u<<7u;
 inline constexpr std::uint32_t kSourceScissorEnabled=1u<<8u;
 inline constexpr std::uint32_t kSourceTargetDescKnown=1u<<9u;
+inline constexpr std::uint32_t kSourceDepthSurfaceKnown=1u<<10u;
+inline constexpr std::uint32_t kSourceDepthSurfaceCompatible=1u<<11u;
 struct OriginalDrawSourceContext {
     OriginalTargetClass target=OriginalTargetClass::Unknown;
     bool viewport_known=false;
@@ -27,6 +29,8 @@ struct OriginalDrawSourceContext {
     bool scissor_known=false;
     bool scissor_enabled=false;
     bool target_desc_known=false;
+    bool depth_surface_known=false;
+    bool depth_surface_compatible=false;
     std::uint32_t source_width=0u,source_height=0u;
 };
 inline constexpr std::uint32_t EncodeOriginalDrawSourceContext(
@@ -44,6 +48,9 @@ inline constexpr std::uint32_t EncodeOriginalDrawSourceContext(
         (c.depth_known && c.depth_write?kSourceDepthWrite:0u) |
         (c.scissor_known?kSourceScissorKnown:0u) |
         (c.scissor_known && c.scissor_enabled?kSourceScissorEnabled:0u) |
-        (c.target_desc_known?kSourceTargetDescKnown:0u);
+        (c.target_desc_known?kSourceTargetDescKnown:0u) |
+        (c.depth_surface_known?kSourceDepthSurfaceKnown:0u) |
+        (c.depth_surface_known && c.depth_surface_compatible ?
+             kSourceDepthSurfaceCompatible:0u);
 }
 } // namespace m2vr::drawprobe

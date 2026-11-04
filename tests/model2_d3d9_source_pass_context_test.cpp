@@ -10,6 +10,7 @@ int main(){
     c.depth_known=true;c.depth_enabled=true;c.depth_write=true;
     c.scissor_known=true;c.scissor_enabled=true;
     c.target_desc_known=true;c.source_width=256u;c.source_height=256u;
+    c.depth_surface_known=true;c.depth_surface_compatible=true;
     auto bits=EncodeOriginalDrawSourceContext(c);
     CHECK((bits&kSourceTargetMask)==2u);
     CHECK((bits&kSourceViewportKnown)!=0u);
@@ -18,6 +19,8 @@ int main(){
     CHECK((bits&kSourceDepthEnabled)!=0u);
     CHECK((bits&kSourceDepthWrite)!=0u);
     CHECK((bits&kSourceScissorEnabled)!=0u);
+    CHECK((bits&kSourceDepthSurfaceKnown)!=0u);
+    CHECK((bits&kSourceDepthSurfaceCompatible)!=0u);
     c.target=OriginalTargetClass::MainBackbuffer;
     bits=EncodeOriginalDrawSourceContext(c);
     CHECK((bits&kSourceTargetMask)==1u);
@@ -33,6 +36,10 @@ int main(){
     CHECK((EncodeOriginalDrawSourceContext(c)&kSourceViewportFull)!=0u);
     c.viewport_known=false;
     CHECK((EncodeOriginalDrawSourceContext(c)&kSourceViewportFull)==0u);
+    c.depth_surface_known=false;
+    CHECK((EncodeOriginalDrawSourceContext(c)&kSourceDepthSurfaceCompatible)==0u);
+    c.depth_surface_known=true;c.depth_surface_compatible=false;
+    CHECK((EncodeOriginalDrawSourceContext(c)&kSourceDepthSurfaceCompatible)==0u);
     c.viewport_known=true;c.depth_known=false;
     CHECK((EncodeOriginalDrawSourceContext(c)&kSourceDepthEnabled)==0u);
     CHECK((EncodeOriginalDrawSourceContext(c)&kSourceDepthWrite)==0u);

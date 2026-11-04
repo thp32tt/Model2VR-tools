@@ -167,7 +167,7 @@ def audit_csv(path):
             target = ctx_flags & 3
             width, height = halves(ctx_size)
             if (not ctx_frame or ctx_frame > 0xFFFFFFFF or
-                    ctx_flags > 0x3FF or target == 3 or
+                    ctx_flags > 0xFFF or target == 3 or
                     width > 16384 or height > 16384):
                 raise ValueError("invalid D3D9 source-pass witness")
             if present_frame is None or ctx_frame != present_frame:
@@ -180,10 +180,10 @@ def audit_csv(path):
                 entry["source_contexts"].add(
                     (target, width, height, ctx_flags))
                 entry["context_present_frames"].add(ctx_frame)
-                if (target == 1 and (ctx_flags & 0x3FC) == 0x2FC):
-                    # Full viewport, confirmed Z, depth writes, no
-                    # scissor. Require explicit known scissor = disabled,
-                    # instead of interpreting a missing query as off.
+                if (target == 1 and (ctx_flags & 0xFFC) == 0xEFC):
+                    # Full original viewport, Z writes, actual compatible
+                    # depth-stencil surface and confirmed disabled scissor.
+                    # None of these constitutes gameplay-world proof.
                     entry["original_main_full_view_depth_candidates"] += 1
         if "stream" in data:
             offset_usage, _, _ = data["stream"]

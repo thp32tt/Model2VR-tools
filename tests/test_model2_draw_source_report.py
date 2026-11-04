@@ -53,7 +53,7 @@ class SourceAuditTests(unittest.TestCase):
                 ("model2_d3d9_cpu_vb_geometry_command", 101,
                  0x77, 0, 0xAABBCCDD),
                 ("model2_d3d9_source_pass_context", 101,
-                 17, 0x2FD, pack(640, 480)),
+                 17, 0xEFD, pack(640, 480)),
                 ("model2_d3d9_vb_present_frame", 102, 17, 2, 0),
                 ("model2_d3d9_vb_source", 102, 0x1234,
                  pack(2, 0x112), pack(65536, 20)),
@@ -97,7 +97,7 @@ class SourceAuditTests(unittest.TestCase):
                 src["distinct_geometry_command_present_frame_count"], 1)
             self.assertEqual(src["distinct_context_present_frame_count"], 1)
             self.assertEqual(src["original_main_full_view_depth_candidates"], 1)
-            self.assertEqual(src["source_contexts"], [[1, 640, 480, 765]])
+            self.assertEqual(src["source_contexts"], [[1, 640, 480, 3837]])
             self.assertFalse(src["world_pass_proven"])
 
     def test_in_place_matrix_drift_is_not_authentic_world_evidence(self):

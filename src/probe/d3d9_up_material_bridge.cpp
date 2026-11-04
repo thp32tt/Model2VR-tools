@@ -21,6 +21,21 @@ bool GuardCopy(void* dst,const void* src,std::size_t size) noexcept {
     __try { std::memcpy(dst,src,size);return true; }
     __except(EXCEPTION_EXECUTE_HANDLER){return false;}
 }
+bool NoAdditionalColorTargets(IDirect3DDevice9* d) {
+    D3DCAPS9 caps{};
+    if(!d || FAILED(d->GetDeviceCaps(&caps)) ||
+       caps.NumSimultaneousRTs<1u || caps.NumSimultaneousRTs>4u)
+        return false;
+    for(DWORD slot=1u;slot<caps.NumSimultaneousRTs;++slot){
+        IDirect3DSurface9* extra=nullptr;
+        const HRESULT result=d->GetRenderTarget(slot,&extra);
+        const bool empty=m2vr::drawprobe::EmptyExtraRenderTarget(
+            result,extra!=nullptr);
+        if(extra)extra->Release();
+        if(!empty)return false;
+    }
+    return true;
+}
 bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
                            m2vr::vr::SamplerPolicy& sampler,
                            m2vr::vr::RasterPolicy& raster,
@@ -116,7 +131,18 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
             scissor_enabled,viewport,backbuffer_desc);
     if(current)current->Release();
     if(main)main->Release();
-    return full_view;
+    if(!full_view || !NoAdditionalColorTargets(d))return false;
+    IDirect3DSurface9* depth=nullptr;
+    if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth){
+        if(depth)depth->Release();
+        return false;
+    }
+    D3DSURFACE_DESC depth_desc{};
+    const bool depth_compatible=SUCCEEDED(depth->GetDesc(&depth_desc)) &&
+        m2vr::drawprobe::CompatibleOriginalDepthSurface(
+            backbuffer_desc,depth_desc);
+    depth->Release();
+    return depth_compatible;
 }
 } // namespace
 
