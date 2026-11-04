@@ -5,6 +5,8 @@
 #include "../vr/model2_head_recenter.hpp"
 #include "../vr/model2_camera_source_contract.hpp"
 #include "daytona_eye_pose_gate.hpp"
+#include "verified_world_present_gate.hpp"
+#include "logger.h"
 #include <Windows.h>
 #include <algorithm>
 #include <cstdint>
@@ -32,9 +34,10 @@ struct Bridge {
     std::uint64_t frame=0,last_completed=0,pose_sequence=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
-    bool active=false;
+    bool active=false,pending_present=false;
     void Abort()noexcept{
-        active=false;owner=0;frame=0;pose_sequence=0;
+        active=false;pending_present=false;
+        owner=0;frame=0;pose_sequence=0;
         draw_count=0;triangle_count=0;
         evidence={};calibration={};
     }
@@ -73,7 +76,8 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
     unsigned long long frame_id,const float* axis,float units,
     float near_plane,unsigned int proof) {
     std::scoped_lock lock(g.mutex);
-    if(g.active || !frame_id || frame_id<=g.last_completed ||
+    if(g.active || g.pending_present || !frame_id ||
+       frame_id<=g.last_completed ||
        !axis || proof!=m2vr::vrbridge::kRequiredWorldProof)
         return FALSE;
     try {
@@ -277,16 +281,65 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     g.Abort();
     return success?TRUE:FALSE;
 }
+// Optional atomic original-Present-boundary commit. The adapter must first
+// prove gameplay world ownership, obtain the next original Present frame ID,
+// call Begin, then Append. End here only ARMS two completed eye images.
+extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent(){
+    std::scoped_lock lock(g.mutex);
+    if(!Owner())return FALSE;
+    if(!g.draw_count || !g.raster || !g.raster->DrawnPixels()){
+        g.Abort();
+        return FALSE;
+    }
+    g.active=false;
+    g.pending_present=true;
+    return TRUE;
+}
+// Called exclusively from the hooked ORIGINAL D3D9 Present path, after its
+// actual HRESULT. No stereo IPC publish on a wrong frame, lost device,
+// different render thread or simultaneous experimental GPU replay.
+extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
+    unsigned long long original_frame,unsigned int original_succeeded,
+    unsigned int native_gpu_replay_enabled) {
+    std::scoped_lock lock(g.mutex);
+    if(!g.pending_present)return FALSE;
+    const auto action=m2vr::vrbridge::DecidePendingWorldPresent(
+        g.frame,original_frame,original_succeeded!=0u,
+        native_gpu_replay_enabled!=0u,
+        g.owner==GetCurrentThreadId());
+    if(action==m2vr::vrbridge::PendingWorldPresent::Wait)return FALSE;
+    bool success=false;
+    if(action==m2vr::vrbridge::PendingWorldPresent::Publish){
+        const auto& left=g.raster->Eye(0);
+        const auto& right=g.raster->Eye(1);
+        success=Model2VR_OpenStereoWriter() &&
+            Model2VR_SubmitStereoRGBAWithPose(
+                left.data(),right.data(),g.frame,
+                m2vr::transport::kWidth,m2vr::transport::kHeight,
+                m2vr::transport::kPitch,g.pose_sequence);
+        if(success)g.last_completed=g.frame;
+    }
+    m2vr::LogEvent("model2_vr_cpu_world_present_commit",g.frame,
+        static_cast<unsigned int>(action),success?1u:0u,
+        native_gpu_replay_enabled);
+    g.Abort();
+    return success?TRUE:FALSE;
+}
+extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
+    std::scoped_lock lock(g.mutex);
+    if(g.pending_present || g.active)g.Abort();
+}
 extern "C" void __stdcall Model2VR_AbortVerifiedWorldFrame() {
     std::scoped_lock lock(g.mutex);
-    if(Owner())g.Abort();
+    if(Owner() || (g.pending_present &&
+       g.owner==GetCurrentThreadId()))g.Abort();
 }
 
 // An explicit verified game-adapter scene/device restart may establish a
 // fresh tracking origin. Never recenter on a failed Draw/pose sample.
 extern "C" BOOL __stdcall Model2VR_ResetVerifiedWorldTrackingOrigin() {
     std::scoped_lock lock(g.mutex);
-    if(g.active)return FALSE;
+    if(g.active || g.pending_present)return FALSE;
     g.head_origin.Reset();
     g.camera_epoch.Reset();
     g.latch.Reset();

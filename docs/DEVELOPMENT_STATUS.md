@@ -66,6 +66,17 @@ independence and overflow unwind. The original emulator transform and its
 register/flags trampoline remain untouched, and CPU values never become
 automatic verified gameplay world proof.
 
+**Verified CPU-world original-Present-boundary submission (2026-11-04):**
+An additional opt-in EndVerifiedWorldFrameOnOriginalPresent path now keeps
+both independently rasterized OpenXR eye images pending until their exact
+original D3D9 Present frame ID, render-thread owner and successful original
+HRESULT all match. A lost device, late/mismatched frame, wrong render thread,
+Reset, or simultaneous experimental native GPU replay prevents CPU-world IPC
+submission. The legacy immediate End API is unchanged for compatibility.
+This still requires a separately authenticated gameplay source adapter to
+provide world proof, axis/units calibration and correct source frame IDs:
+generic CPU/D3D9 correlations do NOT silently trigger stereo rendering.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

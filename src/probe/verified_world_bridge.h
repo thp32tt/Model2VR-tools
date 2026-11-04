@@ -96,6 +96,13 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTexture
     unsigned int start_index, unsigned int primitive_count,
     unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
+// Preferred opt-in source-connected end: ARM, but never publish before the
+// matching ORIGINAL D3D9 Present HRESULT succeeds. The emulator adapter
+// must supply the exact upcoming original frame ID to BeginVerifiedWorldFrame.
+// Do not mix with GPU shader-UP replay mode; that existing path remains the
+// exclusive publisher in native GPU mode. False/world-unknown proof still
+// fails closed in Begin, regardless of which End API the caller chooses.
+__declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent();
 __declspec(dllexport) void __stdcall Model2VR_AbortVerifiedWorldFrame();
 }
 

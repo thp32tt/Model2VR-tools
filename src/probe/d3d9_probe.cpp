@@ -68,6 +68,11 @@ std::atomic<std::uint64_t> g_witness_serial{0};
 std::uint32_t g_draw_sample_every=1024u;
 bool g_device_installed=false;
 bool g_native_stereo=false;
+// Internal callback into the independently proven CPU-world renderer.
+// No verified-world frame is generated or self-authorized by this probe.
+extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
+    unsigned long long,unsigned int,unsigned int);
+extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset();
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -736,11 +741,17 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     m2vr::drawprobe::NextProjectDrawEpoch();
     if(g_native_stereo)
         m2vr::daytona::FinishFrameAfterPresent(frame,original_result);
+    // A separately proven CPU-world source can publish only after this
+    // original Present completes. GPU-replay mode retains sole ownership
+    // of its per-frame writer; a conflicting CPU frame is dropped.
+    Model2VR_CompleteVerifiedWorldOriginalPresent(
+        frame,SUCCEEDED(original_result)?1u:0u,g_native_stereo?1u:0u);
     return original_result;
 }
 HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
                                      D3DPRESENT_PARAMETERS* pp){
     m2vr::drawprobe::NextProjectDrawEpoch();
+    Model2VR_DiscardPendingWorldOnReset();
     if(g_native_stereo)m2vr::daytona::ResetResources();
     return g_reset(d,pp);
 }
@@ -755,8 +766,10 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool di=Hook(vtable[82],reinterpret_cast<void*>(&IndexedHook),g_draw_indexed);
     const bool du=Hook(vtable[83],reinterpret_cast<void*>(&DrawUPHook),g_draw_up);
     const bool iu=Hook(vtable[84],reinterpret_cast<void*>(&IndexedUPHook),g_draw_indexed_up);
-    const bool reset=!g_native_stereo ||
-        Hook(vtable[16],reinterpret_cast<void*>(&ResetHook),g_reset);
+    // Even passive mode can host an explicitly verified CPU-world frame.
+    // Always discard its pending eye pair on original device Reset.
+    const bool reset=Hook(
+        vtable[16],reinterpret_cast<void*>(&ResetHook),g_reset);
     const bool clear=!g_native_stereo ||
         Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear);
     const bool update=!g_native_stereo ||
@@ -773,7 +786,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(di){MH_DisableHook(vtable[82]);MH_RemoveHook(vtable[82]);}
         if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
         if(iu){MH_DisableHook(vtable[84]);MH_RemoveHook(vtable[84]);}
-        if(g_native_stereo&&reset){MH_DisableHook(vtable[16]);MH_RemoveHook(vtable[16]);}
+        if(reset){MH_DisableHook(vtable[16]);MH_RemoveHook(vtable[16]);}
         if(g_native_stereo&&clear){MH_DisableHook(vtable[43]);MH_RemoveHook(vtable[43]);}
         if(g_native_stereo&&update){MH_DisableHook(vtable[30]);MH_RemoveHook(vtable[30]);}
         if(g_native_stereo&&stretch){MH_DisableHook(vtable[34]);MH_RemoveHook(vtable[34]);}
