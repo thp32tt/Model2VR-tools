@@ -49,7 +49,8 @@ bool CopyVBWindow(IDirect3DDevice9* device,
                   const m2vr::drawprobe::VBVertexWindow& window,
                   std::vector<std::uint8_t>& bytes,UINT& stride,
                   bool projected_screen=false) {
-    if(!device || !window.count || window.count>2048u)return false;
+    if(!device || !Model2VR_IsOriginalPrimaryD3D9Device(device) ||
+       !window.count || window.count>2048u)return false;
     ComOwner<IDirect3DVertexBuffer9> vb;
     UINT stream_offset=0;
     if(FAILED(device->GetStreamSource(
