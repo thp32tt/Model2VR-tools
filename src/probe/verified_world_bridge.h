@@ -346,6 +346,11 @@ __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPre
 __declspec(dllexport) BOOL __stdcall
 Model2VR_HasVerifiedWorldPendingForOriginalPresent(unsigned long long original_frame);
 __declspec(dllexport) void __stdcall Model2VR_AbortVerifiedWorldFrame();
+// When ANY explicitly trusted original D3D9 source draw cannot be
+// reproduced, revoke its entire partial CPU-world frame. The authentic
+// original game Draw, source Present, and GPU/mono fallback are untouched.
+__declspec(dllexport) void __stdcall Model2VR_RejectVerifiedD3D9SourceDraw(
+    unsigned int original_source_kind);
 }
 
 // Optional explicit recenter on a proven scene/device restart.

@@ -133,6 +133,11 @@ target_compile_features(daytona_host_pixel_format_x86_test PRIVATE cxx_std_20)
 add_test(NAME daytona_host_rgba_bgra_swapchain_x86
          COMMAND daytona_host_pixel_format_x86_test)
 
+add_executable(model2_original_source_epoch_test tests/model2_verified_source_epoch_test.cpp)
+target_compile_features(model2_original_source_epoch_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_source_frame_rejection
+         COMMAND model2_original_source_epoch_test)
+
 add_executable(daytona_pose_present_x86_test tests/daytona_source_pose_commit_gate_test.cpp)
 target_compile_features(daytona_pose_present_x86_test PRIVATE cxx_std_20)
 add_test(NAME daytona_original_pose_at_present_x86 COMMAND daytona_pose_present_x86_test)

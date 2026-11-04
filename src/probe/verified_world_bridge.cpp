@@ -7,6 +7,7 @@
 #include "daytona_eye_pose_gate.hpp"
 #include "daytona_source_pose_commit_gate.hpp"
 #include "verified_world_present_gate.hpp"
+#include "verified_world_source_epoch.hpp"
 #include "daytona_native_stereo.hpp"
 #include "../common/daytona_producer_health.hpp"
 #include "logger.h"
@@ -37,10 +38,17 @@ struct Bridge {
     m2vr::vr::Model2CameraCalibration calibration{};
     m2vr::vr::DrawEvidence evidence{};
     std::uint64_t frame=0,last_completed=0,pose_sequence=0;
+    m2vr::vrbridge::OriginalSourceFrameEpoch source_epoch{};
     std::uint64_t pose_published_qpc=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
     bool active=false,pending_present=false;
+    void Reject(unsigned source_kind)noexcept{
+        if((active || pending_present) && source_epoch.Revoke(frame))
+            m2vr::LogEvent("model2_vr_cpu_world_source_rejected",
+                frame,source_kind,draw_count,triangle_count);
+        Abort();
+    }
     void Abort()noexcept{
         active=false;pending_present=false;
         owner=0;frame=0;pose_sequence=0;pose_published_qpc=0;
@@ -109,8 +117,8 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
     unsigned long long frame_id,const float* axis,float units,
     float near_plane,unsigned int proof) {
     std::scoped_lock lock(g.mutex);
-    if(g.active || g.pending_present || !frame_id ||
-       frame_id<=g.last_completed ||
+    if(g.active || g.pending_present ||
+       !g.source_epoch.CanBegin(frame_id,g.last_completed) ||
        !axis || proof!=m2vr::vrbridge::kRequiredWorldProof)
         return FALSE;
     try {
@@ -173,7 +181,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
        index_count>3u*2048u ||
        index_count/3u>2048u-g.triangle_count ||
        g.draw_count>=2048u) {
-        if(Owner())g.Abort();
+        if(Owner())g.Reject(0u);
         return FALSE;
     }
     try {
@@ -186,21 +194,21 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
                         std::size_t(index_count)*sizeof(std::uint32_t)) ||
            !GuardedCopy(safe_colors.data(),colors,
                         std::size_t(index_count/3u)*sizeof(std::uint32_t))){
-            g.Abort();return FALSE;
+            g.Reject(0u);return FALSE;
         }
         m2vr::vr::ClippedStereoBatch clipped{};
         if(!m2vr::vr::BuildClippedStereoBatch(
             vertices.data(),vertices.size(),safe_indices.data(),index_count,
             g.frame,g.latch,g.calibration,g.evidence,clipped) ||
            !g.raster->Draw(clipped,safe_colors.data(),index_count/3u)) {
-            g.Abort();
+            g.Reject(0u);
             return FALSE;
         }
         ++g.draw_count;
         g.triangle_count+=index_count/3u;
         return TRUE;
     }catch(...){
-        g.Abort();
+        g.Reject(0u);
         return FALSE;
     }
 }
@@ -246,7 +254,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
        rgb_source>2u || alpha_source>2u || blend_mode>8u ||
        write_rgba_mask>15u ||
        ((rgb_source!=0u || alpha_source!=0u) && !diffuse_argb)) {
-        if(Owner())g.Abort();
+        if(Owner())g.Reject(0u);
         return FALSE;
     }
     try {
@@ -267,7 +275,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
                                            safe_texture.size())) ||
            (diffuse_argb && !GuardedCopy(safe_diffuse.data(),diffuse_argb,
                             safe_diffuse.size()*sizeof(std::uint32_t)))) {
-            g.Abort();return FALSE;
+            g.Reject(0u);return FALSE;
         }
         m2vr::vr::ClippedTexturedStereoBatch clipped{};
         if(!m2vr::vr::BuildTexturedStereoBatch(
@@ -275,7 +283,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
               safe_indices.data(),safe_indices.size(),g.frame,g.latch,
               g.calibration,g.evidence,clipped,
               safe_diffuse.empty()?nullptr:safe_diffuse.data())) {
-            g.Abort();return FALSE;
+            g.Reject(0u);return FALSE;
         }
         m2vr::vr::StereoWorldRaster::TextureRGBA texture{
             source_texture?safe_texture.data():nullptr,
@@ -302,13 +310,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialCo
              static_cast<m2vr::vr::AlphaBlendFactor>(separate_alpha_dst)}
         };
         if(!g.raster->DrawTextured(clipped,texture)) {
-            g.Abort();return FALSE;
+            g.Reject(0u);return FALSE;
         }
         ++g.draw_count;
         g.triangle_count+=index_count/3u;
         return TRUE;
     }catch(...){
-        g.Abort();return FALSE;
+        g.Reject(0u);return FALSE;
     }
 }
 // Preserve the exact previous alpha-compare/material ABI for all already
@@ -445,7 +453,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     if(!Owner())return FALSE;
     if(!g.draw_count || !g.raster ||
        !g.raster->StereoPairUsable() || !OriginalWorldPoseLive()){
-        g.Abort();
+        g.Reject(0u);
         return FALSE;
     }
     // One game frame, two independently clipped/depth-tested images.
@@ -468,7 +476,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent(){
     if(!Owner())return FALSE;
     if(!g.draw_count || !g.raster ||
        !g.raster->StereoPairUsable() || !OriginalWorldPoseLive()){
-        g.Abort();
+        g.Reject(0u);
         return FALSE;
     }
     g.active=false;
@@ -523,6 +531,15 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
         native_gpu_replay_enabled);
     g.Abort();
     return success?TRUE:FALSE;
+}
+// Called only on a rejected explicit original D3D9 source adapter.
+// Abort the entire partially composed world frame (not the original game).
+// An already armed frame from the same thread also becomes unusable.
+extern "C" void __stdcall Model2VR_RejectVerifiedD3D9SourceDraw(
+    unsigned int source_kind) {
+    std::scoped_lock lock(g.mutex);
+    if(g.owner==GetCurrentThreadId() && (g.active || g.pending_present))
+        g.Reject(source_kind);
 }
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);
