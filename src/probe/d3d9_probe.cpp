@@ -338,6 +338,14 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
             (std::uint64_t{clip_planes}<<32)|vertex_blend,
             (std::uint64_t{indexed_blend}<<32)|
              (g_present_count.load(std::memory_order_relaxed)+1u));
+    // D3D9 TRIANGLELIST wireframe/point rendering changes pixel coverage.
+    // The binocular world raster is filled-only: preserve the genuine
+    // FILLMODE together with this very Draw's FVF and Present provenance.
+    DWORD fill_mode=0;
+    if(SUCCEEDED(dev->GetRenderState(D3DRS_FILLMODE,&fill_mode)))
+        m2vr::LogEvent("model2_d3d9_source_fill",witness,fill_mode,
+            g_present_count.load(std::memory_order_relaxed)+1u,
+            (std::uint64_t{fvf}<<32)|stride);
     // Source mip capability is read from the ACTUAL bound 2D texture at
     // this Draw witness. It cannot authorize an otherwise unverified Draw.
     DWORD source_mip_filter=0u;
