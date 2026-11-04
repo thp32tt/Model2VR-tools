@@ -40,6 +40,25 @@ extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitStereoRGBA(
                             m2vr::transport::FrameKind::GameStereo)?TRUE:FALSE;
 }
 
+// The proven CPU-world renderer can include the exact predicted pose used
+// for independent eye projection. The legacy API stays untagged.
+extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitStereoRGBAWithPose(
+    const unsigned char* left_rgba,const unsigned char* right_rgba,
+    unsigned long long emulated_frame_id,unsigned int width,
+    unsigned int height,unsigned int stride_bytes,
+    unsigned long long pose_sequence) {
+    if(width!=m2vr::transport::kWidth ||
+       height!=m2vr::transport::kHeight ||
+       stride_bytes!=m2vr::transport::kPitch ||
+       !left_rgba || !right_rgba || !emulated_frame_id ||
+       !pose_sequence || pose_sequence>0xffffffffull)return FALSE;
+    std::scoped_lock lock(g_writer_mutex);
+    if(!g_initialized)return FALSE;
+    return g_writer.Publish(left_rgba,right_rgba,emulated_frame_id,
+               m2vr::transport::FrameKind::GameStereo,
+               static_cast<std::uint32_t>(pose_sequence))?TRUE:FALSE;
+}
+
 // Returns an atomic, coherent *pair* of predicted OpenXR eye views, not two
 // independently sampled poses. Sample once per emulated render frame.
 namespace {

@@ -308,3 +308,27 @@ The existing `Read(Snapshot&)` legacy API continues to preserve caller
 output on failure. Updated native Win32/Win64 IPC tests verify reused
 buffer addresses and left/right frame identity. This is an allocation
 path improvement; measured HMD timing and calibration remain untested.
+
+
+## Exact camera-pose ownership for authenticated CPU world frames (2026-11-04)
+
+The original x86->x64 two-eye RGBA shared-memory header still occupies
+exactly 64 bytes. Its formerly unused final 32-bit field now optionally
+holds the low-32 nonzero sequence of the predicted OpenXR views used for
+the actual verified CPU-world independent eye clipping. This is committed
+inside the same seqlock as both eye bitmaps, game frame ID, timestamp and
+FrameKind. Zero preserves the legacy uncalibrated native GPU-eye mirror
+without falsely claiming camera matching. Diagnostic frames reject tags.
+
+Model2VR_SubmitStereoRGBAWithPose is called only by the independently
+authenticated BeginVerifiedWorldFrame/EndVerifiedWorldFrame CPU renderer.
+The x64 host retains 32 published OpenXR view-pairs by sequence. On a
+new GameStereo image carrying a tag, it requires the exact original pair
+and submits the OpenXR projection layer with those source eye poses and
+asymmetric FOV values. If missing, it keeps the bounded-safe previous
+frame instead of using an unrelated tracking pose. Both eye images
+remain atomically staged. OpenXR runtime reprojection applies normally.
+
+This does not calibrate the existing Daytona shader-UP pixel-shift
+GPU mirror, infer game-world/HUD pass identity, or prove Quest visuals.
+RUNTIME_VALIDATION=UNTESTED.

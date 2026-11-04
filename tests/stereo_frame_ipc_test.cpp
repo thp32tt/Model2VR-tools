@@ -47,6 +47,15 @@ int main(){
     REQUIRE(staging.eyes[0].data()==ptr_left &&
             staging.eyes[1].data()==ptr_right);
     REQUIRE(staging.eyes[0][0]==0x7Bu && staging.eyes[1][0]==0x5Eu);
+    REQUIRE(writer.Publish(a.data(),b.data(),4,FrameKind::GameStereo,117u));
+    REQUIRE(reader.Peek(metadata));
+    REQUIRE(metadata.pose_sequence==117u && metadata.frame_id==4);
+    REQUIRE(reader.ReadReusable(staging));
+    REQUIRE(staging.pose_sequence==117u && staging.frame_id==4);
+    REQUIRE(!writer.Publish(a.data(),b.data(),5,FrameKind::Diagnostic,117u));
+    REQUIRE(writer.Publish(a.data(),b.data(),5,FrameKind::Diagnostic));
+    REQUIRE(reader.ReadReusable(staging));
+    REQUIRE(staging.pose_sequence==0u && staging.kind==FrameKind::Diagnostic);
     reader.Close();writer.Close();
     REQUIRE(!reader.Read(snap));
     return 0;

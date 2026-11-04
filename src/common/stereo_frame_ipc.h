@@ -37,7 +37,7 @@ struct alignas(64) Header {
     std::uint64_t frame_id;
     std::uint64_t timestamp_qpc;
     std::uint32_t writer_pid;
-    std::uint32_t reserved;
+    std::uint32_t pose_sequence; // 0 unknown; otherwise source OpenXR pose
 };
 static_assert(sizeof(Header) == 64);
 static_assert(offsetof(Header, frame_id)==40);
@@ -50,11 +50,13 @@ struct FrameStamp {
     std::uint64_t timestamp_qpc=0;
     FrameKind kind=FrameKind::Invalid;
     std::uint32_t writer_pid=0;
+    std::uint32_t pose_sequence=0;
 };
 struct Snapshot {
     std::uint64_t frame_id=0;
     std::uint64_t timestamp_qpc=0;
     FrameKind kind=FrameKind::Invalid;
+    std::uint32_t pose_sequence=0;
     std::array<std::vector<std::uint8_t>,2> eyes;
 };
 class SharedFrames {
@@ -105,9 +107,11 @@ public:
                h->header_size==sizeof(Header);
     }
     bool Publish(const std::uint8_t* left,const std::uint8_t* right,
-                 std::uint64_t frame_id,FrameKind kind) {
+                 std::uint64_t frame_id,FrameKind kind,
+                 std::uint32_t pose_sequence=0) {
         if(!writable_||!Valid()||!left||!right||frame_id==0||
-           (kind!=FrameKind::GameStereo && kind!=FrameKind::Diagnostic))
+           (kind!=FrameKind::GameStereo && kind!=FrameKind::Diagnostic) ||
+           (kind==FrameKind::Diagnostic && pose_sequence!=0u))
             return false;
         auto* h=reinterpret_cast<Header*>(base_);
         // A writer must not overlap itself. No consumer ever writes.
@@ -118,6 +122,7 @@ public:
         std::memcpy(base_+sizeof(Header),left,kBytesPerEye);
         std::memcpy(base_+sizeof(Header)+kBytesPerEye,right,kBytesPerEye);
         h->frame_id=frame_id;
+        h->pose_sequence=pose_sequence;
         LARGE_INTEGER time{};
         QueryPerformanceCounter(&time);
         h->timestamp_qpc=static_cast<std::uint64_t>(time.QuadPart);
@@ -139,6 +144,7 @@ public:
         stamp.timestamp_qpc=h->timestamp_qpc;
         stamp.kind=static_cast<FrameKind>(h->kind);
         stamp.writer_pid=h->writer_pid;
+        stamp.pose_sequence=h->pose_sequence;
         MemoryBarrier();
         const LONG end=h->sequence;
         if(start!=end || (end&1) || stamp.frame_id==0 ||
@@ -162,6 +168,7 @@ public:
         const FrameKind kind=static_cast<FrameKind>(h->kind);
         if(kind!=FrameKind::GameStereo && kind!=FrameKind::Diagnostic)return false;
         const auto frame=h->frame_id, timestamp=h->timestamp_qpc;
+        const auto pose_sequence=h->pose_sequence;
         for(auto& eye:staging.eyes)
             if(eye.size()!=kBytesPerEye)eye.resize(kBytesPerEye);
         std::memcpy(staging.eyes[0].data(),base_+sizeof(Header),kBytesPerEye);
@@ -175,6 +182,7 @@ public:
         staging.frame_id=frame;
         staging.timestamp_qpc=timestamp;
         staging.kind=kind;
+        staging.pose_sequence=pose_sequence;
         return true;
     }
     // Legacy caller contract: preserve the output entirely on failure.

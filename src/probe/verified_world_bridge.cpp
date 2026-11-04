@@ -14,9 +14,9 @@
 #include <vector>
 
 extern "C" BOOL __stdcall Model2VR_OpenStereoWriter();
-extern "C" BOOL __stdcall Model2VR_SubmitStereoRGBA(
+extern "C" BOOL __stdcall Model2VR_SubmitStereoRGBAWithPose(
     const unsigned char*,const unsigned char*,unsigned long long,
-    unsigned int,unsigned int,unsigned int);
+    unsigned int,unsigned int,unsigned int,unsigned long long);
 extern "C" BOOL __stdcall Model2VR_ReadPredictedEyeViews(
     m2vr::pose::Frame*);
 
@@ -29,12 +29,13 @@ struct Bridge {
     m2vr::vr::Model2CameraEpochContract camera_epoch;
     m2vr::vr::Model2CameraCalibration calibration{};
     m2vr::vr::DrawEvidence evidence{};
-    std::uint64_t frame=0,last_completed=0;
+    std::uint64_t frame=0,last_completed=0,pose_sequence=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
     bool active=false;
     void Abort()noexcept{
-        active=false;owner=0;frame=0;draw_count=0;triangle_count=0;
+        active=false;owner=0;frame=0;pose_sequence=0;
+        draw_count=0;triangle_count=0;
         evidence={};calibration={};
     }
 };
@@ -110,6 +111,7 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         g.head_origin=next_origin;
         g.camera_epoch=next_camera;
         g.frame=frame_id;
+        g.pose_sequence=predicted.sequence;
         g.owner=GetCurrentThreadId();
         g.calibration=cal;
         g.evidence=evidence;
@@ -268,9 +270,9 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     const auto& a=g.raster->Eye(0);
     const auto& b=g.raster->Eye(1);
     const bool success=Model2VR_OpenStereoWriter() &&
-        Model2VR_SubmitStereoRGBA(a.data(),b.data(),g.frame,
+        Model2VR_SubmitStereoRGBAWithPose(a.data(),b.data(),g.frame,
             m2vr::transport::kWidth,m2vr::transport::kHeight,
-            m2vr::transport::kPitch);
+            m2vr::transport::kPitch,g.pose_sequence);
     if(success)g.last_completed=g.frame;
     g.Abort();
     return success?TRUE:FALSE;

@@ -146,6 +146,9 @@ void XrApp::draw_frame(XrTime display_time){
         // Revoke the previously published pose so game geometry cannot use
         // the old eye views, and submit an empty composition frame.
         if(pose_writer_.Valid())pose_writer_.Invalidate();
+        for(auto& entry:pose_history_)entry.sequence=0;
+        accepted_exact_pose_=false;
+        frame_gate_.Reset();
         report_wizard_health(false,false);
         XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
         end.displayTime=display_time;
@@ -176,6 +179,13 @@ void XrApp::draw_frame(XrTime display_time){
                 dst.fov_left_right_up_down[3]=views[eye].fov.angleDown;
             }
             const bool pose_published=pose_writer_.Publish(predicted);
+            if(pose_published && predicted.sequence<=0xffffffffull){
+                auto& entry=pose_history_[
+                    static_cast<std::size_t>(predicted.sequence)%
+                    pose_history_.size()];
+                entry.sequence=static_cast<std::uint32_t>(predicted.sequence);
+                entry.views=views;
+            }
             if(pose_published && !startup_ready_signaled_ &&
                hostready::Signal(source_pid_)){
                 startup_ready_signaled_=true;
@@ -227,8 +237,19 @@ void XrApp::draw_frame(XrTime display_time){
             const bool stamp_ok=shared_frames_.Peek(stamp);
             const auto action=frame_gate_.Decide(stamp_ok?&stamp:nullptr,now,hz);
             if(action==transport::FrameUse::ReadNew){
-                if(shared_frames_.ReadReusable(staging_frame_) &&
-                   frame_gate_.Accept(staging_frame_,now,hz)){
+                // Avoid 8MiB read for stamped frames whose actual projection
+                // view pair has already fallen out of the host's pose ring.
+                const bool known_pose=!stamp.pose_sequence ||
+                    (stamp.kind==transport::FrameKind::GameStereo &&
+                     pose_history_[stamp.pose_sequence%
+                         pose_history_.size()].sequence==stamp.pose_sequence);
+                if(known_pose && shared_frames_.ReadReusable(staging_frame_)){
+                    const auto tag=staging_frame_.pose_sequence;
+                    const auto& pose_entry=pose_history_[tag%pose_history_.size()];
+                    const bool matched=!tag ||
+                       (staging_frame_.kind==transport::FrameKind::GameStereo &&
+                        pose_entry.sequence==tag);
+                    if(matched && frame_gate_.Accept(staging_frame_,now,hz)){
                     if(staging_frame_.kind==transport::FrameKind::Diagnostic &&
                        !saw_diagnostic_){
                         std::cout<<"Model2VR: DIAGNOSTIC source; not native game stereo\n";
@@ -239,6 +260,9 @@ void XrApp::draw_frame(XrTime display_time){
                     // application level, then recycle the previous buffers
                     // for the next IPC read (no 8-MiB allocation per frame).
                     std::swap(eye_frame_,staging_frame_);
+                    accepted_exact_pose_=tag!=0;
+                    if(accepted_exact_pose_)accepted_render_pose_=pose_entry.views;
+                    }
                 }
             }
         }
@@ -288,8 +312,10 @@ void XrApp::draw_frame(XrTime display_time){
         XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         check(xrReleaseSwapchainImage(chain.handle,&release),"release swapchain image");
         auto& layer=layer_views[eye];
-        layer.pose=views[eye].pose;
-        layer.fov=views[eye].fov;
+        const auto& source_pose=usable && accepted_exact_pose_
+            ? accepted_render_pose_[eye] : views[eye];
+        layer.pose=source_pose.pose;
+        layer.fov=source_pose.fov;
         layer.subImage.swapchain=chain.handle;
         layer.subImage.imageRect.extent.width=static_cast<int>(chain.width);
         layer.subImage.imageRect.extent.height=static_cast<int>(chain.height);
