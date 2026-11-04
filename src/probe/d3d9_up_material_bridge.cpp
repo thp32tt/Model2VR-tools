@@ -252,10 +252,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
        FAILED(d->GetTransform(D3DTS_PROJECTION,&projection)) ||
        !m2vr::drawprobe::AffineMatrix(world) ||
        !m2vr::drawprobe::AffineMatrix(view) ||
-       !m2vr::drawprobe::StandardPerspectiveProjection(projection))
+       !m2vr::drawprobe::StandardPerspectiveProjection(projection)){
+        m2vr::vrbridge::RejectOriginalSourceMaterial(
+            m2vr::vrbridge::OriginalSourceFailure::ProjectionPass);
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
+    }
     // The original D3D9 WORLD matrix changes for different race objects.
     // Only its actual camera VIEW/PROJECTION and viewport must remain
     // coherent with the first world Draw in this physical Present.
@@ -268,10 +271,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
        !m2vr::vrbridge::AdmitVerifiedFixedD3D9SourcePass(
             {fixed_viewport.X,fixed_viewport.Y,
              fixed_viewport.Width,fixed_viewport.Height},
-            fixed_view,fixed_projection))
+            fixed_view,fixed_projection)){
+        m2vr::vrbridge::RejectOriginalSourceMaterial(
+            m2vr::vrbridge::OriginalSourceFailure::ProjectionPass);
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
+    }
     std::vector<std::uint8_t> raw;
     std::vector<std::uint32_t> safe_indices;
     std::vector<float> positions,uv;
@@ -422,20 +428,26 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
            !Model2VR_OriginalCpuProjectionStillMatchesDraw(
                joined.common_matrix_identity,
                joined.common_matrix_fingerprint,
-               joined.common_geometry_command))
+               joined.common_geometry_command)){
+            m2vr::vrbridge::RejectOriginalSourceMaterial(
+                m2vr::vrbridge::OriginalSourceFailure::ProjectionPass);
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
+        }
         const auto fit=m2vr::drawprobe::FitSourcePerspective(
             joined.camera_samples.data(),joined.camera_sample_count,
             viewport.X,viewport.Y,viewport.Width,viewport.Height);
         if(!fit.plausible ||
            !m2vr::vrbridge::AdmitVerifiedProjectedD3D9SourcePass(
                joined.common_source_caller_rva,
-               {viewport.X,viewport.Y,viewport.Width,viewport.Height},fit))
+               {viewport.X,viewport.Y,viewport.Width,viewport.Height},fit)){
+            m2vr::vrbridge::RejectOriginalSourceMaterial(
+                m2vr::vrbridge::OriginalSourceFailure::ProjectionPass);
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
+        }
         for(std::size_t i=0;i<count;++i)
             for(unsigned k=0;k<3u;++k)
                 positions[i*3u+k]=joined.camera_samples[i].source_xyz[k];

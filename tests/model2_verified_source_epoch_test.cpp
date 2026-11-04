@@ -43,6 +43,15 @@ int main() {
         CHECK(CurrentOriginalSourceFailure()==8u);
     }
     CHECK(CurrentOriginalSourceFailure()==0u); // no leak across draws
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::ProjectionPass)==10u);
+    {
+        ScopedOriginalSourceDrawKind projected(OriginalSourceDrawKind::ProjectedPrimitiveUP);
+        CHECK(!RejectOriginalSourceMaterial(OriginalSourceFailure::ProjectionPass));
+        CHECK(CurrentOriginalSourceFailure()==10u);
+        CHECK(!RejectOriginalSourceMaterial(OriginalSourceFailure::Sampler));
+        CHECK(CurrentOriginalSourceFailure()==10u); // first stage wins
+    }
+    CHECK(CurrentOriginalSourceFailure()==0u);
     m2vr::vrbridge::OriginalSourceFrameEpoch epoch;
     CHECK(!epoch.CanBegin(0u,0u));
     CHECK(epoch.CanBegin(13u,12u));

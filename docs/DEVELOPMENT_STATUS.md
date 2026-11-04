@@ -1,3 +1,8 @@
+## Explicit original x86 CPU-projector first-failure diagnostics — 2026-11-05
+
+- A separately authenticated original D3D9 CPU world source now reports `ProjectionPass=10` when source D3D9 transforms are absent/invalid, the fixed-function source viewport fails, a CPU ProjectVertexToScreen source join no longer matches its same-thread original matrix/caller, or its source camera fit is invalid/inconsistent. Every case revokes the incomplete x86 left/right pair and retains real-original Present, GPU/mono recovery and input/FFB invariants. The first nested source failure remains authoritative, with C++ scoped regression checks.
+- No blanket Daytona gameplay-world pass authorization, game-unit calibration or Quest 3 runtime claim. `RUNTIME_VALIDATION=UNTESTED`.
+
 ## Original CPU source camera rejection reason diagnostics regression — 2026-11-05
 
 - The source-route CSV report now supports the native camera-family rejection reason (code 1), with the same bounded thread/Present/Draw correlation as projected/fixed source camera failures. An orphan camera log, wrong-thread event, unsupported rejection enum or missing actual original-source failure does not become proof of a successfully tracked original game draw. Synthetic Python tests cover each distinct camera family and rejection stage.
