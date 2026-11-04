@@ -25,6 +25,10 @@ if(MSVC)
 endif()
 install(TARGETS Model2VROpenXRHost RUNTIME DESTINATION .)
 
+add_executable(daytona_pose_present_x64_test ../tests/daytona_source_pose_commit_gate_test.cpp)
+target_compile_features(daytona_pose_present_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_pose_at_present_x64 COMMAND daytona_pose_present_x64_test)
+
 # Same single fixed original-game cinema quad origin contract in x86/x64.
 add_executable(daytona_mono_quad_anchor_x64_test
     ../tests/daytona_mono_quad_anchor_test.cpp)
