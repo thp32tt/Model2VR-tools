@@ -112,7 +112,7 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(routes["cpu_world_rejected_source_kind_10"],1)
             self.assertEqual(routes["cpu_world_rejected_projected_indexed_vertex_buffer"],1)
             self.assertEqual(routes["cpu_world_failed_sampler"],1)
-            self.assertEqual(routes["cpu_world_rejected_source_kind_0"],1)
+            self.assertEqual(routes["cpu_world_rejected_source_kind_0"],2)
             source_examples=report["d3d9"]["native_stereo_source_route_examples"]
             revoked=[x for x in source_examples
                      if x["route"]=="cpu_world_partial_source_revoked"]
