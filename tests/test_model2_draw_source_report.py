@@ -44,6 +44,12 @@ class SourceAuditTests(unittest.TestCase):
                  pack(3, 4), pack(1, 0), pack(0, 0)),
                 ("model2_d3d9_vb_write_color", 101,
                  pack(0, 15), 0, 0),
+                ("model2_d3d9_source_stage0_color", 101,
+                 pack(4, 2), 0, pack(0x112, 20)),
+                ("model2_d3d9_source_stage0_alpha", 101,
+                 pack(4, 2), 0, pack(0x112, 20)),
+                ("model2_d3d9_source_stage1_specular", 101,
+                 1, 1, pack(0, 0)),
                 ("model2_d3d9_cpu_vb_join_batch", 101,
                  pack(2, 2), pack(0, 0), 0x4567),
                 ("model2_d3d9_cpu_vb_matrix_identity", 101,
@@ -79,6 +85,12 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["alpha_test_modes"], [[1, 7, 128]])
             self.assertEqual(src["raster_modes"], [[3, 4, 1, 0, 0, 0]])
             self.assertEqual(src["color_write_modes"], [[0, 15]])
+            self.assertEqual(src["original_material_complete_witnesses"], 1)
+            self.assertEqual(src["original_material_mismatched_witnesses"], 0)
+            self.assertEqual(src["original_material_stage_states"],
+                             [[4, 2, 0, 4, 2, 0, 1, 1, 0, 0]])
+            self.assertEqual(
+                src["distinct_original_material_present_frame_count"], 1)
             self.assertTrue(src["has_camera_matrix"])
             self.assertTrue(src["writeonly_vb_seen"])
             self.assertEqual(src["cpu_projector_correlated_batches"], 1)
@@ -175,6 +187,50 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p, bad)
             self.assertEqual(REPORT.audit_csv(p)["sources"][0][
                 "same_witness_joint_candidates"], 0)
+
+    def test_material_must_match_its_own_original_draw_declaration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "material.csv"
+            self.write_log(p, [
+                ("model2_d3d9_vb_present_frame", 10, 3, 1, 0),
+                ("model2_d3d9_vb_source", 10, 0x44,
+                 pack(1, 0x144), pack(2048, 28)),
+                ("model2_d3d9_source_stage0_color", 10,
+                 pack(4, 2), 0, pack(0x144, 24)), # stale stride
+                ("model2_d3d9_source_stage0_alpha", 10,
+                 pack(4, 2), 0, pack(0x144, 28)),
+                ("model2_d3d9_source_stage1_specular", 10,
+                 1, 1, pack(0, 0)),
+            ])
+            entry = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(entry["original_material_complete_witnesses"], 0)
+            self.assertEqual(entry["original_material_mismatched_witnesses"], 1)
+            self.assertEqual(entry["original_material_stage_states"], [])
+            self.assertEqual(
+                entry["distinct_original_material_present_frame_count"], 0)
+            self.assertEqual(REPORT.audit_csv(p)["world_pass_proof"],
+                             "NOT_ESTABLISHED")
+
+    def test_missing_material_stage_not_inferred_from_another_draw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "material_partial.csv"
+            self.write_log(p, [
+                ("model2_d3d9_vb_present_frame", 10, 3, 1, 0),
+                ("model2_d3d9_vb_source", 10, 0x44,
+                 pack(1, 0x144), pack(2048, 28)),
+                ("model2_d3d9_source_stage0_color", 11,
+                 pack(4, 2), 0, pack(0x144, 28)),
+                ("model2_d3d9_source_stage0_alpha", 10,
+                 pack(4, 2), 0, pack(0x144, 28)),
+                ("model2_d3d9_source_stage1_specular", 10,
+                 1, 1, pack(0, 0)),
+            ])
+            entry = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(entry["original_material_complete_witnesses"], 0)
+            self.assertEqual(entry["original_material_mismatched_witnesses"], 0)
+            self.assertEqual(entry["original_material_stage_states"], [])
+            self.assertEqual(REPORT.audit_csv(p)["world_pass_proof"],
+                             "NOT_ESTABLISHED")
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
