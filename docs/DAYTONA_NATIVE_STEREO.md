@@ -328,3 +328,13 @@ Draw-family counts, with Win32/Win64 policy regression tests.
 
 This covers more original D3D9 frame composition. It is not verified
 Daytona Quest 3 runtime or physical 6DoF camera calibration.
+
+### UpdateSurface source writes
+
+The x86 VR producer additionally mirrors successful original
+`UpdateSurface` writes into the same two independent GPU eye targets.
+Source cropping and destination-point bounds must be proven and
+an initial partial write cannot seed a new eye frame. The original
+call runs once with its original HRESULT. The compact
+`model2_vr_surface_updates` event's third count reports these copies;
+they are not falsely counted as verified shifted world geometry.

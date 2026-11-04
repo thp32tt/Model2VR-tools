@@ -4,6 +4,10 @@ on:
   push:
     paths:
       - 'src/probe/daytona_native_stereo.*'
+      - 'src/probe/daytona_triangle_eye_shift.hpp'
+      - 'src/probe/daytona_surface_transfer_gate.hpp'
+      - 'tests/daytona_triangle_eye_shift_test.cpp'
+      - 'tests/daytona_surface_transfer_gate_test.cpp'
       - 'src/probe/daytona_eye_pose_gate.hpp'
       - 'tests/daytona_eye_pose_gate_test.cpp'
       - 'tests/d3d11_openxr_typeless_upload_test.cpp'

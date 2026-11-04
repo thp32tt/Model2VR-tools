@@ -228,6 +228,36 @@ public:
             return original(d,p,min,num,n,indices,format,vertices,stride);
         });
     }
+    // Restore a successful original system-memory-to-backbuffer copy into
+    // both eyes. Validate geometry before issuing either eye call.
+    void UpdateSurface(IDirect3DDevice9* d,IDirect3DSurface9* src,
+                       const RECT* src_rect,IDirect3DSurface9* dst,
+                       const POINT* dst_point,
+                       m2vr::daytona::OriginalUpdateSurface original){
+        if(!enabled_||!d||!src||!dst||!original||g_in_eye_replay)return;
+        std::lock_guard lock(mu_);
+        ScopedEyeReplay recursion_guard;
+        if(!LivePoseForGameFrame() || !Ensure(d) ||
+           !LivePoseForGameFrame())return;
+        if(dst!=backbuffer_ || src==backbuffer_)return;
+        D3DSURFACE_DESC source_desc{};
+        if(FAILED(src->GetDesc(&source_desc)))return;
+        bool full=false;
+        if(!m2vr::daytona::UpdateSurfaceBounds(
+               src_rect,source_desc.Width,source_desc.Height,dst_point,
+               width_,height_,full) ||
+           !m2vr::daytona::CanMirrorSurfaceTransfer(
+               true,true,full,frame_started_))return;
+        bool both=true;
+        for(auto& eye:eyes_){
+            if(FAILED(original(d,src,src_rect,eye.color,dst_point))){
+                both=false;break;
+            }
+        }
+        if(!both){Reset();return;}
+        frame_started_=true;
+        ++mirrored_updates_;
+    }
     // Mirror original offscreen-to-backbuffer GPU copies in exact call order.
     // Only full writes may seed a fresh eye; never read the original
     // backbuffer as if it were the earlier independent eye source.
@@ -404,7 +434,7 @@ private:
             m2vr::LogEvent("model2_vr_producer_frame",frame,reason,
                            scene_draws_,replay_count);
             m2vr::LogEvent("model2_vr_surface_updates",frame,
-                           mirrored_stretches_,mirrored_fills_,0u);
+                           mirrored_stretches_,mirrored_fills_,mirrored_updates_);
             if(first)m2vr::FlushLog();
         }
         if(first)first_stereo_published_=true;
@@ -440,7 +470,7 @@ private:
     void FinishFrame()noexcept{
         frame_started_=false;scene_draws_=0;
         mirrored_draws_=0;mirrored_clears_=0;
-        mirrored_stretches_=0;mirrored_fills_=0;
+        mirrored_stretches_=0;mirrored_fills_=0;mirrored_updates_=0;
         mirrored_family_.fill(0u);
         pose_checked_=false;pose_admitted_=false;
     }
@@ -556,6 +586,7 @@ private:
     DWORD mrt_slots_=0u;
     std::uint32_t mirrored_draws_=0u,mirrored_clears_=0u;
     std::uint32_t mirrored_stretches_=0u,mirrored_fills_=0u;
+    std::uint32_t mirrored_updates_=0u;
     std::array<std::uint32_t,4> mirrored_family_{};
     float shift_=0.10f;
     unsigned scene_draws_=0;
@@ -600,6 +631,13 @@ void MirrorClear(IDirect3DDevice9* d,DWORD count,const D3DRECT* rects,
                  DWORD flags,D3DCOLOR color,float z,DWORD stencil,
                  OriginalClear original)noexcept{
     try{g_eye.Clear(d,count,rects,flags,color,z,stencil,original);}
+    catch(...){g_eye.ResetExternal();}
+}
+void MirrorUpdateSurface(IDirect3DDevice9* d,IDirect3DSurface9* src,
+                         const RECT* src_rect,IDirect3DSurface9* dst,
+                         const POINT* dst_point,
+                         OriginalUpdateSurface original)noexcept{
+    try{g_eye.UpdateSurface(d,src,src_rect,dst,dst_point,original);}
     catch(...){g_eye.ResetExternal();}
 }
 void MirrorStretchRect(IDirect3DDevice9* d,IDirect3DSurface9* src,
