@@ -6,6 +6,29 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_colored_openxr_eyes_do_not_masquerade_as_real_daytona_source(self):
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        app=(ROOT/"host/xr_app.h").read_text("utf-8")
+        policy=(ROOT/"src/common/daytona_eye_delivery_status.hpp").read_text("utf-8")
+        direct=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
+        native=(ROOT/"CMakeLists.txt").read_text("utf-8")
+        host_cmake=(ROOT/"host/CMakeLists.txt").read_text("utf-8")
+        self.assertIn("delivery::Classify(delivery_evidence)",host)
+        self.assertIn("eye_delivery_status=",host)
+        self.assertIn("source_pose_rejection=",host)
+        self.assertIn("producer_reason_mask=",host)
+        self.assertIn("last_pose_rejection_=stamp.pose_sequence==0u?1u:2u;",host)
+        self.assertIn("source_failed_after_pair",host)
+        self.assertIn("if(eye_delivery_gate_.Changed(eye_delivery_status_))",host)
+        self.assertIn("daytona_eye_delivery_status.hpp",app)
+        self.assertIn("Status::NoProducerHealth",policy)
+        self.assertIn("Status::ProducerRejected",policy)
+        self.assertIn("Status::LiveGameStereo",policy)
+        self.assertIn("Diagnostic eye images do not contain original game output",policy)
+        self.assertIn("host startup is not proof of game pixels",direct)
+        self.assertIn("tests/daytona_eye_delivery_status_test.cpp",native)
+        self.assertIn("../tests/daytona_eye_delivery_status_test.cpp",host_cmake)
+
     def test_source_depth_always_and_diffuse_tex0_enter_real_world_bridge(self):
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         source=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")
