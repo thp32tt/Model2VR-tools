@@ -270,6 +270,19 @@ int main(){
     CHECK(raster.DrawTextured(manual,layer));
     for(int eye=0;eye<2;++eye)
         CHECK(Pixel(raster,eye,512,512)==0x40007fu);
+    // Real ONE/ZERO does not force alpha=255. Later alpha blends see the
+    // stored original D3D9 source alpha, not the legacy opaque sentinel.
+    raster.Clear();
+    layer.rgba=half_red.data();layer.blend=BlendMode::ReplaceRGBA;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye){
+        CHECK(Pixel(raster,eye,512,512)==0xff0000u);
+        const auto& pixels=raster.Eye(eye);
+        const auto center=(std::size_t(512)*StereoWorldRaster::Width+
+                           std::size_t(512))*4u;
+        CHECK(pixels[center+3u]==128u);
+    }
+    // Preserve last composed sample under an invalid material state.
     const auto blended=Pixel(raster,0,512,512);
     const auto count_before_invalid=raster.DrawnPixels();
     layer.blend=static_cast<BlendMode>(99u);

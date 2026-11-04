@@ -9,12 +9,13 @@
 namespace m2vr::vr {
 enum class BlendMode : std::uint32_t {
     Opaque=0, SourceAlphaOver=1, Additive=2,
-    SourceAlphaAdd=3, PremultipliedOver=4
+    SourceAlphaAdd=3, PremultipliedOver=4, ReplaceRGBA=5
 };
 inline bool ValidBlendMode(BlendMode mode) noexcept {
     return mode==BlendMode::Opaque || mode==BlendMode::SourceAlphaOver ||
            mode==BlendMode::Additive || mode==BlendMode::SourceAlphaAdd ||
-           mode==BlendMode::PremultipliedOver;
+           mode==BlendMode::PremultipliedOver ||
+           mode==BlendMode::ReplaceRGBA;
 }
 // Without D3DRS_SEPARATEALPHABLENDENABLE, RGB and alpha share factor
 // pairs; fixed-function D3DBLENDOP_ADD saturates all four destination bytes.
@@ -24,6 +25,13 @@ inline void CompositeSourceRGBA(
     if(mode==BlendMode::Opaque){
         for(std::size_t i=0;i<3;++i)dst[i]=source[i];
         dst[3]=255u; // preserve pre-existing opaque world raster ABI
+        return;
+    }
+    if(mode==BlendMode::ReplaceRGBA){
+        // ALPHABLENDENABLE=TRUE, ONE/ZERO replaces *all four* D3D9
+        // destination channels. Unlike disabled blending it must keep
+        // the incoming source alpha for subsequent world material passes.
+        for(std::size_t i=0;i<4;++i)dst[i]=source[i];
         return;
     }
     const double alpha=double(source[3])/255.;

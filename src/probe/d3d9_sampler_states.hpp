@@ -88,7 +88,7 @@ inline bool DecodeBlendPolicy(DWORD enable,DWORD src,DWORD dst,
     if(enable!=1u || separate!=0u || operation!=D3DBLENDOP_ADD)
         return false;
     if(src==D3DBLEND_ONE && dst==D3DBLEND_ZERO)
-        out=BlendMode::Opaque;
+        out=BlendMode::ReplaceRGBA;
     else if(src==D3DBLEND_SRCALPHA && dst==D3DBLEND_INVSRCALPHA)
         out=BlendMode::SourceAlphaOver;
     else if(src==D3DBLEND_ONE && dst==D3DBLEND_ONE)

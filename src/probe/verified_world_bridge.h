@@ -88,7 +88,8 @@ Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRenderStates(
 
 // Optional original D3D9 non-separate alpha blend state, world-only:
 // 0 opaque, 1 SRCALPHA/INVSRCALPHA, 2 ONE/ONE, 3 SRCALPHA/ONE,
-// 4 ONE/INVSRCALPHA. D3DBLENDOP_ADD only; unknown states are rejected
+// 4 ONE/INVSRCALPHA, 5 ONE/ZERO (preserves source alpha).
+// D3DBLENDOP_ADD only; unknown states are rejected
 // before this entrypoint. Legacy DiffuseRenderStates ABI is unchanged.
 __declspec(dllexport) BOOL __stdcall
 Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBlendRenderStates(

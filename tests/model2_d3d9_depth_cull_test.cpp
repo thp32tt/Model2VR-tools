@@ -84,6 +84,9 @@ int main() {
     CHECK(DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ONE,
         D3DBLENDOP_ADD,0,decoded_blend));
     CHECK(decoded_blend==BlendMode::Additive);
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ZERO,
+        D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::ReplaceRGBA);
     CHECK(DecodeBlendPolicy(1,D3DBLEND_SRCALPHA,D3DBLEND_ONE,
         D3DBLENDOP_ADD,0,decoded_blend));
     CHECK(decoded_blend==BlendMode::SourceAlphaAdd);
