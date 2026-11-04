@@ -386,3 +386,12 @@ same exact per-image upload identity and frame-sequence gates. Native x86/x64
 pixel-order/supported-format regression tests and Python wiring checks cover
 the new path. Exact final SHA CI and Quest3/VDXR still require independent
 verification; RUNTIME_VALIDATION=UNTESTED.
+
+
+The x64 HMD startup handshake now demands the OpenXR primary-stereo
+view's full orientation+position VALID and TRACKED flags. A runtime-provided
+last-known-but-untracked pose invalidates the prior x86 pose publication,
+world-stereo cache and mono anchor instead of signalling
+OPENXR_TRACKED_STEREO_READY. This avoids false loader startup success and
+stale native-eye parallax after actual headset tracking loss; source world
+classification remains fail-closed, and the original game tick is unchanged.

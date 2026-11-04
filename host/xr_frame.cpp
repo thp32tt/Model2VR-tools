@@ -185,9 +185,13 @@ void XrApp::draw_frame(XrTime display_time){
     XrViewState state{XR_TYPE_VIEW_STATE};
     std::uint32_t count=0;
     check(xrLocateViews(session_,&locate,&state,2,&count,views.data()),"locate HMD views");
+    // A last-known headset pose may remain VALID after the OpenXR runtime
+    // loses positional or orientation tracking. Never signal the x86 loader
+    // that real binocular 6DoF is ready, or publish old views into the
+    // native GameStereo path, until ALL tracked and valid bits are present.
+    const auto tracked_flags=static_cast<std::uint32_t>(state.viewStateFlags);
     if(count!=2 ||
-       !(state.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) ||
-       !(state.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT)) {
+       (tracked_flags & pose::kFullSixDofTracked)!=pose::kFullSixDofTracked) {
         // A brief headset-tracking loss is not a fatal OpenXR session error.
         // Revoke the previously published pose so game geometry cannot use
         // the old eye views, and submit an empty composition frame.
