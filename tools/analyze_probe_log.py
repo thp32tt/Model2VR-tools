@@ -398,6 +398,25 @@ def analyze(path: Path):
                         "world_pass_proof": "NOT_ESTABLISHED",
                         "hmd_runtime_validation": "UNTESTED",
                     })
+            elif event == "model2_vr_original_eye_no_rgb_parallax":
+                # Real pre-Present D3D9 GPU eye readback contained no RGB
+                # difference. An original mono fallback may follow after
+                # the actual game Present succeeds, never fake GameStereo.
+                # This is aggregate evidence, NOT gameplay-world proof.
+                if (a0 <= 0 or not 0 <= a1 <= 2048 or
+                        not 0 <= a2 <= 8192 or a3 != 0):
+                    source_route_invalid_records += 1
+                else:
+                    source_route_counts["gpu_eyes_no_visible_rgb"] += 1
+                    if len(source_route_examples)<16:
+                        source_route_examples.append({
+                            "original_present_frame": a0,
+                            "route": "gpu_eyes_no_visible_rgb",
+                            "verified_scene_draws": a1,
+                            "replay_draws": a2,
+                            "world_pass_proof": "NOT_ESTABLISHED",
+                            "hmd_runtime_validation": "UNTESTED",
+                        })
             elif event == "model2_vr_eye_bootstrap_failure":
                 # First failure per reason/HRESULT, not one per original Draw.
                 # Invalid/corrupted records cannot become camera/world proof.

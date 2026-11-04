@@ -538,6 +538,12 @@ public:
                 rgba_[0],rgba_[1],m2vr::transport::kBytesPerEye)){
             ready=false;
             reason=64u; // preserve original backbuffer MONO fallback
+            // A bounded original-game-only event distinguishes source eyes
+            // with no visible parallax from disconnected OpenXR diagnostics.
+            // Never emit pixel bytes, framebuffer hashes or game assets.
+            if(frame==1u || frame%120u==0u)
+                m2vr::LogEvent("model2_vr_original_eye_no_rgb_parallax",
+                    frame,scene_draws_,mirrored_draws_,0u);
         }
         pending_present_reason_=reason;
         if(reason)PrepareOriginalMono(d,frame,reason);

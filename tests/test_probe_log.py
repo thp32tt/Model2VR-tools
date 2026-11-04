@@ -93,6 +93,10 @@ class ProbeLogTests(unittest.TestCase):
                                  2,1,1,3])  # native-only genuine source input
                 writer.writerow([33,133,7,"model2_original_source_hook_mode",
                                  2,0,1,3])  # inconsistent, no signed hook
+                writer.writerow([34,134,7,"model2_vr_original_eye_no_rgb_parallax",
+                                 36,0,128,0])  # alpha-only/uniform RGB
+                writer.writerow([35,135,7,"model2_vr_original_eye_no_rgb_parallax",
+                                 0,0,0,0])  # invalid frame, cannot prove
             report=MODULE.analyze(path)
             routes=report["d3d9"]["native_stereo_source_route_counts"]
             self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
@@ -106,6 +110,7 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(routes["cpu_world_original_mono_backup_ready"],1)
             self.assertEqual(routes["cpu_world_mono_failed_gpu_eyes_backup"],1)
             self.assertEqual(routes["cpu_world_partial_source_revoked"],5)
+            self.assertEqual(routes["gpu_eyes_no_visible_rgb"],1)
             self.assertEqual(routes["cpu_world_camera_projected_revoked"],1)
             self.assertEqual(routes["cpu_world_camera_projected_reason_7"],1)
             self.assertEqual(routes["cpu_world_camera_fixed_revoked"],1)
@@ -123,7 +128,7 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(revoked[0]["prior_source_triangles"],48)
             self.assertEqual(revoked[0]["original_source_draw_kind"],"projected_indexed_vertex_buffer")
             self.assertEqual(revoked[0]["original_present_frame"],15)
-            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],8)
+            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],9)
             self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",
                           MODULE.markdown(report))
             self.assertIn("HMD=UNTESTED",MODULE.markdown(report))
