@@ -5,6 +5,7 @@
 #include "verified_world_bridge.h"
 #include "d3d9_texture_snapshot.hpp"
 #include "d3d9_sampler_states.hpp"
+#include "d3d9_fixed_stage_policy.hpp"
 #include "project_draw_correlator.hpp"
 #include "projected_up_world_source.hpp"
 #include "model2_camera_projection_fit.hpp"
@@ -61,20 +62,10 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        FAILED(d->GetTextureStageState(0,D3DTSS_ALPHAARG1,&alphaarg)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_ALPHAARG2,&alphaarg2)))
         return false;
-    const auto decode_op=[](DWORD operation,DWORD a,DWORD b,
-                            bool& modulate) noexcept {
-        modulate=false;
-        if(operation==D3DTOP_SELECTARG1 && a==D3DTA_TEXTURE)return true;
-        if(operation==D3DTOP_MODULATE &&
-           ((a==D3DTA_TEXTURE && b==D3DTA_DIFFUSE) ||
-            (b==D3DTA_TEXTURE && a==D3DTA_DIFFUSE))){
-            modulate=true;
-            return true;
-        }
-        return false;
-    };
-    if(!decode_op(colorop,arg,arg2,modulate_rgb) ||
-       !decode_op(alphaop,alphaarg,alphaarg2,modulate_alpha))
+    if(!m2vr::drawprobe::DecodeFixedTextureDiffuseOp(
+           colorop,arg,arg2,modulate_rgb) ||
+       !m2vr::drawprobe::DecodeFixedTextureDiffuseOp(
+           alphaop,alphaarg,alphaarg2,modulate_alpha))
         return false;
     DWORD address_u=0,address_v=0,min_filter=0,mag_filter=0,mip_filter=0;
     DWORD srgb_texture=0,alpha_test=0,alpha_ref=0,alpha_func=0;

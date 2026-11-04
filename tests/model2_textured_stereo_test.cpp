@@ -46,6 +46,20 @@ int main(){
     CHECK(textured.eyes[0].size()==1 && textured.eyes[1].size()==1);
     CHECK(textured.eyes[0][0].vertices[0].position.ndc_x >
           textured.eyes[1][0].vertices[0].position.ndc_x);
+    // Actual D3DCOLOR argb is decoded into independent linear RGBA
+    // source attributes and preserved across both asymmetric eye clips.
+    const std::uint32_t diffuse_argb[]={0x80402010u,0xff00ff00u,0xffff0000u};
+    ClippedTexturedStereoBatch diffuse_batch{};
+    CHECK(BuildTexturedStereoBatch(near_vertices.data(),uv,3,indices,3,
+        100,latch,cal,world,diffuse_batch,diffuse_argb));
+    for(const auto& eye:diffuse_batch.eyes){
+        CHECK(!eye.empty());
+        const auto& first=eye.front().vertices[0].diffuse_rgba;
+        CHECK(std::abs(first[0]-64.f/255.f)<0.0001f);
+        CHECK(std::abs(first[1]-32.f/255.f)<0.0001f);
+        CHECK(std::abs(first[2]-16.f/255.f)<0.0001f);
+        CHECK(std::abs(first[3]-128.f/255.f)<0.0001f);
+    }
     std::array<std::uint8_t,64> tex{};
     for(int y=0;y<4;++y)for(int x=0;x<4;++x){
         auto p=(y*4+x)*4;
@@ -116,6 +130,48 @@ int main(){
     CHECK(raster.DrawTextured(manual,four));
     CHECK(Pixel(raster,0,512,512)==0xFF0000);
     CHECK(Pixel(raster,1,512,512)==0xFF0000);
+
+    // D3D9 MODULATE(TEXTURE,DIFFUSE) must use perspective-correct
+    // interpolation and filter alpha BEFORE the cutoff. SELECTARG1 stays
+    // backwards-compatible even with non-white source attributes.
+    raster.Clear();
+    auto modulated=manual;
+    for(auto& eye:modulated.eyes){
+        eye[0].vertices[0].diffuse_rgba={{1.f,0.f,0.f,1.f}};
+        eye[0].vertices[1].diffuse_rgba={{0.f,1.f,0.f,1.f}};
+        eye[0].vertices[2].diffuse_rgba={{0.f,1.f,0.f,1.f}};
+    }
+    const std::array<std::uint8_t,4> white{{255,255,255,255}};
+    StereoWorldRaster::TextureRGBA diffuse_image{
+        white.data(),1,1,4,128,{}, {},true,false};
+    CHECK(raster.DrawTextured(modulated,diffuse_image));
+    for(int eye=0;eye<2;++eye){
+        const auto pixel=Pixel(raster,eye,512,512);
+        CHECK(((pixel>>16u)&255u)>190u);
+        CHECK(((pixel>>8u)&255u)<65u);
+        CHECK((pixel&255u)==0u);
+    }
+    raster.Clear();
+    diffuse_image.modulate_rgb=false;
+    CHECK(raster.DrawTextured(modulated,diffuse_image));
+    CHECK(Pixel(raster,0,512,512)==0xffffffu);
+    CHECK(Pixel(raster,1,512,512)==0xffffffu);
+    raster.Clear();
+    for(auto& eye:modulated.eyes)
+        for(auto& vertex:eye[0].vertices)
+            vertex.diffuse_rgba[3]=0.f;
+    diffuse_image.modulate_alpha=true;
+    CHECK(raster.DrawTextured(modulated,diffuse_image));
+    CHECK(raster.DrawnPixels()==0u);
+    raster.Clear();
+    diffuse_image.modulate_alpha=false;
+    CHECK(raster.DrawTextured(modulated,diffuse_image));
+    CHECK(Pixel(raster,0,512,512)==0xffffffu);
+    raster.Clear();
+    modulated.eyes[1][0].vertices[0].diffuse_rgba[0]=
+        (std::numeric_limits<float>::quiet_NaN)();
+    CHECK(!raster.DrawTextured(modulated,diffuse_image));
+    CHECK(raster.DrawnPixels()==0u);
 
     // The full independently rendered eye path must honor the original
     // D3D9 bilinear WRAP seam, not just the standalone sampler helper.

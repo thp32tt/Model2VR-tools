@@ -15,7 +15,9 @@ int main(){
     CHECK(plain.eligible && plain.uv_offset==12 && plain.stride==20);
     const auto diffuse=DecodeWorldUpFVF(
         D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_DIFFUSE|D3DFVF_TEX1,36);
-    CHECK(diffuse.eligible&&diffuse.uv_offset==28);
+    CHECK(diffuse.eligible&&diffuse.uv_offset==28 &&
+          diffuse.has_diffuse && diffuse.diffuse_offset==24);
+    CHECK(!plain.has_diffuse);
     CHECK(!DecodeWorldUpFVF(D3DFVF_XYZRHW|D3DFVF_TEX1,24).eligible);
     CHECK(!DecodeWorldUpFVF(D3DFVF_XYZ|D3DFVF_TEX1,24).eligible);
     CHECK(!DecodeWorldUpFVF(D3DFVF_XYZ|D3DFVF_TEX2,28).eligible);
@@ -34,6 +36,20 @@ int main(){
     CHECK(out.view_xyz[0]==10.f && out.view_xyz[1]==20.f &&
           out.view_xyz[2]==30.f);
     CHECK(out.uv[0]==0.25f && out.uv[1]==0.75f);
+    CHECK(out.diffuse_argb==0xffffffffu);
+    std::array<std::uint8_t,36> diffuse_source{};
+    const float diffuse_xyz[3]{1.f,2.f,3.f};
+    const float diffuse_uv[2]{0.25f,0.75f};
+    const std::uint32_t diffuse_color=0x80402010u;
+    std::memcpy(diffuse_source.data(),diffuse_xyz,sizeof(diffuse_xyz));
+    std::memcpy(diffuse_source.data()+24,&diffuse_color,4u);
+    std::memcpy(diffuse_source.data()+28,diffuse_uv,sizeof(diffuse_uv));
+    CHECK(DecodeWorldVertex(diffuse_source.data(),diffuse_source.size(),
+                            diffuse,world,view,out));
+    CHECK(out.diffuse_argb==diffuse_color &&
+          out.uv[0]==0.25f && out.uv[1]==0.75f);
+    CHECK(!DecodeWorldVertex(diffuse_source.data(),35,
+                             diffuse,world,view,out));
     CHECK(!DecodeWorldVertex(input.data(),19,plain,world,view,out));
     CHECK(!DecodeWorldVertex(nullptr,sizeof(input),plain,world,view,out));
     world._14=0.1f;

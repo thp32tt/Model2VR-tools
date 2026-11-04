@@ -178,6 +178,14 @@ add_executable(model2_texture_sampler_test tests/model2_texture_sampler_test.cpp
 target_compile_features(model2_texture_sampler_test PRIVATE cxx_std_20)
 target_compile_definitions(model2_texture_sampler_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME model2_native_d3d9_texture_sampler COMMAND model2_texture_sampler_test)
+# Per-vertex D3DCOLOR stage-zero TEXTURE x DIFFUSE contracts: reject
+# unmodelled texture stages rather than silently discoloring stereo worlds.
+add_executable(model2_d3d9_fixed_stage_test
+    tests/model2_d3d9_fixed_stage_policy_test.cpp)
+target_compile_features(model2_d3d9_fixed_stage_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_d3d9_fixed_stage_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME model2_real_d3d9_diffuse_stage_admission
+    COMMAND model2_d3d9_fixed_stage_test)
 # Original D3D9 raster-state parity: per-eye CW/CCW culling, LESS/LEQUAL
 # depth tie-break and ZWRITE control with source-state fail-closed admission.
 add_executable(model2_d3d9_depth_cull_test tests/model2_d3d9_depth_cull_test.cpp)
