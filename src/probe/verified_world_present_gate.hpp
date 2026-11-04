@@ -12,10 +12,18 @@ namespace m2vr::vrbridge {
 // original Present counter is incremented on entry. Fail closed on wrap.
 inline std::uint64_t NextOriginalPresentFrameId(
     std::uint32_t original_present_counter,
-    bool device_hook_installed,bool native_gpu_replay_enabled) noexcept {
-    if(!device_hook_installed || native_gpu_replay_enabled ||
+    bool device_hook_installed,bool /*native_gpu_replay_enabled*/) noexcept {
+    // An original frame ID alone never authenticates a world draw.
+    // The independently proven CPU source is arbitrated at physical Present.
+    if(!device_hook_installed ||
        original_present_counter==0xffffffffu)return 0u;
     return std::uint64_t{original_present_counter}+1u;
+}
+// Never replace GPU replay with a foreign-thread, unarmed or stale CPU frame.
+inline bool PreferPendingCpuWorld(std::uint64_t pending_frame,
+    std::uint64_t original_frame,bool armed,bool original_render_thread) noexcept {
+    return armed && original_render_thread && pending_frame!=0u &&
+           pending_frame==original_frame;
 }
 enum class PendingWorldPresent : std::uint8_t {
     None, Wait, Drop, Publish

@@ -84,6 +84,8 @@ bool g_native_stereo=false;
 // No verified-world frame is generated or self-authorized by this probe.
 extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
     unsigned long long,unsigned int,unsigned int);
+extern "C" BOOL __stdcall Model2VR_HasVerifiedWorldPendingForOriginalPresent(
+    unsigned long long);
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset();
 
 template<class T>
@@ -1134,13 +1136,26 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
     m2vr::drawprobe::NextProjectDrawEpoch();
-    if(g_native_stereo)
-        m2vr::daytona::FinishFrameAfterPresent(frame,original_result);
-    // A separately proven CPU-world source can publish only after this
-    // original Present completes. GPU-replay mode retains sole ownership
-    // of its per-frame writer; a conflicting CPU frame is dropped.
-    Model2VR_CompleteVerifiedWorldOriginalPresent(
-        frame,SUCCEEDED(original_result)?1u:0u,g_native_stereo?1u:0u);
+    // Both source paths staged their images BEFORE the single physical
+    // game Present. An explicitly authenticated same-frame CPU-world pair
+    // wins only after its original HRESULT succeeds and pose stays live.
+    const bool verified_cpu_pending=
+        Model2VR_HasVerifiedWorldPendingForOriginalPresent(frame)!=FALSE;
+    const bool verified_cpu_published=
+        Model2VR_CompleteVerifiedWorldOriginalPresent(
+            frame,SUCCEEDED(original_result)?1u:0u,
+            g_native_stereo && !verified_cpu_pending ? 1u : 0u)!=FALSE;
+    if(g_native_stereo){
+        if(verified_cpu_published){
+            // Do not publish a second GameStereo packet for this frame or
+            // overwrite producer health from the verified CPU world.
+            m2vr::daytona::DiscardPreparedFrameAfterCpuWorld(frame);
+        }else{
+            // Absent/expired/wrong-owner world: preserve experimental eye
+            // replay and original 2D backbuffer fallback, no extra game Draw.
+            m2vr::daytona::FinishFrameAfterPresent(frame,original_result);
+        }
+    }
     return original_result;
 }
 HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
@@ -1242,8 +1257,8 @@ IDirect3D9* WINAPI Create9Hook(UINT sdk){
 
 // The authenticated source adapter must use this specific original D3D9
 // frame identifier instead of assuming its emulator simulation frame index
-// equals a real device Present. Never activate CPU-world submission when
-// the separate GPU shader-UP replay already owns the transport.
+// equals a real device Present. Only an independently authenticated world
+// transaction can replace experimental GPU replay on that physical frame.
 extern "C" __declspec(dllexport) BOOL __stdcall
 Model2VR_IsOriginalPrimaryD3D9Device(const void* device){
     return g_device_installed.load(std::memory_order_acquire) &&

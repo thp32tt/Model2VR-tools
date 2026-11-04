@@ -518,6 +518,11 @@ public:
         pending_present_reason_=reason;
         if(reason)PrepareOriginalMono(d,frame,reason);
     }
+    void DiscardPreparedForCpuWorld(std::uint64_t frame)noexcept{
+        if(!enabled_ || !frame)return;
+        std::lock_guard lock(mu_);
+        if(pending_present_frame_==frame)FinishFrame();
+    }
     void FinishPresent(std::uint64_t frame,HRESULT original_result)noexcept{
         if(!enabled_ || !frame)return;
         std::lock_guard lock(mu_);
@@ -1163,6 +1168,10 @@ void PrepareFrameBeforePresent(IDirect3DDevice9* d,std::uint64_t frame)noexcept{
 }
 void FinishFrameAfterPresent(std::uint64_t frame,HRESULT hr)noexcept{
     try{g_eye.FinishPresent(frame,hr);}
+    catch(...){g_eye.ResetExternal();}
+}
+void DiscardPreparedFrameAfterCpuWorld(std::uint64_t frame)noexcept{
+    try{g_eye.DiscardPreparedForCpuWorld(frame);}
     catch(...){g_eye.ResetExternal();}
 }
 void ResetResources()noexcept{g_eye.ResetExternal();}

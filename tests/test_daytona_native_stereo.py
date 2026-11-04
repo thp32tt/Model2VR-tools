@@ -13,6 +13,28 @@ class NativeStereoTest(unittest.TestCase):
             content=(ROOT/"src/probe"/file).read_text("utf-8")
             self.assertIn("Model2VR_IsOriginalPrimaryD3D9Device(device)",content)
 
+    def test_authenticated_cpu_world_handoff_before_native_gpu_fallback(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        world=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        hdr=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
+        section=hooks.split("HRESULT STDMETHODCALLTYPE PresentHook(")[1].split(
+            "HRESULT STDMETHODCALLTYPE ResetHook(")[0]
+        self.assertEqual(section.count("g_present(d,a,b,w,dirty)"),1)
+        before=section.index("const HRESULT original_result=g_present(")
+        ownership=section.index("Model2VR_HasVerifiedWorldPendingForOriginalPresent(frame)")
+        cpu_commit=section.index("Model2VR_CompleteVerifiedWorldOriginalPresent(")
+        gpu_finish=section.index("FinishFrameAfterPresent(frame,original_result)")
+        self.assertLess(before,ownership)
+        self.assertLess(ownership,cpu_commit)
+        self.assertLess(cpu_commit,gpu_finish)
+        self.assertIn("g_native_stereo && !verified_cpu_pending ? 1u : 0u",section)
+        self.assertIn("DiscardPreparedFrameAfterCpuWorld(frame);",section)
+        self.assertIn("PreferPendingCpuWorld(",world)
+        self.assertIn("g.owner==GetCurrentThreadId()",world)
+        self.assertIn("pending_present_frame_==frame)FinishFrame();",gpu)
+        self.assertIn("Model2VR_HasVerifiedWorldPendingForOriginalPresent(",hdr)
+
     def test_original_stereo_source_pose_stays_live_until_present(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")

@@ -66,5 +66,8 @@ void PrepareFrameBeforePresent(IDirect3DDevice9* device,
                                std::uint64_t frame) noexcept;
 void FinishFrameAfterPresent(std::uint64_t frame,
                              HRESULT original_result) noexcept;
+// Drop only the matching staged experimental GPU eye data when the
+// authenticated CPU-world frame already published after original Present.
+void DiscardPreparedFrameAfterCpuWorld(std::uint64_t frame) noexcept;
 void ResetResources() noexcept;
 }

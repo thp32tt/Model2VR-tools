@@ -331,17 +331,20 @@ Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyTextured(
     unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 // Source-owned upcoming original D3D9 Present frame ID (nonzero only
-// after real device hooks are installed and GPU-replay mode is disabled).
-// Query during the game render pass before original Present is entered.
+// after real device hooks are installed). Available in GPU-replay mode too;
+// an ID never grants gameplay-world permission. Query before original Present.
 __declspec(dllexport) unsigned long long __stdcall
 Model2VR_NextOriginalD3D9PresentFrameId();
 // Preferred opt-in source-connected end: ARM, but never publish before the
 // matching ORIGINAL D3D9 Present HRESULT succeeds. The emulator adapter
 // must supply the exact upcoming original frame ID to BeginVerifiedWorldFrame.
-// Do not mix with GPU shader-UP replay mode; that existing path remains the
-// exclusive publisher in native GPU mode. False/world-unknown proof still
-// fails closed in Begin, regardless of which End API the caller chooses.
+// An authenticated world pair takes precedence over experimental GPU
+// replay only at its matching successful original Present. Failed/unknown
+// sources fall back without disabling the original game, HUD or FFB.
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent();
+// Read-only exact pending world handoff; no world source classification.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_HasVerifiedWorldPendingForOriginalPresent(unsigned long long original_frame);
 __declspec(dllexport) void __stdcall Model2VR_AbortVerifiedWorldFrame();
 }
 

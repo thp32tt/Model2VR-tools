@@ -93,6 +93,15 @@ extern "C" BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread(){
     std::scoped_lock lock(g.mutex);
     return Owner()?TRUE:FALSE;
 }
+// Read-only handoff claim. Only an authenticated Begin/Append/End can arm
+// this exact same-thread original-Present source; no automatic world proof.
+extern "C" BOOL __stdcall Model2VR_HasVerifiedWorldPendingForOriginalPresent(
+    unsigned long long original_frame){
+    std::scoped_lock lock(g.mutex);
+    return m2vr::vrbridge::PreferPendingCpuWorld(
+        g.frame,original_frame,g.pending_present,
+        g.owner==GetCurrentThreadId())?TRUE:FALSE;
+}
 
 extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
     unsigned long long frame_id,const float* axis,float units,

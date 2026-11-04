@@ -6,7 +6,12 @@ int main(){
     CHECK(NextOriginalPresentFrameId(0u,true,false)==1u);
     CHECK(NextOriginalPresentFrameId(25u,true,false)==26u);
     CHECK(NextOriginalPresentFrameId(25u,false,false)==0u);
-    CHECK(NextOriginalPresentFrameId(25u,true,true)==0u);
+    CHECK(NextOriginalPresentFrameId(25u,true,true)==26u);
+    CHECK(PreferPendingCpuWorld(5u,5u,true,true));
+    CHECK(!PreferPendingCpuWorld(5u,6u,true,true));
+    CHECK(!PreferPendingCpuWorld(5u,5u,false,true));
+    CHECK(!PreferPendingCpuWorld(5u,5u,true,false));
+    CHECK(!PreferPendingCpuWorld(0u,0u,true,true));
     CHECK(NextOriginalPresentFrameId(0xffffffffu,true,false)==0u);
     CHECK(DecidePendingWorldPresent(0u,1u,true,false,true)==
           PendingWorldPresent::None);
