@@ -57,6 +57,12 @@ class ProbeLogTests(unittest.TestCase):
                                  15,10,8,0])
                 writer.writerow([16,116,7,"model2_vr_cpu_world_source_failure_detail",
                                  15,10,99,0])
+                writer.writerow([17,117,8,"model2_vr_cpu_world_source_failure_detail",
+                                 15,10,8,0])  # wrong thread, cannot join
+                writer.writerow([18,118,7,"model2_vr_cpu_world_source_failure_detail",
+                                 15,10,8,0])  # duplicate detail, consumed
+                writer.writerow([19,119,7,"model2_vr_cpu_world_source_failure_detail",
+                                 77,10,8,0])  # no matching source reject
             report=MODULE.analyze(path)
             routes=report["d3d9"]["native_stereo_source_route_counts"]
             self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
@@ -80,7 +86,7 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(revoked[0]["prior_source_triangles"],48)
             self.assertEqual(revoked[0]["original_source_draw_kind"],"projected_indexed_vertex_buffer")
             self.assertEqual(revoked[0]["original_present_frame"],15)
-            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],4)
+            self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],7)
             self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",
                           MODULE.markdown(report))
             self.assertIn("HMD=UNTESTED",MODULE.markdown(report))

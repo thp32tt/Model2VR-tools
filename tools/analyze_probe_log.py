@@ -300,6 +300,10 @@ def analyze(path: Path):
     source_route_counts = Counter()
     source_route_examples = []
     source_route_invalid_records = 0
+    # Exact original reject must precede a detailed stage report on the
+    # same logger thread, original Present and source Draw. Otherwise a
+    # stray CSV record may falsely imply a rejected game world source.
+    source_rejection_witnesses = {}
     up_meta = {}
     up_fixed_stage = {}
     up_source_fvf = {}
@@ -400,6 +404,9 @@ def analyze(path: Path):
                     source_route_invalid_records += 1
                 else:
                     source_route_counts["cpu_world_partial_source_revoked"] += 1
+                    source_rejection_witnesses[(int(row["thread"]),a0,a1)] = seq
+                    if len(source_rejection_witnesses)>512:
+                        source_rejection_witnesses.clear()
                     source_route_counts[f"cpu_world_rejected_source_kind_{a1}"] += 1
                     source_route_counts[f"cpu_world_rejected_{CPU_WORLD_REJECT_KINDS[a1]}"] += 1
                     if len(source_route_examples) < 16:
@@ -417,10 +424,15 @@ def analyze(path: Path):
                 # Read-only reason for the SAME rejected original frame.
                 # a0=original Present ID, a1=source Draw kind,
                 # a2=source-admission stage, a3 reserved zero.
+                source_key=(int(row["thread"]),a0,a1)
+                original_seq=source_rejection_witnesses.get(source_key)
                 if (a0 <= 0 or a1 not in CPU_WORLD_REJECT_KINDS or
-                        a2 not in CPU_WORLD_SOURCE_FAILURES or a3 != 0):
+                        a2 not in CPU_WORLD_SOURCE_FAILURES or a3 != 0 or
+                        original_seq is None or
+                        not 0 < seq-original_seq <= 32):
                     source_route_invalid_records += 1
                 else:
+                    source_rejection_witnesses.pop(source_key,None)
                     reason=CPU_WORLD_SOURCE_FAILURES[a2]
                     source_route_counts[f"cpu_world_failed_{reason}"] += 1
                     if len(source_route_examples)<16:
