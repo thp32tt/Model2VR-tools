@@ -68,6 +68,7 @@ public:
         diag_attempts_=diag_shape_=diag_caller_=diag_shader_=0u;
         diag_state_=diag_shift_=diag_pose_=diag_resources_=0u;
         diag_eye_=0u;diag_witness_count_=0u;diag_witness_.fill(0u);
+        scene_rejections_total_.fill(0u);
         Reset();
     }
     void ResetExternal()noexcept{
@@ -189,7 +190,16 @@ public:
                     d,original_vp,width_,height_);
                 if(verdict!=m2vr::daytona::ShaderCandidateReject::None){
                     const auto index=static_cast<std::size_t>(verdict);
-                    if(index<scene_rejections_.size())++scene_rejections_[index];
+                    if(index<scene_rejections_.size()){
+                        ++scene_rejections_[index];
+                        // First failure of each source-state gate is preserved
+                        // even when it occurs between 120-Present heartbeats.
+                        if(scene_rejections_total_[index]++==0u)
+                            m2vr::LogEvent("model2_vr_diag_first_scene_reject",
+                                caller,static_cast<std::uint32_t>(verdict),
+                                (std::uint64_t{original_vp.Width}<<32)|original_vp.Height,
+                                (std::uint64_t{width_}<<32)|height_);
+                    }
                     scene=false; // pass is copied flat rather than stereo
                 }else ++diag_state_;
             }
@@ -592,6 +602,10 @@ private:
                 (std::uint64_t{diag_shift_}<<32)|diag_attempts_);
             m2vr::LogEvent("model2_vr_diag_source_drops",frame,
                 diag_pose_,diag_resources_,diag_eye_);
+            for(std::size_t code=1u;code<scene_rejections_total_.size();++code)
+                if(scene_rejections_total_[code])
+                    m2vr::LogEvent("model2_vr_diag_scene_reject_total",
+                        frame,code,scene_rejections_total_[code],0u);
             if(first)m2vr::FlushLog();
         }
         if(first)first_stereo_published_=true;
@@ -823,6 +837,8 @@ private:
     std::uint32_t diag_shader_=0u,diag_state_=0u,diag_shift_=0u;
     std::uint32_t diag_pose_=0u,diag_resources_=0u,diag_eye_=0u;
     std::array<std::uint64_t,12> diag_witness_{};
+    std::array<std::uint32_t,m2vr::daytona::kShaderCandidateReasons>
+        scene_rejections_total_{};
     std::size_t diag_witness_count_=0u;
     float shift_=0.10f;
     unsigned scene_draws_=0,scene_candidates_=0;
