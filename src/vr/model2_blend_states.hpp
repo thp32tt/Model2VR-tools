@@ -23,8 +23,11 @@ inline void CompositeSourceRGBA(
     std::uint8_t* dst,const std::array<std::uint8_t,4>& source,
     BlendMode mode) noexcept {
     if(mode==BlendMode::Opaque){
-        for(std::size_t i=0;i<3;++i)dst[i]=source[i];
-        dst[3]=255u; // preserve pre-existing opaque world raster ABI
+        // D3DRS_ALPHABLENDENABLE=FALSE disables blending; it does NOT
+        // discard or force the pixel's alpha. When all COLORWRITE channels
+        // are enabled the original source RGBA replaces destination RGBA.
+        // A later D3D9 blend must see this actual 8-bit destination alpha.
+        for(std::size_t i=0;i<4;++i)dst[i]=source[i];
         return;
     }
     if(mode==BlendMode::ReplaceRGBA){

@@ -314,6 +314,20 @@ int main(){
     CHECK(raster.DrawTextured(manual,layer));
     for(int eye=0;eye<2;++eye)
         CHECK(Pixel(raster,eye,512,512)==0x40007fu);
+    // Original D3D9 blending DISABLED is still a full RGBA destination
+    // write, not an implicit opaque source alpha. This matters when a
+    // subsequent independent-eye material blends with DESTALPHA later.
+    raster.Clear();
+    layer.rgba=half_red.data();
+    layer.blend=BlendMode::Opaque;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye){
+        const auto& rgba=raster.Eye(eye);
+        const std::size_t offset=(std::size_t(512)*StereoWorldRaster::Width+
+                                  512u)*4u;
+        CHECK(rgba[offset]==255u && rgba[offset+1u]==0u &&
+              rgba[offset+2u]==0u && rgba[offset+3u]==128u);
+    }
     // Real ONE/ZERO does not force alpha=255. Later alpha blends see the
     // stored original D3D9 source alpha, not the legacy opaque sentinel.
     raster.Clear();
