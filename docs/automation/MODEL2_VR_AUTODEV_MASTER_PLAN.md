@@ -287,3 +287,60 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
   original Draws. Unknown 2D/menu/HUD/aux stays in original safe mono;
   launcher diagnostics and FFB remain isolated. Do not rerun a passing
   exact-SHA CI, repeat earlier samples, or double-credit this checkpoint.
+
+
+## Original projector matrix/geometry/pass and expanded D3D9 source material (2026-11-04)
+
+- **Connected material source implementation:** `4785e9d`, `90edd45`,
+  `20b1600`, `68e46e4`, `a99fd8f`, `1e35ae5`, `1696cd1`,
+  `7e784b3`, `8c7731b` and regression fixture repair `4b997cb`.
+  These are ONE cohesive camera/source-topology and material-fidelity effort,
+  not independent reward events. Exact final source-bearing SHA:
+  `7e784b33381297e1f57f9027435624dec401beab`.
+  Final Python regression correction SHA:
+  `4b997cb743cc69d586aecfc0208ccbcec6bdf823`.
+- **Original CPU projection:** Read-only native x86 hook snapshots all 16
+  floating values of the original *currently selected* geometry matrix,
+  fingerprints finite/canonical IEEE754 values without retaining raw game
+  content, rejects a mutation between original ProjectVertexToScreen entry and
+  return and records matrix-pointer/content coherence through same-thread
+  CPU projector to real original UP/shader-UP/VB/IB Draw candidates.
+  Read-only original active geometry-command word is also correlated with
+  the same original draw/Present evidence, while command transitions are
+  explicitly distinguished from true matrix drift.
+- **Actual source render-pass evidence:** On sampled original D3D9 Draws,
+  capture real target/backbuffer COM identity, source RT dimensions, full-size
+  viewport, Z/depth-write and scissor availability/state in a single
+  witness tied to the original next Present frame. Offline source reports
+  validate and correlate this context with CPU matrix/geometry snapshots;
+  unknown/auxiliary/partial views are never inferred to be gameplay world.
+  The real original Draw is still executed once. Gameplay/input/FFB are
+  not intercepted or replayed by this evidence path.
+- **Additional original D3D9 texture fidelity:** Independently authenticated
+  world-material adapter can CPU-read original A8B8G8R8/X8B8G8R8,
+  A2R10G10B10/A2B10G10R10, A8R3G3B2, P8 and A8P8 textures,
+  converting exact original RGBA/pixel-alpha or current palette entries into
+  the existing separately clipped per-eye textured raster. The palette read
+  requires current D3D9 palette and device capability, and fails closed on
+  unknown GPU-only sources. This does NOT auto-enable world stereo.
+- **Exact material-SHA CI SUCCESS:** Source SHA `7e784b3` passed
+  Public tools `41805443322`, ModDev `41805443253`,
+  Win32 x86 probe/CTest `41805443364`,
+  Daytona original Win32 producer plus Win64 OpenXR release ZIP
+  `41805443270`, and Generic DD integrated package `41805443434`.
+  Python report fixture correction at `4b997cb` has separate CI results:
+  inspect its exact SHA before reporting complete validation.
+  An earlier Python CI failure at `8c7731b` was a missing
+  main-backbuffer target bit in test data, fixed at `4b997cb`.
+- **RUNTIME_VALIDATION=UNTESTED.** Genuine gameplay-world/HUD original
+  Draw caller, active matrix branch A/B mapping, geometry command semantics,
+  source camera axis and game units-per-meter require authentic Daytona
+  gameplay evidence in **private** `Model2VR-analysis-private`.
+  Existing explicit calibrated world-only adapter and x86 GameStereo IPC
+  to x64 OpenXR eyes remain fail-closed; do NOT promote unverified
+  source joins or claim actual Quest 3/VDXR stereo success.
+- **NEXT:** Validate real original daytime race-world Draw/matrix/command/RT
+  contexts privately, calibrate view axis and units-per-meter, then invoke
+  the already exported world-only source adapters for those *proven* Draws
+  with source exact Present-frame and tracked OpenXR pose. Preserve unknown
+  HUD/aux/menu as 2D, original HRESULT and independent FFB.
