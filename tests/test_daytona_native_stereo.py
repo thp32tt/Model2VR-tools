@@ -48,7 +48,8 @@ class NativeStereoTest(unittest.TestCase):
         fixed=(ROOT/"src/probe/d3d9_sampler_states.hpp").read_text("utf-8")
         eye=(ROOT/"src/vr/model2_stereo_raster.hpp").read_text("utf-8")
         for family in ("src/probe/d3d9_vb_material_bridge.cpp",
-                       "src/probe/d3d9_indexed_up_material_bridge.cpp"):
+                       "src/probe/d3d9_indexed_up_material_bridge.cpp",
+                       "src/probe/d3d9_up_topology_material_bridge.cpp"):
             self.assertIn("alpha_cutoff>256u",
                           (ROOT/family).read_text("utf-8"))
         self.assertIn('"model2_d3d9_source_alpha_compare"',gpu)
