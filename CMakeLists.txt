@@ -237,6 +237,12 @@ add_test(NAME model2_d3d9_verified_world_dxt_material_source
     COMMAND model2_d3d9_dxt_source_test)
 # Authenticated x86 CPU-lockable L8/A8L8 original texture bytes also
 # feed the existing x86 RGBA frames -> Win64 OpenXR eye images.
+# Additional original fixed-function RGB8/RGB24 source material decoder.
+add_executable(model2_d3d9_rgb_byte_source_test
+    tests/model2_d3d9_rgb_byte_decode_test.cpp)
+target_compile_features(model2_d3d9_rgb_byte_source_test PRIVATE cxx_std_20)
+add_test(NAME model2_d3d9_verified_world_rgb_byte_material_source
+    COMMAND model2_d3d9_rgb_byte_source_test)
 add_executable(model2_d3d9_luminance_source_test
     tests/model2_d3d9_luminance_decode_test.cpp)
 target_compile_features(model2_d3d9_luminance_source_test PRIVATE cxx_std_20)
