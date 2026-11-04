@@ -270,6 +270,10 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
     if(family==4u)
         m2vr::LogEvent("model2_d3d9_indexed_up_window",id,
             first,vertex_count,index_format);
+    if(family==4u)
+        m2vr::LogEvent("model2_d3d9_indexed_up_topology",id,
+            static_cast<unsigned int>(type),primitive_count,
+            g_present_count.load(std::memory_order_relaxed)+1u);
     for(unsigned i=0;i<count;++i){
         const auto& v=samples[i];
         m2vr::LogEvent("model2_world_up_view_xyz",id,ids[i],
@@ -382,6 +386,10 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     if(family==4u)
         m2vr::LogEvent("model2_d3d9_indexed_up_window",sample_id,
             first,vertex_count,index_format);
+    if(family==4u)
+        m2vr::LogEvent("model2_d3d9_indexed_up_topology",sample_id,
+            static_cast<unsigned int>(type),primitive_count,
+            g_present_count.load(std::memory_order_relaxed)+1u);
     // Preserve the original three-vertex per-witness log volume/schema.
     // Extra source triangles are correlated only via aggregate metadata.
     for(unsigned i=0;i<count && i<MaxVertices;++i){

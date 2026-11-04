@@ -53,6 +53,7 @@ def analyze(path):
     indexed_windows={}
     indexed_sources={}
     indexed_cpu_batches={}
+    indexed_topologies={}
     with Path(path).open(encoding="utf-8-sig",newline="") as handle:
         reader=csv.DictReader(handle)
         if not REQUIRED.issubset(reader.fieldnames or []):
@@ -74,7 +75,8 @@ def analyze(path):
                              "model2_d3d9_up_meta",
                              "model2_world_up_candidate",
                              "model2_d3d9_cpu_up_join_batch",
-                             "model2_d3d9_indexed_up_window"):
+                             "model2_d3d9_indexed_up_window",
+                             "model2_d3d9_indexed_up_topology"):
                 continue
             try:
                 a0,a1,a2,a3=(number(row[x]) for x in
@@ -82,7 +84,13 @@ def analyze(path):
             except (TypeError,ValueError) as exc:
                 raise ValueError(f"invalid row {count}") from exc
             thread=row["thread"]
-            if event=="model2_d3d9_indexed_up_window":
+            if event=="model2_d3d9_indexed_up_topology":
+                if (not a0 or a0 in indexed_topologies or
+                    a1 not in (4,5,6) or not 1<=a2<=682 or
+                    not 1<=a3<=0xffffffff):
+                    raise ValueError("invalid indexed-UP original topology")
+                indexed_topologies[a0]=(a1,a2,a3)
+            elif event=="model2_d3d9_indexed_up_window":
                 if (not a0 or a0 in indexed_windows or
                     a1>0xffffffff or not 1<=a2<=2048 or
                     a1+a2>0x100000000 or a3 not in (101,102)):
@@ -187,7 +195,8 @@ def analyze(path):
         "observations":0,"nonzero_min_vertex_windows":0,
         "index_formats":set(),"vertex_ranges":set(),
         "projected_witnesses":0,"xyz_witnesses":0,
-        "complete_cpu_projector_batches":0,"original_present_frames":set()})
+        "complete_cpu_projector_batches":0,"original_present_frames":set(),
+        "original_triangle_topologies":set()})
     for witness,window in indexed_windows.items():
         meta=indexed_sources.get(witness)
         if meta is None:
@@ -203,6 +212,10 @@ def analyze(path):
         entry["xyz_witnesses"]+=int(kind=="xyz")
         if frame:
             entry["original_present_frames"].add(frame)
+        topology=indexed_topologies.get(witness)
+        if topology:
+            entry["original_triangle_topologies"].add(topology[0])
+            entry["original_present_frames"].add(topology[2])
         if kind=="projected" and witness in indexed_cpu_batches:
             entry["complete_cpu_projector_batches"]+=1
     indexed_up_sources=[{
@@ -215,6 +228,7 @@ def analyze(path):
         "projected_witnesses":item["projected_witnesses"],
         "xyz_witnesses":item["xyz_witnesses"],
         "complete_cpu_projector_batches":item["complete_cpu_projector_batches"],
+        "original_triangle_topologies":sorted(item["original_triangle_topologies"]),
         "distinct_original_present_frames":len(item["original_present_frames"])
     } for caller,item in sorted(indexed_by_caller.items())]
     sources=[]
@@ -258,6 +272,10 @@ def analyze(path):
         "indexed_up_sources":indexed_up_sources,
         "indexed_up_unassociated_windows":
             len(indexed_windows)-sum(x["observations"] for x in indexed_up_sources),
+        "indexed_up_unassociated_topologies":
+            len(indexed_topologies)-sum(
+                bool(w in indexed_topologies and w in indexed_sources)
+                for w in indexed_windows),
     }
 
 def main():

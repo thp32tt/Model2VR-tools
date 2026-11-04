@@ -117,9 +117,11 @@ class DaytonaPhaseTests(unittest.TestCase):
                 ("model2_d3d9_draw_origin",21,4,0xABC,(2<<32)|4),
                 ("model2_d3d9_up_meta",77,21,0xABC,(4<<32)|24),
                 ("model2_d3d9_indexed_up_window",77,10,4,101),
+                ("model2_d3d9_indexed_up_topology",77,5,2,21),
                 ("model2_d3d9_cpu_up_join_batch",77,(2<<32)|2,0,0xEBA),
                 ("model2_world_up_candidate",78,0xDEF,0x112,(4<<32)|20),
                 ("model2_d3d9_indexed_up_window",78,65536,4,102),
+                ("model2_d3d9_indexed_up_topology",78,6,2,21),
                 ("model2_d3d9_indexed_up_window",79,0,4,101),
             ])
             report=phase.analyze(p)
@@ -131,6 +133,8 @@ class DaytonaPhaseTests(unittest.TestCase):
             self.assertEqual(projected["nonzero_min_vertex_windows"],1)
             self.assertEqual(projected["vertex_ranges"],[[10,4]])
             self.assertEqual(projected["index_formats"],[101])
+            self.assertEqual(projected["original_triangle_topologies"],[5])
+            self.assertEqual(report["indexed_up_unassociated_topologies"],0)
             self.assertEqual(projected["complete_cpu_projector_batches"],1)
             self.assertEqual(projected["distinct_original_present_frames"],1)
             self.assertEqual(projected["world_pass_proof"],"NOT_ESTABLISHED")
@@ -138,8 +142,15 @@ class DaytonaPhaseTests(unittest.TestCase):
             self.assertEqual(xyz["caller_rva"],"0x00000def")
             self.assertEqual(xyz["xyz_witnesses"],1)
             self.assertEqual(xyz["index_formats"],[102])
+            self.assertEqual(xyz["original_triangle_topologies"],[6])
+            self.assertEqual(xyz["distinct_original_present_frames"],1)
             self.generate(p,[
                 ("model2_d3d9_indexed_up_window",5,4294967295,4,101),
+            ])
+            with self.assertRaisesRegex(ValueError,"invalid indexed-UP"):
+                phase.analyze(p)
+            self.generate(p,[
+                ("model2_d3d9_indexed_up_topology",5,5,683,21),
             ])
             with self.assertRaisesRegex(ValueError,"invalid indexed-UP"):
                 phase.analyze(p)
