@@ -217,4 +217,32 @@ inline bool AlphaCutoffMatches(DWORD alpha_enable,DWORD alpha_func,
         return requested_cutoff==255u;
     return false;
 }
+// Caller opts into exact source D3DCMPFUNC with the distinguished UINT
+// cutoff 256. All historical 0..255 entrypoint calls retain strict cutoff
+// equivalence and the old exported ABI. This helper does NOT grant world
+// ownership; FixedFunctionMaterial still checks real Draw state first.
+inline bool DecodeOriginalAlphaCompare(
+    DWORD enabled,DWORD func,DWORD reference,
+    unsigned int requested_cutoff,unsigned int& out_mode,
+    unsigned int& out_reference) noexcept {
+    if(requested_cutoff<=255u) {
+        if(!AlphaCutoffMatches(enabled,func,reference,requested_cutoff))
+            return false;
+        out_mode=0u; // legacy alpha >= cutoff
+        out_reference=0u;
+        return true;
+    }
+    if(requested_cutoff!=256u || enabled>1u || reference>255u)
+        return false;
+    if(enabled==0u) {
+        // Disabled comparison passes ALL possible original alpha values.
+        out_mode=static_cast<unsigned int>(D3DCMP_ALWAYS);
+        out_reference=0u;
+        return true;
+    }
+    if(func<D3DCMP_NEVER || func>D3DCMP_ALWAYS)return false;
+    out_mode=static_cast<unsigned int>(func);
+    out_reference=reference;
+    return true;
+}
 } // namespace m2vr::drawprobe
