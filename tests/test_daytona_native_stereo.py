@@ -222,7 +222,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("hr!=D3DERR_NOTFOUND",gpu)
         self.assertIn("const D3DFORMAT depth_format=dd.Format;",gpu)
         self.assertNotIn("dd.Format!=D3DFMT_D16",gpu)
-        self.assertIn("CreateDepthStencilSurface(width_,height_,depth_format",gpu)
+        self.assertIn("width_,height_,depth_format,desc.MultiSampleType,",gpu)
         self.assertIn("FAILED(depth->GetDesc(&dd))",gpu)
         self.assertIn("BootstrapTargetCompatible(",gpu)
         self.assertIn("const bool source_is_main=current==back;",gpu)
