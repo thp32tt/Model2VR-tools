@@ -46,6 +46,7 @@ class SourceAuditTests(unittest.TestCase):
                  pack(1, 4), pack(1, 3), 17),
                 ("model2_d3d9_source_vertex_pipeline",101,
                  pack(2,1),pack(0,0),pack(0,17)),
+                ("model2_d3d9_source_fill",101,3,17,pack(0x112,20)),
                 ("model2_d3d9_vb_write_color", 101,
                  pack(0, 15), 0, 0),
                 ("model2_d3d9_source_color_mask", 101,
@@ -82,6 +83,7 @@ class SourceAuditTests(unittest.TestCase):
                  0, pack(0x112, 20), 17),
                 ("model2_d3d9_source_vertex_pipeline",102,
                  pack(2,1),pack(0,0),pack(0,18)),
+                ("model2_d3d9_source_fill",102,2,17,pack(0x112,20)),
                 ("model2_d3d9_ib_source", 99, 101, 500, 0),
             ])
             result = REPORT.audit_csv(p)
@@ -104,6 +106,8 @@ class SourceAuditTests(unittest.TestCase):
                              ["supported"])
             self.assertEqual(src["original_source_vertex_pipeline_status"],
                              ["present_mismatch","supported"])
+            self.assertEqual(src["original_source_fill_status"],
+                             ["solid","unsupported"])
             self.assertEqual(src["color_write_modes"], [[0, 15]])
             self.assertEqual(src["original_source_color_mask_modes"], [0, 15])
             self.assertEqual(src["original_depth_only_draw_witnesses"], 1)
@@ -248,6 +252,17 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p, bad)
             self.assertEqual(REPORT.audit_csv(p)["sources"][0][
                 "same_witness_joint_candidates"], 0)
+
+    def test_original_fill_mode_is_same_draw_original_fvf_and_present(self):
+        status=REPORT.original_d3d9_fill_status
+        tag=pack(0x144,28)
+        self.assertEqual(status(None,17,0x144,28),"unobserved")
+        self.assertEqual(status((3,17,tag),17,0x144,28),"solid")
+        self.assertEqual(status((3,18,tag),17,0x144,28),"present_mismatch")
+        self.assertEqual(status((3,17,tag),17,0x144,24),"source_layout_mismatch")
+        self.assertEqual(status((2,17,tag),17,0x144,28),"unsupported")
+        self.assertEqual(status((1,17,tag),17,0x144,28),"unsupported")
+        self.assertEqual(status((999,17,tag),17,0x144,28),"unsupported")
 
     def test_original_vertex_pipeline_same_draw_and_present_only(self):
         status=REPORT.original_d3d9_vertex_pipeline_status
