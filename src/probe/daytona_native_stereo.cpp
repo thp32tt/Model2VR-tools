@@ -35,8 +35,9 @@ bool GuardedCopy(void* dst,const void* src,std::size_t size) noexcept {
 struct Surface {
     IDirect3DSurface9* color=nullptr;
     IDirect3DSurface9* depth=nullptr;
+    IDirect3DSurface9* resolve=nullptr;
     IDirect3DSurface9* staging=nullptr;
-    void Clear()noexcept{Drop(color);Drop(depth);Drop(staging);}
+    void Clear()noexcept{Drop(color);Drop(depth);Drop(resolve);Drop(staging);}
 };
 class EyeClones {
 public:
@@ -181,8 +182,20 @@ public:
         }
         bool ready=true;
         for(unsigned eye=0;eye<2;++eye){
-            if(FAILED(d->GetRenderTargetData(eyes_[eye].color,
-                                              eyes_[eye].staging))){
+            IDirect3DSurface9* readback_source=eyes_[eye].color;
+            if(eyes_[eye].resolve){
+                // GetRenderTargetData rejects multisampled render targets.
+                // Resolve the complete eye RT first, outside the game's
+                // BeginScene/EndScene pair at Present time.
+                if(FAILED(d->StretchRect(eyes_[eye].color,nullptr,
+                                         eyes_[eye].resolve,nullptr,
+                                         D3DTEXF_NONE))){
+                    ready=false;break;
+                }
+                readback_source=eyes_[eye].resolve;
+            }
+            if(FAILED(d->GetRenderTargetData(readback_source,
+                                             eyes_[eye].staging))){
                 ready=false;break;
             }
             D3DLOCKED_RECT locked{};
@@ -259,8 +272,7 @@ private:
         if(FAILED(back->GetDesc(&desc)) ||
            desc.Width<320u||desc.Width>2048u ||
            desc.Height<200u||desc.Height>2048u ||
-           (desc.Format!=D3DFMT_A8R8G8B8 && desc.Format!=D3DFMT_X8R8G8B8)||
-           desc.MultiSampleType!=D3DMULTISAMPLE_NONE){
+           (desc.Format!=D3DFMT_A8R8G8B8 && desc.Format!=D3DFMT_X8R8G8B8)){
             Drop(back);return false;
         }
         IDirect3DSurface9* depth=nullptr;
@@ -275,7 +287,8 @@ private:
         // perform the authoritative device/format compatibility check.
         if(FAILED(depth->GetDesc(&dd)) ||
            dd.Width!=desc.Width || dd.Height!=desc.Height ||
-           dd.MultiSampleType!=D3DMULTISAMPLE_NONE){
+           dd.MultiSampleType!=desc.MultiSampleType ||
+           dd.MultiSampleQuality!=desc.MultiSampleQuality){
             Drop(depth);Drop(back);return false;
         }
         const D3DFORMAT depth_format=dd.Format;
@@ -284,10 +297,19 @@ private:
         width_=desc.Width;height_=desc.Height;
         for(auto& eye:eyes_){
             if(FAILED(d->CreateRenderTarget(width_,height_,desc.Format,
-                       D3DMULTISAMPLE_NONE,0,FALSE,&eye.color,nullptr)) ||
+                       desc.MultiSampleType,desc.MultiSampleQuality,
+                       FALSE,&eye.color,nullptr)) ||
                FAILED(d->CreateDepthStencilSurface(width_,height_,depth_format,
-                       D3DMULTISAMPLE_NONE,0,TRUE,&eye.depth,nullptr)) ||
-               FAILED(d->CreateOffscreenPlainSurface(width_,height_,desc.Format,
+                       desc.MultiSampleType,desc.MultiSampleQuality,
+                       TRUE,&eye.depth,nullptr))){
+                Reset();return false;
+            }
+            if(desc.MultiSampleType!=D3DMULTISAMPLE_NONE &&
+               FAILED(d->CreateRenderTarget(width_,height_,desc.Format,
+                       D3DMULTISAMPLE_NONE,0,FALSE,&eye.resolve,nullptr))){
+                Reset();return false;
+            }
+            if(FAILED(d->CreateOffscreenPlainSurface(width_,height_,desc.Format,
                        D3DPOOL_SYSTEMMEM,&eye.staging,nullptr))){
                 Reset();return false;
             }
