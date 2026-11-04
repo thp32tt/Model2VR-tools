@@ -148,22 +148,39 @@ public:
         out=stamp;
         return true;
     }
-    bool Read(Snapshot& out)const{
+    // A real 60Hz Win32 producer can send two 4-MiB eyes on every game
+    // frame. The x64 host owns a separate staging Snapshot and can reuse
+    // both vectors without fresh allocation after the initial two slots.
+    // On any torn seqlock read this staging buffer is UNSAFE to display;
+    // the caller must retain its independent previously accepted Snapshot.
+    bool ReadReusable(Snapshot& staging)const{
         if(!Valid())return false;
         const auto* h=reinterpret_cast<const Header*>(base_);
         const LONG start=h->sequence;
         MemoryBarrier();
-        if(start & 1)return false;
+        if(start&1)return false;
         const FrameKind kind=static_cast<FrameKind>(h->kind);
         if(kind!=FrameKind::GameStereo && kind!=FrameKind::Diagnostic)return false;
-        Snapshot tmp{};
-        tmp.frame_id=h->frame_id;tmp.timestamp_qpc=h->timestamp_qpc;tmp.kind=kind;
-        for(auto& eye:tmp.eyes)eye.resize(kBytesPerEye);
-        std::memcpy(tmp.eyes[0].data(),base_+sizeof(Header),kBytesPerEye);
-        std::memcpy(tmp.eyes[1].data(),base_+sizeof(Header)+kBytesPerEye,kBytesPerEye);
+        const auto frame=h->frame_id, timestamp=h->timestamp_qpc;
+        for(auto& eye:staging.eyes)
+            if(eye.size()!=kBytesPerEye)eye.resize(kBytesPerEye);
+        std::memcpy(staging.eyes[0].data(),base_+sizeof(Header),kBytesPerEye);
+        std::memcpy(staging.eyes[1].data(),
+                    base_+sizeof(Header)+kBytesPerEye,kBytesPerEye);
         MemoryBarrier();
         const LONG end=h->sequence;
-        if(start!=end || (end & 1) || tmp.frame_id==0)return false;
+        if(start!=end || (end&1) || frame==0u)return false;
+        // Publish the metadata only once both eyes passed a single coherent
+        // source generation. A rejected staging copy remains recyclable.
+        staging.frame_id=frame;
+        staging.timestamp_qpc=timestamp;
+        staging.kind=kind;
+        return true;
+    }
+    // Legacy caller contract: preserve the output entirely on failure.
+    bool Read(Snapshot& out)const{
+        Snapshot tmp{};
+        if(!ReadReusable(tmp))return false;
         out=std::move(tmp);
         return true;
     }

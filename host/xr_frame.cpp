@@ -220,18 +220,18 @@ void XrApp::draw_frame(XrTime display_time){
             const bool stamp_ok=shared_frames_.Peek(stamp);
             const auto action=frame_gate_.Decide(stamp_ok?&stamp:nullptr,now,hz);
             if(action==transport::FrameUse::ReadNew){
-                transport::Snapshot next_frame{};
-                if(shared_frames_.Read(next_frame) &&
-                   frame_gate_.Accept(next_frame,now,hz)){
-                    if(next_frame.kind==transport::FrameKind::Diagnostic &&
+                if(shared_frames_.ReadReusable(staging_frame_) &&
+                   frame_gate_.Accept(staging_frame_,now,hz)){
+                    if(staging_frame_.kind==transport::FrameKind::Diagnostic &&
                        !saw_diagnostic_){
                         std::cout<<"Model2VR: DIAGNOSTIC source; not native game stereo\n";
                         saw_diagnostic_=true;
                     }
-                    // Two-eye source generation is one atomic game frame,
-                    // never split a left eye from one producer frame and
-                    // a right eye from another.
-                    eye_frame_=std::move(next_frame);
+                    // Each verified x86 frame remains a single two-eye
+                    // transaction. Swap the accepted pair atomically at the
+                    // application level, then recycle the previous buffers
+                    // for the next IPC read (no 8-MiB allocation per frame).
+                    std::swap(eye_frame_,staging_frame_);
                 }
             }
         }

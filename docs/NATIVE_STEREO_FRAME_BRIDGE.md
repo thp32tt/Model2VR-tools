@@ -287,3 +287,24 @@ lighting, fog, transparency, depth/fog blends, HUD or other effects.
 The Quest 3/MOZA runtime has not run: `RUNTIME_VALIDATION=UNTESTED`.
 The separate Generic DD v2 wheel/FFB source and `dinput8.dll` are
 untouched.
+
+## Recycled x64 binocular transport snapshots (2026-11-04)
+
+The x64 OpenXR host formerly allocated two fresh 4MiB vectors whenever
+it read a new 60Hz GameStereo frame, then discarded the previous pair.
+The bridge now exposes `ReadReusable(Snapshot& staging)`, which reuses
+preallocated eye buffers while retaining the existing versioned
+Win32 shared-memory seqlock and exact 1024x1024 RGBA wire ABI.
+
+The host holds **two separate snapshots**: the accepted pair used for
+current OpenXR uploads and a never-displayed staging pair. Only after
+the writer's generation matches before/after both copies AND the
+frame-age policy accepts the new frame does the host swap the two
+snapshots. Torn/rejected input never overwrites the currently displayed
+pair. After two accepted frames, the vectors are recycled rather than
+allocated and freed on each game frame.
+
+The existing `Read(Snapshot&)` legacy API continues to preserve caller
+output on failure. Updated native Win32/Win64 IPC tests verify reused
+buffer addresses and left/right frame identity. This is an allocation
+path improvement; measured HMD timing and calibration remain untested.

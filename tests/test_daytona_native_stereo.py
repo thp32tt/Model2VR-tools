@@ -187,6 +187,20 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("daytona_readback_scale_x64_test",
                       (ROOT/"host/CMakeLists.txt").read_text("utf-8"))
 
+    def test_x64_host_reuses_pair_buffers_without_torn_eye_publication(self):
+        ipc=(ROOT/"src/common/stereo_frame_ipc.h").read_text("utf-8")
+        xr=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        app=(ROOT/"host/xr_app.h").read_text("utf-8")
+        self.assertIn("bool ReadReusable(Snapshot& staging)const",ipc)
+        self.assertIn("const LONG end=h->sequence;",ipc)
+        self.assertIn("start!=end || (end&1) || frame==0u",ipc)
+        self.assertIn("if(!ReadReusable(tmp))return false;",ipc)
+        self.assertIn("transport::Snapshot staging_frame_;",app)
+        self.assertIn("shared_frames_.ReadReusable(staging_frame_)",xr)
+        self.assertIn("frame_gate_.Accept(staging_frame_,now,hz)",xr)
+        self.assertIn("std::swap(eye_frame_,staging_frame_)",xr)
+        self.assertNotIn("transport::Snapshot next_frame{};",xr)
+
     def test_original_present_must_succeed_before_x64_eye_publication(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")

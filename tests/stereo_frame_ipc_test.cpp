@@ -16,6 +16,9 @@ int main(){
     FrameStamp metadata{};
     REQUIRE(!reader.Peek(metadata)); // no complete frame
     REQUIRE(!reader.Read(snap)); // no complete frame
+    Snapshot staging;
+    REQUIRE(!reader.ReadReusable(staging));
+    REQUIRE(staging.frame_id==0u && staging.eyes[0].empty());
     REQUIRE(writer.Publish(a.data(),b.data(),1,FrameKind::Diagnostic));
     REQUIRE(!writer.Publish(a.data(),b.data(),1,FrameKind::GameStereo)); // monotonic id
     REQUIRE(reader.Peek(metadata));
@@ -32,6 +35,18 @@ int main(){
     REQUIRE(reader.Read(snap));
     REQUIRE(snap.frame_id==2 && snap.kind==FrameKind::GameStereo);
     REQUIRE(snap.eyes[0][0]==0x18 && snap.eyes[1][0]==0xEF);
+    REQUIRE(reader.ReadReusable(staging));
+    REQUIRE(staging.frame_id==2 && staging.kind==FrameKind::GameStereo);
+    REQUIRE(staging.eyes[0][0]==0x18 && staging.eyes[1][0]==0xEF);
+    const auto* ptr_left=staging.eyes[0].data();
+    const auto* ptr_right=staging.eyes[1].data();
+    a[0]=0x7Bu;b[0]=0x5Eu;
+    REQUIRE(writer.Publish(a.data(),b.data(),3,FrameKind::GameStereo));
+    REQUIRE(reader.ReadReusable(staging));
+    REQUIRE(staging.frame_id==3 && staging.kind==FrameKind::GameStereo);
+    REQUIRE(staging.eyes[0].data()==ptr_left &&
+            staging.eyes[1].data()==ptr_right);
+    REQUIRE(staging.eyes[0][0]==0x7Bu && staging.eyes[1][0]==0x5Eu);
     reader.Close();writer.Close();
     REQUIRE(!reader.Read(snap));
     return 0;

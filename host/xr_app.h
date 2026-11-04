@@ -56,6 +56,9 @@ private:
     pose::Link pose_writer_;
     std::uint64_t predicted_pose_sequence_=0;
     transport::Snapshot eye_frame_;
+    // Recycled x86->x64 8-MiB IPC input. Never expose a torn staging copy
+    // as the last valid OpenXR game frame.
+    transport::Snapshot staging_frame_;
     transport::StereoFrameGate frame_gate_;
     bool saw_diagnostic_=false;
     bool wizard_diag_enabled_=true;
