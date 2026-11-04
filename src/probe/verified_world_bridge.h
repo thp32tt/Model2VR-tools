@@ -149,6 +149,19 @@ Model2VR_AppendVerifiedProjectedD3D9IndexedUPTextured(
     const void* original_vertices,unsigned int stride_bytes,
     unsigned int authenticated_cpu_project_caller_rva,
     unsigned int alpha_cutoff);
+// Original DrawPrimitiveUP can carry TRIANGLELIST, TRIANGLESTRIP or
+// TRIANGLEFAN; convert winding/source order only inside an independently
+// authenticated world frame. Original D3D9 draw and fallback are untouched.
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9PrimitiveUPTopologyTextured(
+    void* d3d9_device,unsigned int original_primitive_type,
+    unsigned int primitive_count,const void* original_vertices,
+    unsigned int stride_bytes,unsigned int alpha_cutoff);
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopologyTextured(
+    void* d3d9_device,unsigned int original_primitive_type,
+    unsigned int primitive_count,const void* original_vertices,
+    unsigned int stride_bytes,unsigned int authenticated_cpu_project_caller_rva,
+    unsigned int alpha_cutoff);
 __declspec(dllexport) BOOL __stdcall Model2VR_EndVerifiedWorldFrame();
 // Source-owned upcoming original D3D9 Present frame ID (nonzero only
 // after real device hooks are installed and GPU-replay mode is disabled).
