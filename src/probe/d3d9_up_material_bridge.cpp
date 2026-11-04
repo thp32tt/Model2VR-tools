@@ -53,6 +53,20 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
     // The original may leave texture slot1 bound after an earlier draw.
     // Both stage1 operations are required DISABLED below, so the binding
     // is inert and must not disqualify an otherwise equivalent world pass.
+    // Require original fixed-function vertex shading and clip behavior to
+    // match the independent per-eye Gouraud/5-plane raster. The source
+    // World/View matrix alone cannot reproduce GPU vertex blending or user
+    // clip planes. Query the ACTUAL original Draw device; fail closed.
+    DWORD shade=0,clipping=0,clip_planes=0,vertex_blend=0,indexed_blend=0;
+    if(FAILED(d->GetRenderState(D3DRS_SHADEMODE,&shade)) ||
+       FAILED(d->GetRenderState(D3DRS_CLIPPING,&clipping)) ||
+       FAILED(d->GetRenderState(D3DRS_CLIPPLANEENABLE,&clip_planes)) ||
+       FAILED(d->GetRenderState(D3DRS_VERTEXBLEND,&vertex_blend)) ||
+       FAILED(d->GetRenderState(
+           D3DRS_INDEXEDVERTEXBLENDENABLE,&indexed_blend)) ||
+       !m2vr::drawprobe::OriginalVertexPipelineEquivalent(
+           shade,clipping,clip_planes,vertex_blend,indexed_blend))
+        return false;
     DWORD zfunc=0,zwrite=0,cull=0,stencil=0,dbias=0,sbias=0;
     DWORD srgb_write=0,color_mask=0;
     if(FAILED(d->GetRenderState(D3DRS_ZFUNC,&zfunc)) ||
