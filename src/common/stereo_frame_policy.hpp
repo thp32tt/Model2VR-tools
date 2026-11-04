@@ -5,6 +5,17 @@
 #include <cstdint>
 
 namespace m2vr::transport {
+// x64 must never present an untagged GameStereo image as if it were
+// rendered against a known predicted OpenXR eye pair. Older untagged
+// producers remain readable at the transport ABI but cannot claim native
+// binocular projection. A diagnostic frame is intentionally untagged.
+inline constexpr bool SourcePoseMatchesFrame(
+    FrameKind kind,std::uint32_t pose_tag,bool exact_pose_in_host_ring) noexcept {
+    if(kind==FrameKind::Diagnostic)
+        return pose_tag==0u;
+    return kind==FrameKind::GameStereo &&
+           pose_tag!=0u && exact_pose_in_host_ring;
+}
 enum class FrameUse : std::uint8_t { Missing, ReadNew, HoldCached };
 class StereoFrameGate {
 public:
