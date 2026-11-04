@@ -613,7 +613,8 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
                          UINT start_index,UINT primitive_count) {
     using namespace m2vr::drawprobe;
     if(!dev || (family!=1u && family!=2u) ||
-       type!=D3DPT_TRIANGLELIST || !primitive_count)return;
+       !m2vr::drawprobe::PrimitiveSourceElementCount(
+           type,primitive_count))return;
     DWORD fvf=0;
     if(FAILED(dev->GetFVF(&fvf)))return;
     IDirect3DVertexBuffer9* vb=nullptr;
@@ -651,7 +652,7 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
         // thread's original CPU projected points, unlike raw XYZ stream.
         // Still only candidate evidence: never authorizes stereo rendering.
         ProjectedTriangleBatchJoin joined{};
-        if(InspectProjectedD3D9VBJoin(dev,family==2u,
+        if(InspectProjectedD3D9VBTopologyJoin(dev,family==2u,type,
                 start_vertex,base_vertex,min_vertex,num_vertices,
                 start_index,primitive_count,joined)){
             m2vr::LogEvent("model2_d3d9_cpu_vb_join_batch",id,

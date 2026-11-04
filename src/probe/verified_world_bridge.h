@@ -147,6 +147,28 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9Indexed
     unsigned int start_index,unsigned int primitive_count,
     unsigned int authenticated_cpu_project_caller_rva,
     unsigned int alpha_cutoff);
+// Original VB/IB DrawPrimitive and DrawIndexedPrimitive list/strip/fan
+// variants retain source winding and lock only referenced original vertices.
+// The original list-only exports above remain ABI compatible. No automatic
+// world classification, original Draw replay, or additional FFB tick.
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTopologyTextured(
+    void* device,unsigned int original_topology,unsigned int start_vertex,
+    unsigned int primitive_count,unsigned int alpha_cutoff);
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTopologyTextured(
+    void* device,unsigned int original_topology,int base_vertex_index,
+    unsigned int min_vertex_index,unsigned int num_vertices,
+    unsigned int start_index,unsigned int primitive_count,
+    unsigned int alpha_cutoff);
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured(
+    void* device,unsigned int original_topology,unsigned int start_vertex,
+    unsigned int primitive_count,unsigned int authenticated_cpu_caller_rva,
+    unsigned int alpha_cutoff);
+__declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTopologyTextured(
+    void* device,unsigned int original_topology,int base_vertex_index,
+    unsigned int min_vertex_index,unsigned int num_vertices,
+    unsigned int start_index,unsigned int primitive_count,
+    unsigned int authenticated_cpu_caller_rva,unsigned int alpha_cutoff);
+
 // Original DrawIndexedPrimitiveUP's source pointer begins at MinVertexIndex.
 // Both APIs require a separately proven frame and are NEVER generic hooks;
 // source is copied, 16/32-bit indices normalized, and unknown HUD refused.

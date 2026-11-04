@@ -3,6 +3,7 @@
 // the buffers; this code only validates a previously copied index slice.
 #include <d3d9.h>
 #include "projected_up_world_source.hpp"
+#include "d3d9_primitive_topology.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -77,6 +78,55 @@ inline bool RemapSequentialTriangleList(
     result.indices.reserve(count);
     for(std::uint32_t i=0;i<count;++i)result.indices.push_back(i);
     out=std::move(result);
+    return true;
+}
+
+// Strict original DrawPrimitive/DrawIndexedPrimitive strip/fan/list
+// conversion. Source counts (N+2 for strip/fan) are distinct from expanded
+// triangle indices (3N). Reuse the already tested signed BaseVertexIndex,
+// MinVertexIndex, 16/32-bit, high/low span and overflow validation.
+inline bool RemapIndexedTopology(
+    const std::uint8_t* data,std::size_t available,D3DFORMAT format,
+    D3DPRIMITIVETYPE topology,std::int32_t base_vertex,
+    std::uint32_t min_index,std::uint32_t num_vertices,
+    std::uint32_t triangle_count,VBVertexWindow& out) {
+    const auto count=PrimitiveSourceElementCount(topology,triangle_count);
+    if(!data || !count ||
+       (format!=D3DFMT_INDEX16 && format!=D3DFMT_INDEX32))return false;
+    const std::size_t width=format==D3DFMT_INDEX16?2u:4u;
+    if(std::size_t(count)*width>available)return false;
+    std::vector<std::uint32_t> original(count);
+    for(std::size_t i=0;i<count;++i){
+        if(width==2u){
+            std::uint16_t value=0;
+            std::memcpy(&value,data+i*width,width);
+            original[i]=value;
+        }else{
+            std::memcpy(&original[i],data+i*width,width);
+        }
+    }
+    std::vector<std::uint32_t> triangles;
+    if(!ExpandOriginalTriangles(topology,triangle_count,
+                                original,triangles))return false;
+    return RemapIndexedTriangleList(
+        reinterpret_cast<const std::uint8_t*>(triangles.data()),
+        triangles.size()*sizeof(std::uint32_t),
+        D3DFMT_INDEX32,base_vertex,min_index,num_vertices,
+        triangle_count,out);
+}
+inline bool RemapSequentialTopology(
+    std::uint32_t start_vertex,D3DPRIMITIVETYPE topology,
+    std::uint32_t triangle_count,VBVertexWindow& out) {
+    const auto count=PrimitiveSourceElementCount(topology,triangle_count);
+    if(!count || count>kMaxVBBridgeVertices ||
+       std::uint64_t(start_vertex)+count>0x100000000ULL)return false;
+    std::vector<std::uint32_t> original(count);
+    for(std::uint32_t i=0;i<count;++i)original[i]=i;
+    VBVertexWindow next{};
+    next.first=start_vertex;next.count=count;
+    if(!ExpandOriginalTriangles(topology,triangle_count,original,
+                                next.indices))return false;
+    out=std::move(next);
     return true;
 }
 

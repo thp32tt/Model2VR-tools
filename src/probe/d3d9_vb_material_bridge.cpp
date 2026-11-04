@@ -1,7 +1,8 @@
 // Explicit, verified-world-only source adapter for *actual* D3D9
 // DrawPrimitive / DrawIndexedPrimitive vertex and index buffers.
 // It neither hooks draws automatically nor publishes unproved stereo frames.
-// Only CPU-readable, non-WRITEONLY FVF XYZ/TEX1 triangle lists are accepted.
+// CPU-readable FVF XYZ/TEX1 lists, strips and fans are eligible only
+// inside an independently authenticated world transaction.
 #include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
 #include "projected_up_world_source.hpp"
@@ -78,7 +79,8 @@ bool CopyVBWindow(IDirect3DDevice9* device,
     }
     return true;
 }
-bool ReadIndices(IDirect3DDevice9* device,UINT start_index,
+bool ReadIndicesTopology(IDirect3DDevice9* device,
+                 D3DPRIMITIVETYPE topology,UINT start_index,
                  UINT triangle_count,INT base_vertex,UINT min_vertex,
                  UINT num_vertices,
                  m2vr::drawprobe::VBVertexWindow& out) {
@@ -93,7 +95,9 @@ bool ReadIndices(IDirect3DDevice9* device,UINT start_index,
         desc.Format!=D3DFMT_INDEX32))return false;
     const UINT index_width=desc.Format==D3DFMT_INDEX16?2u:4u;
     const std::uint64_t offset=std::uint64_t(start_index)*index_width;
-    const std::uint64_t length=std::uint64_t(triangle_count)*3u*index_width;
+    const auto element_count=m2vr::drawprobe::PrimitiveSourceElementCount(
+        topology,triangle_count);
+    const std::uint64_t length=std::uint64_t(element_count)*index_width;
     if(!length || offset>desc.Size ||
        length>std::uint64_t(desc.Size)-offset ||
        offset>UINT32_MAX || length>UINT32_MAX)return false;
@@ -105,9 +109,16 @@ bool ReadIndices(IDirect3DDevice9* device,UINT start_index,
                          static_cast<UINT>(length),&mapped))return false;
         if(!GuardRead(data.data(),mapped,data.size()))return false;
     }
-    return m2vr::drawprobe::RemapIndexedTriangleList(
-        data.data(),data.size(),desc.Format,base_vertex,min_vertex,
+    return m2vr::drawprobe::RemapIndexedTopology(
+        data.data(),data.size(),desc.Format,topology,base_vertex,min_vertex,
         num_vertices,triangle_count,out);
+}
+// Existing verified TRIANGLELIST callers retain the exact old interface.
+bool ReadIndices(IDirect3DDevice9* device,UINT start_index,
+                 UINT triangle_count,INT base_vertex,UINT min_vertex,
+                 UINT num_vertices,m2vr::drawprobe::VBVertexWindow& out) {
+    return ReadIndicesTopology(device,D3DPT_TRIANGLELIST,
+        start_index,triangle_count,base_vertex,min_vertex,num_vertices,out);
 }
 BOOL SubmitBufferWindow(IDirect3DDevice9* device,
                         const m2vr::drawprobe::VBVertexWindow& window,
@@ -235,12 +246,73 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
     }catch(...){return FALSE;}
 }
 
+// New original VB/IB topology variants. No new emulator Draw call or
+// source world-pass inference: the existing material/camera proof, Lock
+// safety, and binocular renderer remain the only admission/commit path.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTopologyTextured(
+    void* device,unsigned type,unsigned start,unsigned count,unsigned cutoff) {
+    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return FALSE;
+    try {
+        m2vr::drawprobe::VBVertexWindow window{};
+        if(!m2vr::drawprobe::RemapSequentialTopology(
+             start,static_cast<D3DPRIMITIVETYPE>(type),count,window))
+            return FALSE;
+        return SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
+                                  window,cutoff);
+    }catch(...){return FALSE;}
+}
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTopologyTextured(
+    void* device,unsigned type,int base,unsigned min,unsigned num,
+    unsigned start,unsigned count,unsigned cutoff) {
+    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return FALSE;
+    try {
+        m2vr::drawprobe::VBVertexWindow window{};
+        if(!ReadIndicesTopology(static_cast<IDirect3DDevice9*>(device),
+            static_cast<D3DPRIMITIVETYPE>(type),start,count,base,min,num,window))
+            return FALSE;
+        return SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
+                                  window,cutoff);
+    }catch(...){return FALSE;}
+}
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured(
+    void* device,unsigned type,unsigned start,unsigned count,
+    unsigned caller,unsigned cutoff) {
+    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
+       !caller || count<2u ||
+       count>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
+        return FALSE;
+    try {
+        m2vr::drawprobe::VBVertexWindow window{};
+        if(!m2vr::drawprobe::RemapSequentialTopology(
+            start,static_cast<D3DPRIMITIVETYPE>(type),count,window))
+            return FALSE;
+        return SubmitProjectedBufferWindow(
+            static_cast<IDirect3DDevice9*>(device),window,caller,cutoff);
+    }catch(...){return FALSE;}
+}
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTopologyTextured(
+    void* device,unsigned type,int base,unsigned min,unsigned num,
+    unsigned start,unsigned count,unsigned caller,unsigned cutoff) {
+    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
+       !caller || count<2u ||
+       count>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
+        return FALSE;
+    try {
+        m2vr::drawprobe::VBVertexWindow window{};
+        if(!ReadIndicesTopology(static_cast<IDirect3DDevice9*>(device),
+            static_cast<D3DPRIMITIVETYPE>(type),start,count,base,min,num,window))
+            return FALSE;
+        return SubmitProjectedBufferWindow(
+            static_cast<IDirect3DDevice9*>(device),window,caller,cutoff);
+    }catch(...){return FALSE;}
+}
+
 // Observe a sampled actual D3D9 projected fixed-function VB/IB Draw. This
 // function never enables world proof, touches emulator state or renders an
 // extra Draw. A failed LOCK is an ordinary unsupported source, not an error.
 namespace m2vr::drawprobe {
-bool InspectProjectedD3D9VBJoin(
-    IDirect3DDevice9* device,bool indexed,
+bool InspectProjectedD3D9VBTopologyJoin(
+    IDirect3DDevice9* device,bool indexed,D3DPRIMITIVETYPE topology,
     UINT start_vertex,INT base_vertex,
     UINT min_vertex,UINT num_vertices,
     UINT start_index,UINT primitive_count,
@@ -250,11 +322,12 @@ bool InspectProjectedD3D9VBJoin(
     try {
         VBVertexWindow window{};
         if(indexed){
-            if(!ReadIndices(device,start_index,primitive_count,
+            if(!ReadIndicesTopology(device,topology,
+                            start_index,primitive_count,
                             base_vertex,min_vertex,num_vertices,window))
                 return false;
-        }else if(!RemapSequentialTriangleList(
-                    start_vertex,primitive_count,window))return false;
+        }else if(!RemapSequentialTopology(
+                    start_vertex,topology,primitive_count,window))return false;
         std::vector<std::uint8_t> vertices,ordered;
         UINT stride=0;
         if(!CopyVBWindow(device,window,vertices,stride,true))
@@ -278,5 +351,15 @@ bool InspectProjectedD3D9VBJoin(
             CurrentProjectDrawEpoch(),screen.data(),count);
         return true;
     }catch(...){return false;}
+}
+bool InspectProjectedD3D9VBJoin(
+    IDirect3DDevice9* device,bool indexed,
+    UINT start_vertex,INT base_vertex,
+    UINT min_vertex,UINT num_vertices,
+    UINT start_index,UINT primitive_count,
+    ProjectedTriangleBatchJoin& output) noexcept {
+    return InspectProjectedD3D9VBTopologyJoin(
+        device,indexed,D3DPT_TRIANGLELIST,start_vertex,base_vertex,
+        min_vertex,num_vertices,start_index,primitive_count,output);
 }
 } // namespace m2vr::drawprobe

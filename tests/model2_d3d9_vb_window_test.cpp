@@ -70,6 +70,49 @@ int main(){
     CHECK(!RemapSequentialTriangleList(UINT32_MAX-1,1,w));
     CHECK(!RemapSequentialTriangleList(0,0,w));
 
+    // Real original IB/stream-zero STRIP/FAN source windows are N+2
+    // vertices, not 3N; source winding and signed base remain exact.
+    CHECK(m2vr::drawprobe::RemapSequentialTopology(
+        100,D3DPT_TRIANGLESTRIP,3,w));
+    CHECK(w.first==100 && w.count==5u &&
+          w.indices==std::vector<std::uint32_t>({
+             0,1,2,2,1,3,2,3,4}));
+    CHECK(m2vr::drawprobe::RemapSequentialTopology(
+        100,D3DPT_TRIANGLEFAN,3,w));
+    CHECK(w.first==100 && w.count==5u &&
+          w.indices==std::vector<std::uint32_t>({
+             0,1,2,0,2,3,0,3,4}));
+    const auto old_window=w;
+    CHECK(!m2vr::drawprobe::RemapSequentialTopology(
+        UINT32_MAX-1,D3DPT_TRIANGLESTRIP,3,w));
+    CHECK(w.indices==old_window.indices);
+    CHECK(!m2vr::drawprobe::RemapSequentialTopology(
+        0,D3DPT_LINESTRIP,3,w));
+    const std::array<std::uint16_t,5> original_strip{{5,6,7,8,9}};
+    CHECK(m2vr::drawprobe::RemapIndexedTopology(
+        reinterpret_cast<const std::uint8_t*>(original_strip.data()),
+        sizeof(original_strip),D3DFMT_INDEX16,D3DPT_TRIANGLESTRIP,
+        -2,5,5,3,w));
+    CHECK(w.first==3 && w.count==5u &&
+          w.indices==std::vector<std::uint32_t>({
+             0,1,2,2,1,3,2,3,4}));
+    CHECK(m2vr::drawprobe::RemapIndexedTopology(
+        reinterpret_cast<const std::uint8_t*>(original_strip.data()),
+        sizeof(original_strip),D3DFMT_INDEX16,D3DPT_TRIANGLEFAN,
+        -2,5,5,3,w));
+    CHECK(w.indices==std::vector<std::uint32_t>({
+             0,1,2,0,2,3,0,3,4}));
+    const auto saved=w;
+    CHECK(!m2vr::drawprobe::RemapIndexedTopology(
+        reinterpret_cast<const std::uint8_t*>(original_strip.data()),
+        sizeof(original_strip)-1,D3DFMT_INDEX16,D3DPT_TRIANGLEFAN,
+        -2,5,5,3,w));
+    CHECK(w.indices==saved.indices && w.first==saved.first);
+    CHECK(!m2vr::drawprobe::RemapIndexedTopology(
+        reinterpret_cast<const std::uint8_t*>(original_strip.data()),
+        sizeof(original_strip),D3DFMT_INDEX16,D3DPT_TRIANGLEFAN,
+        -2,6,4,3,w));
+
     // Original indexed VB order (including repeated corners) is preserved
     // before the authenticated CPU projector's exact screen-XY join.
     constexpr auto projected_fvf=D3DFVF_XYZRHW|D3DFVF_TEX1;
