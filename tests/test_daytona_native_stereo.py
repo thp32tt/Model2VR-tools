@@ -192,7 +192,7 @@ class NativeStereoTest(unittest.TestCase):
         # in the adjacent mono fallback must not make this test stale.
         self.assertIn("color_desc.MultiSampleType,color_desc.MultiSampleQuality",gpu)
         self.assertIn("desc.MultiSampleType,",gpu)
-        self.assertIn("CreateRenderTarget(width_,height_,desc.Format",gpu)
+        self.assertIn("width_,height_,desc.Format,desc.MultiSampleType,",gpu)
         self.assertIn("d->StretchRect(eyes_[eye].color,nullptr",gpu)
         self.assertIn("readback_source=eyes_[eye].resolve",gpu)
         self.assertIn("GetRenderTargetData(readback_source",gpu)
