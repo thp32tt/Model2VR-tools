@@ -703,6 +703,10 @@ private:
                 (std::uint64_t{source?source->Width:width_}<<32)|
                     (source?source->Height:height_),
                 source?static_cast<std::uint32_t>(source->Format):0u);
+            // Preserve the first precise bootstrap failure even when the
+            // emulator exits immediately rather than reaching another Present.
+            // This only runs on a new failure code/HRESULT, not every Draw.
+            m2vr::FlushLog();
             last_bootstrap_reason_=code;
             last_bootstrap_hr_=original_hr;
         }
