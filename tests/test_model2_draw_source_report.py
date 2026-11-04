@@ -22,6 +22,43 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_original_com_draw_result_binds_to_exact_source_witness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "results.csv"
+            self.write_log(path, [
+                ("model2_d3d9_vb_present_frame", 201, 7, 1, 0),
+                ("model2_d3d9_vb_source", 201, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_vb_original_result", 201, 0, 0x1234, pack(7, 1)),
+                ("model2_d3d9_vb_present_frame", 202, 8, 1, 0),
+                ("model2_d3d9_vb_source", 202, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_vb_original_result", 202, 0x8876086c,
+                 0x1234, pack(8, 1)),
+                ("model2_d3d9_vb_present_frame", 203, 9, 1, 0),
+                ("model2_d3d9_vb_source", 203, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_vb_original_result", 203, 0, 0x9999, pack(9, 1)),
+                ("model2_d3d9_vb_present_frame", 204, 10, 1, 0),
+                ("model2_d3d9_vb_source", 204, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+            ])
+            src = REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(src["original_draw_success_witnesses"], 1)
+            self.assertEqual(src["original_draw_failure_witnesses"], 1)
+            self.assertEqual(src["original_draw_result_inconsistent_witnesses"], 1)
+            self.assertEqual(src["original_draw_result_missing_witnesses"], 1)
+            self.assertEqual(
+                src["distinct_successful_projected_material_present_frame_count"], 0)
+            self.write_log(path, [
+                ("model2_d3d9_vb_source", 201, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_vb_original_result", 201, 0, 0x1234, pack(7, 1)),
+                ("model2_d3d9_vb_original_result", 201, 0, 0x1234, pack(7, 1)),
+            ])
+            with self.assertRaisesRegex(ValueError, "duplicate original Draw result"):
+                REPORT.audit_csv(path)
+
     def test_join_indexed_stream_camera_and_texture_without_world_proof(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "probe.csv"

@@ -17,6 +17,7 @@ FIELDS = {"seq", "event", "a0", "a1", "a2", "a3"}
 PREFIX = "model2_d3d9_"
 NAMES = {
     "model2_d3d9_vb_source", "model2_d3d9_vb_stream",
+    "model2_d3d9_vb_original_result",
     "model2_d3d9_vb_draw_args", "model2_d3d9_ib_source",
     "model2_d3d9_vb_camera", "model2_d3d9_vb_camera_unknown",
     "model2_d3d9_vb_texture",
@@ -521,6 +522,10 @@ def audit_csv(path):
                 fields["origin"] = values
             elif event == "model2_d3d9_vb_stream":
                 store_original_draw_witness_field(fields, "stream", values, witness)
+            elif event == "model2_d3d9_vb_original_result":
+                if "original_result" in fields:
+                    raise ValueError(f"duplicate original Draw result {witness}")
+                fields["original_result"] = values
             elif event == "model2_d3d9_vb_draw_args":
                 store_original_draw_witness_field(fields, "draw", values, witness)
             elif event == "model2_d3d9_ib_source":
@@ -632,6 +637,11 @@ def audit_csv(path):
         "source_context_frame_mismatches": 0,
         "source_context_unknowns": 0,
         "original_main_full_view_depth_candidates": 0,
+        "original_draw_success_witnesses": 0,
+        "original_draw_failure_witnesses": 0,
+        "original_draw_result_missing_witnesses": 0,
+        "original_draw_result_inconsistent_witnesses": 0,
+        "original_successful_projected_material_present_frames": set(),
         "same_witness_joint_candidates": 0,
         "same_witness_joint_present_frames": set(),
         "same_witness_joint_cpu_matrix_commands": set(),
@@ -679,6 +689,23 @@ def audit_csv(path):
                 raise ValueError("invalid original VB Present frame")
             present_frame = frame
             entry["present_frames"].add(frame)
+        # A pre-Draw CPU projector match is not evidence of a successfully
+        # executed original COM Draw until its post-call HRESULT matches.
+        original_success = False
+        result = data.get("original_result")
+        if result is None:
+            entry["original_draw_result_missing_witnesses"] += 1
+        else:
+            result_bits, result_caller, packed_frame_family = result
+            result_frame, result_family = halves(packed_frame_family)
+            if (result_bits > 0xFFFFFFFF or result_caller != caller or
+                    result_frame != present_frame or result_family != family):
+                entry["original_draw_result_inconsistent_witnesses"] += 1
+            elif result_bits & 0x80000000:
+                entry["original_draw_failure_witnesses"] += 1
+            else:
+                original_success = True
+                entry["original_draw_success_witnesses"] += 1
         if "source_context" in data:
             ctx_frame, ctx_flags, ctx_size = data["source_context"]
             target = ctx_flags & 3
@@ -906,6 +933,9 @@ def audit_csv(path):
             data, present_frame, caller)
         if (joined_source is not None and
                 original_projected_material_candidate(data)):
+            if original_success:
+                entry["original_successful_projected_material_present_frames"].add(
+                    present_frame)
             # This qualifies a SOURCE MATERIAL candidate only. A private
             # authenticated game-world owner, camera axis/units and HMD test
             # are still all required before enabling actual XR replay.
@@ -951,6 +981,8 @@ def audit_csv(path):
             value["original_material_present_frames"])
         record["distinct_projected_material_present_frame_count"] = len(
             value["projected_material_correlated_present_frames"])
+        record["distinct_successful_projected_material_present_frame_count"] = len(
+            value["original_successful_projected_material_present_frames"])
         record["distinct_correlated_present_frame_count"] = len(
             value["correlated_present_frames"])
         for key, item in value.items():
@@ -960,6 +992,7 @@ def audit_csv(path):
                        "context_present_frames",
                         "original_material_present_frames",
                         "projected_material_correlated_present_frames",
+                        "original_successful_projected_material_present_frames",
                        "same_witness_joint_present_frames"):
                 continue
             if isinstance(item, set):

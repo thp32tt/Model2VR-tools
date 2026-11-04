@@ -9,6 +9,11 @@ def witness(cpu="0x004bb400", count=3):
         "caller_rva_hex": "0x004a1234",
         "caller_is_in_executable": True,
         "distinct_projected_material_present_frame_count": count,
+        "distinct_successful_projected_material_present_frame_count": count,
+        "original_draw_success_witnesses": count,
+        "original_draw_failure_witnesses": 0,
+        "original_draw_result_missing_witnesses": 0,
+        "original_draw_result_inconsistent_witnesses": 0,
         "distinct_same_witness_joint_present_frame_count": count,
         "distinct_context_present_frame_count": count,
         "original_source_vertex_pipeline_status": ["supported"],
@@ -73,6 +78,22 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                                        [report()])
                 self.assertEqual(got["candidates"], [])
                 self.assertEqual(len(got["rejected"]), 1)
+
+    def test_original_hresult_failure_missing_or_wrong_frame_blocks_candidates(self):
+        for damaged in (
+            {"distinct_successful_projected_material_present_frame_count": 0},
+            {"original_draw_failure_witnesses": 1},
+            {"original_draw_result_missing_witnesses": 1},
+            {"original_draw_result_inconsistent_witnesses": 1},
+        ):
+            with self.subTest(damaged=damaged):
+                source = witness()
+                source.update(damaged)
+                result = compare_sessions([report(source), report(witness())],
+                                          [report()])
+                self.assertEqual(result["candidates"], [])
+                self.assertEqual(result["rejected"][0]["reason"],
+                                 "missing_same_draw_matrix_material_or_render_evidence")
 
     def test_cpu_caller_drift_and_mixed_projector_fail_closed(self):
         got = compare_sessions(

@@ -39,3 +39,19 @@ Different paths containing identical capture bytes are rejected. The
 original-executable caller ownership flag must match the caller RVA;
 malformed material status lists fail closed. SHA-256 uniqueness is a
 replay safeguard, **not** proof that two gameplay runs were independent.
+
+## Physical original VB/IB HRESULT evidence (2026-11-05)
+
+The sampled primary-device original `DrawPrimitive` and
+`DrawIndexedPrimitive` source records now bind a post-COM-call
+`model2_d3d9_vb_original_result` to the same witness ID. Only an actual
+successful original HRESULT with matching caller RVA, original Present
+frame and Draw family can count toward the new successful projected-material
+Present metric. A failed, missing, mismatched or duplicated outcome never
+qualifies a private race-world candidate. Original game Draw/Present,
+input/FFB and GPU/mono fallback remain unchanged.
+
+Prior reports without this post-call evidence intentionally fail closed.
+Collect authorized *private* real Daytona race and nonrace captures using
+matching Win32 probe and report versions. Successful HRESULT alone is still
+not world-camera, HUD/sky/mirror, game-units or 6DoF proof.

@@ -877,7 +877,7 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
 // No buffer Lock(), texture copy, original draw replay or world-pass flag.
 // The actual real game source ranges and fixed-function camera state are
 // associated by witness ID for offline, authorized render-path analysis.
-void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
+std::uint64_t ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
                          D3DPRIMITIVETYPE type,void* caller,
                          UINT start_vertex,INT base_vertex,
                          UINT min_vertex,UINT num_vertices,
@@ -885,20 +885,20 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
     using namespace m2vr::drawprobe;
     if(!dev || (family!=1u && family!=2u) ||
        !m2vr::drawprobe::PrimitiveSourceElementCount(
-           type,primitive_count))return;
+           type,primitive_count))return 0u;
     DWORD fvf=0;
-    if(FAILED(dev->GetFVF(&fvf)))return;
+    if(FAILED(dev->GetFVF(&fvf)))return 0u;
     IDirect3DVertexBuffer9* vb=nullptr;
     UINT offset=0,stride=0;
     if(FAILED(dev->GetStreamSource(0,&vb,&offset,&stride)) || !vb)
-        return;
+        return 0u;
     D3DVERTEXBUFFER_DESC vdesc{};
     const bool desc_ok=SUCCEEDED(vb->GetDesc(&vdesc));
     vb->Release();
-    if(!desc_ok)return;
+    if(!desc_ok)return 0u;
     const auto layout=DecodeWorldUpFVF(fvf,stride);
     const bool projected=ExactProjectedUPWorldFVF(fvf,stride);
-    if(!layout.eligible && !projected)return; // no guessed declarations
+    if(!layout.eligible && !projected)return 0u; // no guessed declarations
     D3DMATRIX world{},view{};
     const bool transforms_ok=
         SUCCEEDED(dev->GetTransform(D3DTS_WORLD,&world)) &&
@@ -1022,8 +1022,18 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
         }
         base->Release();
     }
+    return id;
 }
 
+void RecordOriginalVBResult(std::uint64_t witness,HRESULT hr,
+                            void* caller,unsigned family) {
+    if(!witness)return;
+    // HRESULT belongs to exactly this original COM Draw, never GPU replay.
+    const std::uint64_t frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    m2vr::LogEvent("model2_d3d9_vb_original_result",witness,
+        static_cast<std::uint32_t>(hr),CallerRva(caller),
+        (frame<<32)|family);
+}
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     // Consume the original CPU projector witnesses once this physical
     // D3D9 Draw completes; no same-Present sample reuse by later Draws.
@@ -1033,9 +1043,10 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         return TrackOriginalD3D9DrawResult(
             g_draw(d,p,start,count),1u,caller);
     g_draws.fetch_add(1,std::memory_order_relaxed);
-    if(Sample(d,1,p,count,caller))
-        ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count);
+    const std::uint64_t witness=Sample(d,1,p,count,caller)?
+        ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
     const HRESULT hr=g_draw(d,p,start,count);
+    RecordOriginalVBResult(witness,hr,caller,1u);
     TrackOriginalD3D9DrawResult(hr,1u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorPrimitive(d,p,start,count,g_draw);
@@ -1051,9 +1062,10 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         return TrackOriginalD3D9DrawResult(
             g_draw_indexed(d,p,base,min,num,start,count),2u,caller);
     g_indexed.fetch_add(1,std::memory_order_relaxed);
-    if(Sample(d,2,p,count,caller))
-        ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count);
+    const std::uint64_t witness=Sample(d,2,p,count,caller)?
+        ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
+    RecordOriginalVBResult(witness,hr,caller,2u);
     TrackOriginalD3D9DrawResult(hr,2u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexed(d,p,base,min,num,start,count,g_draw_indexed);
