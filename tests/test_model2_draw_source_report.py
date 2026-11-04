@@ -53,6 +53,8 @@ class SourceAuditTests(unittest.TestCase):
                  15, pack(0x112, 20), 17),
                 ("model2_d3d9_source_blend", 101,
                  pack(1, 9), pack(1, 1), 0),
+                ("model2_d3d9_source_alpha_compare", 101,
+                 pack(1, 7), 128, pack(0x112, 20)),
                 ("model2_d3d9_source_sampler_mip", 101,
                  0, 1, 17),
                 ("model2_d3d9_source_stage0_color", 101,
@@ -113,6 +115,10 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["original_depth_only_draw_witnesses"], 1)
             self.assertEqual(src["original_source_blend_modes"],
                              ["multiply_color"])
+            self.assertEqual(src["original_source_alpha_compare_modes"],
+                             ["greater_equal"])
+            self.assertEqual(src["original_source_alpha_incompatible_witnesses"],
+                             0)
             self.assertEqual(src["original_source_mip_status"],
                              ["mip_disabled"])
             self.assertEqual(
@@ -150,6 +156,21 @@ class SourceAuditTests(unittest.TestCase):
                 ["0x00004567", "0x00001000", "0xaabbccdd", "0x00000077"]])
             self.assertEqual(src["source_contexts"], [[1, 640, 480, 3837]])
             self.assertFalse(src["world_pass_proven"])
+
+    def test_original_source_alpha_join_rejects_fvf_and_independent_vb(self):
+        alpha=REPORT.original_d3d9_alpha_compare_status
+        expected=(pack(1,6),127,pack(0x144,28))
+        self.assertEqual(alpha(expected,0x144,28),"not_equal")
+        self.assertEqual(alpha(expected,0x144,24),"fvf_stride_mismatch")
+        self.assertEqual(alpha(expected,0x146,28),"fvf_stride_mismatch")
+        self.assertEqual(alpha(expected,0x144,28,
+                               (pack(1,3),127,0)),"vb_alpha_mismatch")
+        self.assertEqual(alpha(expected,0x144,28,
+                               (pack(1,6),127,0)),"not_equal")
+        self.assertEqual(alpha((pack(0,99),127,pack(0x144,28)),
+                               0x144,28),"disabled")
+        self.assertEqual(alpha((pack(1,9),127,pack(0x144,28)),
+                               0x144,28),"unsupported")
 
     def test_in_place_matrix_drift_is_not_authentic_world_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
