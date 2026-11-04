@@ -233,6 +233,49 @@ int main(){
     CHECK(Pixel(raster,0,512,512)==0x00ff00);
     CHECK(Pixel(raster,1,512,512)==0x00ff00);
 
+    // D3D9 non-separate alpha, additive, and premultiplied blending render
+    // into two independent RGBA/Z images; no 2D-mirror-only shortcut.
+    raster.Clear();
+    const std::array<std::uint8_t,4> opaque_blue{{0,0,255,255}};
+    const std::array<std::uint8_t,4> half_red{{255,0,0,128}};
+    StereoWorldRaster::TextureRGBA layer{
+        opaque_blue.data(),1,1,4,0};
+    CHECK(raster.DrawTextured(manual,layer));
+    layer.rgba=half_red.data();
+    layer.raster.depth=DepthCompare::LessEqual;
+    layer.blend=BlendMode::SourceAlphaOver;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0x80007fu);
+    raster.Clear();
+    layer.rgba=opaque_blue.data();layer.blend=BlendMode::Opaque;
+    CHECK(raster.DrawTextured(manual,layer));
+    layer.rgba=half_red.data();layer.blend=BlendMode::SourceAlphaAdd;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0x8000ffu);
+    raster.Clear();
+    layer.rgba=opaque_blue.data();layer.blend=BlendMode::Opaque;
+    CHECK(raster.DrawTextured(manual,layer));
+    layer.rgba=half_red.data();layer.blend=BlendMode::Additive;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0xff00ffu);
+    raster.Clear();
+    const std::array<std::uint8_t,4> premultiplied_red{{64,0,0,128}};
+    layer.rgba=opaque_blue.data();layer.blend=BlendMode::Opaque;
+    CHECK(raster.DrawTextured(manual,layer));
+    layer.rgba=premultiplied_red.data();
+    layer.blend=BlendMode::PremultipliedOver;
+    CHECK(raster.DrawTextured(manual,layer));
+    for(int eye=0;eye<2;++eye)
+        CHECK(Pixel(raster,eye,512,512)==0x40007fu);
+    const auto blended=Pixel(raster,0,512,512);
+    const auto count_before_invalid=raster.DrawnPixels();
+    layer.blend=static_cast<BlendMode>(99u);
+    CHECK(!raster.DrawTextured(manual,layer));
+    CHECK(raster.DrawnPixels()==count_before_invalid);
+    CHECK(Pixel(raster,0,512,512)==blended);
     // Validate the whole batch before either eye can write.
     auto invalid=manual;
     invalid.eyes[1][0].vertices[2].u=

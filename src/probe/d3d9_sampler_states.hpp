@@ -6,6 +6,7 @@
 #include <d3d9.h>
 #include "../vr/model2_texture_sampler.hpp"
 #include "../vr/model2_raster_states.hpp"
+#include "../vr/model2_blend_states.hpp"
 #include <cstdint>
 
 namespace m2vr::drawprobe {
@@ -72,6 +73,28 @@ inline bool FullBackbufferViewport(DWORD scissor_enabled,
            viewport.Width==backbuffer.Width &&
            viewport.Height==backbuffer.Height &&
            viewport.MinZ==0.f && viewport.MaxZ==1.f;
+}
+// Fail closed on unknown RGB/alpha equations: only non-separate ADD is
+// exactly reproducible in the independent binocular CPU render targets.
+inline bool DecodeBlendPolicy(DWORD enable,DWORD src,DWORD dst,
+                              DWORD operation,DWORD separate,
+                              m2vr::vr::BlendMode& out) noexcept {
+    using m2vr::vr::BlendMode;
+    if(enable==0u){out=BlendMode::Opaque;return true;}
+    if(enable!=1u || separate!=0u || operation!=D3DBLENDOP_ADD)
+        return false;
+    if(src==D3DBLEND_ONE && dst==D3DBLEND_ZERO)
+        out=BlendMode::Opaque;
+    else if(src==D3DBLEND_SRCALPHA && dst==D3DBLEND_INVSRCALPHA)
+        out=BlendMode::SourceAlphaOver;
+    else if(src==D3DBLEND_ONE && dst==D3DBLEND_ONE)
+        out=BlendMode::Additive;
+    else if(src==D3DBLEND_SRCALPHA && dst==D3DBLEND_ONE)
+        out=BlendMode::SourceAlphaAdd;
+    else if(src==D3DBLEND_ONE && dst==D3DBLEND_INVSRCALPHA)
+        out=BlendMode::PremultipliedOver;
+    else return false;
+    return true;
 }
 inline bool AlphaCutoffMatches(DWORD alpha_enable,DWORD alpha_func,
                                DWORD alpha_ref,

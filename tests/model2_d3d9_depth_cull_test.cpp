@@ -65,6 +65,30 @@ int main() {
     CHECK(!DecodeRasterPolicy(D3DCULL_NONE,D3DCMP_LESS,1,
                               0,0,0,0,D3DCOLORWRITEENABLE_RED,decoded));
 
+    // Strict original D3D9 BLENDOP_ADD classification; no approximation.
+    using m2vr::drawprobe::DecodeBlendPolicy;
+    BlendMode decoded_blend{};
+    CHECK(DecodeBlendPolicy(0u,99,99,99,99,decoded_blend));
+    CHECK(decoded_blend==BlendMode::Opaque);
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_SRCALPHA,
+        D3DBLEND_INVSRCALPHA,D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::SourceAlphaOver);
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ONE,
+        D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::Additive);
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_SRCALPHA,D3DBLEND_ONE,
+        D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::SourceAlphaAdd);
+    CHECK(DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_INVSRCALPHA,
+        D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(decoded_blend==BlendMode::PremultipliedOver);
+    CHECK(!DecodeBlendPolicy(1,D3DBLEND_DESTCOLOR,D3DBLEND_ZERO,
+        D3DBLENDOP_ADD,0,decoded_blend));
+    CHECK(!DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ONE,
+        D3DBLENDOP_REVSUBTRACT,0,decoded_blend));
+    CHECK(!DecodeBlendPolicy(1,D3DBLEND_ONE,D3DBLEND_ONE,
+        D3DBLENDOP_ADD,1,decoded_blend));
+
     // The independently rendered game-world target cannot honor an
     // original sub-viewport, cropped scissor or depth-range remap.
     D3DVIEWPORT9 viewport{};

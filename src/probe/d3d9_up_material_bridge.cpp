@@ -24,7 +24,8 @@ bool GuardCopy(void* dst,const void* src,std::size_t size) noexcept {
 bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
                            m2vr::vr::SamplerPolicy& sampler,
                            m2vr::vr::RasterPolicy& raster,
-                           bool& modulate_rgb,bool& modulate_alpha) {
+                           bool& modulate_rgb,bool& modulate_alpha,
+                           m2vr::vr::BlendMode& blend_mode) {
     if(!d)return false;
     IDirect3DVertexShader9* vs=nullptr;
     if(FAILED(d->GetVertexShader(&vs)))return false;
@@ -48,12 +49,20 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        !m2vr::drawprobe::DecodeRasterPolicy(cull,zfunc,zwrite,
           stencil,dbias,sbias,srgb_write,color_mask,raster))
         return false;
-    DWORD z=0,blend=1,fog=1,lighting=1;
+    DWORD z=0,blend_enable=1,fog=1,lighting=1;
+    DWORD blend_src=0,blend_dst=0,blend_op=0,separate_alpha=1;
     if(FAILED(d->GetRenderState(D3DRS_ZENABLE,&z)) ||
-       FAILED(d->GetRenderState(D3DRS_ALPHABLENDENABLE,&blend)) ||
+       FAILED(d->GetRenderState(D3DRS_ALPHABLENDENABLE,&blend_enable)) ||
+       FAILED(d->GetRenderState(D3DRS_SRCBLEND,&blend_src)) ||
+       FAILED(d->GetRenderState(D3DRS_DESTBLEND,&blend_dst)) ||
+       FAILED(d->GetRenderState(D3DRS_BLENDOP,&blend_op)) ||
+       FAILED(d->GetRenderState(D3DRS_SEPARATEALPHABLENDENABLE,&separate_alpha)) ||
        FAILED(d->GetRenderState(D3DRS_FOGENABLE,&fog)) ||
        FAILED(d->GetRenderState(D3DRS_LIGHTING,&lighting)) ||
-       z!=D3DZB_TRUE || blend || fog || lighting)return false;
+       z!=D3DZB_TRUE || fog || lighting ||
+       !m2vr::drawprobe::DecodeBlendPolicy(
+            blend_enable,blend_src,blend_dst,blend_op,separate_alpha,
+            blend_mode))return false;
     DWORD colorop=0,arg=0,arg2=0,alphaop=0,alphaarg=0,alphaarg2=0;
     if(FAILED(d->GetTextureStageState(0,D3DTSS_COLOROP,&colorop)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_COLORARG1,&arg)) ||
@@ -119,6 +128,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     m2vr::vr::SamplerPolicy sampler{};
     m2vr::vr::RasterPolicy raster{};
     bool modulate_rgb=false,modulate_alpha=false;
+    m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
     if(!d || !source || !triangle_indices ||
        !count || count>2048 || !index_count ||
        index_count%3 || index_count>6144u || alpha_cutoff>255u)
@@ -128,7 +138,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     const auto layout=m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride);
     if(!layout.eligible ||
        !FixedFunctionMaterial(d,alpha_cutoff,sampler,raster,
-                              modulate_rgb,modulate_alpha) ||
+                              modulate_rgb,modulate_alpha,blend_mode) ||
        ((modulate_rgb || modulate_alpha) && !layout.has_diffuse))
         return FALSE;
     D3DMATRIX world{},view{},projection{};
@@ -169,7 +179,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
             return FALSE;
     }catch(...){return FALSE;}
     // No second haptic owner, no duplicated emulator CPU draw or state.
-    return Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRenderStates(
+    return Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBlendRenderStates(
         positions.data(),uv.data(),count,safe_indices.data(),index_count,
         texture.rgba.data(),texture.width,texture.height,texture.width*4u,
         alpha_cutoff,
@@ -180,7 +190,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
         static_cast<unsigned int>(raster.depth),
         raster.write_depth?1u:0u,
         diffuse.empty()?nullptr:diffuse.data(),
-        modulate_rgb?1u:0u,modulate_alpha?1u:0u);
+        modulate_rgb?1u:0u,modulate_alpha?1u:0u,
+        static_cast<unsigned>(blend_mode));
 }
 
 // Actual original x86 D3D9 DrawPrimitiveUP XYZRHW/TEX1 vertices may already
@@ -200,11 +211,12 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     m2vr::vr::SamplerPolicy sampler{};
     m2vr::vr::RasterPolicy raster{};
     bool modulate_rgb=false,modulate_alpha=false;
+    m2vr::vr::BlendMode blend_mode=m2vr::vr::BlendMode::Opaque;
     // The currently authenticated projected XYZRHW/TEX1 source has no
     // diffuse vertex attribute. Reject material MODULATE until that exact
     // original GPU layout is independently proven.
     if(!FixedFunctionMaterial(d,cutoff,sampler,raster,
-                              modulate_rgb,modulate_alpha) ||
+                              modulate_rgb,modulate_alpha,blend_mode) ||
        modulate_rgb || modulate_alpha)return FALSE;
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)) ||
@@ -246,7 +258,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             return FALSE;
         // Same authenticated owner and exact existing rasterization/pose
         // contract as the other fixed-function original Draw adapters.
-        return Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
+        return Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBlendRenderStates(
             positions.data(),uv.data(),static_cast<unsigned>(count),
             indices.data(),static_cast<unsigned>(count),
             texture.rgba.data(),texture.width,texture.height,
@@ -256,6 +268,7 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             static_cast<unsigned>(sampler.v),
             static_cast<unsigned>(raster.cull),
             static_cast<unsigned>(raster.depth),
-            raster.write_depth?1u:0u);
+            raster.write_depth?1u:0u,nullptr,0u,0u,
+            static_cast<unsigned>(blend_mode));
     }catch(...){return FALSE;}
 }
