@@ -1035,8 +1035,8 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     g_draws.fetch_add(1,std::memory_order_relaxed);
     if(Sample(d,1,p,count,caller))
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count);
-    const HRESULT hr=TrackOriginalD3D9DrawResult(
-        g_draw(d,p,start,count),1u,caller);
+    const HRESULT hr=g_draw(d,p,start,count);
+    TrackOriginalD3D9DrawResult(hr,1u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorPrimitive(d,p,start,count,g_draw);
     return hr;
@@ -1053,8 +1053,8 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     g_indexed.fetch_add(1,std::memory_order_relaxed);
     if(Sample(d,2,p,count,caller))
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count);
-    const HRESULT hr=TrackOriginalD3D9DrawResult(
-        g_draw_indexed(d,p,base,min,num,start,count),2u,caller);
+    const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
+    TrackOriginalD3D9DrawResult(hr,2u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexed(d,p,base,min,num,start,count,g_draw_indexed);
     return hr;
@@ -1071,8 +1071,8 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     g_up.fetch_add(1,std::memory_order_relaxed);
     if(Sample(d,3,p,count,caller))
         ObserveUP(d,3,p,count,caller,verts,stride);
-    const HRESULT hr=TrackOriginalD3D9DrawResult(
-        g_draw_up(d,p,count,verts,stride),3u,caller);
+    const HRESULT hr=g_draw_up(d,p,count,verts,stride);
+    TrackOriginalD3D9DrawResult(hr,3u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorDraw(d,p,count,verts,stride,CallerRva(caller),g_draw_up);
     return hr;
@@ -1089,8 +1089,8 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
     if(Sample(d,4,p,count,caller))
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num);
-    const HRESULT hr=TrackOriginalD3D9DrawResult(
-        g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller);
+    const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
+    TrackOriginalD3D9DrawResult(hr,4u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexedUP(d,p,min,num,count,idx,fmt,verts,stride,g_draw_indexed_up);
     return hr;
