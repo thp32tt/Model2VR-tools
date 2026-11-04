@@ -290,6 +290,11 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
        SUCCEEDED(dev->GetRenderState(D3DRS_COLORVERTEX,&color_vertex)))
         m2vr::LogEvent("model2_d3d9_source_lighting",witness,
             lighting,color_vertex,(std::uint64_t{fvf}<<32)|stride);
+    DWORD color_mask=0;
+    if(SUCCEEDED(dev->GetRenderState(D3DRS_COLORWRITEENABLE,&color_mask)))
+        m2vr::LogEvent("model2_d3d9_source_color_mask",witness,
+            color_mask,(std::uint64_t{fvf}<<32)|stride,
+            g_present_count.load(std::memory_order_relaxed)+1u);
 }
 
 // Read at most 16 guarded bytes at a time from game-owned UP pointers.
