@@ -112,6 +112,13 @@ inline bool OriginalVertexPipelineEquivalent(
            vertex_blend==D3DVBF_DISABLE &&
            indexed_vertex_blend==FALSE;
 }
+// Source D3D9 POINT and WIREFRAME output is NOT equivalent to the
+// filled binocular triangle software raster. Even a proven world caller
+// must not turn a source wireframe into opaque geometry in the HMD.
+inline constexpr bool OriginalFilledTriangleEquivalent(
+    DWORD fill_mode) noexcept {
+    return fill_mode==D3DFILL_SOLID;
+}
 // Original depth must share the physical game color target's dimensions
 // and sample layout. A depth-disabled HUD/auxiliary surface must never be
 // promoted into a calibrated world pass merely by its viewport.
