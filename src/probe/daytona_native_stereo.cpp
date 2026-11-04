@@ -77,7 +77,8 @@ public:
         // Never allocate GPU resources, readback, or re-render when the Quest
         // host is absent, disconnected, stale or returning identical eyes.
         // Latch once per emulator frame, not every game Draw.
-        if(!LivePoseForGameFrame() || !Ensure(d))return;
+        if(!LivePoseForGameFrame() || !Ensure(d) ||
+           !LivePoseForGameFrame())return;
         IDirect3DSurface9* target=nullptr;
         if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
         const bool backbuffer=(target==backbuffer_);

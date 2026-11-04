@@ -69,6 +69,12 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
         self.assertIn("if(!both){Reset();return;}",gpu)
 
+    def test_initial_eye_resource_creation_rechecks_pose_after_reset(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        self.assertEqual(gpu.count("!LivePoseForGameFrame())return;"),2)
+        self.assertIn("Reset();\n        IDirect3DSurface9* back=nullptr;",gpu)
+        self.assertIn("pose_checked_=false;pose_admitted_=false;",gpu)
+
     def test_clear_and_gpu_replay_cannot_recursively_take_eye_mutex(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
@@ -80,6 +86,16 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("FAILED(d->Clear(0,nullptr",gpu)
         self.assertIn("Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear)",hooks)
         self.assertIn("m2vr::daytona::MirrorClear(",hooks)
+
+    def test_direct_launch_reports_intentional_2d_and_dependency_failure(self):
+        script=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
+        self.assertIn("SAFE_MODE_FLAG_PRESENT",script)
+        self.assertIn("MISSING_DEPENDENCY=%%F",script)
+        self.assertIn("CONFIG_COPY_FAILED",script)
+        self.assertIn("set \"STAMP=%STAMP%_%RANDOM%\"",script)
+        self.assertIn('<nul set /p "=%EMULATOR%"',script)
+        self.assertLess(script.index('set "LAUNCHLOG='),
+                        script.index('if exist "%~dp0daytona_vr_safe_mode.flag"'))
 
     def test_compact_native_transport_reason_counters(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")

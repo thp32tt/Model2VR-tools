@@ -174,3 +174,19 @@ nested mirror calls while still allowing the original GPU Clear trampoline
 to execute normally. This prevents an internally cleared eye from being
 misclassified as a new original game Clear, and prevents a silent frozen
 startup. A regression contract covers this exact hook/mutex relationship.
+
+## Launch intent and first-device pose recovery
+
+The direct double-click launcher now creates a distinct log before dependency
+checks (timestamp plus random suffix). If `daytona_vr_safe_mode.flag` exists,
+it explicitly prints **original 2D mode**, writes
+`SAFE_MODE_FLAG_PRESENT`, and does not claim OpenXR startup. Missing
+executables and failed INI copies are also logged before exiting; the path
+cache is written with a quoted batch argument so paths containing shell
+metacharacters do not accidentally invoke another command.
+
+When first creating an eye RT/DS or recovering after D3D9 Reset, the resource
+manager clears its frame latch. The GPU producer now checks a fresh coherent
+OpenXR eye pair again after allocation, rather than losing the first frame's
+pose admission silently. The existing 250ms pose age gate and runtime
+UNTESTED status remain in force.
