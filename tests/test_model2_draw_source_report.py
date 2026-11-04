@@ -27,6 +27,7 @@ class SourceAuditTests(unittest.TestCase):
             p = Path(tmp) / "probe.csv"
             self.write_log(p, [
                 ("model2_d3d9_draw_origin", 3, 2, 0x1234, pack(2, 4)),
+                ("model2_d3d9_vb_present_frame", 101, 17, 2, 0),
                 ("model2_d3d9_vb_source", 101, 0x1234,
                  pack(2, 0x112), pack(65536, 20)),
                 ("model2_d3d9_vb_stream", 101, pack(8, 0), 0, 12),
@@ -45,6 +46,7 @@ class SourceAuditTests(unittest.TestCase):
                  pack(0, 15), 0, 0),
                 ("model2_d3d9_cpu_vb_join_batch", 101,
                  pack(2, 2), pack(0, 0), 0x4567),
+                ("model2_d3d9_vb_present_frame", 102, 17, 2, 0),
                 ("model2_d3d9_vb_source", 102, 0x1234,
                  pack(2, 0x112), pack(65536, 20)),
                 ("model2_d3d9_vb_stream", 102, pack(8, 8), 0, 12),
@@ -74,6 +76,8 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["cpu_projector_correlated_batches"], 1)
             self.assertEqual(src["cpu_projector_source_callers"], ["0x00004567"])
             self.assertEqual(src["cpu_projector_complete_triangles"], 2)
+            self.assertEqual(src["distinct_present_frame_count"], 1)
+            self.assertEqual(src["distinct_correlated_present_frame_count"], 1)
             self.assertFalse(src["world_pass_proven"])
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):
@@ -85,6 +89,7 @@ class SourceAuditTests(unittest.TestCase):
             ])
             item = REPORT.audit_csv(p)["sources"][0]
             self.assertFalse(item["caller_is_in_executable"])
+            self.assertEqual(item["distinct_present_frame_count"], 0)
             self.assertFalse(item["world_pass_proven"])
             self.assertEqual(REPORT.signed32(0xFFFFFFFE), -2)
             self.write_log(p, [

@@ -587,6 +587,12 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
         AffineMatrix(world)&&AffineMatrix(view);
     const auto id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    // Exact upcoming original main-device Present, never simulation tick.
+    // This distinguishes independent scene passes from repeated calls
+    // within one frame when validating original world/HUD ownership.
+    m2vr::LogEvent("model2_d3d9_vb_present_frame",id,
+        g_present_count.load(std::memory_order_relaxed)+1u,
+        family,0u);
     m2vr::LogEvent("model2_d3d9_vb_source",id,CallerRva(caller),
         (std::uint64_t{family}<<32)|fvf,
         (std::uint64_t{vdesc.Size}<<32)|stride);

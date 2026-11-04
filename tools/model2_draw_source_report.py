@@ -23,6 +23,7 @@ NAMES = {
     "model2_d3d9_vb_sampler", "model2_d3d9_vb_alpha",
     "model2_d3d9_vb_raster", "model2_d3d9_vb_write_color",
     "model2_d3d9_cpu_vb_join_batch",
+    "model2_d3d9_vb_present_frame",
 }
 
 def number(raw):
@@ -85,6 +86,8 @@ def audit_csv(path):
                 fields["write_color"] = values
             elif event == "model2_d3d9_cpu_vb_join_batch":
                 fields["cpu_join"] = values
+            elif event == "model2_d3d9_vb_present_frame":
+                fields["present_frame"] = values
             elif event == "model2_d3d9_vb_camera":
                 fields["camera"] = values
             else:
@@ -103,6 +106,8 @@ def audit_csv(path):
         "cpu_projector_partial_triangles": 0,
         "cpu_projector_ambiguous_triangles": 0,
         "cpu_projector_source_callers": set(),
+        "present_frames": set(),
+        "correlated_present_frames": set(),
         "candidate_only": True,
         "world_pass_proven": False
     })
@@ -123,6 +128,13 @@ def audit_csv(path):
         entry["vb_byte_sizes"].add(size)
         entry["strides"].add(stride)
         entry["fvf"].add(fvf)
+        present_frame = None
+        if "present_frame" in data:
+            frame, frame_family, _ = data["present_frame"]
+            if not frame or frame > 0xFFFFFFFF or frame_family != family:
+                raise ValueError("invalid original VB Present frame")
+            present_frame = frame
+            entry["present_frames"].add(frame)
         if "stream" in data:
             offset_usage, _, _ = data["stream"]
             _, usage = halves(offset_usage)
@@ -171,6 +183,8 @@ def audit_csv(path):
             if (inspected >= 2 and complete == inspected and
                     not partial and not ambiguous and cpu_caller):
                 entry["cpu_projector_correlated_batches"] += 1
+                if present_frame is not None:
+                    entry["correlated_present_frames"].add(present_frame)
                 entry["cpu_projector_source_callers"].add(
                     f"0x{cpu_caller:08x}")
         if "texture" in data:
@@ -186,7 +200,12 @@ def audit_csv(path):
             "caller_rva_hex": f"0x{caller:08x}",
             "caller_is_in_executable": caller != 0,
         }
+        record["distinct_present_frame_count"] = len(value["present_frames"])
+        record["distinct_correlated_present_frame_count"] = len(
+            value["correlated_present_frames"])
         for key, item in value.items():
+            if key in ("present_frames", "correlated_present_frames"):
+                continue
             if isinstance(item, set):
                 record[key] = sorted([list(v) if isinstance(v, tuple) else v for v in item])
             else:
