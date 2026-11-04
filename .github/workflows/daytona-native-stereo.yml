@@ -15,6 +15,8 @@ on:
       - 'tests/daytona_triangle_eye_shift_test.cpp'
       - 'tests/daytona_surface_transfer_gate_test.cpp'
       - 'src/probe/daytona_eye_pose_gate.hpp'
+      - 'src/probe/daytona_source_pose_commit_gate.hpp'
+      - 'tests/daytona_source_pose_commit_gate_test.cpp'
       - 'tests/daytona_eye_pose_gate_test.cpp'
       - 'tests/d3d11_openxr_typeless_upload_test.cpp'
       - 'src/probe/d3d9_probe.cpp'
