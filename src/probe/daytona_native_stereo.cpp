@@ -12,6 +12,7 @@
 #include "daytona_readback_scale.hpp"
 #include "daytona_original_mono_fallback.hpp"
 #include "daytona_mono_content_evidence.hpp"
+#include "daytona_stereo_color_evidence.hpp"
 #include "daytona_surface_transfer_gate.hpp"
 #include "daytona_auxiliary_surface_gate.hpp"
 #include "logger.h"
@@ -530,9 +531,13 @@ public:
             if(!converted){ready=false;break;}
         }
         std::uint32_t reason=ready?0u:32u;
-        if(ready && rgba_[0]==rgba_[1]){
+        // Alpha-only differences can come from different D3D9 render
+        // target write masks or clears. They are NOT visible binocular
+        // parallax and cannot establish a valid game-stereo x86 packet.
+        if(ready && !m2vr::daytona::OriginalEyesHaveVisibleRgbDifference(
+                rgba_[0],rgba_[1],m2vr::transport::kBytesPerEye)){
             ready=false;
-            reason=64u;
+            reason=64u; // preserve original backbuffer MONO fallback
         }
         pending_present_reason_=reason;
         if(reason)PrepareOriginalMono(d,frame,reason);
