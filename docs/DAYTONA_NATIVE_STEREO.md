@@ -250,3 +250,20 @@ It prevents a frozen older two-eye image from being misrepresented
 as the current game when the producer has already reported loss of
 scene, pose or GPU source. It is **not** a correction to in-game
 6DoF, optics or original camera matrix calibration.
+
+## Source-family coverage on a single real launch (2026-11-04)
+
+The 64-byte, pointer-free producer-health mapping now uses **version 2**:
+`Local\\Model2VR_ProducerHealth_v2_<pid>`. Its payload records
+four source-specific successfully mirrored Draw counts (DP, DIP, DPUP,
+DIPUP) in the four formerly unused header words. The ABI stays
+64 bytes and is tested on both Win32 and Win64. A host must never
+interpret version-1 status as version-2 content. The producer and
+reader both require the four family counts to sum exactly to the
+mirrored draw total, rejecting torn or malformed data.
+
+The x64 host emits family counts only on health state changes, and
+F9 local captures include the counts. This distinguishes supported
+original game D3D9 source families without writing per-draw logs or
+requesting another gameplay CSV capture. The counts alone are not
+proof of world/HUD camera provenance or calibrated native 6DoF.

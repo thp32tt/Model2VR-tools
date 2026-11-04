@@ -67,7 +67,7 @@ public:
     template<class Replay>
     void DrawAny(IDirect3DDevice9* d,D3DPRIMITIVETYPE primitive,UINT count,
                  const void* source,UINT stride,std::uint32_t caller,
-                 Replay&& replay) {
+                 unsigned family,Replay&& replay) {
         // An ordinary source-backed VB/IB Draw is replayed without modifying
         // game-managed VB/IB data. Only the separately proven Daytona UP
         // shader scene may receive the experimental two-eye X adjustment.
@@ -200,20 +200,21 @@ public:
         if(!both || !restored){Reset();return;}
         frame_started_=true;
         ++mirrored_draws_;
+        if(family>=1u && family<=4u)++mirrored_family_[family-1u];
         if(scene)++scene_draws_;
     }
     void Draw(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT n,
               const void* v,UINT stride,std::uint32_t caller,
               m2vr::daytona::OriginalDrawUP original){
         if(!v||!original||!stride)return;
-        DrawAny(d,p,n,v,stride,caller,[=](unsigned,const void* source){
+        DrawAny(d,p,n,v,stride,caller,3u,[=](unsigned,const void* source){
             return original(d,p,n,source,stride);
         });
     }
     void Primitive(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,
                    UINT n,m2vr::daytona::OriginalDrawPrimitive original){
         if(!original)return;
-        DrawAny(d,p,n,nullptr,0u,0u,[=](unsigned,const void*){
+        DrawAny(d,p,n,nullptr,0u,0u,1u,[=](unsigned,const void*){
             return original(d,p,start,n);
         });
     }
@@ -221,7 +222,7 @@ public:
                  UINT min,UINT num,UINT start,UINT n,
                  m2vr::daytona::OriginalDrawIndexed original){
         if(!original)return;
-        DrawAny(d,p,n,nullptr,0u,0u,[=](unsigned,const void*){
+        DrawAny(d,p,n,nullptr,0u,0u,2u,[=](unsigned,const void*){
             return original(d,p,base,min,num,start,n);
         });
     }
@@ -232,7 +233,7 @@ public:
         if(!original||!indices||!vertices||!stride)return;
         // IndexedUP stream-relative source indexing is preserved verbatim;
         // no false per-vertex scene shift or unproven index remapping.
-        DrawAny(d,p,n,nullptr,0u,0u,[=](unsigned,const void*){
+        DrawAny(d,p,n,nullptr,0u,0u,4u,[=](unsigned,const void*){
             return original(d,p,min,num,n,indices,format,vertices,stride);
         });
     }
@@ -355,7 +356,8 @@ private:
         if(!frame)return;
         if(!health_.Valid())health_.Create(GetCurrentProcessId());
         if(health_.Valid())health_.Publish(frame,reason,scene_draws_,
-                                          mirrored_draws_,mirrored_clears_);
+                                          mirrored_draws_,mirrored_clears_,
+                                          mirrored_family_);
         const bool first=reason==0u && !first_stereo_published_;
         // Every 120 original Presents (roughly 2s at 60 Hz), plus the
         // first successful game source. The launcher keeps the CSV locally.
@@ -399,6 +401,7 @@ private:
     void FinishFrame()noexcept{
         frame_started_=false;scene_draws_=0;
         mirrored_draws_=0;mirrored_clears_=0;
+        mirrored_family_.fill(0u);
         pose_checked_=false;pose_admitted_=false;
     }
     static D3DVIEWPORT9 Clip(D3DVIEWPORT9 vp,UINT w,UINT h)noexcept {
@@ -512,6 +515,7 @@ private:
     UINT width_=0,height_=0;
     DWORD mrt_slots_=0u;
     std::uint32_t mirrored_draws_=0u,mirrored_clears_=0u;
+    std::array<std::uint32_t,4> mirrored_family_{};
     float shift_=0.10f;
     unsigned scene_draws_=0;
     IDirect3DDevice9* device_=nullptr; // non-owning, Reset hook releases

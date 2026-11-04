@@ -2,13 +2,14 @@
 // Model2VR native producer health: 64-byte, pointer-free, x86/x64 ABI.
 // No original game assets, addresses, textures, geometry or shader bytes.
 #include <Windows.h>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
 namespace m2vr::producerhealth {
 constexpr std::uint32_t kMagic=0x3248504Du; // MPH2
-constexpr std::uint32_t kVersion=1u;
+constexpr std::uint32_t kVersion=2u;
 enum Reason : std::uint32_t {
     NoMirroredPass=1u, NoVerifiedScene=2u, WrongDevice=4u,
     PoseUnavailable=8u, PoseExpired=16u, ReadbackFailed=32u,
@@ -19,19 +20,22 @@ struct Snapshot {
     std::uint64_t frame_id=0, timestamp_qpc=0;
     std::uint32_t reason_mask=0, verified_scene_draws=0;
     std::uint32_t mirrored_draws=0, mirrored_clears=0;
+    std::array<std::uint32_t,4> family_draws{}; // DP, DIP, DPUP, DIPUP
 };
-static_assert(sizeof(Snapshot)==32);
+static_assert(sizeof(Snapshot)==48);
 struct alignas(64) Wire {
     std::uint32_t magic=0, version=0;
     volatile LONG generation=0;
     std::uint32_t writer_pid=0;
     Snapshot status{};
-    std::uint32_t reserved[4]{};
 };
 static_assert(sizeof(Wire)==64);
 static_assert(offsetof(Wire,status)==16);
 inline std::wstring NameForPid(std::uint32_t pid){
-    return L"Local\\Model2VR_ProducerHealth_v1_"+std::to_wstring(pid);
+    return L"Local\\Model2VR_ProducerHealth_v2_"+std::to_wstring(pid);
+}
+constexpr std::uint64_t SumFamilies(const std::array<std::uint32_t,4>& c)noexcept {
+    return std::uint64_t{c[0]}+c[1]+c[2]+c[3];
 }
 constexpr bool Fresh(const Snapshot& s,std::uint64_t now,
                      std::uint64_t hz) noexcept {
@@ -95,16 +99,17 @@ public:
     }
     bool Publish(std::uint64_t frame,std::uint32_t mask,
                  std::uint32_t scene,std::uint32_t draws,
-                 std::uint32_t clears)noexcept {
+                 std::uint32_t clears,
+                 const std::array<std::uint32_t,4>& family)noexcept {
         if(!writer_||!Valid()||!frame||frame<=last_frame_||
-           (mask&~kKnownReasons))return false;
+           (mask&~kKnownReasons)||SumFamilies(family)!=draws)return false;
         LARGE_INTEGER now{};
         if(!QueryPerformanceCounter(&now)||now.QuadPart<=0)return false;
         const LONG old=InterlockedCompareExchange(&wire_->generation,0,0);
         if(old&1)return false;
         InterlockedExchange(&wire_->generation,old+1);
         wire_->status={frame,static_cast<std::uint64_t>(now.QuadPart),
-                       mask,scene,draws,clears};
+                       mask,scene,draws,clears,family};
         InterlockedExchange(&wire_->generation,old+2);
         last_frame_=frame;
         return true;
@@ -119,7 +124,8 @@ public:
         MemoryBarrier();
         const LONG end=wire_->generation;
         if(start!=end||(end&1)||!copy.frame_id||
-           (copy.reason_mask&~kKnownReasons))return false;
+           (copy.reason_mask&~kKnownReasons)||
+           SumFamilies(copy.family_draws)!=copy.mirrored_draws)return false;
         out=copy;
         return true;
     }

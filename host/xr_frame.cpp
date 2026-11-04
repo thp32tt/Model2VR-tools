@@ -115,6 +115,10 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"producer_verified_scene_draws="<<producer_health_status_.verified_scene_draws<<"\n"
           <<"producer_mirrored_draws="<<producer_health_status_.mirrored_draws<<"\n"
           <<"producer_mirrored_clears="<<producer_health_status_.mirrored_clears<<"\n"
+          <<"producer_draw_primitive="<<producer_health_status_.family_draws[0]<<"\n"
+          <<"producer_draw_indexed="<<producer_health_status_.family_draws[1]<<"\n"
+          <<"producer_draw_up="<<producer_health_status_.family_draws[2]<<"\n"
+          <<"producer_draw_indexed_up="<<producer_health_status_.family_draws[3]<<"\n"
           <<"daytona_head_camera_6dof=UNVERIFIED\n"
           <<"note=GameStereo transport does not prove calibrated in-game HMD camera\n---\n";
     std::cout<<"Daytona VR Wizard: captured daytona_vr_bug_capture.txt\n";
@@ -198,6 +202,10 @@ void XrApp::draw_frame(XrTime display_time){
                          <<" frame="<<latest.frame_id
                          <<" verified_scene="<<latest.verified_scene_draws
                          <<" mirror_draws="<<latest.mirrored_draws
+                         <<" family_DP="<<latest.family_draws[0]
+                         <<" family_DIP="<<latest.family_draws[1]
+                         <<" family_DPUP="<<latest.family_draws[2]
+                         <<" family_DIPUP="<<latest.family_draws[3]
                          <<" mirror_clears="<<latest.mirrored_clears
                          <<std::endl;
                 producer_health_last_reason_=latest.reason_mask;
