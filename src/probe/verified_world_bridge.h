@@ -103,6 +103,24 @@ Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBlendRenderStates(
     const std::uint32_t* diffuse_argb,unsigned int modulate_rgb,
     unsigned int modulate_alpha,unsigned int blend_mode);
 
+// Extended independent D3D9 stage-zero RGB/ALPHA channel selectors:
+// 0=TEXTURE, 1=DIFFUSE, 2=MODULATE(TEXTURE,DIFFUSE).
+// A SELECTARG(DIFFUSE) channel requires exact source vertex D3DCOLOR
+// (not an inferred color); both eyes use identical source operations.
+// This does not grant gameplay-world ownership. Existing exports retain
+// their ABI; unknown selectors reject and abort the in-flight world frame.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedTexturedTrianglesWithMaterialSourceRenderStates(
+    const float* view_space_xyz,const float* interleaved_uv,
+    unsigned int vertex_count,const std::uint32_t* triangle_indices,
+    unsigned int index_count,const unsigned char* texture_rgba,
+    unsigned int texture_width,unsigned int texture_height,
+    unsigned int texture_pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
+    const std::uint32_t* diffuse_argb,unsigned int rgb_source,
+    unsigned int alpha_source,unsigned int blend_mode);
+
 // Return TRUE only during an independently authorized current-thread world
 // transaction. Adapters must fail before reading original D3D9 draw memory.
 __declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread();

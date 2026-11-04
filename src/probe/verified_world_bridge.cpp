@@ -178,15 +178,15 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
 }
 // Optional texture source path for a trusted Model2 CPU-world integration.
 // This does not query game textures, rerun any D3D9 draw, or alter FFB.
-extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBlendRenderStates(
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithMaterialSourceRenderStates(
     const float* xyz,const float* uv,unsigned int vertex_count,
     const std::uint32_t* indices,unsigned int index_count,
     const unsigned char* texture_rgba,unsigned int width,
     unsigned int height,unsigned int pitch,unsigned int alpha_cutoff,
     unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
     unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
-    const std::uint32_t* diffuse_argb,unsigned int modulate_rgb,
-    unsigned int modulate_alpha,unsigned int blend_mode) {
+    const std::uint32_t* diffuse_argb,unsigned int rgb_source,
+    unsigned int alpha_source,unsigned int blend_mode) {
     std::scoped_lock lock(g.mutex);
     if(!Owner() || !xyz || !uv || !indices || !texture_rgba ||
        !vertex_count || vertex_count>4096u ||
@@ -198,8 +198,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBle
        pitch!=width*4u || alpha_cutoff>255u ||
        filter_mode>1u || address_u>3u || address_v>3u ||
        cull_mode>2u || depth_mode>1u || depth_write>1u ||
-       modulate_rgb>1u || modulate_alpha>1u || blend_mode>5u ||
-       ((modulate_rgb || modulate_alpha) && !diffuse_argb)) {
+       rgb_source>2u || alpha_source>2u || blend_mode>5u ||
+       ((rgb_source!=0u || alpha_source!=0u) && !diffuse_argb)) {
         if(Owner())g.Abort();
         return FALSE;
     }
@@ -243,8 +243,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBle
                 static_cast<m2vr::vr::DepthCompare>(depth_mode),
                 depth_write!=0u
             },
-            modulate_rgb!=0u,modulate_alpha!=0u,
-            static_cast<m2vr::vr::BlendMode>(blend_mode)
+            rgb_source==2u,alpha_source==2u,
+            static_cast<m2vr::vr::BlendMode>(blend_mode),
+            rgb_source==1u,alpha_source==1u
         };
         if(!g.raster->DrawTextured(clipped,texture)) {
             g.Abort();return FALSE;
@@ -255,6 +256,25 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBle
     }catch(...){
         g.Abort();return FALSE;
     }
+}
+// Preserve the established public ABI exactly: 0 selected texel and
+// 1 texel*diffuse. Invalid old boolean arguments are still rejected
+// by the same guarded owner/abort transaction, never coerced.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseBlendRenderStates(
+    const float* xyz,const float* uv,unsigned int vertex_count,
+    const std::uint32_t* indices,unsigned int index_count,
+    const unsigned char* texture_rgba,unsigned int width,
+    unsigned int height,unsigned int pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
+    const std::uint32_t* diffuse_argb,unsigned int modulate_rgb,
+    unsigned int modulate_alpha,unsigned int blend_mode) {
+    return Model2VR_AppendVerifiedTexturedTrianglesWithMaterialSourceRenderStates(
+        xyz,uv,vertex_count,indices,index_count,texture_rgba,width,height,
+        pitch,alpha_cutoff,filter_mode,address_u,address_v,cull_mode,
+        depth_mode,depth_write,diffuse_argb,
+        modulate_rgb>1u?3u:(modulate_rgb?2u:0u),
+        modulate_alpha>1u?3u:(modulate_alpha?2u:0u),blend_mode);
 }
 // Do not change existing clients: the original diffuse export remains opaque.
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRenderStates(
