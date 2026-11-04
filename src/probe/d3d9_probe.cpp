@@ -255,6 +255,7 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
     if(!dev || !witness)return;
     DWORD co=0,c1=0,c2=0,ao=0,a1=0,a2=0;
     DWORD next_color=0,next_alpha=0,specular=0,fog=0;
+    DWORD current_result=0,next_result=0;
     if(FAILED(dev->GetTextureStageState(0,D3DTSS_COLOROP,&co)) ||
        FAILED(dev->GetTextureStageState(0,D3DTSS_COLORARG1,&c1)) ||
        FAILED(dev->GetTextureStageState(0,D3DTSS_COLORARG2,&c2)) ||
@@ -263,6 +264,8 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
        FAILED(dev->GetTextureStageState(0,D3DTSS_ALPHAARG2,&a2)) ||
        FAILED(dev->GetTextureStageState(1,D3DTSS_COLOROP,&next_color)) ||
        FAILED(dev->GetTextureStageState(1,D3DTSS_ALPHAOP,&next_alpha)) ||
+       FAILED(dev->GetTextureStageState(0,D3DTSS_RESULTARG,&current_result)) ||
+       FAILED(dev->GetTextureStageState(1,D3DTSS_RESULTARG,&next_result)) ||
        FAILED(dev->GetRenderState(D3DRS_SPECULARENABLE,&specular)) ||
        FAILED(dev->GetRenderState(D3DRS_FOGENABLE,&fog)))
         return; // Unavailable states are unknown, never guessed.
@@ -274,6 +277,11 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
         (std::uint64_t{fvf}<<32)|stride);
     m2vr::LogEvent("model2_d3d9_source_stage1_specular",witness,
         next_color,next_alpha,(std::uint64_t{specular}<<32)|fog);
+    // D3D9 stage0 RESULTARG=TEMP can make plausible diffuse/texel
+    // operations non-equivalent to the final pixel. Preserve actual
+    // source output register and declaration without enabling world proof.
+    m2vr::LogEvent("model2_d3d9_source_stage_result",witness,
+        current_result,next_result,(std::uint64_t{fvf}<<32)|stride);
 }
 
 // Read at most 16 guarded bytes at a time from game-owned UP pointers.
