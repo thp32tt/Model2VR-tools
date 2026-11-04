@@ -45,6 +45,29 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("d->SetRenderTarget(0,target)",gpu)
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
 
+    def test_all_four_original_draw_families_feed_eye_surfaces_and_clear(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        api=(ROOT/"src/probe/daytona_native_stereo.hpp").read_text("utf-8")
+        self.assertIn("const HRESULT hr=g_draw(d,p,start,count);",hooks)
+        self.assertIn("const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);",hooks)
+        self.assertIn("const HRESULT hr=g_draw_up(d,p,count,verts,stride);",hooks)
+        self.assertIn("const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);",hooks)
+        for call in ("MirrorPrimitive(", "MirrorIndexed(", "MirrorDraw(",
+                     "MirrorIndexedUP(", "MirrorClear("):
+            self.assertIn("m2vr::daytona::"+call,hooks)
+            self.assertIn("void "+call,api)
+        self.assertIn("Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear)",hooks)
+        self.assertIn("const HRESULT hr=g_clear(d,count,rects,flags,color,z,stencil);",hooks)
+        self.assertIn("const bool bounded_up=source &&",gpu)
+        self.assertIn("const void* vertices=scene?scratch_[eye].data():source;",gpu)
+        self.assertIn("original(d,p,start,n)",gpu)
+        self.assertIn("original(d,p,base,min,num,start,n)",gpu)
+        self.assertIn("original(d,p,min,num,n,indices,format,vertices,stride)",gpu)
+        self.assertIn("frame_started_=true;",gpu)
+        self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
+        self.assertIn("if(!both){Reset();return;}",gpu)
+
     def test_one_click_original_game_and_openxr_host_single_sim_owner(self):
         launcher=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
         legacy=(ROOT/"scripts/Run-Daytona-NativeStereo.cmd").read_text("utf-8")

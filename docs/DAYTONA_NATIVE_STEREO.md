@@ -1,8 +1,9 @@
 # Daytona USA — experimental native two-eye GPU rendering for Quest 3
 
 **This is NOT the old screen-capture theater.** The 32-bit Model 2 emulator
-executes its original D3D9 DrawPrimitiveUP exactly once. An opt-in module
-mirrors selected *original game GPU draw calls* onto two independent D3D9
+executes each original D3D9 DrawPrimitive, DrawIndexedPrimitive,
+DrawPrimitiveUP and DrawIndexedPrimitiveUP exactly once. An opt-in module
+mirrors those *original game GPU draw calls* onto two independent D3D9
 color+depth targets, changes only the per-eye source POSITION0.X for the
 observed Daytona scene submission caller, reads out two separate RGBA
 images, and publishes them to the existing x86/x64 shared-memory
@@ -56,8 +57,15 @@ DirectInput devices and wheel plugin remain separate and unchanged.
 - Per-eye source shift = +/- `daytona_eye_shift_milliunits / 1000`
   (default 0.100) along original clip-like X. No original source vertex
   or GPU draw state is permanently changed.
-- Other original game DrawUP calls, including screen-space 2D compositor
-  and unverified HUD calls, are drawn unchanged into each eye.
+- Original DrawPrimitive/DrawIndexedPrimitive, IndexedUP and other DrawUP
+  calls are replayed with their original VB/IB, topology, shader and
+  material state unchanged onto each eye's independent RT/DS. This restores
+  source-family background/UI coverage; it does not create parallax for
+  unverified world geometry or claim the entire race is calibrated 3D.
+- Successful original backbuffer Clear operations (colour, Z and stencil,
+  including bounded subrect clears) are forwarded to both eyes, preserving
+  draw ordering rather than unconditionally black-clearing the first draw.
+  Offscreen and MRT clears are never treated as fullscreen game clears.
 - Full original render-target, depth-stencil and viewport states are
   restored before returning from the intercepted game Draw.
 - GPU frames are sent only if at least one gated scene draw succeeded
@@ -124,3 +132,17 @@ honestly be marked verified by GitHub CI alone.
 the actual stereo executable and the headset image. The short startup
 CSV created by the existing loader can be ignored; the game renderer
 does not write per-Draw logs in this mode.
+
+## Connected source-family replay (2026-11-04)
+
+The opt-in native stereo hooks now mirror all four D3D9 primitive families,
+plus original backbuffer Clear, into separate GPU eye targets. Each real
+original call executes first and exactly once; the mirror uses the original
+MinHook trampoline, never the intercepted entrypoint. On D3D9 state/RT/DS
+failures the mirror resets its own resources without changing the original
+call result. Only the exact proven Daytona shader-UP site is currently
+shifted between eyes. All other draw families are **flat but source-faithful**
+until their real camera evidence and vertex/shader transforms are established.
+The host still requires at least one shifted shader-UP draw and different eye
+pixels before marking a transport frame GameStereo. This is a source-path
+integration advance, not Quest 3 visual validation (UNTESTED).

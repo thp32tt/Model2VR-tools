@@ -51,11 +51,14 @@ public:
         std::lock_guard lock(mu_);
         Reset();
     }
-    void Draw(IDirect3DDevice9* d,D3DPRIMITIVETYPE primitive,UINT count,
-              const void* source,UINT stride,std::uint32_t caller,
-              m2vr::daytona::OriginalDrawUP original) {
-        if(!enabled_||!d||!source||!original||count==0||count>512||
-           stride<16u||stride>256u)return;
+    template<class Replay>
+    void DrawAny(IDirect3DDevice9* d,D3DPRIMITIVETYPE primitive,UINT count,
+                 const void* source,UINT stride,std::uint32_t caller,
+                 Replay&& replay) {
+        // An ordinary source-backed VB/IB Draw is replayed without modifying
+        // game-managed VB/IB data. Only the separately proven Daytona UP
+        // shader scene may receive the experimental two-eye X adjustment.
+        if(!enabled_||!d||count==0||count>8192u)return;
         std::lock_guard lock(mu_);
         // The OpenXR host supplies a coherent, fresh two-eye tracking pair.
         // Never allocate GPU resources, readback, or re-render when the Quest
@@ -93,8 +96,9 @@ public:
         // A camera candidate requires an exact independently observed
         // source callsite and complete original shader-up declaration.
         bool scene=false;
-        const std::size_t bytes=std::size_t{count}*3u*stride;
-        if(caller==0x000BABADu && primitive==D3DPT_TRIANGLELIST &&
+        const bool bounded_up=source && stride>=16u && stride<=256u && count<=512u;
+        const std::size_t bytes=bounded_up?std::size_t{count}*3u*stride:0u;
+        if(bounded_up && caller==0x000BABADu && primitive==D3DPT_TRIANGLELIST &&
            stride==32u && bytes<=49152u) {
             DWORD fvf=1,z=0,alpha=1;
             IDirect3DVertexShader9* vs=nullptr;
@@ -159,7 +163,7 @@ public:
                 }
             }
             const void* vertices=scene?scratch_[eye].data():source;
-            if(FAILED(original(d,primitive,count,vertices,stride)))
+            if(FAILED(replay(eye,vertices)))
                 both=false;
         }
         // Restore original game's RT, DS and exact viewport even if one
@@ -172,6 +176,89 @@ public:
         if(!both){Reset();return;}
         frame_started_=true;
         if(scene)++scene_draws_;
+    }
+    void Draw(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT n,
+              const void* v,UINT stride,std::uint32_t caller,
+              m2vr::daytona::OriginalDrawUP original){
+        if(!v||!original||!stride)return;
+        DrawAny(d,p,n,v,stride,caller,[=](unsigned,const void* source){
+            return original(d,p,n,source,stride);
+        });
+    }
+    void Primitive(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,
+                   UINT n,m2vr::daytona::OriginalDrawPrimitive original){
+        if(!original)return;
+        DrawAny(d,p,n,nullptr,0u,0u,[=](unsigned,const void*){
+            return original(d,p,start,n);
+        });
+    }
+    void Indexed(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT base,
+                 UINT min,UINT num,UINT start,UINT n,
+                 m2vr::daytona::OriginalDrawIndexed original){
+        if(!original)return;
+        DrawAny(d,p,n,nullptr,0u,0u,[=](unsigned,const void*){
+            return original(d,p,base,min,num,start,n);
+        });
+    }
+    void IndexedUP(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
+                   UINT num,UINT n,const void* indices,D3DFORMAT format,
+                   const void* vertices,UINT stride,
+                   m2vr::daytona::OriginalDrawIndexedUP original){
+        if(!original||!indices||!vertices||!stride)return;
+        // IndexedUP stream-relative source indexing is preserved verbatim;
+        // no false per-vertex scene shift or unproven index remapping.
+        DrawAny(d,p,n,nullptr,0u,0u,[=](unsigned,const void*){
+            return original(d,p,min,num,n,indices,format,vertices,stride);
+        });
+    }
+    void Clear(IDirect3DDevice9* d,DWORD count,const D3DRECT* rects,
+               DWORD flags,D3DCOLOR color,float z,DWORD stencil,
+               m2vr::daytona::OriginalClear original){
+        if(!enabled_||!d||!original||!flags ||
+           (flags&~(D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL)))return;
+        std::lock_guard lock(mu_);
+        if(!LivePoseForGameFrame() || !Ensure(d))return;
+        IDirect3DSurface9* target=nullptr;
+        if(FAILED(d->GetRenderTarget(0,&target))||!target)return;
+        if(target!=backbuffer_){Drop(target);return;}
+        // Never reflect a multi-target clear into an unrelated stereo eye.
+        D3DCAPS9 caps{};
+        if(FAILED(d->GetDeviceCaps(&caps)) || caps.NumSimultaneousRTs<1u ||
+           caps.NumSimultaneousRTs>4u){Drop(target);return;}
+        for(DWORD slot=1;slot<caps.NumSimultaneousRTs;++slot){
+            IDirect3DSurface9* other=nullptr;
+            const HRESULT hr=d->GetRenderTarget(slot,&other);
+            const bool attached=SUCCEEDED(hr)&&other;
+            Drop(other);
+            if(attached || (FAILED(hr)&&hr!=D3DERR_NOTFOUND)){
+                Drop(target);return;
+            }
+        }
+        IDirect3DSurface9* original_depth=nullptr;
+        D3DVIEWPORT9 viewport{};
+        if(FAILED(d->GetDepthStencilSurface(&original_depth)) || !original_depth ||
+           FAILED(d->GetViewport(&viewport))){
+            Drop(original_depth);Drop(target);return;
+        }
+        bool both=true;
+        for(unsigned eye=0;eye<2;++eye){
+            if(FAILED(d->SetDepthStencilSurface(nullptr)) ||
+               FAILED(d->SetRenderTarget(0,eyes_[eye].color)) ||
+               FAILED(d->SetDepthStencilSurface(eyes_[eye].depth)) ||
+               FAILED(d->SetViewport(&viewport)) ||
+               FAILED(original(d,count,rects,flags,color,z,stencil))){
+                both=false;break;
+            }
+        }
+        d->SetDepthStencilSurface(nullptr);
+        d->SetRenderTarget(0,target);
+        d->SetDepthStencilSurface(original_depth);
+        d->SetViewport(&viewport);
+        Drop(original_depth);Drop(target);
+        if(!both){Reset();return;}
+        // A real original Clear can occur before any Draw; preserve the
+        // source clear on both eyes instead of replacing it with black.
+        frame_started_=true;
     }
     void Present(IDirect3DDevice9* d,std::uint64_t frame){
         if(!enabled_||!d)return;
@@ -372,6 +459,30 @@ void MirrorDraw(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT n,
                 const void* v,UINT stride,std::uint32_t caller,
                 OriginalDrawUP original)noexcept{
     try {g_eye.Draw(d,p,n,v,stride,caller,original);}
+    catch(...){g_eye.ResetExternal();}
+}
+void MirrorPrimitive(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,
+                     UINT count,OriginalDrawPrimitive original)noexcept{
+    try{g_eye.Primitive(d,p,start,count,original);}
+    catch(...){g_eye.ResetExternal();}
+}
+void MirrorIndexed(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT base,
+                   UINT min,UINT num,UINT start,UINT count,
+                   OriginalDrawIndexed original)noexcept{
+    try{g_eye.Indexed(d,p,base,min,num,start,count,original);}
+    catch(...){g_eye.ResetExternal();}
+}
+void MirrorIndexedUP(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
+                     UINT num,UINT count,const void* indices,D3DFORMAT format,
+                     const void* vertices,UINT stride,
+                     OriginalDrawIndexedUP original)noexcept{
+    try{g_eye.IndexedUP(d,p,min,num,count,indices,format,vertices,stride,original);}
+    catch(...){g_eye.ResetExternal();}
+}
+void MirrorClear(IDirect3DDevice9* d,DWORD count,const D3DRECT* rects,
+                 DWORD flags,D3DCOLOR color,float z,DWORD stencil,
+                 OriginalClear original)noexcept{
+    try{g_eye.Clear(d,count,rects,flags,color,z,stencil,original);}
     catch(...){g_eye.ResetExternal();}
 }
 void PublishFrame(IDirect3DDevice9* d,std::uint64_t frame)noexcept{
