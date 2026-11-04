@@ -26,6 +26,25 @@ not a direction to restart the same 2D capture loop.
   optional F9 capture. Existing 2D safe mode and separate wheel/FFB
   owner remain intact.
 
+**Original D3D9 alpha-test fidelity (2026-11-04):** The verified-world
+source path now reads actual `ALPHATESTENABLE`, `ALPHAFUNC` and
+`ALPHAREF` from the original x86 D3D9 Draw. A caller that independently
+authenticated the game world may pass the new opt-in `alpha_cutoff=256`
+to original UP, indexed UP, VB/IB and list/strip/fan adapters; their
+same-source material gate maps all eight D3D9 byte-alpha comparisons into
+both independently clipped eye-color/depth rasters *before* blending or Z
+writes. Legacy `alpha_cutoff=0..255` uses the old >= comparison only and
+is not reinterpreted. The existing material/color-mask export signature
+remains unchanged; a separate explicit alpha-compare export validates
+comparison mode/reference. The original D3D9 probe logs alpha state
+together with the real Draw witness and FVF/stride, while offline UP/VB
+reports reject conflicting/foreign-source evidence. Neither these
+source material checks nor the new telemetry authenticate Daytona's
+race-world Draw/camera, HUD exclusions, game units or actual Quest 3 stereo.
+The already-required current-thread world proof and fresh x64 OpenXR pose
+still gate final source-eye publication. Private game traces are not added
+to this public repository.
+
 **Verified only in source/CI:** Windows x86 D3D9 producer, Windows x64
 OpenXR host, architecture-crossing CTests, Python integration tests
 and runnable ZIP packaging. These are synthetic/static/build checks,
