@@ -253,7 +253,14 @@ def audit_csv(path):
     for data in witnesses.values():
         origin = data.get("origin")
         if not origin:
-            ignored["orphan_metadata"] += 1
+            # New original-UP material stages share this schema but DO NOT
+            # carry VB source origin. Those genuine UP witness IDs are
+            # analyzed by analyze_probe_log.py, not corrupt VB records.
+            if set(data).issubset({"stage_color", "stage_alpha",
+                                   "stage_extra"}):
+                ignored["non_vb_material_witnesses"] += 1
+            else:
+                ignored["orphan_metadata"] += 1
             continue
         caller, fvf_family, size_stride = origin
         family, fvf = halves(fvf_family)
@@ -493,6 +500,7 @@ def audit_csv(path):
         "caller_count": len(sources),
         "witness_count": len(witnesses),
         "orphan_metadata_count": ignored["orphan_metadata"],
+        "non_vb_material_witness_count": ignored["non_vb_material_witnesses"],
         "sources": sources,
     }
 

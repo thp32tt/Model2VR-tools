@@ -211,6 +211,27 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(REPORT.audit_csv(p)["world_pass_proof"],
                              "NOT_ESTABLISHED")
 
+    def test_original_up_stage_is_not_a_fabricated_vb_orphan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "both_families.csv"
+            self.write_log(p, [
+                ("model2_d3d9_vb_present_frame", 9, 3, 1, 0),
+                ("model2_d3d9_vb_source", 9, 0x555,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_source_stage0_color", 10,
+                 pack(2, 2), 0, pack(0x144, 28)),
+                ("model2_d3d9_source_stage0_alpha", 10,
+                 pack(2, 2), 0, pack(0x144, 28)),
+                ("model2_d3d9_source_stage1_specular", 10,
+                 1, 1, 0),
+                ("model2_d3d9_vb_stream", 11, 0, 0, 0),
+            ])
+            result = REPORT.audit_csv(p)
+            self.assertEqual(result["caller_count"], 1)
+            self.assertEqual(result["non_vb_material_witness_count"], 1)
+            self.assertEqual(result["orphan_metadata_count"], 1)
+            self.assertEqual(result["world_pass_proof"], "NOT_ESTABLISHED")
+
     def test_missing_material_stage_not_inferred_from_another_draw(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "material_partial.csv"
