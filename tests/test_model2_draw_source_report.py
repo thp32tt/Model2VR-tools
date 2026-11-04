@@ -674,6 +674,23 @@ class SourceAuditTests(unittest.TestCase):
         self.assertFalse(REPORT.original_projected_material_candidate(data))
         data["write_color"] = (pack(0, 10), 0, 0)
         self.assertTrue(REPORT.original_projected_material_candidate(data))
+        # Supported RGB blend must not unconditionally reject the genuine
+        # projected D3D9 material, even when separate-alpha is enabled.
+        rgb=(pack(1,5),pack(6,1),0)
+        data["source_blend"]=rgb
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["source_blend"]=(pack(1,5),pack(6,1),1)
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        data["source_separate_alpha_blend"]=(pack(2,1),1,pack(0x44,20))
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["source_separate_alpha_blend"]=(pack(2,1),1,pack(0x44,24))
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
+        del data["source_separate_alpha_blend"]
+        data["source_mask"]=(2,pack(0x44,20),22)
+        data["write_color"]=(pack(0,2),0,0)
+        self.assertTrue(REPORT.original_projected_material_candidate(data))
+        data["source_mask"]=(2,pack(0x44,20),23)
+        self.assertFalse(REPORT.original_projected_material_candidate(data))
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
