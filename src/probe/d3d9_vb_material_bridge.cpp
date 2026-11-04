@@ -4,6 +4,7 @@
 // CPU-readable FVF XYZ/TEX1 lists, strips and fans are eligible only
 // inside an independently authenticated world transaction.
 #include "verified_world_bridge.h"
+#include "verified_world_source_result.hpp"
 #include "d3d9_world_source.hpp"
 #include "projected_up_world_source.hpp"
 #include "project_draw_correlator.hpp"
@@ -184,13 +185,17 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTextured(
     void* device,unsigned int start_vertex,
     unsigned int primitive_count,unsigned int alpha_cutoff) {
     try {
-        if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return FALSE;
+        if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),7u);
         m2vr::drawprobe::VBVertexWindow window{};
         if(!m2vr::drawprobe::RemapSequentialTriangleList(
-                start_vertex,primitive_count,window))return FALSE;
-        return SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
-                                  window,alpha_cutoff);
-    }catch(...){return FALSE;}
+                start_vertex,primitive_count,window))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),7u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
+                                  window,alpha_cutoff)),7u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),7u);}
 }
 
 // Mirrors DrawIndexedPrimitive's BaseVertexIndex/MinVertexIndex/
@@ -201,14 +206,18 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTextured(
     unsigned int start_index,unsigned int primitive_count,
     unsigned int alpha_cutoff) {
     try {
-        if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return FALSE;
+        if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),8u);
         m2vr::drawprobe::VBVertexWindow window{};
         if(!ReadIndices(static_cast<IDirect3DDevice9*>(device),
             start_index,primitive_count,base_vertex_index,min_vertex_index,
-            num_vertices,window))return FALSE;
-        return SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
-                                  window,alpha_cutoff);
-    }catch(...){return FALSE;}
+            num_vertices,window))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),8u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
+                                  window,alpha_cutoff)),8u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),8u);}
 }
 
 // Explicit projected fixed-function VB companions. These are NEVER invoked
@@ -219,15 +228,19 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTextured(
     unsigned int expected_cpu_caller,unsigned int alpha_cutoff) {
     try {
         if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
-            return FALSE;
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),9u);
         m2vr::drawprobe::VBVertexWindow window{};
         if(!m2vr::drawprobe::RemapSequentialTriangleList(
                start_vertex,primitive_count,window))
-            return FALSE;
-        return SubmitProjectedBufferWindow(
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),9u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (SubmitProjectedBufferWindow(
             static_cast<IDirect3DDevice9*>(device),window,
-            expected_cpu_caller,alpha_cutoff);
-    }catch(...){return FALSE;}
+            expected_cpu_caller,alpha_cutoff)),9u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),9u);}
 }
 
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
@@ -239,15 +252,19 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
         if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
            primitive_count<2u ||
            primitive_count>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
-            return FALSE;
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),10u);
         m2vr::drawprobe::VBVertexWindow window{};
         if(!ReadIndices(static_cast<IDirect3DDevice9*>(device),
             start_index,primitive_count,base_vertex_index,min_vertex_index,
-            num_vertices,window))return FALSE;
-        return SubmitProjectedBufferWindow(
+            num_vertices,window))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),10u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (SubmitProjectedBufferWindow(
             static_cast<IDirect3DDevice9*>(device),window,
-            expected_cpu_caller,alpha_cutoff);
-    }catch(...){return FALSE;}
+            expected_cpu_caller,alpha_cutoff)),10u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),10u);}
 }
 
 // New original VB/IB topology variants. No new emulator Draw call or
@@ -255,28 +272,36 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTextured(
 // safety, and binocular renderer remain the only admission/commit path.
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9VBTopologyTextured(
     void* device,unsigned type,unsigned start,unsigned count,unsigned cutoff) {
-    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return FALSE;
+    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),11u);
     try {
         m2vr::drawprobe::VBVertexWindow window{};
         if(!m2vr::drawprobe::RemapSequentialTopology(
              start,static_cast<D3DPRIMITIVETYPE>(type),count,window))
-            return FALSE;
-        return SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
-                                  window,cutoff);
-    }catch(...){return FALSE;}
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),11u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
+                                  window,cutoff)),11u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),11u);}
 }
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedVBTopologyTextured(
     void* device,unsigned type,int base,unsigned min,unsigned num,
     unsigned start,unsigned count,unsigned cutoff) {
-    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return FALSE;
+    if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread())return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),12u);
     try {
         m2vr::drawprobe::VBVertexWindow window{};
         if(!ReadIndicesTopology(static_cast<IDirect3DDevice9*>(device),
             static_cast<D3DPRIMITIVETYPE>(type),start,count,base,min,num,window))
-            return FALSE;
-        return SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
-                                  window,cutoff);
-    }catch(...){return FALSE;}
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),12u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (SubmitBufferWindow(static_cast<IDirect3DDevice9*>(device),
+                                  window,cutoff)),12u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),12u);}
 }
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured(
     void* device,unsigned type,unsigned start,unsigned count,
@@ -284,15 +309,19 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        !caller || count<2u ||
        count>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
-        return FALSE;
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),13u);
     try {
         m2vr::drawprobe::VBVertexWindow window{};
         if(!m2vr::drawprobe::RemapSequentialTopology(
             start,static_cast<D3DPRIMITIVETYPE>(type),count,window))
-            return FALSE;
-        return SubmitProjectedBufferWindow(
-            static_cast<IDirect3DDevice9*>(device),window,caller,cutoff);
-    }catch(...){return FALSE;}
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),13u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (SubmitProjectedBufferWindow(
+            static_cast<IDirect3DDevice9*>(device),window,caller,cutoff)),13u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),13u);}
 }
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTopologyTextured(
     void* device,unsigned type,int base,unsigned min,unsigned num,
@@ -300,15 +329,19 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedVBTopologyT
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        !caller || count<2u ||
        count>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
-        return FALSE;
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),14u);
     try {
         m2vr::drawprobe::VBVertexWindow window{};
         if(!ReadIndicesTopology(static_cast<IDirect3DDevice9*>(device),
             static_cast<D3DPRIMITIVETYPE>(type),start,count,base,min,num,window))
-            return FALSE;
-        return SubmitProjectedBufferWindow(
-            static_cast<IDirect3DDevice9*>(device),window,caller,cutoff);
-    }catch(...){return FALSE;}
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),14u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (SubmitProjectedBufferWindow(
+            static_cast<IDirect3DDevice9*>(device),window,caller,cutoff)),14u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),14u);}
 }
 
 // Observe a sampled actual D3D9 projected fixed-function VB/IB Draw. This

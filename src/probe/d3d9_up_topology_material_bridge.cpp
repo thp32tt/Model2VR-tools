@@ -2,6 +2,7 @@
 // D3D9 material + CPU projector + two-eye raster path. Original game Draw,
 // simulation, FFB, Present and 2D fallback are never called or altered here.
 #include "verified_world_bridge.h"
+#include "verified_world_source_result.hpp"
 #include "d3d9_primitive_topology.hpp"
 #include "d3d9_vb_index_window.hpp"
 #include "project_draw_correlator.hpp"
@@ -36,16 +37,20 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9PrimitiveUPTopologyTextured
     if(!device || !Model2VR_IsOriginalPrimaryD3D9Device(device) || !source_vertices || !stride || stride>256u ||
        alpha_cutoff>256u ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
-        return FALSE;
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),5u);
     try {
         std::vector<std::uint32_t> indices;
         unsigned count=0u;
         if(!SourceTriangleIndices(static_cast<D3DPRIMITIVETYPE>(type),
-             triangles,indices,count))return FALSE;
-        return Model2VR_AppendVerifiedD3D9UPTextured(
+             triangles,indices,count))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),5u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (Model2VR_AppendVerifiedD3D9UPTextured(
             device,source_vertices,count,stride,indices.data(),
-            static_cast<unsigned>(indices.size()),alpha_cutoff);
-    }catch(...){return FALSE;}
+            static_cast<unsigned>(indices.size()),alpha_cutoff)),5u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),5u);}
 }
 
 // For original XYZRHW/TEX1 UP. Only 2..8 complete original triangles
@@ -60,27 +65,34 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopolog
        triangles<2u ||
        triangles>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread())
-        return FALSE;
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),6u);
     try {
         std::vector<std::uint32_t> indices;
         unsigned count=0u;
         if(!SourceTriangleIndices(static_cast<D3DPRIMITIVETYPE>(type),
-             triangles,indices,count))return FALSE;
+             triangles,indices,count))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),6u);
         auto* d=static_cast<IDirect3DDevice9*>(device);
         DWORD fvf=0u;
-        if(FAILED(d->GetFVF(&fvf)))return FALSE;
+        if(FAILED(d->GetFVF(&fvf)))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),6u);
         std::vector<std::uint8_t> original(std::size_t(count)*stride);
         if(!SafeCopyOriginal(original.data(),source_vertices,original.size()))
-            return FALSE;
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),6u);
         m2vr::drawprobe::VBVertexWindow window{};
         window.first=0u;window.count=count;
         window.indices=std::move(indices);
         std::vector<std::uint8_t> ordered;
         if(!m2vr::drawprobe::ExpandProjectedVBWindow(
             original.data(),original.size(),fvf,stride,window,ordered))
-            return FALSE;
-        return Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),6u);
+        return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             device,ordered.data(),triangles,stride,
-            authenticated_cpu_project_caller_rva,alpha_cutoff);
-    }catch(...){return FALSE;}
+            authenticated_cpu_project_caller_rva,alpha_cutoff)),6u);
+    }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+        (FALSE),6u);}
 }
