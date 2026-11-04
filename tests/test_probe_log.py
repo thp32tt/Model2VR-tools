@@ -89,6 +89,10 @@ class ProbeLogTests(unittest.TestCase):
                                  34,9,7,1])  # no matching thread/rejection
                 writer.writerow([31,131,7,"model2_vr_cpu_world_fixed_camera_rejected",
                                  35,7,9,1])  # unsupported reason, invalid
+                writer.writerow([32,132,7,"model2_original_source_hook_mode",
+                                 2,1,1,3])  # native-only genuine source input
+                writer.writerow([33,133,7,"model2_original_source_hook_mode",
+                                 2,0,1,3])  # inconsistent, no signed hook
             report=MODULE.analyze(path)
             routes=report["d3d9"]["native_stereo_source_route_counts"]
             self.assertEqual(routes["verified_cpu_world_ipc_published"],1)
@@ -123,6 +127,14 @@ class ProbeLogTests(unittest.TestCase):
             self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",
                           MODULE.markdown(report))
             self.assertIn("HMD=UNTESTED",MODULE.markdown(report))
+            captures=report["d3d9"]["original_cpu_capture_modes"]
+            self.assertEqual(len(captures),1)
+            self.assertTrue(captures[0]["native_stereo_opt_in"])
+            self.assertFalse(captures[0]["passive_d3d9_probe"])
+            self.assertTrue(captures[0]["original_cpu_source_ready"])
+            self.assertEqual(report["d3d9"]["original_cpu_capture_invalid"],1)
+            self.assertIn("original source startup mode",
+                          MODULE.markdown(report))
 
     def test_original_d3d9_eye_bootstrap_source_cause_summary(self):
         with tempfile.TemporaryDirectory() as td:

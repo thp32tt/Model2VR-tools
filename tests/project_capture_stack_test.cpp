@@ -1,4 +1,5 @@
 #include "../src/probe/project_capture_stack.hpp"
+#include "../src/probe/original_source_capture_mode.hpp"
 #include <cstdio>
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"project capture stack line %d: %s\n",__LINE__,#x);return 1;}}while(0)
 int main(){
@@ -59,5 +60,20 @@ int main(){
     CHECK(!stack.Finish(completed));
     CHECK(stack.Begin(nullptr,false));
     CHECK(stack.Finish(completed) && !completed.original_point);
+    // Startup with native renderer alone, without the passive probe flag,
+    // still needs the original D3D9 boundary and signed CPU projector.
+    CHECK(!NeedOriginalD3D9Hooks(false,false));
+    CHECK(NeedOriginalD3D9Hooks(true,false));
+    CHECK(NeedOriginalD3D9Hooks(false,true));
+    CHECK(NeedOriginalD3D9Hooks(true,true));
+    CHECK(!CaptureOriginalCpuProjector(false,false,true));
+    CHECK(!CaptureOriginalCpuProjector(false,true,false));
+    CHECK(CaptureOriginalCpuProjector(false,true,true));
+    CHECK(CaptureOriginalCpuProjector(true,false,true));
+    CHECK(!OriginalCpuProjectorProofInputsReady(false,true,true,false,true));
+    CHECK(!OriginalCpuProjectorProofInputsReady(false,true,true,true,false));
+    CHECK(!OriginalCpuProjectorProofInputsReady(false,true,false,true,true));
+    CHECK(OriginalCpuProjectorProofInputsReady(false,true,true,true,true));
+    CHECK(OriginalCpuProjectorProofInputsReady(true,false,true,true,true));
     return 0;
 }

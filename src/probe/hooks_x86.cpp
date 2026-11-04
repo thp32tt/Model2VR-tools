@@ -5,6 +5,7 @@
 #include "project_capture_stack.hpp"
 #include "source_matrix_fingerprint.hpp"
 #include "original_cpu_source_draw_gate.hpp"
+#include "original_source_capture_mode.hpp"
 #include <array>
 #include "signature.h"
 
@@ -131,7 +132,12 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
     // pop a parent projector record if the game calls this recursively.
     if(!g_project_capture_stack.Begin(point,sampled))return;
     auto* record=g_project_capture_stack.Top();
-    if(!sampled && !g_config.d3d9_read_only_probe)return;
+    // The native-stereo mode is itself opt-in and must collect REAL
+    // CPU-projected source geometry even when the passive probe is off.
+    const bool source_capture=m2vr::drawprobe::CaptureOriginalCpuProjector(
+        g_config.d3d9_read_only_probe,g_config.daytona_native_stereo,
+        g_config.project_vertex.enabled);
+    if(!sampled && !source_capture)return;
 
     float x=0,y=0,z=0;
     if(!SafeReadPoint(point,x,y,z)){
@@ -139,7 +145,7 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
             m2vr::LogEvent("project_read_fault",reinterpret_cast<std::uintptr_t>(point));
         return;
     }
-    if(g_config.d3d9_read_only_probe){
+    if(source_capture){
         const auto raw=static_cast<std::uintptr_t>(caller);
         const auto base=reinterpret_cast<std::uintptr_t>(g_exe_base);
         if(raw>=base && raw-base<g_exe_size){
@@ -344,9 +350,11 @@ extern "C" __declspec(dllexport) BOOL __stdcall
 Model2VR_OriginalCpuProjectionStillMatchesDraw(
     unsigned int matrix_identity,unsigned int matrix_fingerprint,
     unsigned int geometry_command) {
-    if(!g_config.d3d9_read_only_probe ||
-       !g_config.active_matrix_ptr_rva ||
-       !g_config.geometry_stream_ptr_rva)
+    if(!m2vr::drawprobe::OriginalCpuProjectorProofInputsReady(
+           g_config.d3d9_read_only_probe,g_config.daytona_native_stereo,
+           g_config.project_vertex.enabled,
+           g_config.active_matrix_ptr_rva!=0u,
+           g_config.geometry_stream_ptr_rva!=0u))
         return FALSE;
     const auto current_matrix=ReadStateRva(g_config.active_matrix_ptr_rva);
     const auto current_fingerprint=
@@ -404,7 +412,11 @@ bool InstallProbeHooks(HMODULE executable, const ProbeConfig& config) {
              &g_original_ffb_dispatch) &&
          ok;
 
-    if (ok && g_config.d3d9_read_only_probe) {
+    // Native renderer mode without the passive logging switch must still
+    // intercept the original game's real Draw/Present and capture its CPU
+    // projector pairs. It does not auto-authorize world/HUD classification.
+    if (ok && m2vr::drawprobe::NeedOriginalD3D9Hooks(
+            g_config.d3d9_read_only_probe,g_config.daytona_native_stereo)) {
         ok = InstallD3D9ReadOnlyProbe(executable,g_exe_size,
                 g_config.d3d9_draw_sample_every,
                 g_config.daytona_native_stereo,
@@ -425,6 +437,19 @@ bool InstallProbeHooks(HMODULE executable, const ProbeConfig& config) {
         return false;
     }
 
+    // One compact startup diagnostic, not an every-vertex runtime flood:
+    // a0=passive/native bit flags, a1=projector detour configured,
+    // a2=full original source witness eligibility, a3=matrix/stream flags.
+    const auto source_inputs=m2vr::drawprobe::OriginalCpuProjectorProofInputsReady(
+        g_config.d3d9_read_only_probe,g_config.daytona_native_stereo,
+        g_config.project_vertex.enabled,g_config.active_matrix_ptr_rva!=0u,
+        g_config.geometry_stream_ptr_rva!=0u);
+    LogEvent("model2_original_source_hook_mode",
+        (g_config.d3d9_read_only_probe?1u:0u) |
+            (g_config.daytona_native_stereo?2u:0u),
+        g_config.project_vertex.enabled?1u:0u,source_inputs?1u:0u,
+        (g_config.active_matrix_ptr_rva?1u:0u) |
+            (g_config.geometry_stream_ptr_rva?2u:0u));
     LogEvent("probe_hooks_enabled");
     return true;
 }

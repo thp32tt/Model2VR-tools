@@ -301,6 +301,9 @@ def analyze(path: Path):
     source_route_counts = Counter()
     source_route_examples = []
     source_route_invalid_records = 0
+    # Startup source-capture readiness: mode flags are not world/HUD proof.
+    original_capture_modes = []
+    original_capture_mode_invalid = 0
     # Exact original reject must precede a detailed stage report on the
     # same logger thread, original Present and source Draw. Otherwise a
     # stray CSV record may falsely imply a rejected game world source.
@@ -376,6 +379,25 @@ def analyze(path: Path):
 
             if event == "qpc_frequency":
                 qpc_frequency = a0
+            elif event == "model2_original_source_hook_mode":
+                # a0 passive=1/native=2 flags, a1 signed CPU projector hook,
+                # a2 complete original CPU source inputs, a3 matrix=1,
+                # geometry stream=2. All bits must be self-consistent.
+                expected_ready=(a0 != 0 and a1 == 1 and a3 == 3)
+                if (a0 not in (0,1,2,3) or a1 not in (0,1) or
+                        a2 not in (0,1) or a3 not in (0,1,2,3) or
+                        bool(a2) != expected_ready):
+                    original_capture_mode_invalid += 1
+                elif len(original_capture_modes) < 16:
+                    original_capture_modes.append({
+                        "native_stereo_opt_in": bool(a0 & 2),
+                        "passive_d3d9_probe": bool(a0 & 1),
+                        "projector_hook_enabled": bool(a1),
+                        "original_cpu_source_ready": bool(a2),
+                        "matrix_and_stream_inputs": a3 == 3,
+                        "world_pass_proof": "NOT_ESTABLISHED",
+                        "hmd_runtime_validation": "UNTESTED",
+                    })
             elif event == "model2_vr_eye_bootstrap_failure":
                 # First failure per reason/HRESULT, not one per original Draw.
                 # Invalid/corrupted records cannot become camera/world proof.
@@ -1061,6 +1083,8 @@ def analyze(path: Path):
             "streamed_draw_calls": d3d9_buffered,
             "user_pointer_draw_calls": d3d9_up,
             "api_sample_family": dict(d3d9_api_samples.most_common()),
+            "original_cpu_capture_modes": original_capture_modes,
+            "original_cpu_capture_invalid": original_capture_mode_invalid,
             "sampled_fvf": dict(d3d9_fvf.most_common()),
             "sampled_depth_and_xyzrhw": dict(d3d9_depth.most_common()),
             "sampled_callers": dict(d3d9_callers.most_common()),
@@ -1207,6 +1231,16 @@ def markdown(summary):
 
     lines += ["", "## D3D9 renderer real draw-path observations", ""]
     d3d9 = summary.get("d3d9", {})
+    lines.append("### Original CPU projector / D3D9 hook startup mode")
+    for mode in d3d9.get("original_cpu_capture_modes",[]):
+        lines.append(
+            "- native=%d passive_probe=%d signed_projector=%d "
+            "source_ready=%d matrix_stream=%d WORLD PROOF UNKNOWN HMD=UNTESTED"
+            % (mode["native_stereo_opt_in"],mode["passive_d3d9_probe"],
+               mode["projector_hook_enabled"],mode["original_cpu_source_ready"],
+               mode["matrix_and_stream_inputs"]))
+    lines.append("- invalid original source startup mode records: "
+                 +str(d3d9.get("original_cpu_capture_invalid",0)))
     for k in ("presented_frames","streamed_draw_calls","user_pointer_draw_calls"):
         lines.append(f"- {k}: {d3d9.get(k, 0)}")
     lines += ["", "### Sampled vertex format and render-path caller RVAs", ""]
