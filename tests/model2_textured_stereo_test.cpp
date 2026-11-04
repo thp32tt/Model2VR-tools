@@ -184,6 +184,50 @@ int main(){
     CHECK(!raster.DrawTextured(modulated,diffuse_image));
     CHECK(raster.DrawnPixels()==0u);
 
+    // Original D3DTOP_SELECTARG1(DIFFUSE) independently selects source
+    // vertex RGB or alpha. It does NOT multiply the texture, and both
+    // channels must use perspective-correct eye interpolation.
+    raster.Clear();
+    modulated.eyes[1][0].vertices[0].diffuse_rgba[0]=1.f;
+    const std::array<std::uint8_t,4> pure_green{{0,255,0,255}};
+    StereoWorldRaster::TextureRGBA selected{
+        pure_green.data(),1,1,4,0,{}, {},false,false,
+        BlendMode::Opaque,true,false};
+    CHECK(raster.DrawTextured(modulated,selected));
+    for(int eye=0;eye<2;++eye) {
+        const auto rgb=Pixel(raster,eye,512,512);
+        CHECK(((rgb>>16u)&255u)>190u);
+        CHECK(((rgb>>8u)&255u)<65u);
+        CHECK((rgb&255u)==0u);
+    }
+    // Alpha source may independently select diffuse while color stays
+    // the sampled texture; zero diffuse alpha fails original alpha test.
+    raster.Clear();
+    selected.select_diffuse_rgb=false;
+    selected.select_diffuse_alpha=true;
+    selected.alpha_cutoff=1u;
+    CHECK(raster.DrawTextured(modulated,selected));
+    CHECK(raster.DrawnPixels()==0u);
+    raster.Clear();
+    for(auto& eye:modulated.eyes)
+        for(auto& vertex:eye[0].vertices)
+            vertex.diffuse_rgba[3]=0.5f;
+    selected.alpha_cutoff=128u;
+    CHECK(raster.DrawTextured(modulated,selected));
+    CHECK(Pixel(raster,0,512,512)==0x00ff00u);
+    CHECK(Pixel(raster,1,512,512)==0x00ff00u);
+    raster.Clear();
+    selected.alpha_cutoff=129u;
+    CHECK(raster.DrawTextured(modulated,selected));
+    CHECK(raster.DrawnPixels()==0u);
+    // Unknown mixed same-channel select/multiply is rejected atomically.
+    raster.Clear();
+    selected.modulate_alpha=true;
+    const auto before_conflict=raster.DrawnPixels();
+    CHECK(!raster.DrawTextured(modulated,selected));
+    CHECK(raster.DrawnPixels()==before_conflict);
+    selected.modulate_alpha=false;
+
     // The full independently rendered eye path must honor the original
     // D3D9 bilinear WRAP seam, not just the standalone sampler helper.
     raster.Clear();

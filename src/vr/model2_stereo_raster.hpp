@@ -73,6 +73,10 @@ public:
         bool modulate_rgb=false;
         bool modulate_alpha=false;
         BlendMode blend=BlendMode::Opaque;
+        // New source-backed D3DTOP_SELECTARGx(DIFFUSE) channels.
+        // Kept after legacy fields so existing aggregate ABI is intact.
+        bool select_diffuse_rgb=false;
+        bool select_diffuse_alpha=false;
     };
     // Fully clipped and validated beforehand; no half-eye write on a bad
     // texture, stale frame, invalid UV, or unsupported mixed pass.
@@ -85,6 +89,8 @@ public:
            !ValidSampler(texture.sampler) ||
            !ValidRasterPolicy(texture.raster) ||
            !ValidBlendMode(texture.blend) ||
+           (texture.select_diffuse_rgb && texture.modulate_rgb) ||
+           (texture.select_diffuse_alpha && texture.modulate_alpha) ||
            batch.game_frame==0 || batch.pose_sequence==0)
             return false;
         for(const auto& eye:batch.eyes){
@@ -238,7 +244,8 @@ private:
                 // perspective-correct diffuse color, never NDC-linear.
                 std::array<double,4> diffuse{{1.,1.,1.,1.}};
                 bool diffuse_valid=true;
-                if(texture.modulate_rgb || texture.modulate_alpha){
+                if(texture.modulate_rgb || texture.modulate_alpha ||
+                   texture.select_diffuse_rgb || texture.select_diffuse_alpha){
                     for(std::size_t channel=0;channel<4;++channel){
                         const double value=(a*diffuse_over_z[0][channel]+
                             b*diffuse_over_z[1][channel]+
@@ -252,8 +259,10 @@ private:
                 }
                 if(!diffuse_valid)continue; // reject before Z/color writes
                 const auto sampled_alpha=static_cast<unsigned>(
-                    std::lround(double(texel.a)*
-                        (texture.modulate_alpha?diffuse[3]:1.)));
+                    std::lround(texture.select_diffuse_alpha ?
+                        (255.*diffuse[3]) :
+                        (double(texel.a)*
+                         (texture.modulate_alpha?diffuse[3]:1.))));
                 if(sampled_alpha<texture.alpha_cutoff)continue;
                 const auto pixel=offset*4u;
                 if(texture.raster.write_depth)
@@ -262,10 +271,14 @@ private:
                 std::array<std::uint8_t,4> src_rgba{
                     texel.r,texel.g,texel.b,
                     static_cast<std::uint8_t>(sampled_alpha)};
-                for(std::size_t channel=0;channel<3;++channel)
+                for(std::size_t channel=0;channel<3;++channel){
+                    const double channel_value=texture.select_diffuse_rgb ?
+                        (255.*diffuse[channel]) :
+                        (double(src_rgba[channel])*
+                         (texture.modulate_rgb?diffuse[channel]:1.));
                     src_rgba[channel]=static_cast<std::uint8_t>(
-                        std::lround(double(src_rgba[channel])*
-                            (texture.modulate_rgb?diffuse[channel]:1.)));
+                        std::lround(std::clamp(channel_value,0.,255.)));
+                }
                 CompositeSourceRGBA(color.data()+pixel,src_rgba,texture.blend);
                 ++pixels_;
                 ++eye_pixels_[eye];
