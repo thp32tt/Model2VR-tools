@@ -31,6 +31,11 @@ extern "C" BOOL __stdcall Model2VR_ReadPredictedEyeViews(
 extern "C" BOOL __stdcall Model2VR_SubmitStereoRGBAWithPose(
     const unsigned char*,const unsigned char*,unsigned long long,
     unsigned int,unsigned int,unsigned int,unsigned long long);
+// A real original D3D9 backbuffer is allowed as a MONO visual fallback.
+// It never uses GameStereo and never grants the world/camera source proof.
+extern "C" BOOL __stdcall Model2VR_SubmitOriginalGameMonoRGBA(
+    const unsigned char*,unsigned long long,
+    unsigned int,unsigned int,unsigned int);
 
 namespace {
 // The game hooks D3D9::Clear. Initializing an eye target calls Clear
@@ -65,6 +70,7 @@ public:
         enabled_=enable;
         shift_=float((std::clamp)(shift,1u,250u))/1000.f;
         first_stereo_published_=false;
+        first_mono_published_=false;
         Reset();
         last_bootstrap_reason_=0u;
         last_bootstrap_hr_=0u;
@@ -471,6 +477,10 @@ public:
             (!fresh_pose ? 16u : 0u);
         if(gate){
             pending_present_reason_=gate;
+            // No verified 3D world is NOT the same as no original game
+            // pixels. Copy the game's actual pre-Present backbuffer as a
+            // clearly tagged flat HMD fallback, never native stereo.
+            PrepareOriginalMono(d,frame,gate);
             return;
         }
         bool ready=true;
@@ -503,6 +513,7 @@ public:
             reason=64u;
         }
         pending_present_reason_=reason;
+        if(reason)PrepareOriginalMono(d,frame,reason);
     }
     void FinishPresent(std::uint64_t frame,HRESULT original_result)noexcept{
         if(!enabled_ || !frame)return;
@@ -534,6 +545,21 @@ public:
                    m2vr::transport::kWidth,m2vr::transport::kHeight,
                    m2vr::transport::kPitch,pose_sequence_))reason=128u;
         }
+        if(reason && original_ok && pending_mono_ready_){
+            // Only the original successful Present authorizes sending
+            // a mono backbuffer. A missing/stale headset invalidates it.
+            if(LivePoseNow()){
+                if(!writer_ready_)writer_ready_=Model2VR_OpenStereoWriter()!=FALSE;
+                if(writer_ready_ && Model2VR_SubmitOriginalGameMonoRGBA(
+                    mono_rgba_.data(),frame,m2vr::transport::kWidth,
+                    m2vr::transport::kHeight,m2vr::transport::kPitch)){
+                    // Distinct successful MONO state, not fake GameStereo.
+                    reason=m2vr::producerhealth::OriginalMonoFallback;
+                }else{
+                    reason|=m2vr::producerhealth::TransportFailed;
+                }
+            }else reason|=m2vr::producerhealth::PoseExpired;
+        }
         // Health is committed after the *actual original* Present outcome.
         // x64 may revoke a cached older eye frame on a newer game failure.
         ReportFrame(frame,reason);
@@ -547,9 +573,11 @@ private:
                                           mirrored_draws_,mirrored_clears_,
                                           mirrored_family_);
         const bool first=reason==0u && !first_stereo_published_;
+        const bool first_mono=reason==m2vr::producerhealth::OriginalMonoFallback &&
+                               !first_mono_published_;
         // Every 120 original Presents (roughly 2s at 60 Hz), plus the
         // first successful game source. The launcher keeps the CSV locally.
-        if(frame==1u || frame%120u==0u || first){
+        if(frame==1u || frame%120u==0u || first || first_mono){
             const std::uint64_t replay_count=
                 (std::uint64_t{mirrored_clears_}<<32)|mirrored_draws_;
             m2vr::LogEvent("model2_vr_producer_frame",frame,reason,
@@ -566,9 +594,14 @@ private:
                         m2vr::LogEvent("model2_vr_scene_reject_reason",frame,
                                        reason,scene_rejections_[reason],0u);
             }
-            if(first)m2vr::FlushLog();
+            if(reason==m2vr::producerhealth::OriginalMonoFallback)
+                m2vr::LogEvent("model2_vr_original_mono_fallback",frame,
+                               pending_mono_source_reason_,mirrored_draws_,
+                               (std::uint64_t{mono_width_}<<32)|mono_height_);
+            if(first || first_mono)m2vr::FlushLog();
         }
         if(first)first_stereo_published_=true;
+        if(first_mono)first_mono_published_=true;
     }
     bool LivePoseNow()noexcept {
         m2vr::pose::Frame frame{};
@@ -605,6 +638,7 @@ private:
     }
     void FinishFrame()noexcept{
         pending_present_frame_=0u;pending_present_reason_=0u;
+        pending_mono_ready_=false;pending_mono_source_reason_=0u;
         frame_started_=false;scene_draws_=0;
         main_depth_ready_=false;aux_depth_ready_=false;
         mirrored_draws_=0;mirrored_clears_=0;
@@ -799,6 +833,87 @@ private:
         last_bootstrap_hr_=0u;
         return true;
     }
+    // Read exactly what the original emulator will present. This executes
+    // before its physical Present and NEVER calls another game Draw/Present.
+    // A verified stereo pair always wins; this is an explicit HMD flat
+    // fallback for unverified scene/material/camera paths.
+    bool ReadOriginalBackbuffer(IDirect3DDevice9* d) {
+        if(!d || !LivePoseNow())return false;
+        IDirect3DSurface9* source=nullptr;
+        const HRESULT back_hr=d->GetBackBuffer(
+            0u,0u,D3DBACKBUFFER_TYPE_MONO,&source);
+        if(FAILED(back_hr) || !source)return false;
+        D3DSURFACE_DESC desc{};
+        const HRESULT desc_hr=source->GetDesc(&desc);
+        if(FAILED(desc_hr) || desc.Width<320u || desc.Width>2048u ||
+           desc.Height<200u || desc.Height>2048u ||
+           (desc.Format!=D3DFMT_A8R8G8B8 && desc.Format!=D3DFMT_X8R8G8B8)){
+            Drop(source);return false;
+        }
+        // Cache resources across 60Hz game Presents. Re-create only when
+        // the original swapchain layout changes (or on D3D9 Reset).
+        const bool changed=!mono_staging_ || desc.Width!=mono_width_ ||
+            desc.Height!=mono_height_ || desc.Format!=mono_format_ ||
+            desc.MultiSampleType!=mono_sample_;
+        if(changed){
+            Drop(mono_resolve_);Drop(mono_staging_);
+            mono_width_=mono_height_=0u;
+            if(!mono_scale_.Configure(desc.Width,desc.Height)){
+                Drop(source);return false;
+            }
+            HRESULT create_hr=d->CreateOffscreenPlainSurface(
+                desc.Width,desc.Height,desc.Format,D3DPOOL_SYSTEMMEM,
+                &mono_staging_,nullptr);
+            if(FAILED(create_hr)){
+                Drop(source);return false;
+            }
+            if(desc.MultiSampleType!=D3DMULTISAMPLE_NONE){
+                create_hr=d->CreateRenderTarget(
+                    desc.Width,desc.Height,desc.Format,
+                    D3DMULTISAMPLE_NONE,0u,FALSE,&mono_resolve_,nullptr);
+                if(FAILED(create_hr)){
+                    Drop(mono_staging_);Drop(source);return false;
+                }
+            }
+            mono_width_=desc.Width;mono_height_=desc.Height;
+            mono_format_=desc.Format;mono_sample_=desc.MultiSampleType;
+        }
+        IDirect3DSurface9* readback=source;
+        if(mono_resolve_){
+            if(FAILED(d->StretchRect(source,nullptr,mono_resolve_,nullptr,
+                                     D3DTEXF_NONE))){
+                Drop(source);return false;
+            }
+            readback=mono_resolve_;
+        }
+        if(FAILED(d->GetRenderTargetData(readback,mono_staging_))){
+            Drop(source);return false;
+        }
+        Drop(source);
+        D3DLOCKED_RECT locked{};
+        if(FAILED(mono_staging_->LockRect(&locked,nullptr,D3DLOCK_READONLY)))
+            return false;
+        if(mono_rgba_.size()!=m2vr::transport::kBytesPerEye)
+            mono_rgba_.resize(m2vr::transport::kBytesPerEye);
+        const bool ready=mono_scale_.Convert(
+            static_cast<const std::uint8_t*>(locked.pBits),locked.Pitch,
+            mono_rgba_.data(),mono_rgba_.size());
+        mono_staging_->UnlockRect();
+        return ready;
+    }
+    void PrepareOriginalMono(IDirect3DDevice9* d,std::uint64_t frame,
+                             std::uint32_t stereo_rejection) {
+        if(!frame || pending_mono_ready_ || !d)return;
+        pending_mono_ready_=ReadOriginalBackbuffer(d);
+        if(pending_mono_ready_){
+            pending_mono_source_reason_=stereo_rejection;
+        }else if(!first_mono_published_ || frame%120u==0u){
+            // A missing original 2D source is separately distinguishable
+            // from an OpenXR host which merely draws its two clear colors.
+            m2vr::LogEvent("model2_vr_original_mono_readback_unavailable",
+                           frame,stereo_rejection,0u,0u);
+        }
+    }
     bool ConvertBGRA(const D3DLOCKED_RECT& source,
                      std::vector<std::uint8_t>& output)noexcept{
         // Original D3D9 staging surfaces are BGRA8 and may have padded rows.
@@ -809,6 +924,9 @@ private:
             source.Pitch,output.data(),output.size());
     }
     void Reset()noexcept{
+        Drop(mono_resolve_);Drop(mono_staging_);
+        mono_width_=mono_height_=0u;
+        mono_scale_=m2vr::daytona::ReadbackScalePlan{};
         for(auto& eye:aux_eyes_)eye.Clear();
         Drop(aux_original_);Drop(aux_original_depth_);
         for(auto& eye:eyes_)eye.Clear();
@@ -825,7 +943,9 @@ private:
     HRESULT last_failed_present_=S_OK;
     bool pose_checked_=false,pose_admitted_=false;
     std::uint64_t pose_sequence_=0;
-    bool first_stereo_published_=false;
+    bool first_stereo_published_=false,first_mono_published_=false;
+    bool pending_mono_ready_=false;
+    std::uint32_t pending_mono_source_reason_=0u;
     std::uint32_t last_bootstrap_reason_=0u,last_bootstrap_hr_=0u;
     float ipd_scale_=1.f;
     UINT width_=0,height_=0;
@@ -852,6 +972,15 @@ private:
     std::array<std::vector<std::uint8_t>,2> scratch_{};
     std::array<std::vector<std::uint8_t>,2> rgba_{};
     m2vr::daytona::ReadbackScalePlan readback_scale_{};
+    // Purely original mono backbuffer capture for flat HMD fallback.
+    // Never aliases either independent stereo render target.
+    IDirect3DSurface9* mono_resolve_=nullptr;
+    IDirect3DSurface9* mono_staging_=nullptr;
+    UINT mono_width_=0u,mono_height_=0u;
+    D3DFORMAT mono_format_=D3DFMT_UNKNOWN;
+    D3DMULTISAMPLE_TYPE mono_sample_=D3DMULTISAMPLE_NONE;
+    m2vr::daytona::ReadbackScalePlan mono_scale_{};
+    std::vector<std::uint8_t> mono_rgba_;
 };
 EyeClones g_eye;
 } // namespace
