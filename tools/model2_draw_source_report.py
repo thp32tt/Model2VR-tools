@@ -86,6 +86,60 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
         return None
     return (cpu_caller, matrix_id, fingerprint, word)
 
+# D3D9 native constants, deliberately pinned for private offline triage.
+# This assessment NEVER grants world ownership or permits XR Draw replay.
+D3DFVF_XYZRHW = 0x4
+D3DFVF_TEX1 = 0x100
+D3DFVF_DIFFUSE = 0x40
+D3DFVF_SPECULAR = 0x80
+D3DTOP_DISABLE = 1
+D3DTOP_SELECTARG1 = 2
+D3DTOP_SELECTARG2 = 3
+D3DTOP_MODULATE = 4
+D3DTA_DIFFUSE = 0
+D3DTA_TEXTURE = 2
+
+
+def original_stage_selects_texel_or_diffuse(operation, first, second, diffuse):
+    if operation == D3DTOP_SELECTARG1 and first == D3DTA_TEXTURE:
+        return True
+    if operation == D3DTOP_SELECTARG2 and second == D3DTA_TEXTURE:
+        return True
+    return (operation == D3DTOP_MODULATE and diffuse and
+            ((first, second) in ((D3DTA_TEXTURE, D3DTA_DIFFUSE),
+                                 (D3DTA_DIFFUSE, D3DTA_TEXTURE))))
+
+
+def original_projected_material_candidate(data):
+    """Exact observed projected-FVF/stage0 admission ONLY; not world proof."""
+    if not all(name in data for name in
+               ("stage_color", "stage_alpha", "stage_extra", "origin")):
+        return False
+    _, packed_fvf, packed_size = data["origin"]
+    _, fvf = halves(packed_fvf)
+    _, stride = halves(packed_size)
+    if ((fvf & ~(D3DFVF_DIFFUSE | D3DFVF_SPECULAR)) !=
+            (D3DFVF_XYZRHW | D3DFVF_TEX1) or
+            stride != 24 + (4 if fvf & D3DFVF_DIFFUSE else 0) +
+                        (4 if fvf & D3DFVF_SPECULAR else 0)):
+        return False
+    c, a, e = (data[name] for name in
+               ("stage_color", "stage_alpha", "stage_extra"))
+    c_fvf, c_stride = halves(c[2])
+    a_fvf, a_stride = halves(a[2])
+    if (c_fvf != fvf or a_fvf != fvf or c_stride != stride or
+            a_stride != stride or c[1] > 0xFFFFFFFF or
+            a[1] > 0xFFFFFFFF or e[0] != D3DTOP_DISABLE or
+            e[1] != D3DTOP_DISABLE or e[2] != 0):
+        return False
+    co, c1 = halves(c[0])
+    ao, a1 = halves(a[0])
+    return (original_stage_selects_texel_or_diffuse(
+                co, c1, c[1], bool(fvf & D3DFVF_DIFFUSE)) and
+            original_stage_selects_texel_or_diffuse(
+                ao, a1, a[1], bool(fvf & D3DFVF_DIFFUSE)))
+
+
 def audit_csv(path):
     witnesses = {}
     ignored = Counter()
@@ -163,6 +217,8 @@ def audit_csv(path):
         "raster_modes": set(), "color_write_modes": set(),
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
+        "projected_material_correlated_candidates": 0,
+        "projected_material_correlated_present_frames": set(),
         "original_material_mismatched_witnesses": 0,
         "original_material_present_frames": set(),
         "cpu_projector_correlated_batches": 0,
@@ -375,6 +431,13 @@ def audit_csv(path):
                     entry["cpu_geometry_command_unavailable_batches"] += 1
         joined_source = same_witness_projection_pass_candidate(
             data, present_frame, caller)
+        if (joined_source is not None and
+                original_projected_material_candidate(data)):
+            # This qualifies a SOURCE MATERIAL candidate only. A private
+            # authenticated game-world owner, camera axis/units and HMD test
+            # are still all required before enabling actual XR replay.
+            entry["projected_material_correlated_candidates"] += 1
+            entry["projected_material_correlated_present_frames"].add(present_frame)
         if joined_source is not None:
             entry["same_witness_joint_candidates"] += 1
             entry["same_witness_joint_present_frames"].add(present_frame)
@@ -404,6 +467,8 @@ def audit_csv(path):
             value["context_present_frames"])
         record["distinct_original_material_present_frame_count"] = len(
             value["original_material_present_frames"])
+        record["distinct_projected_material_present_frame_count"] = len(
+            value["projected_material_correlated_present_frames"])
         record["distinct_correlated_present_frame_count"] = len(
             value["correlated_present_frames"])
         for key, item in value.items():
@@ -412,6 +477,7 @@ def audit_csv(path):
                        "geometry_command_present_frames",
                        "context_present_frames",
                         "original_material_present_frames",
+                        "projected_material_correlated_present_frames",
                        "same_witness_joint_present_frames"):
                 continue
             if isinstance(item, set):
