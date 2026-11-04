@@ -47,5 +47,31 @@ int main(){
     REQUIRE(plan.dst_w==1024u && plan.dst_h==595u);
     REQUIRE(plan.sy[plan.dst_h-1u]<384u);
     REQUIRE(plan.sx[plan.dst_w-1u]<660u);
+    // 16-bit original D3D9 backbuffer must also yield visible RGB video.
+    REQUIRE(plan.Configure(2u,1u));
+    // Two 565 pixels, red then green: padded row pitch.
+    std::array<std::uint8_t,8> source565{0x00,0xf8,0xe0,0x07,0,0,0,0};
+    REQUIRE(!plan.ConvertPacked16(source565.data(),3u,out.data(),
+         ReadbackScalePlan::kOutputBytes,OriginalPacked16Layout::R5G6B5));
+    REQUIRE(plan.ConvertPacked16(source565.data(),8u,out.data(),
+         ReadbackScalePlan::kOutputBytes,OriginalPacked16Layout::R5G6B5));
+    REQUIRE(out[pix(0,256u)]==255u && out[pix(0,256u)+1u]==0u &&
+            out[pix(0,256u)+2u]==0u && out[pix(0,256u)+3u]==255u);
+    REQUIRE(out[pix(1023u,256u)]==0u && out[pix(1023u,256u)+1u]==255u);
+    // X1R5G5B5 / A1R5G5B5 represent an opaque backbuffer even when
+    // their original top source bit is zero.
+    std::array<std::uint8_t,4> source555{0x1f,0x00,0x00,0x7c};
+    REQUIRE(plan.ConvertPacked16(source555.data(),4u,out.data(),
+        ReadbackScalePlan::kOutputBytes,OriginalPacked16Layout::A1R5G5B5));
+    REQUIRE(out[pix(0,256u)+2u]==255u && out[pix(0,256u)+3u]==255u);
+    REQUIRE(out[pix(1023u,256u)]==255u);
+    REQUIRE(plan.ConvertPacked16(source555.data(),4u,out.data(),
+        ReadbackScalePlan::kOutputBytes,OriginalPacked16Layout::X1R5G5B5));
+    REQUIRE(out[pix(0,256u)+2u]==255u);
+    std::array<std::uint8_t,4> source4444{0x0f,0x00,0xf0,0x0f};
+    REQUIRE(plan.ConvertPacked16(source4444.data(),4u,out.data(),
+        ReadbackScalePlan::kOutputBytes,OriginalPacked16Layout::A4R4G4B4));
+    REQUIRE(out[pix(0,256u)+2u]==255u);
+    REQUIRE(out[pix(1023u,256u)]==255u);
     return 0;
 }

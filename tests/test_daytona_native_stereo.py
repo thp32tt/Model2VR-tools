@@ -24,6 +24,10 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("original_present_ok && !stereo_published",decision)
         self.assertIn("model2_vr_original_mono_capture_failure",source)
         self.assertIn("InspectOriginalMonoRGBA(",source)
+        for fmt in ("D3DFMT_R5G6B5", "D3DFMT_X1R5G5B5",
+                    "D3DFMT_A1R5G5B5", "D3DFMT_A4R4G4B4"):
+            self.assertIn(fmt,source)
+        self.assertIn("mono_scale_.ConvertPacked16(",source)
         self.assertNotIn("Model2VR_SubmitStereoRGBAWithPose(\n                    mono_rgba_",source)
 
     def test_original_d3d9_eye_bootstrap_failure_has_one_root_cause(self):

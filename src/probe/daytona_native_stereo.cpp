@@ -857,9 +857,14 @@ private:
                                       back_hr);
         D3DSURFACE_DESC desc{};
         const HRESULT desc_hr=source->GetDesc(&desc);
+        const bool packed16=desc.Format==D3DFMT_R5G6B5 ||
+                            desc.Format==D3DFMT_X1R5G5B5 ||
+                            desc.Format==D3DFMT_A1R5G5B5 ||
+                            desc.Format==D3DFMT_A4R4G4B4;
         if(FAILED(desc_hr) || desc.Width<320u || desc.Width>2048u ||
            desc.Height<200u || desc.Height>2048u ||
-           (desc.Format!=D3DFMT_A8R8G8B8 && desc.Format!=D3DFMT_X8R8G8B8)){
+           (!packed16 && desc.Format!=D3DFMT_A8R8G8B8 &&
+            desc.Format!=D3DFMT_X8R8G8B8)){
             Drop(source);
             return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::BackbufferLayout,
                                       desc_hr,&desc);
@@ -926,9 +931,25 @@ private:
         if(FAILED(lock_hr))
             return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Lock,
                                       lock_hr,&desc);
-        const bool ready=mono_scale_.Convert(
-            static_cast<const std::uint8_t*>(locked.pBits),locked.Pitch,
-            mono_rgba_.data(),mono_rgba_.size());
+        // Preserve original 16-bit RGB frame content too: a 565/555/4444
+        // emulator backbuffer is not a reason to display host clear colors.
+        m2vr::daytona::OriginalPacked16Layout packed_layout=
+            m2vr::daytona::OriginalPacked16Layout::R5G6B5;
+        if(desc.Format==D3DFMT_X1R5G5B5)
+            packed_layout=m2vr::daytona::OriginalPacked16Layout::X1R5G5B5;
+        else if(desc.Format==D3DFMT_A1R5G5B5)
+            packed_layout=m2vr::daytona::OriginalPacked16Layout::A1R5G5B5;
+        else if(desc.Format==D3DFMT_A4R4G4B4)
+            packed_layout=m2vr::daytona::OriginalPacked16Layout::A4R4G4B4;
+        const auto* locked_pixels=
+            static_cast<const std::uint8_t*>(locked.pBits);
+        const bool ready=packed16
+            ?mono_scale_.ConvertPacked16(
+                locked_pixels,locked.Pitch,mono_rgba_.data(),
+                mono_rgba_.size(),packed_layout)
+            :mono_scale_.Convert(
+                locked_pixels,locked.Pitch,mono_rgba_.data(),
+                mono_rgba_.size());
         mono_staging_->UnlockRect();
         if(!ready)
             return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Convert,

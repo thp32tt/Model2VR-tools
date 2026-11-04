@@ -551,3 +551,16 @@ the original emulator renders a readable backbuffer or correct Quest3
 optics. The original game-world CPU/GPU caller, projection matrix A/B
 and units-per-metre are still unproven. No new private game assets or
 reverse engineering dumps are stored in this public repository.
+
+## Original 16-bit D3D9 game backbuffer support (2026-11-05)
+
+The mono original-game HMD fallback now accepts eligible backbuffers
+in `D3DFMT_R5G6B5`, `D3DFMT_X1R5G5B5`,
+`D3DFMT_A1R5G5B5` and `D3DFMT_A4R4G4B4`, not just 32-bit
+X8R8G8B8/A8R8G8B8. An independently tested bounded CPU converter
+unpacks original packed RGB without altering source device render
+state or original 16-bit game video. The copied result is still an
+explicit 2D fallback with no stereo depth claim. Backbuffer alpha is
+not treated as transparency when compositing the final game display
+into the headset. Hardware support of these surface readbacks and
+actual Daytona Quest playback remain UNTESTED.
