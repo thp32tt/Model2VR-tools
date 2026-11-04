@@ -267,3 +267,24 @@ F9 local captures include the counts. This distinguishes supported
 original game D3D9 source families without writing per-draw logs or
 requesting another gameplay CSV capture. The counts alone are not
 proof of world/HUD camera provenance or calibrated native 6DoF.
+
+## Original vs mirrored D3D9 family accounting (2026-11-04)
+
+The native stereo Present hook now resets **all four original-game
+Draw-family counters every frame**, just like passive 2D mode.
+Previously those counters were never drained during VR and could
+accumulate across the entire emulator process lifetime.
+
+On original Present frame 1 and every 120th frame, the optional
+`model2_vr_original_draw_families` event records:
+`a0=frame`, `a1=(original DP<<32)|original DIP`,
+`a2=(original DPUP<<32)|original DIPUP`. This is small aggregate
+metadata only. The separate v2 health IPC contains *successfully
+mirrored* per-family counts; comparing the two explains whether the
+game is actively drawing a primitive family that the safe eye replay
+had to skip. It also works when the headset does not supply an
+admissible pose, so one start log can separate game GPU inactivity
+from failed VR admission without asking for another full trace.
+
+The normal game still executes each original Draw exactly once.
+Existing 2D draw frame logs and steering/FFB are unchanged.

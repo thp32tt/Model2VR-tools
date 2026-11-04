@@ -571,10 +571,24 @@ HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
 HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RECT* b,
                                      HWND w,CONST RGNDATA* dirty){
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
-    if(g_native_stereo)m2vr::daytona::PublishFrame(d,frame);
-    if(!g_native_stereo)m2vr::LogEvent("model2_d3d9_frame",frame,
-        g_draws.exchange(0)+g_indexed.exchange(0),
-        g_up.exchange(0)+g_indexed_up.exchange(0));
+    // Native replay must also drain the *original* source-family counters.
+    // Previously these only reset in passive 2D mode, so a long VR session
+    // accumulated lifetime totals instead of per-Present evidence.
+    const unsigned dp=g_draws.exchange(0u,std::memory_order_relaxed);
+    const unsigned dip=g_indexed.exchange(0u,std::memory_order_relaxed);
+    const unsigned dpup=g_up.exchange(0u,std::memory_order_relaxed);
+    const unsigned dipup=g_indexed_up.exchange(0u,std::memory_order_relaxed);
+    if(g_native_stereo){
+        m2vr::daytona::PublishFrame(d,frame);
+        // Aggregate original draw counts remain available even if the
+        // HMD is disconnected, and never log game vertices or shaders.
+        if(frame==1u || frame%120u==0u)
+            m2vr::LogEvent("model2_vr_original_draw_families",frame,
+                (std::uint64_t{dp}<<32)|dip,
+                (std::uint64_t{dpup}<<32)|dipup);
+    }else{
+        m2vr::LogEvent("model2_d3d9_frame",frame,dp+dip,dpup+dipup);
+    }
     // Snapshot sampling state belongs to a frame, not a process lifetime.
     for(auto& counter:g_family_samples)
         counter.store(0u,std::memory_order_relaxed);

@@ -124,6 +124,17 @@ class NativeStereoTest(unittest.TestCase):
         # eye resources, not create an arbitrary guessed depth format.
         self.assertIn("if(FAILED(d->GetDepthStencilSurface(&depth)) || !depth)",gpu)
 
+    def test_original_draw_counters_reset_in_native_mode(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        for counter in ("g_draws","g_indexed","g_up","g_indexed_up"):
+            self.assertIn(counter+".exchange(0u,std::memory_order_relaxed)",hooks)
+        self.assertIn("model2_vr_original_draw_families",hooks)
+        self.assertIn("(std::uint64_t{dp}<<32)|dip",hooks)
+        self.assertIn("(std::uint64_t{dpup}<<32)|dipup",hooks)
+        self.assertIn("if(frame==1u || frame%120u==0u)",hooks)
+        self.assertIn('m2vr::LogEvent("model2_d3d9_frame"',hooks)
+        self.assertIn("m2vr::daytona::PublishFrame(d,frame);",hooks)
+
     def test_live_x86_to_x64_failure_reason_channel(self):
         producer=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
