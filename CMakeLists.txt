@@ -266,3 +266,12 @@ add_executable(model2_pose_history_x86_test tests/stereo_pose_history_test.cpp)
 target_compile_features(model2_pose_history_x86_test PRIVATE cxx_std_20)
 add_test(NAME model2_exact_source_pose_history_x86
          COMMAND model2_pose_history_x86_test)
+
+# Original native shader-UP scene candidates are gated by current D3D9
+# Z, viewport, alpha/stencil/scissor and color-write state before eye shift.
+add_executable(daytona_shader_scene_gate_x86_test
+               tests/daytona_shader_scene_gate_test.cpp)
+target_compile_features(daytona_shader_scene_gate_x86_test PRIVATE cxx_std_20)
+target_compile_definitions(daytona_shader_scene_gate_x86_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME daytona_native_shader_source_pass_gate_x86
+         COMMAND daytona_shader_scene_gate_x86_test)

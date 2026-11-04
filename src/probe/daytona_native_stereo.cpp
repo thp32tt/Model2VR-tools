@@ -5,6 +5,7 @@
 // Source-space shift is not a calibrated physical IPD or head rotation.
 #include "daytona_native_stereo.hpp"
 #include "daytona_up_decl_witness.hpp"
+#include "daytona_shader_scene_gate.hpp"
 #include "daytona_eye_pose_gate.hpp"
 #include "daytona_triangle_eye_shift.hpp"
 #include "daytona_readback_scale.hpp"
@@ -140,6 +141,16 @@ public:
                     scene=true;
             }
             Drop(vs);Drop(ps);Drop(decl);
+            if(scene){
+                ++scene_candidates_;
+                const auto verdict=m2vr::daytona::CheckShaderUPCandidate(
+                    d,original_vp,width_,height_);
+                if(verdict!=m2vr::daytona::ShaderCandidateReject::None){
+                    const auto index=static_cast<std::size_t>(verdict);
+                    if(index<scene_rejections_.size())++scene_rejections_[index];
+                    scene=false; // pass is copied flat rather than stereo
+                }
+            }
         }
         if(scene) {
             if(scratch_[0].size()<bytes)scratch_[0].resize(bytes);
@@ -465,6 +476,14 @@ private:
                            scene_draws_,replay_count);
             m2vr::LogEvent("model2_vr_surface_updates",frame,
                            mirrored_stretches_,mirrored_fills_,mirrored_updates_);
+            if(scene_candidates_){
+                m2vr::LogEvent("model2_vr_scene_gate",frame,scene_candidates_,
+                               scene_draws_,scene_rejections_[2]);
+                for(std::size_t reason=1;reason<scene_rejections_.size();++reason)
+                    if(scene_rejections_[reason])
+                        m2vr::LogEvent("model2_vr_scene_reject_reason",frame,
+                                       reason,scene_rejections_[reason],0u);
+            }
             if(first)m2vr::FlushLog();
         }
         if(first)first_stereo_published_=true;
@@ -502,6 +521,8 @@ private:
         frame_started_=false;scene_draws_=0;
         mirrored_draws_=0;mirrored_clears_=0;
         mirrored_stretches_=0;mirrored_fills_=0;mirrored_updates_=0;
+        scene_candidates_=0;
+        scene_rejections_.fill(0u);
         mirrored_family_.fill(0u);
         pose_checked_=false;pose_admitted_=false;
     }
@@ -611,7 +632,9 @@ private:
     std::uint32_t mirrored_updates_=0u;
     std::array<std::uint32_t,4> mirrored_family_{};
     float shift_=0.10f;
-    unsigned scene_draws_=0;
+    unsigned scene_draws_=0,scene_candidates_=0;
+    std::array<std::uint32_t,m2vr::daytona::kShaderCandidateReasons>
+        scene_rejections_{};
     IDirect3DDevice9* device_=nullptr; // non-owning, Reset hook releases
     IDirect3DSurface9* backbuffer_=nullptr;
     std::array<Surface,2> eyes_{};

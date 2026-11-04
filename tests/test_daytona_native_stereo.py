@@ -326,5 +326,18 @@ class NativeStereoTest(unittest.TestCase):
         self.assertLess(launcher.index("daytona_vr_safe_mode.flag"),
                         launcher.index("for %%F in (Model2VRLoader.exe"))
 
+    def test_scene_world_shift_requires_live_source_render_states(self):
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        gate=(ROOT/"src/probe/daytona_shader_scene_gate.hpp").read_text("utf-8")
+        self.assertIn("CheckShaderUPCandidate(",gpu)
+        self.assertIn("scene_rejections_.fill(0u)",gpu)
+        self.assertIn("model2_vr_scene_reject_reason",gpu)
+        for item in ("D3DRS_ZENABLE", "D3DRS_ZWRITEENABLE", "D3DRS_ZFUNC",
+                     "D3DRS_STENCILENABLE", "D3DRS_SCISSORTESTENABLE",
+                     "D3DRS_COLORWRITEENABLE", "D3DRS_ALPHABLENDENABLE",
+                     "D3DRS_SRGBWRITEENABLE"):
+            self.assertIn(item,gate)
+        self.assertIn("vp.Width!=width || vp.Height!=height",gate)
+
 if __name__=="__main__":
     unittest.main()

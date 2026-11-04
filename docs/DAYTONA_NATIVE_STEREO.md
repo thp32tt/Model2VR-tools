@@ -404,3 +404,22 @@ log-open handshake failure when the folder does not already exist.
 The original emulator and wheel setup are unchanged. A single failed
 start should leave enough independent startup/producer/host evidence to
 identify injection, D3D9 Present, stereo IPC or OpenXR failures.
+
+
+## Actual shader-UP state gate / HUD false-positive reduction (2026-11-04)
+
+The known Daytona caller + 32-byte POSITION0 shader declaration is now
+a *candidate*, not alone permission to shift world geometry. The actual
+original D3D9 draw must also have full-backbuffer viewport and normal
+[0,1] depth range; Z-enabled LESS/LESSEQUAL depth writes, no alpha
+blend/test, stencil, scissor, clip plane, bias or sRGB write, a full RGBA
+color mask and supported cull mode. Unknown states fail closed and are
+replayed flat to both original-size eye surfaces. This reduces the risk
+of incorrectly shifting HUD and post-effects, without claiming all
+real Daytona world passes are authenticated or calibrated.
+
+Bounded per-120-Present logs model2_vr_scene_gate and
+model2_vr_scene_reject_reason report counts by rejection category,
+not frame dumps or repeated 2D source probes. Source calls, CPU
+simulation, input and the separate Generic DD FFB remain unchanged.
+Actual Daytona/Quest 3 visuals are RUNTIME_VALIDATION=UNTESTED.
