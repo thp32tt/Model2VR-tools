@@ -54,6 +54,9 @@ def analyze(path: Path):
     cpu_batch_frames = defaultdict(set)
     cpu_matrix_join_status = Counter()
     cpu_matrix_join_sources = Counter()
+    cpu_matrix_content_status = Counter()
+    cpu_matrix_content_sources = Counter()
+    projector_matrix_snapshot_status = Counter()
     up_candidates = []
     recent_cpu = deque(maxlen=4096)
     latest_project_ctx = {}
@@ -282,6 +285,38 @@ def analyze(path: Path):
                     key = (family, a1, a3)
                     if key in cpu_matrix_join_sources or len(cpu_matrix_join_sources) < 4096:
                         cpu_matrix_join_sources[key] += 1
+            elif event in ("model2_d3d9_cpu_up_matrix_content",
+                             "model2_d3d9_cpu_shader_matrix_content",
+                             "model2_d3d9_cpu_vb_matrix_content"):
+                # Original matrix contents (16 floats), not just the active
+                # pointer, are hashed in the read-only CPU hook. A stable
+                # digest is still an evidence candidate, NEVER a world bit.
+                family = {
+                    "model2_d3d9_cpu_up_matrix_content": "up",
+                    "model2_d3d9_cpu_shader_matrix_content": "shader_up",
+                    "model2_d3d9_cpu_vb_matrix_content": "vb",
+                }[event]
+                if a1 > 0xFFFFFFFF or a2 not in (0, 1) or a3 > 0xFFFFFFFF:
+                    cpu_matrix_content_status[f"{family}:invalid"] += 1
+                elif a2:
+                    cpu_matrix_content_status[f"{family}:mixed_content_rejected"] += 1
+                elif not a1 or not a3:
+                    cpu_matrix_content_status[f"{family}:content_unavailable"] += 1
+                else:
+                    cpu_matrix_content_status[f"{family}:same_content_candidate"] += 1
+                    key = (family, a3, a1)
+                    if (key in cpu_matrix_content_sources or
+                            len(cpu_matrix_content_sources) < 4096):
+                        cpu_matrix_content_sources[key] += 1
+            elif event == "project_matrix_content":
+                # 0=unavailable, 1=stable before/after, 2=mutated.
+                # Caller/pointer/hash come from a sampled original CPU call.
+                if a0 > 0xFFFFFFFF or a1 > 0xFFFFFFFF or (
+                        a2 > 0xFFFFFFFF) or a3 not in (0, 1, 2):
+                    projector_matrix_snapshot_status["invalid"] += 1
+                else:
+                    status = ("unknown", "stable", "mutated")[a3]
+                    projector_matrix_snapshot_status[status] += 1
             elif event == "model2_d3d9_draw_origin":
                 frame, family, caller = a0, a1, a2
                 # a3 keeps the full unsigned 64-bit (primitive count, topology).
@@ -363,6 +398,19 @@ def analyze(path: Path):
             "in_process_cpu_batch_join": dict(cpu_batch_joins.most_common()),
             "in_process_cpu_matrix_join_status":
                 dict(cpu_matrix_join_status.most_common()),
+            "in_process_cpu_matrix_content_status":
+                dict(cpu_matrix_content_status.most_common()),
+            "original_projector_matrix_snapshot_status":
+                dict(projector_matrix_snapshot_status.most_common()),
+            "in_process_cpu_matrix_content_sources": [
+                {"draw_family": family,
+                 "matrix_identity": f"0x{matrix:08X}",
+                 "matrix_content_fingerprint": f"0x{fingerprint:08X}",
+                 "same_content_candidates": count,
+                 "world_pass_proof": "NOT_ESTABLISHED"}
+                for (family, matrix, fingerprint), count
+                in cpu_matrix_content_sources.most_common(64)
+            ],
             "in_process_cpu_matrix_join_sources": [
                 {"draw_family": family, "matrix_identity": f"0x{matrix:08X}",
                  "cpu_project_caller_rva": f"0x{caller:08X}",
@@ -490,6 +538,17 @@ def markdown(summary):
         lines.append(f"- {source['draw_family']} matrix {source['matrix_identity']} "
                      f"CPU {source['cpu_project_caller_rva']}: "
                      f"{source['single_matrix_candidates']} candidates")
+    lines += ["", "### Source matrix contents (pointer-stable is not content-stable)", ""]
+    for category in ("original_projector_matrix_snapshot_status",
+                     "in_process_cpu_matrix_content_status"):
+        for name, count in d3d9.get(category, {}).items():
+            lines.append(f"- {category} {name}: {count}")
+    for source in d3d9.get("in_process_cpu_matrix_content_sources", []):
+        lines.append(
+            f"- {source['draw_family']} matrix {source['matrix_identity']} "
+            f"content {source['matrix_content_fingerprint']}: "
+            f"{source['same_content_candidates']} candidate Draw joins; "
+            "WORLD PROOF UNKNOWN")
     lines += ["", "### Viewport, scissor and render-target samples", ""]
     for key in ("sampled_viewports", "sampled_scissors", "sampled_targets"):
         lines.append(f"#### {key}")

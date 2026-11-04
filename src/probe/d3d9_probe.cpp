@@ -427,6 +427,10 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
             batch.common_matrix_identity,
             batch.mixed_matrix_identity?1u:0u,
             batch.common_source_caller_rva);
+        m2vr::LogEvent("model2_d3d9_cpu_up_matrix_content",sample_id,
+            batch.common_matrix_fingerprint,
+            batch.mixed_matrix_fingerprint?1u:0u,
+            batch.common_matrix_identity);
         // Evidence-only. A fitted original world camera remains unknown
         // until separately authenticated by private, real gameplay proof.
         ObserveProjectionFit(dev,sample_id,batch);
@@ -605,6 +609,10 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
                 batch.common_matrix_identity,
                 batch.mixed_matrix_identity?1u:0u,
                 batch.common_source_caller_rva);
+            m2vr::LogEvent("model2_d3d9_cpu_shader_matrix_content",id,
+                batch.common_matrix_fingerprint,
+                batch.mixed_matrix_fingerprint?1u:0u,
+                batch.common_matrix_identity);
             ObserveProjectionFit(dev,id,batch);
         }
     }
@@ -671,6 +679,10 @@ void ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
                 joined.common_matrix_identity,
                 joined.mixed_matrix_identity?1u:0u,
                 joined.common_source_caller_rva);
+            m2vr::LogEvent("model2_d3d9_cpu_vb_matrix_content",id,
+                joined.common_matrix_fingerprint,
+                joined.mixed_matrix_fingerprint?1u:0u,
+                joined.common_matrix_identity);
             ObserveProjectionFit(dev,id,joined);
         }
     }

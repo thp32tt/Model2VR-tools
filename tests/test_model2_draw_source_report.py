@@ -46,6 +46,10 @@ class SourceAuditTests(unittest.TestCase):
                  pack(0, 15), 0, 0),
                 ("model2_d3d9_cpu_vb_join_batch", 101,
                  pack(2, 2), pack(0, 0), 0x4567),
+                ("model2_d3d9_cpu_vb_matrix_identity", 101,
+                 0x1000, 0, 0x4567),
+                ("model2_d3d9_cpu_vb_matrix_content", 101,
+                 0xAABBCCDD, 0, 0x1000),
                 ("model2_d3d9_vb_present_frame", 102, 17, 2, 0),
                 ("model2_d3d9_vb_source", 102, 0x1234,
                  pack(2, 0x112), pack(65536, 20)),
@@ -78,7 +82,35 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(src["cpu_projector_complete_triangles"], 2)
             self.assertEqual(src["distinct_present_frame_count"], 1)
             self.assertEqual(src["distinct_correlated_present_frame_count"], 1)
+            self.assertEqual(src["cpu_matrix_consistent_candidate_batches"], 1)
+            self.assertEqual(src["cpu_matrix_content_fingerprints"],
+                             ["0xaabbccdd"])
+            self.assertEqual(
+                src["distinct_matrix_consistent_present_frame_count"], 1)
             self.assertFalse(src["world_pass_proven"])
+
+    def test_in_place_matrix_drift_is_not_authentic_world_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "matrix.csv"
+            self.write_log(p, [
+                ("model2_d3d9_vb_present_frame", 77, 8, 1, 0),
+                ("model2_d3d9_vb_source", 77, 0x111,
+                 pack(1, 0x112), pack(2048, 20)),
+                ("model2_d3d9_cpu_vb_join_batch", 77,
+                 pack(2, 2), 0, 0x55),
+                ("model2_d3d9_cpu_vb_matrix_identity", 77,
+                 0x1000, 0, 0x55),
+                ("model2_d3d9_cpu_vb_matrix_content", 77,
+                 0xABC123, 1, 0x1000),
+            ])
+            item = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(
+                item["cpu_matrix_mixed_or_inconsistent_batches"], 1)
+            self.assertEqual(
+                item["cpu_matrix_consistent_candidate_batches"], 0)
+            self.assertEqual(
+                item["distinct_matrix_consistent_present_frame_count"], 0)
+            self.assertFalse(item["world_pass_proven"])
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):
         with tempfile.TemporaryDirectory() as tmp:

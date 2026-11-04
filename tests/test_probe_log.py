@@ -151,6 +151,18 @@ class ProbeLogTests(unittest.TestCase):
                                  23, 0, 0, 0x555])
                 writer.writerow([4, 4, 1, "model2_d3d9_cpu_vb_matrix_identity",
                                  24, 0x2000, 0, 0x777])
+                writer.writerow([5, 5, 1, "model2_d3d9_cpu_up_matrix_content",
+                                 21, 0xABC123, 0, 0x1000])
+                writer.writerow([6, 6, 1, "model2_d3d9_cpu_up_matrix_content",
+                                 22, 0, 1, 0x1000])
+                writer.writerow([7, 7, 1, "model2_d3d9_cpu_shader_matrix_content",
+                                 23, 0, 0, 0])
+                writer.writerow([8, 8, 1, "model2_d3d9_cpu_vb_matrix_content",
+                                 24, 0x123456, 0, 0x2000])
+                writer.writerow([9, 9, 1, "project_matrix_content",
+                                 0x555, 0x1000, 0xABC123, 1])
+                writer.writerow([10, 10, 1, "project_matrix_content",
+                                 0x555, 0x1000, 0xABC123, 2])
             d3d9 = MODULE.analyze(path)["d3d9"]
         kinds = d3d9["in_process_cpu_matrix_join_status"]
         self.assertEqual(kinds["up:single_matrix_candidate"], 1)
@@ -160,6 +172,17 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(len(d3d9["in_process_cpu_matrix_join_sources"]), 2)
         self.assertTrue(all(x["world_pass_proof"] == "NOT_ESTABLISHED"
                             for x in d3d9["in_process_cpu_matrix_join_sources"]))
+        content = d3d9["in_process_cpu_matrix_content_status"]
+        self.assertEqual(content["up:same_content_candidate"], 1)
+        self.assertEqual(content["up:mixed_content_rejected"], 1)
+        self.assertEqual(content["shader_up:content_unavailable"], 1)
+        self.assertEqual(content["vb:same_content_candidate"], 1)
+        self.assertEqual(
+            d3d9["original_projector_matrix_snapshot_status"],
+            {"stable": 1, "mutated": 1})
+        self.assertEqual(len(d3d9["in_process_cpu_matrix_content_sources"]), 2)
+        self.assertTrue(all(x["world_pass_proof"] == "NOT_ESTABLISHED"
+                            for x in d3d9["in_process_cpu_matrix_content_sources"]))
 
     def test_up_witness_correlates_only_prior_same_thread_coordinates(self):
         with tempfile.TemporaryDirectory() as td:

@@ -23,6 +23,8 @@ NAMES = {
     "model2_d3d9_vb_sampler", "model2_d3d9_vb_alpha",
     "model2_d3d9_vb_raster", "model2_d3d9_vb_write_color",
     "model2_d3d9_cpu_vb_join_batch",
+    "model2_d3d9_cpu_vb_matrix_identity",
+    "model2_d3d9_cpu_vb_matrix_content",
     "model2_d3d9_vb_present_frame",
 }
 
@@ -86,6 +88,10 @@ def audit_csv(path):
                 fields["write_color"] = values
             elif event == "model2_d3d9_cpu_vb_join_batch":
                 fields["cpu_join"] = values
+            elif event == "model2_d3d9_cpu_vb_matrix_identity":
+                fields["matrix_identity"] = values
+            elif event == "model2_d3d9_cpu_vb_matrix_content":
+                fields["matrix_content"] = values
             elif event == "model2_d3d9_vb_present_frame":
                 fields["present_frame"] = values
             elif event == "model2_d3d9_vb_camera":
@@ -106,6 +112,11 @@ def audit_csv(path):
         "cpu_projector_partial_triangles": 0,
         "cpu_projector_ambiguous_triangles": 0,
         "cpu_projector_source_callers": set(),
+        "cpu_matrix_consistent_candidate_batches": 0,
+        "cpu_matrix_mixed_or_inconsistent_batches": 0,
+        "cpu_matrix_content_unavailable_batches": 0,
+        "cpu_matrix_content_fingerprints": set(),
+        "matrix_consistent_present_frames": set(),
         "present_frames": set(),
         "correlated_present_frames": set(),
         "candidate_only": True,
@@ -187,6 +198,32 @@ def audit_csv(path):
                     entry["correlated_present_frames"].add(present_frame)
                 entry["cpu_projector_source_callers"].add(
                     f"0x{cpu_caller:08x}")
+        if "matrix_content" in data:
+            fingerprint, mixed, matrix_id = data["matrix_content"]
+            matrix_record = data.get("matrix_identity")
+            join_record = data.get("cpu_join")
+            if (fingerprint > 0xFFFFFFFF or mixed not in (0, 1)
+                    or matrix_id > 0xFFFFFFFF):
+                raise ValueError("invalid CPU source matrix content record")
+            if not fingerprint or not matrix_id or not matrix_record:
+                entry["cpu_matrix_content_unavailable_batches"] += 1
+            elif (mixed or matrix_record[0] != matrix_id or
+                  matrix_record[1] != 0 or not join_record or
+                  matrix_record[2] != join_record[2]):
+                entry["cpu_matrix_mixed_or_inconsistent_batches"] += 1
+            else:
+                packed, errors, caller = join_record
+                inspected, complete = halves(packed)
+                partial, ambiguous = halves(errors)
+                if (inspected >= 2 and inspected <= 8 and
+                        complete == inspected and not partial and
+                        not ambiguous and caller):
+                    entry["cpu_matrix_consistent_candidate_batches"] += 1
+                    entry["cpu_matrix_content_fingerprints"].add(
+                        f"0x{fingerprint:08x}")
+                    if present_frame is not None:
+                        entry["matrix_consistent_present_frames"].add(
+                            present_frame)
         if "texture" in data:
             fmt, width, height = data["texture"]
             entry["texture_formats"].add(fmt)
@@ -201,10 +238,13 @@ def audit_csv(path):
             "caller_is_in_executable": caller != 0,
         }
         record["distinct_present_frame_count"] = len(value["present_frames"])
+        record["distinct_matrix_consistent_present_frame_count"] = len(
+            value["matrix_consistent_present_frames"])
         record["distinct_correlated_present_frame_count"] = len(
             value["correlated_present_frames"])
         for key, item in value.items():
-            if key in ("present_frames", "correlated_present_frames"):
+            if key in ("present_frames", "correlated_present_frames",
+                       "matrix_consistent_present_frames"):
                 continue
             if isinstance(item, set):
                 record[key] = sorted([list(v) if isinstance(v, tuple) else v for v in item])
