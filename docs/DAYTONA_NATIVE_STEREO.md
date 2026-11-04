@@ -233,3 +233,20 @@ a truly published stereo game frame. One successful producer publish
 still does not prove calibrated Daytona 6DoF or a tested HMD visual.
 The shared ABI is covered by both Win32 and Win64 native CTests;
 `RUNTIME_VALIDATION=UNTESTED` remains until actual Quest 3 execution.
+
+## Fresh-frame failure revokes stale compositor images
+
+The x64 host uses the producer's **fresh** frame-id/bitmask to distinguish
+a new original D3D9 failure from a prior successfully published game
+stereo pair. If a later original `Present` failed, the host stops
+reusing the older cached pair and switches to diagnostic fallback
+colours. If the host has not yet consumed a newer successful pair,
+the bounded 60→90/120Hz frame hold remains unchanged. Stale or absent
+producer-health packets cannot by themselves revoke a valid pair; the
+existing frame age gate still applies. This is implemented as one pure
+cross-architecture contract with Win32/Win64 native tests.
+
+It prevents a frozen older two-eye image from being misrepresented
+as the current game when the producer has already reported loss of
+scene, pose or GPU source. It is **not** a correction to in-game
+6DoF, optics or original camera matrix calibration.

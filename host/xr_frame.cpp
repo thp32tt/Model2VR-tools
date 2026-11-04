@@ -231,7 +231,10 @@ void XrApp::draw_frame(XrTime display_time){
     // The emulator can run at 60Hz with a 90Hz or 120Hz HMD.
     // Re-use a *bounded* coherent previous pair, never clear on every
     // display tick, but stop presenting it if the producer stalls.
-    const bool usable=frame_gate_.Cached(now,hz) &&
+    const bool source_failed_after_pair=producerhealth::InvalidatesCachedPair(
+        producer_health_status_,producer_health_fresh_,frame_gate_.id());
+    const bool usable=!source_failed_after_pair &&
+        frame_gate_.Cached(now,hz) &&
         eye_frame_.frame_id==frame_gate_.id() &&
         eye_frame_.eyes[0].size()==transport::kBytesPerEye &&
         eye_frame_.eyes[1].size()==transport::kBytesPerEye;

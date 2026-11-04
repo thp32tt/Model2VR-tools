@@ -135,6 +135,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("STALE_OR_DISCONNECTED",host)
         self.assertIn("producer_reason_mask=",host)
         self.assertIn("producer_health_fresh_=fresh;",host)
+        self.assertIn("source_failed_after_pair=producerhealth::InvalidatesCachedPair(",host)
+        self.assertIn("const bool usable=!source_failed_after_pair &&",host)
         self.assertIn("static_assert(sizeof(Wire)==64)",hdr)
         self.assertIn("daytona_producer_health_x86_test",(ROOT/"CMakeLists.txt").read_text("utf-8"))
         self.assertIn("daytona_producer_health_x64_test",(ROOT/"host/CMakeLists.txt").read_text("utf-8"))

@@ -38,6 +38,13 @@ constexpr bool Fresh(const Snapshot& s,std::uint64_t now,
     return s.frame_id && s.timestamp_qpc && hz && hz<=UINT64_MAX/3u &&
         now>=s.timestamp_qpc && now-s.timestamp_qpc<=hz*3u;
 }
+// A newer failed original Present must not leave the HMD displaying
+// an earlier successful eye frame as if it were the latest live game.
+constexpr bool InvalidatesCachedPair(const Snapshot& health,bool fresh,
+                                      std::uint64_t cached_frame_id)noexcept {
+    return fresh && health.reason_mask!=0u &&
+           health.frame_id>cached_frame_id;
+}
 constexpr const char* ReasonName(std::uint32_t mask)noexcept {
     if(!mask)return "PAIR_PUBLISHED";
     if(mask&PoseUnavailable)return "POSE_NOT_ADMITTED";

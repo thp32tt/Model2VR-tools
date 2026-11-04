@@ -27,10 +27,20 @@ int main(){
  REQUIRE(!Fresh(got,got.timestamp_qpc,0u));
  REQUIRE(ReasonName(0u)[0]=='P');
  REQUIRE(ReasonName(NoVerifiedScene)[0]=='N');
+ REQUIRE(!InvalidatesCachedPair(got,true,1u));
+ REQUIRE(InvalidatesCachedPair(got,true,0u));
+ REQUIRE(!InvalidatesCachedPair(got,false,0u));
  REQUIRE(writer.Publish(2u,0u,7,29,3));
  REQUIRE(reader.Read(got));
  REQUIRE(got.frame_id==2 && got.reason_mask==0u);
  REQUIRE(got.verified_scene_draws==7 && got.mirrored_draws==29);
+ REQUIRE(!InvalidatesCachedPair(got,true,1u)); // newer success not failure
+ Snapshot failed=got;
+ failed.frame_id=3u;
+ failed.reason_mask=ReadbackFailed;
+ REQUIRE(InvalidatesCachedPair(failed,true,2u));
+ REQUIRE(!InvalidatesCachedPair(failed,true,3u));
+ REQUIRE(!InvalidatesCachedPair(failed,false,2u));
  reader.Close();writer.Close();
  REQUIRE(!reader.Read(got));
  return 0;
