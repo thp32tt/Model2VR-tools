@@ -10,7 +10,13 @@ class NativeStereoTest(unittest.TestCase):
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         source=(ROOT/"src/probe/d3d9_up_material_bridge.cpp").read_text("utf-8")
         raster=(ROOT/"src/vr/model2_stereo_raster.hpp").read_text("utf-8")
-        self.assertIn("depth_mode>2u",bridge)
+        # Source ABI keeps 0..2, but now admits EQUAL/GREATER/
+        # GREATER_EQUAL/NOTEQUAL as 3..6. Never widen this beyond
+        # the exact independent-eye Z compare implementations.
+        self.assertIn("depth_mode>6u",bridge)
+        self.assertNotIn("depth_mode>2u",bridge)
+        self.assertIn('"model2_d3d9_source_depth_cull"',(
+            ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8"))
         self.assertIn("blend_mode>8u",bridge)
         gpu=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         blend=(ROOT/"src/vr/model2_blend_states.hpp").read_text("utf-8")
