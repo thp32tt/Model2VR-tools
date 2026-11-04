@@ -69,6 +69,23 @@ __declspec(dllexport) BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWit
     unsigned int depth_write);
 
 
+// Optional verified D3D9 diffuse RGBA (source D3DCOLOR A8R8G8B8),
+// perspective-correct interpolated after independent-eye clipping.
+// Both MODULATE flags are boolean and require a non-null per-vertex
+// array. SELECTARG1(TEXTURE) preserves the old ABI and material semantics.
+// Never call outside a separately authenticated original world frame.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRenderStates(
+    const float* view_space_xyz,const float* interleaved_uv,
+    unsigned int vertex_count,const std::uint32_t* triangle_indices,
+    unsigned int index_count,const unsigned char* texture_rgba,
+    unsigned int texture_width,unsigned int texture_height,
+    unsigned int texture_pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
+    const std::uint32_t* diffuse_argb,unsigned int modulate_rgb,
+    unsigned int modulate_alpha);
+
 // Return TRUE only during an independently authorized current-thread world
 // transaction. Adapters must fail before reading original D3D9 draw memory.
 __declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread();

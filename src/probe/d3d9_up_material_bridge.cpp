@@ -22,7 +22,8 @@ bool GuardCopy(void* dst,const void* src,std::size_t size) noexcept {
 }
 bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
                            m2vr::vr::SamplerPolicy& sampler,
-                           m2vr::vr::RasterPolicy& raster) {
+                           m2vr::vr::RasterPolicy& raster,
+                           bool& modulate_rgb,bool& modulate_alpha) {
     if(!d)return false;
     IDirect3DVertexShader9* vs=nullptr;
     if(FAILED(d->GetVertexShader(&vs)))return false;
@@ -52,13 +53,29 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        FAILED(d->GetRenderState(D3DRS_FOGENABLE,&fog)) ||
        FAILED(d->GetRenderState(D3DRS_LIGHTING,&lighting)) ||
        z!=D3DZB_TRUE || blend || fog || lighting)return false;
-    DWORD colorop=0,arg=0,alphaop=0,alphaarg=0;
+    DWORD colorop=0,arg=0,arg2=0,alphaop=0,alphaarg=0,alphaarg2=0;
     if(FAILED(d->GetTextureStageState(0,D3DTSS_COLOROP,&colorop)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_COLORARG1,&arg)) ||
+       FAILED(d->GetTextureStageState(0,D3DTSS_COLORARG2,&arg2)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_ALPHAOP,&alphaop)) ||
        FAILED(d->GetTextureStageState(0,D3DTSS_ALPHAARG1,&alphaarg)) ||
-       colorop!=D3DTOP_SELECTARG1 || arg!=D3DTA_TEXTURE ||
-       alphaop!=D3DTOP_SELECTARG1 || alphaarg!=D3DTA_TEXTURE)return false;
+       FAILED(d->GetTextureStageState(0,D3DTSS_ALPHAARG2,&alphaarg2)))
+        return false;
+    const auto decode_op=[](DWORD operation,DWORD a,DWORD b,
+                            bool& modulate) noexcept {
+        modulate=false;
+        if(operation==D3DTOP_SELECTARG1 && a==D3DTA_TEXTURE)return true;
+        if(operation==D3DTOP_MODULATE &&
+           ((a==D3DTA_TEXTURE && b==D3DTA_DIFFUSE) ||
+            (b==D3DTA_TEXTURE && a==D3DTA_DIFFUSE))){
+            modulate=true;
+            return true;
+        }
+        return false;
+    };
+    if(!decode_op(colorop,arg,arg2,modulate_rgb) ||
+       !decode_op(alphaop,alphaarg,alphaarg2,modulate_alpha))
+        return false;
     DWORD address_u=0,address_v=0,min_filter=0,mag_filter=0,mip_filter=0;
     DWORD srgb_texture=0,alpha_test=0,alpha_ref=0,alpha_func=0;
     DWORD stage1_colorop=0,texcoord_index=0,transform_flags=0;
@@ -110,14 +127,19 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     auto* d=static_cast<IDirect3DDevice9*>(device);
     m2vr::vr::SamplerPolicy sampler{};
     m2vr::vr::RasterPolicy raster{};
+    bool modulate_rgb=false,modulate_alpha=false;
     if(!d || !source || !triangle_indices ||
        !count || count>2048 || !index_count ||
-       index_count%3 || index_count>6144u || alpha_cutoff>255u ||
-       !FixedFunctionMaterial(d,alpha_cutoff,sampler,raster))return FALSE;
+       index_count%3 || index_count>6144u || alpha_cutoff>255u)
+        return FALSE;
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)))return FALSE;
     const auto layout=m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride);
-    if(!layout.eligible)return FALSE;
+    if(!layout.eligible ||
+       !FixedFunctionMaterial(d,alpha_cutoff,sampler,raster,
+                              modulate_rgb,modulate_alpha) ||
+       ((modulate_rgb || modulate_alpha) && !layout.has_diffuse))
+        return FALSE;
     D3DMATRIX world{},view{},projection{};
     if(FAILED(d->GetTransform(D3DTS_WORLD,&world)) ||
        FAILED(d->GetTransform(D3DTS_VIEW,&view)) ||
@@ -129,12 +151,14 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
     std::vector<std::uint8_t> raw;
     std::vector<std::uint32_t> safe_indices;
     std::vector<float> positions,uv;
+    std::vector<std::uint32_t> diffuse;
     m2vr::drawprobe::TextureSnapshot texture{};
     try {
         raw.resize(std::size_t(count)*stride);
         safe_indices.resize(index_count);
         positions.resize(std::size_t(count)*3u);
         uv.resize(std::size_t(count)*2u);
+        if(modulate_rgb || modulate_alpha)diffuse.resize(count);
         if(!GuardCopy(raw.data(),source,raw.size()) ||
            !GuardCopy(safe_indices.data(),triangle_indices,
                       safe_indices.size()*sizeof(std::uint32_t)))return FALSE;
@@ -148,12 +172,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
                 positions[std::size_t(i)*3u+k]=vertex.view_xyz[k];
             for(unsigned k=0;k<2;++k)
                 uv[std::size_t(i)*2u+k]=vertex.uv[k];
+            if(!diffuse.empty())diffuse[i]=vertex.diffuse_argb;
         }
         if(!m2vr::drawprobe::SnapshotCurrentTexture(d,texture))
             return FALSE;
     }catch(...){return FALSE;}
     // No second haptic owner, no duplicated emulator CPU draw or state.
-    return Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
+    return Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRenderStates(
         positions.data(),uv.data(),count,safe_indices.data(),index_count,
         texture.rgba.data(),texture.width,texture.height,texture.width*4u,
         alpha_cutoff,
@@ -162,7 +187,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
         static_cast<unsigned int>(sampler.v),
         static_cast<unsigned int>(raster.cull),
         static_cast<unsigned int>(raster.depth),
-        raster.write_depth?1u:0u);
+        raster.write_depth?1u:0u,
+        diffuse.empty()?nullptr:diffuse.data(),
+        modulate_rgb?1u:0u,modulate_alpha?1u:0u);
 }
 
 // Actual original x86 D3D9 DrawPrimitiveUP XYZRHW/TEX1 vertices may already
@@ -181,7 +208,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
        triangles<2u || triangles>kMaxTriangles || cutoff>255u)return FALSE;
     m2vr::vr::SamplerPolicy sampler{};
     m2vr::vr::RasterPolicy raster{};
-    if(!FixedFunctionMaterial(d,cutoff,sampler,raster))return FALSE;
+    bool modulate_rgb=false,modulate_alpha=false;
+    // The currently authenticated projected XYZRHW/TEX1 source has no
+    // diffuse vertex attribute. Reject material MODULATE until that exact
+    // original GPU layout is independently proven.
+    if(!FixedFunctionMaterial(d,cutoff,sampler,raster,
+                              modulate_rgb,modulate_alpha) ||
+       modulate_rgb || modulate_alpha)return FALSE;
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)) ||
        !m2vr::drawprobe::ExactProjectedUPWorldFVF(fvf,stride))

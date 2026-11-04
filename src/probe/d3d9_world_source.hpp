@@ -13,6 +13,8 @@ namespace m2vr::drawprobe {
 struct WorldUpLayout {
     std::uint32_t stride=0;
     std::uint32_t uv_offset=0;
+    std::uint32_t diffuse_offset=0;
+    bool has_diffuse=false;
     bool eligible=false;
 };
 inline WorldUpLayout DecodeWorldUpFVF(std::uint32_t fvf,
@@ -27,7 +29,11 @@ inline WorldUpLayout DecodeWorldUpFVF(std::uint32_t fvf,
     std::uint32_t offset=12;
     if(fvf&D3DFVF_NORMAL)offset+=12;
     if(fvf&D3DFVF_PSIZE)offset+=4;
-    if(fvf&D3DFVF_DIFFUSE)offset+=4;
+    if(fvf&D3DFVF_DIFFUSE){
+        result.diffuse_offset=offset;
+        result.has_diffuse=true;
+        offset+=4;
+    }
     if(fvf&D3DFVF_SPECULAR)offset+=4;
     // Fail on unknown packed attributes, padding or non-2D UV variants.
     if(stride!=offset+8u || stride>256u)return result;
@@ -39,6 +45,8 @@ inline WorldUpLayout DecodeWorldUpFVF(std::uint32_t fvf,
 struct WorldVertex {
     float view_xyz[3]{};
     float uv[2]{};
+    // Original D3DCOLOR is A8R8G8B8, not little-endian RGBA.
+    std::uint32_t diffuse_argb=0xffffffffu;
 };
 inline bool FiniteVertex(const WorldVertex& v) noexcept {
     for(float x:v.view_xyz)if(!std::isfinite(x))return false;
@@ -99,6 +107,12 @@ inline bool DecodeWorldVertex(const void* data,std::size_t bytes,
     TransformPoint(world,xyz,w);
     TransformPoint(view,w,output.view_xyz);
     output.uv[0]=uv[0];output.uv[1]=uv[1];
+    if(layout.has_diffuse)
+        std::memcpy(&output.diffuse_argb,
+            static_cast<const std::uint8_t*>(data)+layout.diffuse_offset,
+            sizeof(output.diffuse_argb));
+    else
+        output.diffuse_argb=0xffffffffu;
     return FiniteVertex(output);
 }
 // D3D9 A8R8G8B8 and X8R8G8B8 CPU-row color unpack (little-endian BGRA).

@@ -178,13 +178,15 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedWorldTriangles(
 }
 // Optional texture source path for a trusted Model2 CPU-world integration.
 // This does not query game textures, rerun any D3D9 draw, or alter FFB.
-extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRenderStates(
     const float* xyz,const float* uv,unsigned int vertex_count,
     const std::uint32_t* indices,unsigned int index_count,
     const unsigned char* texture_rgba,unsigned int width,
     unsigned int height,unsigned int pitch,unsigned int alpha_cutoff,
     unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
-    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write) {
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write,
+    const std::uint32_t* diffuse_argb,unsigned int modulate_rgb,
+    unsigned int modulate_alpha) {
     std::scoped_lock lock(g.mutex);
     if(!Owner() || !xyz || !uv || !indices || !texture_rgba ||
        !vertex_count || vertex_count>4096u ||
@@ -195,7 +197,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStat
        !width || !height || width>1024u || height>1024u ||
        pitch!=width*4u || alpha_cutoff>255u ||
        filter_mode>1u || address_u>1u || address_v>1u ||
-       cull_mode>2u || depth_mode>1u || depth_write>1u) {
+       cull_mode>2u || depth_mode>1u || depth_write>1u ||
+       modulate_rgb>1u || modulate_alpha>1u ||
+       ((modulate_rgb || modulate_alpha) && !diffuse_argb)) {
         if(Owner())g.Abort();
         return FALSE;
     }
@@ -204,6 +208,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStat
         std::vector<float> safe_uv(std::size_t(vertex_count)*2u);
         std::vector<std::uint32_t> safe_indices(index_count);
         std::vector<std::uint8_t> safe_texture(std::size_t(pitch)*height);
+        std::vector<std::uint32_t> safe_diffuse;
+        if(diffuse_argb)safe_diffuse.resize(vertex_count);
         if(!GuardedCopy(positions.data(),xyz,
                         std::size_t(vertex_count)*3u*sizeof(float)) ||
            !GuardedCopy(safe_uv.data(),uv,
@@ -211,14 +217,17 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStat
            !GuardedCopy(safe_indices.data(),indices,
                         safe_indices.size()*sizeof(std::uint32_t)) ||
            !GuardedCopy(safe_texture.data(),texture_rgba,
-                        safe_texture.size())) {
+                        safe_texture.size()) ||
+           (diffuse_argb && !GuardedCopy(safe_diffuse.data(),diffuse_argb,
+                            safe_diffuse.size()*sizeof(std::uint32_t)))) {
             g.Abort();return FALSE;
         }
         m2vr::vr::ClippedTexturedStereoBatch clipped{};
         if(!m2vr::vr::BuildTexturedStereoBatch(
               positions.data(),safe_uv.data(),positions.size(),
               safe_indices.data(),safe_indices.size(),g.frame,g.latch,
-              g.calibration,g.evidence,clipped)) {
+              g.calibration,g.evidence,clipped,
+              safe_diffuse.empty()?nullptr:safe_diffuse.data())) {
             g.Abort();return FALSE;
         }
         m2vr::vr::StereoWorldRaster::TextureRGBA texture{
@@ -233,7 +242,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStat
                 static_cast<m2vr::vr::FaceCull>(cull_mode),
                 static_cast<m2vr::vr::DepthCompare>(depth_mode),
                 depth_write!=0u
-            }
+            },
+            modulate_rgb!=0u,modulate_alpha!=0u
         };
         if(!g.raster->DrawTextured(clipped,texture)) {
             g.Abort();return FALSE;
@@ -244,6 +254,21 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStat
     }catch(...){
         g.Abort();return FALSE;
     }
+}
+// Earlier ABI remains unchanged: no diffuse stream and D3D9
+// SELECTARG1(TEXTURE) remains exact, not implicitly modulated.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedTexturedTrianglesWithRenderStates(
+    const float* xyz,const float* uv,unsigned int vertex_count,
+    const std::uint32_t* indices,unsigned int index_count,
+    const unsigned char* texture_rgba,unsigned int width,
+    unsigned int height,unsigned int pitch,unsigned int alpha_cutoff,
+    unsigned int filter_mode,unsigned int address_u,unsigned int address_v,
+    unsigned int cull_mode,unsigned int depth_mode,unsigned int depth_write) {
+    return Model2VR_AppendVerifiedTexturedTrianglesWithDiffuseRenderStates(
+        xyz,uv,vertex_count,indices,index_count,
+        texture_rgba,width,height,pitch,alpha_cutoff,filter_mode,
+        address_u,address_v,cull_mode,depth_mode,depth_write,
+        nullptr,0u,0u);
 }
 // The earlier point/linear + address ABI remains valid with its historical
 // no-culling, strict-less and depth-writing defaults.
