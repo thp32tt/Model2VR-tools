@@ -17,7 +17,7 @@ inline bool OriginalStereoPoseStillLiveAtPresent(
        now<ticket.published_qpc ||
        now-ticket.published_qpc>hz/8u ||
        latest.sequence<ticket.sequence ||
-       latest.sequence-ticket.sequence>32u ||
+       latest.sequence-ticket.sequence>=32u ||
        latest.published_qpc<ticket.published_qpc ||
        latest.published_qpc>now)return false;
     return AdmitTrackedWorldEyePose(latest,now,hz).valid &&
