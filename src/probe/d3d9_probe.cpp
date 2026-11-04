@@ -78,7 +78,7 @@ std::atomic<unsigned> g_present_count{0};
 std::atomic<std::uint64_t> g_witness_serial{0};
 // Only frames containing a real sampled original VB/IB Draw receive a
 // matching physical original Present outcome. No per-Draw GPU readback.
-std::atomic<unsigned> g_original_vb_result_samples{0u};
+std::atomic<unsigned> g_original_source_result_samples{0u};
 std::uint32_t g_draw_sample_every=1024u;
 std::atomic<bool> g_device_installed{false};
 m2vr::drawprobe::OriginalD3D9DeviceOwner g_primary_device{};
@@ -442,7 +442,7 @@ bool SafeReadBytes(const void* source,std::size_t offset,
  // stage-zero UV and original World/View matrices. Even D3DFVF_XYZ can be
  // HUD/UI or non-gameplay; this function NEVER asserts world proof or
  // publishes a GameStereo frame. Logs three bounded vertices at most.
-void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
+std::uint64_t ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
                     D3DPRIMITIVETYPE type,UINT primitive_count,void* caller,
                     const void* vertices,UINT stride,const void* indices,
                     D3DFORMAT index_format,UINT first,UINT vertex_count) {
@@ -450,22 +450,22 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
     if(!dev || !vertices ||
        (type!=D3DPT_TRIANGLELIST &&
         type!=D3DPT_TRIANGLESTRIP &&
-        type!=D3DPT_TRIANGLEFAN))return;
+        type!=D3DPT_TRIANGLEFAN))return 0u;
     DWORD fvf=0;
-    if(FAILED(dev->GetFVF(&fvf)))return;
+    if(FAILED(dev->GetFVF(&fvf)))return 0u;
     const auto layout=DecodeWorldUpFVF(fvf,stride);
-    if(!layout.eligible)return;
+    if(!layout.eligible)return 0u;
     if(family==4u && (!indices||!vertex_count||
        vertex_count>m2vr::drawprobe::kMaxIndexedUPDeclaredVertices ||
        (index_format!=D3DFMT_INDEX16 &&
-        index_format!=D3DFMT_INDEX32)))return;
+        index_format!=D3DFMT_INDEX32)))return 0u;
     D3DMATRIX world{},view{};
     if(FAILED(dev->GetTransform(D3DTS_WORLD,&world)) ||
        FAILED(dev->GetTransform(D3DTS_VIEW,&view)) ||
-       !AffineMatrix(world)||!AffineMatrix(view))return;
+       !AffineMatrix(world)||!AffineMatrix(view))return 0u;
     const auto elements=PrimitiveElements(
         static_cast<std::uint32_t>(type),primitive_count);
-    if(!elements)return;
+    if(!elements)return 0u;
     constexpr unsigned max_sample=3u;
     std::array<WorldVertex,max_sample> samples{};
     std::array<std::uint32_t,max_sample> ids{};
@@ -477,12 +477,12 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
             const unsigned bytes=index_format==D3DFMT_INDEX16?2u:4u;
             std::array<std::uint8_t,4> raw{};
             if(!SafeReadBytes(indices,std::size_t(i)*bytes,
-                              raw.data(),bytes))return;
+                              raw.data(),bytes))return 0u;
             if(bytes==2u){std::uint16_t x=0;std::memcpy(&x,raw.data(),2);index=x;}
             else std::memcpy(&index,raw.data(),4);
             std::uint32_t relative=0u;
             if(!IndexedUPRelativeIndex(index,first,vertex_count,relative))
-                return;
+                return 0u;
             absolute_index=index;
             index=relative; // UP vertex pointer begins at first
         }
@@ -498,7 +498,7 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
             !SafeReadBytes(vertices,vertex_base+layout.uv_offset,
                            source.data()+layout.uv_offset,8u)) ||
            !DecodeWorldVertex(source.data(),stride,layout,
-                              world,view,samples[i]))return;
+                              world,view,samples[i]))return 0u;
         ids[i]=absolute_index;
     }
     const auto id=g_witness_serial.fetch_add(
@@ -538,16 +538,17 @@ void ObserveWorldUP(IDirect3DDevice9* dev,unsigned family,
         }
         tex->Release();
     }
+    return id;
 }
 // Candidate camera fit is implemented after ObserveUP below.
 void ObserveProjectionFit(IDirect3DDevice9* dev,std::uint64_t witness,
         const m2vr::drawprobe::ProjectedTriangleBatchJoin& batch);
 // Defined below: bounded original FVF=0 declaration observation.
-void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
+std::uint64_t ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
                             void* caller,UINT stride,
                             D3DPRIMITIVETYPE topology,
                             UINT primitive_count,const void* vertices);
-void ObserveUP(IDirect3DDevice9* dev,unsigned family,
+std::uint64_t ObserveUP(IDirect3DDevice9* dev,unsigned family,
                D3DPRIMITIVETYPE type,UINT primitive_count,void* caller,
                const void* vertices,UINT stride,const void* indices=nullptr,
                D3DFORMAT index_format=D3DFMT_UNKNOWN,UINT first=0,
@@ -555,27 +556,25 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     using namespace m2vr::drawprobe;
     const auto elements=PrimitiveElements(
         static_cast<std::uint32_t>(type),primitive_count);
-    if(!dev||!vertices||!ValidStride(stride)||!elements)return;
+    if(!dev||!vertices||!ValidStride(stride)||!elements)return 0u;
     DWORD fvf=0;
-    if(FAILED(dev->GetFVF(&fvf)))return;
+    if(FAILED(dev->GetFVF(&fvf)))return 0u;
     if(fvf==0u) {
-        ObserveUnknownUpLayout(dev,family,caller,stride,type,
-                               primitive_count,vertices);
-        return;
+        return ObserveUnknownUpLayout(dev,family,caller,stride,type,
+                                      primitive_count,vertices);
     }
     if((fvf&D3DFVF_POSITION_MASK)==D3DFVF_XYZ){
-        ObserveWorldUP(dev,family,type,primitive_count,caller,
-                       vertices,stride,indices,index_format,first,vertex_count);
-        return;
+        return ObserveWorldUP(dev,family,type,primitive_count,caller,
+                              vertices,stride,indices,index_format,first,vertex_count);
     }
-    if((fvf&D3DFVF_POSITION_MASK)!=D3DFVF_XYZRHW)return;
+    if((fvf&D3DFVF_POSITION_MASK)!=D3DFVF_XYZRHW)return 0u;
 
     // Nonzero MinVertexIndex is legal: resolve original absolute index
     // against the declared UP span before reading its local memory.
     if(family==4u && (!indices||!vertex_count||
        vertex_count>m2vr::drawprobe::kMaxIndexedUPDeclaredVertices ||
        (index_format!=D3DFMT_INDEX16 &&
-        index_format!=D3DFMT_INDEX32)))return;
+        index_format!=D3DFMT_INDEX32)))return 0u;
 
     struct Observation {std::uint32_t index=0; VertexWitness vertex{};};
     // Capture the first eight original TRIANGLELIST, TRIANGLESTRIP or
@@ -602,7 +601,7 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
             std::array<std::uint8_t,4> bytes{};
             const unsigned width=index_format==D3DFMT_INDEX16?2u:4u;
             if(!SafeReadBytes(indices,std::size_t{i}*width,
-                              bytes.data(),width))return;
+                              bytes.data(),width))return 0u;
             if(width==2u){
                 std::uint16_t short_index=0;
                 std::memcpy(&short_index,bytes.data(),2u);
@@ -612,14 +611,14 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
             }
             std::uint32_t relative=0u;
             if(!IndexedUPRelativeIndex(index,first,vertex_count,relative))
-                return;
+                return 0u;
             absolute_index=index;
             index=relative; // UP vertex pointer begins at first
         }
         std::array<std::uint32_t,4> bits{};
         if(!SafeReadBytes(vertices,std::size_t{index}*stride,
                           bits.data(),sizeof(bits)) ||
-           !DecodeXYZRHW(bits,observations[i].vertex))return;
+           !DecodeXYZRHW(bits,observations[i].vertex))return 0u;
         observations[i].index=absolute_index;
     }
 
@@ -655,7 +654,7 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
         std::vector<std::uint32_t> triangle_ids;
         if(!ExpandOriginalTriangles(type,sampled_triangles,
                                     source_ids,triangle_ids))
-            return;
+            return sample_id;
         std::array<ProjectedDrawVertex,kJoinSampleVertices> screen{};
         for(std::size_t i=0;i<triangle_ids.size();++i){
             const auto& original=observations[triangle_ids[i]].vertex;
@@ -688,6 +687,7 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
         // until separately authenticated by private, real gameplay proof.
         ObserveProjectionFit(dev,sample_id,batch);
     }
+    return sample_id;
 }
 
 // No original D3D9 draw mutation. A candidate affine perspective
@@ -717,11 +717,11 @@ void ObserveProjectionFit(IDirect3DDevice9* dev,std::uint64_t witness,
 // uses this path for >8k mid-frame samples. Never treat FVF=0 as world
 // proof, never read unknown UP source bytes, and never mutate D3D9 state.
 // A declaration query is bounded to 16 elements including D3DDECL_END.
-void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
+std::uint64_t ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
                             void* caller,UINT stride,
                             D3DPRIMITIVETYPE topology,
                             UINT primitive_count,const void* vertices) {
-    if(!dev || family<3u || family>4u)return;
+    if(!dev || family<3u || family>4u)return id;
     const auto id=g_witness_serial.fetch_add(
         1u,std::memory_order_relaxed)+1u;
     // 0=unknown/error, 1=shader absent, 2=shader present.
@@ -768,7 +768,7 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
     if(family!=3u || !vertices || topology!=D3DPT_TRIANGLELIST ||
        !primitive_count || vs_status!=2u || ps_status!=2u ||
        !m2vr::drawprobe::ExactDaytonaUPDeclaration(
-           elements.data(),count,stride))return;
+           elements.data(),count,stride))return id;
     std::array<m2vr::drawprobe::DaytonaUPVertex,3> samples{};
     for(unsigned i=0;i<3u;++i) {
         std::array<std::uint8_t,32> bytes{};
@@ -777,7 +777,7 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
            !SafeReadBytes(vertices,source_offset+24u,
                           bytes.data()+24u,8u) ||
            !m2vr::drawprobe::DecodeDaytonaUPVertex(bytes,samples[i]))
-            return;
+            return id;
     }
     m2vr::LogEvent("model2_d3d9_up_position_source",id,
         CallerRva(caller),primitive_count,3u);
@@ -874,6 +874,7 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
             ObserveProjectionFit(dev,id,batch);
         }
     }
+    return id;
 }
 
 // Source-only D3D9 DrawPrimitive/DrawIndexedPrimitive provenance.
@@ -1028,15 +1029,18 @@ std::uint64_t ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
     return id;
 }
 
-void RecordOriginalVBResult(std::uint64_t witness,HRESULT hr,
-                            void* caller,unsigned family) {
+void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
+                                void* caller,unsigned family) {
     if(!witness)return;
     // HRESULT belongs to exactly this original COM Draw, never GPU replay.
     const std::uint64_t frame=g_present_count.load(std::memory_order_relaxed)+1u;
-    m2vr::LogEvent("model2_d3d9_vb_original_result",witness,
+    // One real original COM result belongs to its pre-Draw source witness.
+    // UP(shader/fixed/projection) and VB have distinct read-only kinds.
+    m2vr::LogEvent(family<=2u?"model2_d3d9_vb_original_result":
+                               "model2_d3d9_up_original_result",witness,
         static_cast<std::uint32_t>(hr),CallerRva(caller),
         (frame<<32)|family);
-    g_original_vb_result_samples.fetch_add(1u,std::memory_order_relaxed);
+    g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     // Consume the original CPU projector witnesses once this physical
@@ -1050,7 +1054,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const std::uint64_t witness=Sample(d,1,p,count,caller)?
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
     const HRESULT hr=g_draw(d,p,start,count);
-    RecordOriginalVBResult(witness,hr,caller,1u);
+    RecordOriginalSourceResult(witness,hr,caller,1u);
     TrackOriginalD3D9DrawResult(hr,1u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorPrimitive(d,p,start,count,g_draw);
@@ -1069,7 +1073,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const std::uint64_t witness=Sample(d,2,p,count,caller)?
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
-    RecordOriginalVBResult(witness,hr,caller,2u);
+    RecordOriginalSourceResult(witness,hr,caller,2u);
     TrackOriginalD3D9DrawResult(hr,2u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexed(d,p,base,min,num,start,count,g_draw_indexed);
@@ -1085,9 +1089,10 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         return TrackOriginalD3D9DrawResult(
             g_draw_up(d,p,count,verts,stride),3u,caller);
     g_up.fetch_add(1,std::memory_order_relaxed);
-    if(Sample(d,3,p,count,caller))
-        ObserveUP(d,3,p,count,caller,verts,stride);
+    const std::uint64_t witness=Sample(d,3,p,count,caller)?
+        ObserveUP(d,3,p,count,caller,verts,stride):0u;
     const HRESULT hr=g_draw_up(d,p,count,verts,stride);
+    RecordOriginalSourceResult(witness,hr,caller,3u);
     TrackOriginalD3D9DrawResult(hr,3u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorDraw(d,p,count,verts,stride,CallerRva(caller),g_draw_up);
@@ -1103,9 +1108,10 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         return TrackOriginalD3D9DrawResult(
             g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller);
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
-    if(Sample(d,4,p,count,caller))
-        ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num);
+    const std::uint64_t witness=Sample(d,4,p,count,caller)?
+        ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num):0u;
     const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
+    RecordOriginalSourceResult(witness,hr,caller,4u);
     TrackOriginalD3D9DrawResult(hr,4u,caller);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexedUP(d,p,min,num,count,idx,fmt,verts,stride,g_draw_indexed_up);
@@ -1194,11 +1200,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
-    const auto vb_samples=g_original_vb_result_samples.exchange(
+    const auto source_samples=g_original_source_result_samples.exchange(
         0u,std::memory_order_relaxed);
-    if(vb_samples)
+    if(source_samples)
         m2vr::LogEvent("model2_d3d9_original_present_result",frame,
-            static_cast<std::uint32_t>(original_result),vb_samples,0u);
+            static_cast<std::uint32_t>(original_result),source_samples,0u);
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair

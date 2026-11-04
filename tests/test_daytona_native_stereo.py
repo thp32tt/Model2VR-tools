@@ -35,6 +35,43 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("return family>=1u && family<=4u",gate)
         self.assertIn("(result_bits & 0x80000000u)!=0u",gate)
 
+    def test_original_up_three_source_shapes_bind_real_com_draw_and_present(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        # Original Win32 primitive-UP and indexed-UP are executed only
+        # once, and AFTER source observation their actual HRESULT is
+        # correlated to the same pre-call source witness.
+        up=hooks.split("HRESULT STDMETHODCALLTYPE DrawUPHook(")[1].split(
+            "HRESULT STDMETHODCALLTYPE IndexedUPHook(")[0]
+        indexed=hooks.split("HRESULT STDMETHODCALLTYPE IndexedUPHook(")[1].split(
+            "HRESULT STDMETHODCALLTYPE ClearHook(")[0]
+        self.assertIn("const std::uint64_t witness=Sample(d,3",up)
+        self.assertIn("const std::uint64_t witness=Sample(d,4",indexed)
+        for section, original, family in (
+            (up,"g_draw_up(d,p,count,verts,stride)",3),
+            (indexed,
+             "g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride)",4),
+        ):
+            self.assertEqual(section.count(f"const HRESULT hr={original};"),1)
+            self.assertLess(section.index("ObserveUP("),
+                            section.index(f"const HRESULT hr={original};"))
+            self.assertLess(section.index(f"const HRESULT hr={original};"),
+                            section.index(
+                                f"RecordOriginalSourceResult(witness,hr,caller,{family}u);"))
+            self.assertLess(
+                section.index(f"RecordOriginalSourceResult(witness,hr,caller,{family}u);"),
+                section.index(f"TrackOriginalD3D9DrawResult(hr,{family}u,caller);"))
+        self.assertIn("std::uint64_t ObserveUP(",hooks)
+        self.assertIn("std::uint64_t ObserveWorldUP(",hooks)
+        self.assertIn("std::uint64_t ObserveUnknownUpLayout(",hooks)
+        self.assertIn("return ObserveUnknownUpLayout(",hooks)
+        self.assertIn("return ObserveWorldUP(",hooks)
+        self.assertIn("return sample_id;",hooks)
+        self.assertIn("model2_d3d9_up_original_result",hooks)
+        self.assertIn("g_original_source_result_samples.exchange(",hooks)
+        self.assertIn("model2_d3d9_original_present_result",hooks)
+        self.assertEqual(hooks.count("RecordOriginalSourceResult(witness,hr,caller,"),4)
+        self.assertIn("const HRESULT original_result=g_present(d,a,b,w,dirty);",hooks)
+
     def test_physical_original_present_rejects_unarmed_or_stale_cpu_eye_pair(self):
         cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         gate=(ROOT/"src/probe/verified_world_present_gate.hpp").read_text("utf-8")

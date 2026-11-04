@@ -67,3 +67,30 @@ CSV report counts failed/missing physical Present outcomes, rejects
 invalid/duplicate result events and never fills missing outcomes from
 camera-fit or a successful OpenXR host-only colored-eye display.
 The original Present is still called once and its HRESULT is unchanged.
+
+## Original UP/Indexed-UP physical COM outcome source audit (2026-11-05)
+
+The original Win32 `DrawPrimitiveUP` and `DrawIndexedPrimitiveUP` hooks now
+retain a read-only witness ID for their exact observed source kind:
+pretransformed XYZRHW, fixed XYZ, or FVF=0 shader declaration (including
+non-admitted declaration layouts). The post-call original COM HRESULT is
+recorded as `model2_d3d9_up_original_result` with its source witness,
+original GPU caller RVA, physical Present ID and draw API family. The single
+unchanged physical original Present contributes its real HRESULT through
+`model2_d3d9_original_present_result` when sampled source Draws exist.
+
+Offline triage on authorized **private logs**:
+
+```sh
+python tools/model2_up_draw_outcomes.py private/race_daytona.csv \\
+  --output private/up_physical_outcomes.json
+```
+
+This tool rejects failed original Draws, failed/missing physical Presents,
+wrong frame/caller, unknown shader source, and incoherent same-witness CPU
+projector matrix/geometry source. It reports candidate identities with
+`world_pass_authorized=false` and `world_pass_proof=NOT_ESTABLISHED`.
+A successful Draw/Present, shared FVF, or pixel projection fit never proves
+the race gameplay pass or calibrates the camera. Original game Draw/Present,
+FFB and original mono/GPU-eye fallback remain unchanged. No ROMs or private
+runtime captures belong in this public repository.

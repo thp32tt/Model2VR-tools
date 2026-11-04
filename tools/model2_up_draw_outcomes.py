@@ -1,0 +1,298 @@
+#!/usr/bin/env python3
+"""Audit authentic Win32 D3D9 UP Draw -> physical original Present evidence.
+
+This is a PRIVATE-LOG, read-only source diagnostic. A successful COM call,
+camera candidate and Present NEVER authenticate Daytona gameplay-world
+ownership, camera axes, game units or HMD stereoscopy.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from collections import Counter, defaultdict
+from pathlib import Path
+
+FIELDS = {"seq", "event", "a0", "a1", "a2", "a3"}
+UINT64 = (1 << 64) - 1
+MAX_ROWS = 2_000_000
+MAX_PENDING = 8192
+MAX_CALLERS = 2048
+UP_TYPES = {
+    "model2_d3d9_up_meta": "projected_xyzrhw",
+    "model2_world_up_candidate": "fixed_xyz",
+    "model2_d3d9_up_layout": "shader_decl",
+}
+JOINS = {
+    "model2_d3d9_cpu_up_join_batch": "projected_xyzrhw",
+    "model2_d3d9_cpu_shader_up_join_batch": "shader_decl",
+}
+META = {
+    "model2_d3d9_up_source_fvf": "fvf",
+    "model2_d3d9_up_layout_frame": "layout_frame",
+    "model2_d3d9_source_pass_context": "context",
+    "model2_d3d9_cpu_up_matrix_identity": "matrix",
+    "model2_d3d9_cpu_up_matrix_content": "content",
+    "model2_d3d9_cpu_up_geometry_command": "geometry",
+    "model2_d3d9_cpu_shader_matrix_identity": "shader_matrix",
+    "model2_d3d9_cpu_shader_matrix_content": "shader_content",
+    "model2_d3d9_cpu_shader_geometry_command": "shader_geometry",
+}
+
+def number(value):
+    n = int(value, 10)
+    if not 0 <= n <= UINT64:
+        raise ValueError("invalid unsigned original source evidence")
+    return n
+
+def halves(value):
+    return (value >> 32, value & 0xffffffff)
+
+def main_depth_source(flags):
+    # Matches strict original main backbuffer + full viewport + compatible Z
+    # source semantics. This is NOT a gameplay-world classifier.
+    if flags & ~0x3fff or (flags & ~0x3100) != 0x0efd:
+        return False
+    if flags & 0x100:
+        return (flags & 0x3000) == 0x3000
+    return (flags & 0x3000) == 0
+
+def camera_joined(rec, frame):
+    if rec.get("kind") not in ("projected_xyzrhw", "shader_decl"):
+        return False
+    shader = rec["kind"] == "shader_decl"
+    join = rec.get("join")
+    matrix = rec.get("shader_matrix" if shader else "matrix")
+    content = rec.get("shader_content" if shader else "content")
+    geometry = rec.get("shader_geometry" if shader else "geometry")
+    context = rec.get("context")
+    if not all((join, matrix, content, geometry, context)):
+        return False
+    inspected, complete = halves(join[0])
+    partial, ambiguous = halves(join[1])
+    cpu = join[2]
+    mat, mat_mixed, mat_cpu = matrix
+    fp, fp_mixed, fp_mat = content
+    command, command_mixed, command_fp = geometry
+    ctx_frame, flags, wh = context
+    width, height = halves(wh)
+    return (
+        2 <= inspected <= 8 and complete == inspected and
+        partial == ambiguous == 0 and
+        0 < cpu <= 0xffffffff and
+        0 < mat <= 0xffffffff and mat_mixed == 0 and mat_cpu == cpu and
+        0 < fp <= 0xffffffff and fp_mixed == 0 and fp_mat == mat and
+        0 < command <= 0xffffffff and command_mixed == 0 and command_fp == fp and
+        ctx_frame == frame and 0 < width <= 16384 and 0 < height <= 16384 and
+        main_depth_source(flags)
+    )
+
+def audit_csv(path):
+    counts = Counter()
+    examples = []
+    caller_frames = defaultdict(set)
+    records = {}
+    pending = defaultdict(set)
+    observed_present_frame = 0
+    last_original_present_frame = 0
+
+    def record(witness):
+        if not witness or witness > UINT64:
+            raise ValueError("invalid original UP witness ID")
+        if witness not in records and len(records) >= MAX_PENDING:
+            raise ValueError("original UP witness capacity exceeded")
+        return records.setdefault(witness, {})
+
+    def once(rec, key, value, witness):
+        if key in rec:
+            if rec[key] != value:
+                raise ValueError(f"conflicting original UP {key} witness {witness}")
+            return
+        rec[key] = value
+
+    def finish(witness, present_hresult=None, physical_sample_count=0):
+        rec = records.pop(witness, None)
+        if rec is None or ("kind" not in rec and "result" not in rec):
+            return  # Shared VB source-context metadata is not original UP.
+        result = rec.get("result")
+        if result is None:
+            status = "original_draw_result_missing"
+            frame = rec.get("source_frame", 0)
+            family = rec.get("family", 0)
+            caller = rec.get("caller", 0)
+            draw_hresult = None
+        else:
+            draw_hresult, result_caller, frame, family = result
+            caller = rec.get("caller", 0)
+            if (rec.get("source_frame") != frame or
+                rec.get("family") != family or caller != result_caller or
+                not caller or family not in (3, 4)):
+                status = "source_identity_or_frame_mismatch"
+            elif draw_hresult & 0x80000000:
+                status = "original_draw_failed"
+            elif present_hresult is None:
+                status = "physical_original_present_missing"
+            elif present_hresult & 0x80000000:
+                status = "physical_original_present_failed"
+            elif physical_sample_count == 0:
+                status = "physical_original_present_invalid"
+            else:
+                status = "original_source_draw_and_present_succeeded"
+        counts[status] += 1
+        kind = rec.get("kind", "unknown_source")
+        counts["source_kind_" + kind] += 1
+        if status == "original_source_draw_and_present_succeeded":
+            if camera_joined(rec, frame):
+                counts["same_witness_cpu_camera_present_candidate"] += 1
+                key = (kind, family, caller)
+                if key not in caller_frames and len(caller_frames) >= MAX_CALLERS:
+                    raise ValueError("original UP caller capacity exceeded")
+                caller_frames[key].add(frame)
+        if len(examples) < 48:
+            examples.append({
+                "source_witness": witness,
+                "original_present_frame": frame,
+                "original_draw_family": family,
+                "original_gpu_caller_rva_hex": f"0x{caller:08x}",
+                "source_kind": kind,
+                "result": status,
+                "original_draw_hresult_hex": (
+                    f"0x{draw_hresult:08x}" if draw_hresult is not None else None),
+                "original_present_hresult_hex": (
+                    f"0x{present_hresult:08x}" if present_hresult is not None else None),
+                "world_pass_proof": "NOT_ESTABLISHED",
+            })
+
+    with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames or not FIELDS.issubset(reader.fieldnames):
+            raise ValueError("not an original Model2VR probe CSV")
+        for row_no, row in enumerate(reader, 1):
+            if row_no > MAX_ROWS:
+                raise ValueError("original UP result CSV row limit exceeded")
+            event = row["event"]
+            if event not in (set(UP_TYPES) | set(JOINS) | set(META) | {
+                "model2_d3d9_up_original_result",
+                "model2_d3d9_original_present_result",
+            }):
+                continue
+            try:
+                a0, a1, a2, a3 = (number(row[k]) for k in ("a0", "a1", "a2", "a3"))
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"malformed original UP outcome row {row_no}") from exc
+            if event == "model2_d3d9_original_present_result":
+                frame = a0
+                if (not frame or frame > 0xffffffff or a1 > 0xffffffff or
+                    not a2 or a2 > MAX_PENDING or a3 != 0 or
+                    frame <= last_original_present_frame):
+                    raise ValueError("invalid/duplicate physical original Present")
+                last_original_present_frame = frame
+                # Drain only source records tagged for the physical boundary.
+                # A missing old Present cannot silently acquire a newer
+                # successful result, even when the caller is identical.
+                for earlier in sorted(key for key in pending if key <= frame):
+                    ids = pending.pop(earlier)
+                    if earlier == frame and len(ids) > a2:
+                        raise ValueError("more UP results than original Draw samples")
+                    for witness in ids:
+                        finish(witness, a1 if earlier == frame else None,
+                               a2 if earlier == frame else 0)
+                observed_present_frame = frame
+                # Source-context is emitted by VB too. Never carry those
+                # unidentified non-UP snapshots across physical Presents.
+                for witness, rec in list(records.items()):
+                    if "kind" not in rec and "result" not in rec:
+                        del records[witness]
+                continue
+            rec = record(a0)
+            if event in UP_TYPES:
+                kind = UP_TYPES[event]
+                if "kind" in rec and rec["kind"] != kind:
+                    raise ValueError("source witness reused across UP families")
+                rec["kind"] = kind
+                if kind == "projected_xyzrhw":
+                    frame, caller = a1, a2
+                    family, stride = halves(a3)
+                    once(rec, "source_frame", frame, a0)
+                elif kind == "fixed_xyz":
+                    caller, family_stride = a1, a3
+                    family, stride = halves(family_stride)
+                    # frame is pinned by same-witness original FVF record.
+                else:
+                    caller = a1
+                    family, stride = halves(a2)
+                if (caller > 0xffffffff or family not in (3, 4) or
+                    stride > 65536):
+                    raise ValueError("invalid original UP caller/family")
+                once(rec, "caller", caller, a0)
+                once(rec, "family", family, a0)
+                if kind == "projected_xyzrhw":
+                    once(rec, "stride", stride, a0)
+                continue
+            if event == "model2_d3d9_up_original_result":
+                frame, family = halves(a3)
+                if (not frame or frame > 0xffffffff or family not in (3, 4) or
+                    a1 > 0xffffffff or a2 > 0xffffffff or
+                    frame <= observed_present_frame or "result" in rec):
+                    raise ValueError("invalid/duplicate original UP Draw result")
+                rec["result"] = (a1, a2, frame, family)
+                pending[frame].add(a0)
+                continue
+            if event in JOINS:
+                if rec.get("kind") == JOINS[event]:
+                    once(rec, "join", (a1, a2, a3), a0)
+                continue
+            if event in META:
+                key = META[event]
+                if key == "fvf":
+                    once(rec, "fvf", (a1, a2), a0)
+                    if rec.get("kind") == "fixed_xyz":
+                        once(rec, "source_frame", a3, a0)
+                    else:
+                        rec.setdefault("source_frame", a3)
+                elif key == "layout_frame":
+                    once(rec, "source_frame", a1, a0)
+                    if "caller" in rec and rec["caller"] != a2:
+                        raise ValueError("original shader-UP frame caller mismatch")
+                else:
+                    once(rec, key, (a1, a2, a3), a0)
+    for frame in sorted(pending):
+        for witness in pending[frame]:
+            finish(witness)
+    # Metadata from incomplete aborted original Draws remains unproven.
+    for witness in list(records):
+        finish(witness)
+    return {
+        "schema": 1,
+        "source_kind": "authentic_original_up_draw_and_physical_present_outcome",
+        "world_pass_proof": "NOT_ESTABLISHED",
+        "adapter_auto_enable": False,
+        "camera_axes_and_meters_per_unit": "NOT_CALIBRATED",
+        "hmd_runtime_validation": "UNTESTED",
+        "counts": dict(sorted(counts.items())),
+        "physically_presented_same_witness_camera_callers": [
+            {
+                "original_source_kind": kind,
+                "original_draw_family": family,
+                "original_gpu_draw_caller_rva_hex": f"0x{caller:08x}",
+                "distinct_original_present_frames": len(frames),
+                "world_pass_authorized": False,
+            }
+            for (kind, family, caller), frames in sorted(caller_frames.items())
+        ],
+        "examples": examples,
+    }
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("csv", type=Path, help="PRIVATE original Daytona probe CSV")
+    parser.add_argument("--output", type=Path, help="PRIVATE JSON output destination")
+    args = parser.parse_args()
+    report = json.dumps(audit_csv(args.csv), indent=2, sort_keys=True) + "\n"
+    if args.output:
+        args.output.write_text(report, encoding="utf-8")
+    else:
+        print(report, end="")
+
+if __name__ == "__main__":
+    main()
