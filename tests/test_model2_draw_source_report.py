@@ -97,6 +97,11 @@ class SourceAuditTests(unittest.TestCase):
                 src["distinct_geometry_command_present_frame_count"], 1)
             self.assertEqual(src["distinct_context_present_frame_count"], 1)
             self.assertEqual(src["original_main_full_view_depth_candidates"], 1)
+            self.assertEqual(src["same_witness_joint_candidates"], 1)
+            self.assertEqual(
+                src["distinct_same_witness_joint_present_frame_count"], 1)
+            self.assertEqual(src["same_witness_joint_cpu_matrix_commands"], [
+                ["0x00004567", "0x00001000", "0xaabbccdd", "0x00000077"]])
             self.assertEqual(src["source_contexts"], [[1, 640, 480, 3837]])
             self.assertFalse(src["world_pass_proven"])
 
@@ -130,7 +135,46 @@ class SourceAuditTests(unittest.TestCase):
                 item["distinct_geometry_command_present_frame_count"], 0)
             self.assertEqual(item["source_context_frame_mismatches"], 1)
             self.assertEqual(item["original_main_full_view_depth_candidates"], 0)
+            self.assertEqual(item["same_witness_joint_candidates"], 0)
             self.assertFalse(item["world_pass_proven"])
+
+
+    def test_disjoint_draw_witnesses_do_not_join(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "disjoint.csv"
+            events = [
+                ("model2_d3d9_vb_present_frame", 201, 70, 1, 0),
+                ("model2_d3d9_vb_source", 201, 0x1234,
+                 pack(1, 0x112), pack(4096, 20)),
+                ("model2_d3d9_cpu_vb_join_batch", 201,
+                 pack(2, 2), 0, 0x55),
+                ("model2_d3d9_cpu_vb_matrix_identity", 201, 0x1000, 0, 0x55),
+                ("model2_d3d9_cpu_vb_matrix_content", 201, 0xaabb, 0, 0x1000),
+                ("model2_d3d9_cpu_vb_geometry_command", 201,
+                 0x77, 0, 0xaabb),
+                ("model2_d3d9_vb_present_frame", 202, 70, 1, 0),
+                ("model2_d3d9_vb_source", 202, 0x1234,
+                 pack(1, 0x112), pack(4096, 20)),
+                ("model2_d3d9_source_pass_context", 202,
+                 70, 0xEFD, pack(640, 480)),
+            ]
+            self.write_log(p, events)
+            src = REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(src["distinct_matrix_consistent_present_frame_count"], 1)
+            self.assertEqual(src["distinct_context_present_frame_count"], 1)
+            self.assertEqual(src["same_witness_joint_candidates"], 0)
+            self.assertFalse(src["world_pass_proven"])
+            # Matching one ID but not one original Present still fails.
+            bad = events[:6] + [("model2_d3d9_source_pass_context", 201,
+                                 71, 0xEFD, pack(640, 480))]
+            self.write_log(p, bad)
+            self.assertEqual(REPORT.audit_csv(p)["sources"][0][
+                "same_witness_joint_candidates"], 0)
+            bad[-1] = ("model2_d3d9_source_pass_context", 201,
+                       70, 0x2FD, pack(640, 480))
+            self.write_log(p, bad)
+            self.assertEqual(REPORT.audit_csv(p)["sources"][0][
+                "same_witness_joint_candidates"], 0)
 
     def test_reject_corruption_and_never_infer_runtime_pass(self):
         with tempfile.TemporaryDirectory() as tmp:

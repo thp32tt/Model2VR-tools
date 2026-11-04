@@ -43,6 +43,46 @@ def signed32(value):
     value &= 0xFFFFFFFF
     return value - 0x100000000 if value & 0x80000000 else value
 
+
+def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
+    """Correlate original Draw/CPU/matrix/command/main-Z on ONE witness.
+
+    This is candidate metadata only, NEVER gameplay-world authorization.
+    """
+    if present_frame is None or not gpu_caller:
+        return None
+    context = data.get("source_context")
+    join = data.get("cpu_join")
+    matrix = data.get("matrix_identity")
+    content = data.get("matrix_content")
+    command = data.get("geometry_command")
+    if not all((context, join, matrix, content, command)):
+        return None
+    frame, flags, dims = context
+    width, height = halves(dims)
+    if (frame != present_frame or not width or not height or
+            width > 16384 or height > 16384 or
+            (flags & 3) != 1 or (flags & 0xFFC) != 0xEFC):
+        return None
+    inspected, complete = halves(join[0])
+    partial, ambiguous = halves(join[1])
+    cpu_caller = join[2]
+    if (not 2 <= inspected <= 8 or complete != inspected or
+            partial or ambiguous or not cpu_caller or
+            cpu_caller > 0xFFFFFFFF):
+        return None
+    matrix_id, matrix_mixed, matrix_caller = matrix
+    fingerprint, content_mixed, content_matrix = content
+    word, command_mixed, command_fingerprint = command
+    if (not matrix_id or matrix_id > 0xFFFFFFFF or
+            not fingerprint or fingerprint > 0xFFFFFFFF or
+            not word or word > 0xFFFFFFFF or
+            matrix_mixed or content_mixed or command_mixed or
+            matrix_caller != cpu_caller or content_matrix != matrix_id or
+            command_fingerprint != fingerprint):
+        return None
+    return (cpu_caller, matrix_id, fingerprint, word)
+
 def audit_csv(path):
     witnesses = {}
     ignored = Counter()
@@ -132,6 +172,9 @@ def audit_csv(path):
         "source_context_frame_mismatches": 0,
         "source_context_unknowns": 0,
         "original_main_full_view_depth_candidates": 0,
+        "same_witness_joint_candidates": 0,
+        "same_witness_joint_present_frames": set(),
+        "same_witness_joint_cpu_matrix_commands": set(),
         "context_present_frames": set(),
         "present_frames": set(),
         "correlated_present_frames": set(),
@@ -295,6 +338,13 @@ def audit_csv(path):
                             present_frame)
                 else:
                     entry["cpu_geometry_command_unavailable_batches"] += 1
+        joined_source = same_witness_projection_pass_candidate(
+            data, present_frame, caller)
+        if joined_source is not None:
+            entry["same_witness_joint_candidates"] += 1
+            entry["same_witness_joint_present_frames"].add(present_frame)
+            entry["same_witness_joint_cpu_matrix_commands"].add(
+                tuple(f"0x{part:08x}" for part in joined_source))
         if "texture" in data:
             fmt, width, height = data["texture"]
             entry["texture_formats"].add(fmt)
@@ -309,6 +359,8 @@ def audit_csv(path):
             "caller_is_in_executable": caller != 0,
         }
         record["distinct_present_frame_count"] = len(value["present_frames"])
+        record["distinct_same_witness_joint_present_frame_count"] = len(
+            value["same_witness_joint_present_frames"])
         record["distinct_matrix_consistent_present_frame_count"] = len(
             value["matrix_consistent_present_frames"])
         record["distinct_geometry_command_present_frame_count"] = len(
@@ -321,7 +373,8 @@ def audit_csv(path):
             if key in ("present_frames", "correlated_present_frames",
                        "matrix_consistent_present_frames",
                        "geometry_command_present_frames",
-                       "context_present_frames"):
+                       "context_present_frames",
+                       "same_witness_joint_present_frames"):
                 continue
             if isinstance(item, set):
                 record[key] = sorted([list(v) if isinstance(v, tuple) else v for v in item])
