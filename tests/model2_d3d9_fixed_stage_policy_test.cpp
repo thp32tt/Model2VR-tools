@@ -54,8 +54,18 @@ int main(){
         D3DTA_TEXTURE,source));
     CHECK(!DecodeFixedStageSource(
         D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_TFACTOR,source));
-    CHECK(!DecodeFixedStageSource(
+    CHECK(DecodeFixedStageSource(
         D3DTOP_SELECTARG1,D3DTA_CURRENT,D3DTA_TEXTURE,source));
+    CHECK(source==FixedStageSource::Diffuse);
+    CHECK(DecodeFixedStageSource(
+        D3DTOP_MODULATE,D3DTA_TEXTURE,D3DTA_CURRENT,source));
+    CHECK(source==FixedStageSource::Modulate);
+    CHECK(DecodeFixedStageSource(
+        D3DTOP_MODULATE,D3DTA_CURRENT,D3DTA_TEXTURE,source));
+    CHECK(source==FixedStageSource::Modulate);
+    CHECK(!DecodeFixedStageSource(
+        D3DTOP_SELECTARG1,D3DTA_CURRENT|D3DTA_COMPLEMENT,
+        D3DTA_TEXTURE,source));
     CHECK(!DecodeFixedStageSource(
         D3DTOP_ADD,D3DTA_TEXTURE,D3DTA_DIFFUSE,source));
     CHECK(source==before); // failure never partially mutates policy

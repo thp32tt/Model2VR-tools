@@ -34,11 +34,14 @@ inline bool DecodeFixedStageSource(DWORD operation,DWORD first,
         // The unused argument MUST NOT influence the selected channel.
         const DWORD selected=operation==D3DTOP_SELECTARG1?first:second;
         if(selected==D3DTA_TEXTURE)next=FixedStageSource::Texture;
-        else if(selected==D3DTA_DIFFUSE)next=FixedStageSource::Diffuse;
+        else if(selected==D3DTA_DIFFUSE || selected==D3DTA_CURRENT)
+            next=FixedStageSource::Diffuse; // exact D3D9 stage0 equivalence
         else return false; // CURRENT, TFACTOR, flags and unknown source
     }else if(operation==D3DTOP_MODULATE &&
-       ((first==D3DTA_TEXTURE && second==D3DTA_DIFFUSE) ||
-        (first==D3DTA_DIFFUSE && second==D3DTA_TEXTURE))){
+       ((first==D3DTA_TEXTURE &&
+         (second==D3DTA_DIFFUSE || second==D3DTA_CURRENT)) ||
+        ((first==D3DTA_DIFFUSE || first==D3DTA_CURRENT) &&
+         second==D3DTA_TEXTURE))){
         next=FixedStageSource::Modulate;
     }else return false;
     out=next;
