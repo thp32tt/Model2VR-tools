@@ -78,6 +78,9 @@ class ProbeLogTests(unittest.TestCase):
             with path.open("w", newline="", encoding="utf-8") as handle:
                 writer = csv.writer(handle)
                 writer.writerow(["seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"])
+                writer.writerow([0, 9, 7, "model2_d3d9_up_meta", 22, 100, 0x111, (3 << 32) | 28])
+                writer.writerow([0, 9, 7, "model2_d3d9_up_layout", 24, 0x222, (3 << 32) | 32, 0])
+                writer.writerow([0, 9, 7, "model2_d3d9_up_layout_frame", 24, 100, 0x222, 0])
                 writer.writerow([1, 10, 7, "model2_d3d9_cpu_up_join", 22, 3, 0, 0xABC])
                 writer.writerow([2, 11, 7, "model2_d3d9_cpu_up_join", 23, 2, 1, 0])
                 writer.writerow([3, 12, 7, "model2_d3d9_cpu_shader_up_join", 24, 3, 0, 0xDEF])
@@ -89,6 +92,15 @@ class ProbeLogTests(unittest.TestCase):
         self.assertEqual(counts["shader_clip_candidate:full_same_cpu_caller_candidate"], 1)
         self.assertEqual(counts["shader_clip_candidate:unmatched_or_unknown"], 1)
         self.assertEqual(d3d9["in_process_join_world_proof"], "NOT_ESTABLISHED")
+        edges = d3d9["in_process_cpu_draw_edges"]
+        self.assertEqual(len(edges), 2)
+        self.assertEqual(
+            {(edge["d3d9_caller_rva"], edge["cpu_project_caller_rva"])
+             for edge in edges},
+            {("0x00000111", "0x00000ABC"), ("0x00000222", "0x00000DEF")})
+        self.assertTrue(all(edge["distinct_present_frames"] == 1 for edge in edges))
+        self.assertTrue(all(edge["world_pass_proof"] == "NOT_ESTABLISHED"
+                            for edge in edges))
         self.assertEqual(d3d9["in_process_cpu_source_callers"],
                          {"0x00000ABC": 1, "0x00000DEF": 1})
 

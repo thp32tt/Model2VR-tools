@@ -6,7 +6,7 @@ import csv
 import json
 import math
 import struct
-from collections import Counter, deque
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 
 
@@ -39,6 +39,10 @@ def analyze(path: Path):
     d3d9_draw_frames = Counter()
     d3d9_external_origin_samples = 0
     up_meta = {}
+    shader_up_meta = {}
+    shader_up_frames = {}
+    cpu_draw_edges = Counter()
+    cpu_draw_edge_frames = defaultdict(set)
     up_witnesses = Counter()
     up_candidate_kinds = Counter()
     joined_gpu_cpu = Counter()
@@ -115,6 +119,14 @@ def analyze(path: Path):
                 up_meta[a0] = (a1, a2, a3 >> 32, a3 & 0xFFFFFFFF)
                 if len(up_meta) > 4096:
                     up_meta.clear()
+            elif event == "model2_d3d9_up_layout":
+                # Exact shader witness ID and its original draw family/caller.
+                shader_up_meta[a0] = (a1, a2 >> 32, a2 & 0xFFFFFFFF)
+                if len(shader_up_meta) > 4096:
+                    shader_up_meta.clear()
+                    shader_up_frames.clear()
+            elif event == "model2_d3d9_up_layout_frame":
+                shader_up_frames[a0] = a1
             elif event == "model2_d3d9_up_vertex":
                 meta = up_meta.get(a0)
                 if meta is None:
@@ -170,6 +182,24 @@ def analyze(path: Path):
                 elif a1 == 3 and a2 == 0 and a3:
                     joined_gpu_cpu[f"{kind}:full_same_cpu_caller_candidate"] += 1
                     joined_cpu_callers[f"0x{a3:08X}"] += 1
+                    if kind == "xyzrhw_candidate":
+                        witness = up_meta.get(a0)
+                        frame = witness[0] if witness else None
+                        draw_caller = witness[1] if witness else None
+                        family = witness[2] if witness else None
+                    else:
+                        witness = shader_up_meta.get(a0)
+                        frame = shader_up_frames.get(a0)
+                        draw_caller = witness[0] if witness else None
+                        family = witness[1] if witness else None
+                    # A missing/unknown GPU Draw origin must never acquire
+                    # a fabricated CPU source association.
+                    if draw_caller and family in (3, 4):
+                        edge = (kind, family, draw_caller, a3)
+                        if edge in cpu_draw_edges or len(cpu_draw_edges) < 4096:
+                            cpu_draw_edges[edge] += 1
+                            if frame is not None:
+                                cpu_draw_edge_frames[edge].add(frame)
                 elif a2:
                     joined_gpu_cpu[f"{kind}:ambiguous"] += 1
                 elif a1:
@@ -254,6 +284,16 @@ def analyze(path: Path):
             "up_cpu_projection_candidates": up_candidates,
             "in_process_cpu_draw_join": dict(joined_gpu_cpu.most_common()),
             "in_process_cpu_source_callers": dict(joined_cpu_callers.most_common()),
+            "in_process_cpu_draw_edges": [
+                {"projection_hypothesis": key[0],
+                 "draw_family": key[1],
+                 "d3d9_caller_rva": f"0x{key[2]:08X}",
+                 "cpu_project_caller_rva": f"0x{key[3]:08X}",
+                 "full_triangle_candidates": count,
+                 "distinct_present_frames": len(cpu_draw_edge_frames[key]),
+                 "world_pass_proof": "NOT_ESTABLISHED"}
+                for key, count in cpu_draw_edges.most_common(64)
+            ],
             "in_process_join_world_proof": "NOT_ESTABLISHED",
             "sampled_viewports": dict(d3d9_viewports.most_common()),
             "sampled_scissors": dict(d3d9_scissors.most_common()),
@@ -322,6 +362,18 @@ def markdown(summary):
         lines.append(f"- {name}: {count}")
     for name, count in d3d9.get("up_cpu_projection_candidate_counts", {}).items():
         lines.append(f"- {name}: {count}")
+    lines += ["", "### In-process CPU -> original D3D9 Draw source joins", ""]
+    lines.append("Same-thread and same-frame matches are candidate-only,")
+    lines.append("NOT authenticated Daytona world/HUD passes or camera calibration.")
+    for name, count in d3d9.get("in_process_cpu_draw_join", {}).items():
+        lines.append(f"- {name}: {count}")
+    for edge in d3d9.get("in_process_cpu_draw_edges", []):
+        lines.append(
+            f"- {edge['projection_hypothesis']} GPU {edge['d3d9_caller_rva']} "
+            f"-> CPU {edge['cpu_project_caller_rva']}: "
+            f"{edge['full_triangle_candidates']} triangles across "
+            f"{edge['distinct_present_frames']} frames; WORLD PROOF UNKNOWN"
+        )
     lines += ["", "### Viewport, scissor and render-target samples", ""]
     for key in ("sampled_viewports", "sampled_scissors", "sampled_targets"):
         lines.append(f"#### {key}")

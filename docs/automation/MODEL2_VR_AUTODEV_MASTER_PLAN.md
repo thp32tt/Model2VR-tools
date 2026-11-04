@@ -83,6 +83,14 @@ Draw/IPC/launcher shell or repeating synthetic checks on the same SHA.
   Continue 2D safe fallback and FFB isolation. Do not repeat old SHA CI,
   request identical passive probe logs, or score this feature twice.
 
+## CPU projector to original Draw correlation checkpoint (2026-11-04)
+
+- Connected material source commits: 4418c42fbabc078cf9d07fee3c6b3f377c5d597d and 342b39e5b2d73734d970a87f5e70530ec47f36e4. Both belong to ONE coherent missing source-topology milestone, not distinct score events.
+- Original ProjectVertexToScreen records a bounded same-render-thread 256-point ring of native before/after projection data, scoped to each Present/Reset epoch. This permits source diagnostics even when native VR mode is enabled, without invoking extra simulation/FFB calls.
+- Actual UP XYZRHW and known Daytona shader-UP POSITION0 are compared against projected coordinates. Shader clip-to-viewport is only a hypothesis. Distinct 3-point matches are correlation candidates, not authenticated world or headset calibration.
+- In-process diagnostic witness IDs now correlate real original D3D9 Draw callsites to CPU projector callsites and count distinct frames in the local log report. Private original emulator source, raw traces and proprietary assets are never committed to the public repo.
+- Next real gate: privately authenticate gameplay world ownership, view axes and game units-per-meter, then connect only proven source draws into the existing calibrated OpenXR CPU-world adapter. Unknown HUD/auxiliary remains flat. Quest3/VDXR RUNTIME_VALIDATION=UNTESTED.
+
 ## Next implementation sequence
 
 1. Read `README.md`, `docs/DEVELOPMENT_STATUS.md`, current `host/`, `src/`, `scripts/Run-Daytona-VR.bat`, `scripts/Run-Daytona-NativeStereo.cmd`, actual test fixtures and recent main commits. Identify the exact unfinished integration or reproducible failure; modify code first.

@@ -418,6 +418,10 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
     }
     m2vr::LogEvent("model2_d3d9_up_position_source",id,
         CallerRva(caller),primitive_count,3u);
+    // Bind the known shader-UP witness to the original Present frame.
+    m2vr::LogEvent("model2_d3d9_up_layout_frame",id,
+        g_present_count.load(std::memory_order_relaxed)+1u,
+        CallerRva(caller),0u);
     for(unsigned i=0;i<3u;++i) {
         const auto& v=samples[i];
         m2vr::LogEvent("model2_d3d9_up_position",id,i,
