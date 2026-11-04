@@ -31,6 +31,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("if(ready && rgba_[0]==rgba_[1])ready=false;",gpu)
         self.assertIn("hr!=D3DERR_NOTFOUND",gpu)
         self.assertIn("const D3DFORMAT depth_format=dd.Format;",gpu)
+        self.assertNotIn("dd.Format!=D3DFMT_D16",gpu)
+        self.assertIn("CreateDepthStencilSurface(width_,height_,depth_format",gpu)
         self.assertIn("dd.Width!=desc.Width",gpu)
         self.assertTrue((ROOT/"tests/daytona_eye_pose_gate_test.cpp").is_file())
         self.assertIn("ExactDaytonaUPDeclaration(",gpu)
