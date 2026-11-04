@@ -108,7 +108,6 @@ public:
         std::lock_guard lock(mu_);
         ScopedEyeReplay recursion_guard;
         if(source_scene_failed_)return;
-        if(source_scene_failed_)return;
         // The OpenXR host supplies a coherent, fresh two-eye tracking pair.
         // Never allocate GPU resources, readback, or re-render when the Quest
         // host is absent, disconnected, stale or returning identical eyes.
@@ -404,6 +403,7 @@ public:
            (flags&~(D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL)))return;
         std::lock_guard lock(mu_);
         ScopedEyeReplay recursion_guard;
+        if(source_scene_failed_)return;
         if(!LivePoseForGameFrame() || !Ensure(d) ||
            !LivePoseForGameFrame())return;
         IDirect3DSurface9* target=nullptr;

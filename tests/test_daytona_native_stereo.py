@@ -129,7 +129,10 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("m2vr::daytona::MarkFailedOriginalScene(",hooks)
         self.assertIn("source_scene_failed_=true;",gpu)
         self.assertIn("source_scene_failed_=false;",gpu)
-        self.assertGreaterEqual(gpu.count("if(source_scene_failed_)return;"),6)
+        self.assertEqual(gpu.count("if(source_scene_failed_)return;"),5)
+        replay_clear=gpu.split("    void Clear(IDirect3DDevice9*")[1].split(
+            "    void PreparePresent(")[0]
+        self.assertIn("if(source_scene_failed_)return;",replay_clear)
         self.assertIn("if(source_scene_failed_){",gpu)
         self.assertIn("pending_present_reason_=m2vr::producerhealth::NoVerifiedScene;",gpu)
         self.assertIn("PrepareOriginalMono(d,frame,pending_present_reason_);",gpu)
