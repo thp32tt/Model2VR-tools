@@ -101,12 +101,13 @@ bool FixedFunctionMaterial(IDirect3DDevice9* d,unsigned cutoff,
        !m2vr::drawprobe::FixedStageOriginalLightingEquivalent(
            lighting,source_fvf) ||
        (blend_enable==1u && separate_alpha==1u &&
+        (color_mask&D3DCOLORWRITEENABLE_ALPHA)!=0u &&
         (FAILED(d->GetRenderState(D3DRS_SRCBLENDALPHA,&alpha_blend_src)) ||
          FAILED(d->GetRenderState(D3DRS_DESTBLENDALPHA,&alpha_blend_dst)) ||
          FAILED(d->GetRenderState(D3DRS_BLENDOPALPHA,&alpha_blend_op)))) ||
-       !m2vr::drawprobe::DecodeBlendWithSeparateAlphaPolicy(
+       !m2vr::drawprobe::DecodeMaskedSeparateAlphaPolicy(
             blend_enable,blend_src,blend_dst,blend_op,separate_alpha,
-            alpha_blend_src,alpha_blend_dst,alpha_blend_op,
+            alpha_blend_src,alpha_blend_dst,alpha_blend_op,color_mask,
             blend_mode,separate_policy))return false;
     DWORD colorop=0,arg=0,arg2=0,alphaop=0,alphaarg=0,alphaarg2=0;
     if(FAILED(d->GetTextureStageState(0,D3DTSS_COLOROP,&colorop)) ||
