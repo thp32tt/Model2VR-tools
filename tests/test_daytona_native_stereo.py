@@ -36,7 +36,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("CHECK(!family.Admit(80u,OriginalCameraSourceFamily::Native));",
                       projection_test)
 
-    def test_original_failed_d3d9_draw_revokes_only_owned_cpu_eye_frame(self):
+    def test_original_failed_d3d9_draw_poisoned_primary_present_epoch(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         gate=(ROOT/"src/probe/original_d3d9_draw_result_gate.hpp").read_text("utf-8")
@@ -51,15 +51,16 @@ class NativeStereoTest(unittest.TestCase):
         for original,family in original_calls:
             self.assertIn(f"const HRESULT hr={original};",hooks)
             self.assertIn(
-                f"TrackOriginalD3D9DrawResult(hr,{family}u,caller);",hooks)
+                f"TrackOriginalD3D9DrawResult(hr,{family}u,caller,d);",hooks)
             self.assertIn(f"IsFailedOriginalD3D9Draw(",gate)
             self.assertIn(
                 f"FailedOriginalD3D9SourceKind(original_family)",cpu)
         self.assertEqual(hooks.count("TrackOriginalD3D9DrawResult(hr,"),4)
         self.assertIn("Model2VR_RejectFailedOriginalD3D9Draw(",hooks)
-        self.assertIn("if(g.owner!=GetCurrentThreadId() || !(g.active||g.pending_present))",cpu)
+        self.assertIn("const bool owned=(g.owner==GetCurrentThreadId())",cpu)
+        self.assertIn("if(failed_present)g.source_epoch.Revoke(failed_present);",cpu)
         self.assertIn("g.Reject(FailedOriginalD3D9SourceKind(original_family));",cpu)
-        self.assertIn("OriginalSourceFailure::Device",cpu)
+        self.assertIn("OriginalSourceFailure::OriginalDrawFailed",cpu)
         self.assertIn("model2_vr_cpu_world_original_draw_failed",cpu)
         self.assertIn("active=false;pending_present=false;",cpu)
         self.assertIn("return family>=1u && family<=4u",gate)
@@ -89,7 +90,7 @@ class NativeStereoTest(unittest.TestCase):
                                 f"RecordOriginalSourceResult(witness,hr,caller,{family}u,"))
             self.assertLess(
                 section.index(f"RecordOriginalSourceResult(witness,hr,caller,{family}u,"),
-                section.index(f"TrackOriginalD3D9DrawResult(hr,{family}u,caller);"))
+                section.index(f"TrackOriginalD3D9DrawResult(hr,{family}u,caller,d);"))
         self.assertIn("std::uint64_t ObserveUP(",hooks)
         self.assertIn("std::uint64_t ObserveWorldUP(",hooks)
         self.assertIn("std::uint64_t ObserveUnknownUpLayout(",hooks)

@@ -718,6 +718,7 @@ def audit_csv(path):
         "original_scene_phase_inactive_witnesses": 0,
         "original_scene_phase_inconsistent_witnesses": 0,
         "original_scene_transition_failure_witnesses": 0,
+        "other_original_draw_failure_witnesses": 0,
         "original_scene_ordinals": set(),
         "original_scene_attested_physical_material_present_frames": set(),
         "original_draw_phase_attested_witnesses": 0,
