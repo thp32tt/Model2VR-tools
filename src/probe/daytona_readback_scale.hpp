@@ -14,6 +14,11 @@ namespace m2vr::daytona {
 enum class OriginalPacked16Layout : std::uint8_t {
     R5G6B5, X1R5G5B5, A1R5G5B5, A4R4G4B4
 };
+// 10-bit original render-target and RGBA-byte layouts are *physical* source
+// pixel formats; no alpha is interpreted as quad transparency.
+enum class OriginalAlternate32Layout : std::uint8_t {
+    Rgba8, A2R10G10B10, A2B10G10R10
+};
 struct ReadbackScalePlan {
     static constexpr std::uint32_t kSide=1024u;
     static constexpr std::size_t kOutputBytes=
@@ -86,6 +91,54 @@ struct ReadbackScalePlan {
                     blue=static_cast<std::uint8_t>((b<<4u)|b);
                 }else return false;
                 // Backbuffer alpha is not display transparency: opaque eye.
+                out[4u*x+0u]=red;
+                out[4u*x+1u]=green;
+                out[4u*x+2u]=blue;
+                out[4u*x+3u]=255u;
+            }
+        }
+        return true;
+    }
+    // Readback from the actual original D3D9 physical backbuffer when
+    // its byte ordering is RGBA rather than BGRA, or its channels are 10-bit.
+    // Preserve the original 1024-square aspect/letterbox plan; never guess
+    // the original backbuffer alpha (X/2-bit A are not cinema opacity).
+    bool ConvertAlternate32(const std::uint8_t* pixels,int signed_pitch,
+                            std::uint8_t* rgba,std::size_t bytes,
+                            OriginalAlternate32Layout layout)const noexcept{
+        if(layout!=OriginalAlternate32Layout::Rgba8 &&
+           layout!=OriginalAlternate32Layout::A2R10G10B10 &&
+           layout!=OriginalAlternate32Layout::A2B10G10R10)return false;
+        if(!src_w||!src_h||!dst_w||!dst_h||!pixels||!rgba||
+           bytes!=kOutputBytes||signed_pitch<=0||
+           std::uint64_t{static_cast<std::uint32_t>(signed_pitch)}<
+               std::uint64_t{src_w}*4u)return false;
+        const auto pitch=static_cast<std::size_t>(signed_pitch);
+        std::memset(rgba,0,bytes);
+        for(std::uint32_t y=0;y<dst_h;++y){
+            const auto* row=pixels+static_cast<std::size_t>(sy[y])*pitch;
+            auto* out=rgba+(std::size_t{top+y}*kSide+left)*4u;
+            for(std::uint32_t x=0;x<dst_w;++x){
+                const auto* p=row+std::size_t{sx[x]}*4u;
+                std::uint8_t red=0u,green=0u,blue=0u;
+                if(layout==OriginalAlternate32Layout::Rgba8){
+                    red=p[0];green=p[1];blue=p[2];
+                }else{
+                    std::uint32_t packed=0u;
+                    std::memcpy(&packed,p,sizeof(packed));
+                    const auto bottom=packed&1023u;
+                    const auto middle=(packed>>10u)&1023u;
+                    const auto top=(packed>>20u)&1023u;
+                    const auto convert10=[](std::uint32_t v)noexcept{
+                        return static_cast<std::uint8_t>((v*255u+511u)/1023u);
+                    };
+                    green=convert10(middle);
+                    if(layout==OriginalAlternate32Layout::A2R10G10B10){
+                        red=convert10(top);blue=convert10(bottom);
+                    }else{
+                        red=convert10(bottom);blue=convert10(top);
+                    }
+                }
                 out[4u*x+0u]=red;
                 out[4u*x+1u]=green;
                 out[4u*x+2u]=blue;

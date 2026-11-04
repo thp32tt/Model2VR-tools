@@ -73,5 +73,45 @@ int main(){
         ReadbackScalePlan::kOutputBytes,OriginalPacked16Layout::A4R4G4B4));
     REQUIRE(out[pix(0,256u)+2u]==255u);
     REQUIRE(out[pix(1023u,256u)]==255u);
+    // RGBA byte order is different from the default BGRA8 staging bytes.
+    // The high source byte may be zero: the cinema image stays opaque.
+    std::array<std::uint8_t,8> source_rgba{17u,23u,31u,0u,
+                                          123u,45u,67u,0u};
+    REQUIRE(plan.ConvertAlternate32(source_rgba.data(),8,out.data(),
+        ReadbackScalePlan::kOutputBytes,OriginalAlternate32Layout::Rgba8));
+    REQUIRE(out[pix(0u,256u)]==17u && out[pix(0u,256u)+1u]==23u &&
+            out[pix(0u,256u)+2u]==31u && out[pix(0u,256u)+3u]==255u);
+    REQUIRE(out[pix(1023u,256u)]==123u &&
+            out[pix(1023u,256u)+2u]==67u);
+    // Two authentic packed 10:10:10:2 render-target layouts; test red,
+    // green rounding, blue and ignored 2-bit source alpha separately.
+    const auto red_high=(1023u<<20u)|(512u<<10u);
+    const auto blue_low=1023u;
+    std::array<std::uint32_t,2> a2r{red_high,blue_low};
+    REQUIRE(plan.ConvertAlternate32(
+        reinterpret_cast<const std::uint8_t*>(a2r.data()),8,out.data(),
+        ReadbackScalePlan::kOutputBytes,
+        OriginalAlternate32Layout::A2R10G10B10));
+    REQUIRE(out[pix(0u,256u)]==255u &&
+            out[pix(0u,256u)+1u]==128u &&
+            out[pix(0u,256u)+2u]==0u &&
+            out[pix(0u,256u)+3u]==255u);
+    REQUIRE(out[pix(1023u,256u)]==0u &&
+            out[pix(1023u,256u)+2u]==255u);
+    std::array<std::uint32_t,2> a2b{blue_low,red_high};
+    REQUIRE(plan.ConvertAlternate32(
+        reinterpret_cast<const std::uint8_t*>(a2b.data()),8,out.data(),
+        ReadbackScalePlan::kOutputBytes,
+        OriginalAlternate32Layout::A2B10G10R10));
+    REQUIRE(out[pix(0u,256u)]==255u &&
+            out[pix(1023u,256u)+2u]==255u);
+    REQUIRE(!plan.ConvertAlternate32(source_rgba.data(),7,out.data(),
+        ReadbackScalePlan::kOutputBytes,OriginalAlternate32Layout::Rgba8));
+    REQUIRE(!plan.ConvertAlternate32(source_rgba.data(),8,out.data(),
+        ReadbackScalePlan::kOutputBytes-1u,OriginalAlternate32Layout::Rgba8));
+    REQUIRE(!plan.ConvertAlternate32(source_rgba.data(),8,out.data(),
+        ReadbackScalePlan::kOutputBytes,
+        static_cast<OriginalAlternate32Layout>(255u)));
+    REQUIRE(out[pix(0u,0u)+3u]==0u); // letterbox still transparent
     return 0;
 }

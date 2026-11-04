@@ -861,9 +861,14 @@ private:
                             desc.Format==D3DFMT_X1R5G5B5 ||
                             desc.Format==D3DFMT_A1R5G5B5 ||
                             desc.Format==D3DFMT_A4R4G4B4;
+        const bool alternate32=desc.Format==D3DFMT_A8B8G8R8 ||
+                               desc.Format==D3DFMT_X8B8G8R8 ||
+                               desc.Format==D3DFMT_A2R10G10B10 ||
+                               desc.Format==D3DFMT_A2B10G10R10;
         if(FAILED(desc_hr) || desc.Width<320u || desc.Width>2048u ||
            desc.Height<200u || desc.Height>2048u ||
-           (!packed16 && desc.Format!=D3DFMT_A8R8G8B8 &&
+           (!packed16 && !alternate32 &&
+            desc.Format!=D3DFMT_A8R8G8B8 &&
             desc.Format!=D3DFMT_X8R8G8B8)){
             Drop(source);
             return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::BackbufferLayout,
@@ -943,13 +948,24 @@ private:
             packed_layout=m2vr::daytona::OriginalPacked16Layout::A4R4G4B4;
         const auto* locked_pixels=
             static_cast<const std::uint8_t*>(locked.pBits);
+        const auto alt32_layout=
+            (desc.Format==D3DFMT_A8B8G8R8 ||
+             desc.Format==D3DFMT_X8B8G8R8)
+            ?m2vr::daytona::OriginalAlternate32Layout::Rgba8
+            :(desc.Format==D3DFMT_A2R10G10B10
+              ?m2vr::daytona::OriginalAlternate32Layout::A2R10G10B10
+              :m2vr::daytona::OriginalAlternate32Layout::A2B10G10R10);
         const bool ready=packed16
             ?mono_scale_.ConvertPacked16(
                 locked_pixels,locked.Pitch,mono_rgba_.data(),
                 mono_rgba_.size(),packed_layout)
-            :mono_scale_.Convert(
-                locked_pixels,locked.Pitch,mono_rgba_.data(),
-                mono_rgba_.size());
+            :(alternate32
+                ?mono_scale_.ConvertAlternate32(
+                    locked_pixels,locked.Pitch,mono_rgba_.data(),
+                    mono_rgba_.size(),alt32_layout)
+                :mono_scale_.Convert(
+                    locked_pixels,locked.Pitch,mono_rgba_.data(),
+                    mono_rgba_.size()));
         mono_staging_->UnlockRect();
         if(!ready)
             return RejectOriginalMono(m2vr::daytona::OriginalMonoFailure::Convert,

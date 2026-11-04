@@ -46,6 +46,11 @@ class NativeStereoTest(unittest.TestCase):
                     "D3DFMT_A1R5G5B5", "D3DFMT_A4R4G4B4"):
             self.assertIn(fmt,source)
         self.assertIn("mono_scale_.ConvertPacked16(",source)
+        self.assertIn("mono_scale_.ConvertAlternate32(",source)
+        self.assertIn("const bool alternate32=desc.Format==D3DFMT_A8B8G8R8",source)
+        self.assertIn("desc.Format==D3DFMT_A2R10G10B10",source)
+        self.assertIn("desc.Format==D3DFMT_A2B10G10R10",source)
+        self.assertIn("OriginalAlternate32Layout::Rgba8",source)
         self.assertNotIn("Model2VR_SubmitStereoRGBAWithPose(\n                    mono_rgba_",source)
 
     def test_original_d3d9_eye_bootstrap_failure_has_one_root_cause(self):

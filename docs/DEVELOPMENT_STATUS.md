@@ -346,3 +346,20 @@ M01 remains buildable, but the current artifact is a prototype only. Resolve the
 - **Genuine DrawPrimitive/DrawIndexedPrimitive VB/IB input:** New opt-in verified-world-only list/strip/fan source adapters and passive original CPU projector witness paths correctly decode N+2 source elements, signed BaseVertexIndex, 16/32-bit indexed source and winding parity. Original D3D9 methods still execute only once. An independent, calibrated CPU game-world ownership transaction is required; raw FVF, topology and CPU projection fit alone are NOT permission for world rendering.
 - **Validation for exact SHA:** Public tools CI `41797377751` SUCCESS, ModDev toolkit `41797377590` SUCCESS, Windows x86 probe build + native regression suite `41797377666` SUCCESS, Daytona original Win32 source + Win64 OpenXR host build/package `41797377730` SUCCESS. Do not rerun this exact SHA. Older intermediate test failures were fixed in subsequent source commits.
 - **Hard blockers remain:** Original Daytona race-world Draw caller and geometry command/matrix A/B provenance, calibrated camera axes and units-per-meter, genuine shader-UP world material ownership, actual headset appearance and performance. `RUNTIME_VALIDATION=UNTESTED`. No private emulator binary/ROM/REA data was copied into this public repository, and OutRun/UW2 were not modified. Next source work should gather private matrix/pass proof and supply it exclusively through the explicit world-only adapter, never auto-promote unknown HUD/auxiliary Draws.
+
+
+## Original D3D9 non-BGRA physical backbuffer to OpenXR mono cinema (2026-11-05)
+
+The opt-in original-game pre-Present 2D fallback now admits CPU-readable
+A8B8G8R8/X8B8G8R8 byte-ordered and A2R10G10B10/A2B10G10R10 packed
+backbuffers in addition to existing BGRA8 and 16-bit layouts. The same
+physical game backbuffer is copied once, optionally MSAA-resolved, decoded
+with bounded source pitch/format and aspect-preserving 1024-square scaling,
+then published only after the original D3D9 Present succeeds. Original alpha
+is not video transparency: displayed pixels stay opaque and letterbox pixels
+remain transparent in the world-fixed OpenXR cinema quad. New native pixel
+channel/alpha tests and Python source-wiring checks cover the paths.
+This never authenticates world vs HUD, enables no new world draw, does not
+replay game simulation or FFB, and does not change original Draw/Present.
+Windows x86/x64 and Quest3 runtime require exact post-change verification;
+RUNTIME_VALIDATION=UNTESTED.
