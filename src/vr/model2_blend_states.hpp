@@ -11,8 +11,7 @@ enum class BlendMode : std::uint32_t {
     Opaque=0, SourceAlphaOver=1, Additive=2,
     SourceAlphaAdd=3, PremultipliedOver=4, ReplaceRGBA=5
 };
-inline bool ValidBlendMode(BlendMode mode,std::uint8_t write_mask=0x0fu) noexcept {
-    if(write_mask&0xf0u)return;
+inline bool ValidBlendMode(BlendMode mode) noexcept {
     return mode==BlendMode::Opaque || mode==BlendMode::SourceAlphaOver ||
            mode==BlendMode::Additive || mode==BlendMode::SourceAlphaAdd ||
            mode==BlendMode::PremultipliedOver ||
@@ -22,7 +21,8 @@ inline bool ValidBlendMode(BlendMode mode,std::uint8_t write_mask=0x0fu) noexcep
 // pairs; fixed-function D3DBLENDOP_ADD saturates all four destination bytes.
 inline void CompositeSourceRGBA(
     std::uint8_t* dst,const std::array<std::uint8_t,4>& source,
-    BlendMode mode) noexcept {
+    BlendMode mode,std::uint8_t write_mask=0x0fu) noexcept {
+    if(write_mask&0xf0u)return;
     if(mode==BlendMode::Opaque){
         // D3DRS_ALPHABLENDENABLE=FALSE disables blending; it does NOT
         // discard or force the pixel's alpha. When all COLORWRITE channels
