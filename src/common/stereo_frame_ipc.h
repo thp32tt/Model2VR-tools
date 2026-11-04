@@ -22,12 +22,26 @@ constexpr std::size_t kBytesPerEye = static_cast<std::size_t>(kPitch) * kHeight;
 constexpr std::uint32_t kPixelRGBA8 = 1;
 // GameMonoFallback carries pixels from the ORIGINAL x86 D3D9 game backbuffer.
 // It deliberately has no source-eye pose and is NOT calibrated native stereo.
+// CompactMono=4 is an ADDITIVE subtype (no wire/header/layout change).
+// Legacy GameMonoFallback=3 keeps the original two-4MiB-eye semantics.
+// CompactMono carries one *real* original D3D9 backbuffer in eye 0 only;
+// its second eye has no valid payload. An old reader will reject kind=4.
 enum class FrameKind : std::uint32_t {
-    Invalid=0, GameStereo=1, Diagnostic=2, GameMonoFallback=3
+    Invalid=0, GameStereo=1, Diagnostic=2,
+    GameMonoFallback=3, CompactMono=4
 };
+constexpr bool IsMonoGame(FrameKind kind) noexcept {
+    return kind==FrameKind::GameMonoFallback || kind==FrameKind::CompactMono;
+}
 constexpr bool ValidSourceKind(FrameKind kind) noexcept {
     return kind==FrameKind::GameStereo || kind==FrameKind::Diagnostic ||
-           kind==FrameKind::GameMonoFallback;
+           IsMonoGame(kind);
+}
+constexpr bool ValidEyePayload(FrameKind kind,std::size_t left,
+                               std::size_t right) noexcept {
+    return left==kBytesPerEye && (kind==FrameKind::CompactMono
+        ? right==0u
+        : right==kBytesPerEye);
 }
 
 // Non-pointer wire format: identical for 32-bit producer and 64-bit host.
@@ -117,7 +131,8 @@ public:
     bool Publish(const std::uint8_t* left,const std::uint8_t* right,
                  std::uint64_t frame_id,FrameKind kind,
                  std::uint32_t pose_sequence=0) {
-        if(!writable_||!Valid()||!left||!right||frame_id==0||
+        if(!writable_||!Valid()||!left||frame_id==0||
+           (!right && kind!=FrameKind::CompactMono) ||
            !ValidSourceKind(kind) ||
            (kind!=FrameKind::GameStereo && pose_sequence!=0u))
             return false;
@@ -128,7 +143,11 @@ public:
         if(frame_id<=last_written_)return false;
         InterlockedExchange(&h->sequence,before+1);
         std::memcpy(base_+sizeof(Header),left,kBytesPerEye);
-        std::memcpy(base_+sizeof(Header)+kBytesPerEye,right,kBytesPerEye);
+        // Do NOT copy 4 MiB of redundant pixels for a mono cinema quad.
+        // The kind=4 marker is published only after the seqlock commits.
+        // GameStereo, Diagnostic and legacy mono retain two source images.
+        if(kind!=FrameKind::CompactMono)
+            std::memcpy(base_+sizeof(Header)+kBytesPerEye,right,kBytesPerEye);
         h->frame_id=frame_id;
         h->pose_sequence=pose_sequence;
         LARGE_INTEGER time{};
@@ -176,11 +195,19 @@ public:
         if(!ValidSourceKind(kind))return false;
         const auto frame=h->frame_id, timestamp=h->timestamp_qpc;
         const auto pose_sequence=h->pose_sequence;
-        for(auto& eye:staging.eyes)
-            if(eye.size()!=kBytesPerEye)eye.resize(kBytesPerEye);
+        if(staging.eyes[0].size()!=kBytesPerEye)
+            staging.eyes[0].resize(kBytesPerEye);
         std::memcpy(staging.eyes[0].data(),base_+sizeof(Header),kBytesPerEye);
-        std::memcpy(staging.eyes[1].data(),
-                    base_+sizeof(Header)+kBytesPerEye,kBytesPerEye);
+        if(kind==FrameKind::CompactMono){
+            // Invalidate any previous right-eye stereo frame so the host
+            // cannot reuse it accidentally when switching source kinds.
+            staging.eyes[1].clear();
+        }else{
+            if(staging.eyes[1].size()!=kBytesPerEye)
+                staging.eyes[1].resize(kBytesPerEye);
+            std::memcpy(staging.eyes[1].data(),
+                        base_+sizeof(Header)+kBytesPerEye,kBytesPerEye);
+        }
         MemoryBarrier();
         const LONG end=h->sequence;
         if(start!=end || (end&1) || frame==0u)return false;

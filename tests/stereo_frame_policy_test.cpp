@@ -12,6 +12,11 @@ int main(){
     CHECK(!SourcePoseMatchesFrame(FrameKind::GameStereo,123u,false));
     CHECK(SourcePoseMatchesFrame(FrameKind::Diagnostic,0u,false));
     CHECK(SourcePoseMatchesFrame(FrameKind::GameMonoFallback,0u,false));
+    CHECK(SourcePoseMatchesFrame(FrameKind::CompactMono,0u,false));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::CompactMono,9u,true));
+    CHECK(ValidEyePayload(FrameKind::CompactMono,kBytesPerEye,0u));
+    CHECK(!ValidEyePayload(FrameKind::CompactMono,kBytesPerEye,kBytesPerEye));
+    CHECK(!ValidEyePayload(FrameKind::GameStereo,kBytesPerEye,0u));
     CHECK(!SourcePoseMatchesFrame(FrameKind::GameMonoFallback,17u,true));
     CHECK(!SourcePoseMatchesFrame(FrameKind::Diagnostic,123u,true));
     CHECK(!SourcePoseMatchesFrame(FrameKind::Invalid,0u,false));
@@ -88,6 +93,14 @@ int main(){
     snap.kind=FrameKind::GameMonoFallback;
     CHECK(gate.Accept(snap,t+146,hz));
     CHECK(gate.kind()==FrameKind::GameMonoFallback);
+    FrameStamp compact{6,t+147,FrameKind::CompactMono,123};
+    CHECK(gate.Decide(&compact,t+148,hz)==FrameUse::ReadNew);
+    snap.frame_id=6;snap.timestamp_qpc=t+147;
+    snap.kind=FrameKind::CompactMono;
+    CHECK(!gate.Accept(snap,t+148,hz)); // can't carry stale stereo eye
+    snap.eyes[1].clear();
+    CHECK(gate.Accept(snap,t+148,hz));
+    CHECK(gate.kind()==FrameKind::CompactMono);
     gate.Reset();
     CHECK(gate.id()==0);
     CHECK(!gate.Cached(t+140,1000));

@@ -66,6 +66,23 @@ int main(){
     REQUIRE(staging.kind==FrameKind::GameMonoFallback);
     REQUIRE(staging.eyes[0][0]==staging.eyes[1][0]);
     REQUIRE(!writer.Publish(a.data(),b.data(),7,FrameKind::GameMonoFallback,117u));
+    // New single-copy transport: second eye is invalid and must never
+    // silently contain pixels from an earlier original GameStereo frame.
+    REQUIRE(writer.Publish(a.data(),nullptr,7,FrameKind::CompactMono));
+    REQUIRE(reader.Peek(metadata));
+    REQUIRE(metadata.kind==FrameKind::CompactMono && metadata.pose_sequence==0u);
+    REQUIRE(reader.ReadReusable(staging));
+    REQUIRE(staging.kind==FrameKind::CompactMono &&
+            staging.eyes[0][0]==a[0] && staging.eyes[1].empty());
+    REQUIRE(!writer.Publish(a.data(),nullptr,8,FrameKind::GameStereo,117u));
+    REQUIRE(!writer.Publish(a.data(),b.data(),8,FrameKind::CompactMono,117u));
+    // A real stereo pair MUST repopulate the second eye on the following
+    // original Present, never recycle its old pre-mono bytes.
+    b[0]=0x91u;
+    REQUIRE(writer.Publish(a.data(),b.data(),8,FrameKind::GameStereo,118u));
+    REQUIRE(reader.ReadReusable(staging));
+    REQUIRE(staging.kind==FrameKind::GameStereo &&
+            staging.eyes[1].size()==kBytesPerEye && staging.eyes[1][0]==0x91u);
     reader.Close();writer.Close();
     REQUIRE(!reader.Read(snap));
     return 0;

@@ -126,7 +126,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"source_pose_rejection="<<static_cast<unsigned>(last_pose_rejection_)<<"\n"
           <<"frame_transport_open="<<(shared_frames_.Valid()?1:0)<<"\n"
           <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::GameStereo
-                ?"GameStereo":frame_gate_.kind()==transport::FrameKind::GameMonoFallback
+                ?"GameStereo":transport::IsMonoGame(frame_gate_.kind())
                 ?"OriginalGameMonoFallback":frame_gate_.kind()==transport::FrameKind::Diagnostic
                 ?"Diagnostic":"Unknown")<<"\n"
           <<"native_stereo_confirmed="<<(paired_frame_fresh &&
@@ -319,8 +319,8 @@ void XrApp::draw_frame(XrTime display_time){
     const bool usable=!source_failed_after_pair &&
         frame_gate_.Cached(now,hz) &&
         eye_frame_.frame_id==frame_gate_.id() &&
-        eye_frame_.eyes[0].size()==transport::kBytesPerEye &&
-        eye_frame_.eyes[1].size()==transport::kBytesPerEye;
+        transport::ValidEyePayload(eye_frame_.kind,
+            eye_frame_.eyes[0].size(),eye_frame_.eyes[1].size());
     // A solid left/right fallback color is OpenXR host output, not proof
     // that the original 32-bit Daytona GPU image crossed x86->x64 IPC.
     // Summarize the actual upstream cause on transitions only, independent
@@ -336,7 +336,7 @@ void XrApp::draw_frame(XrTime display_time){
     delivery_evidence.pair_is_game=
         frame_gate_.kind()==transport::FrameKind::GameStereo;
     delivery_evidence.pair_is_original_mono=
-        frame_gate_.kind()==transport::FrameKind::GameMonoFallback;
+        transport::IsMonoGame(frame_gate_.kind());
     delivery_evidence.swapchain_compatible=
         chains_[0].width==transport::kWidth &&
         chains_[0].height==transport::kHeight &&
@@ -363,7 +363,7 @@ void XrApp::draw_frame(XrTime display_time){
     // The real original mono game image is a 2D cinema quad, never
     // counterfeit independent per-eye world projection.
     const bool original_mono_quad=usable &&
-        frame_gate_.kind()==transport::FrameKind::GameMonoFallback &&
+        transport::IsMonoGame(frame_gate_.kind()) &&
         chains_[0].width==transport::kWidth &&
         chains_[0].height==transport::kHeight;
     std::array<XrCompositionLayerProjectionView,2> layer_views{

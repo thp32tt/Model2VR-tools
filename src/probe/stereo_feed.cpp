@@ -52,8 +52,10 @@ extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_SubmitOriginalGameMonoR
        !original_rgba || !original_frame)return FALSE;
     std::scoped_lock lock(g_writer_mutex);
     if(!g_initialized)return FALSE;
-    return g_writer.Publish(original_rgba,original_rgba,original_frame,
-               m2vr::transport::FrameKind::GameMonoFallback)?TRUE:FALSE;
+    // 4-MiB single-eye packet, not a cloned 8-MiB binocular payload.
+    // The wire remains v1; pre-compact hosts reject kind=4 fail-closed.
+    return g_writer.Publish(original_rgba,nullptr,original_frame,
+               m2vr::transport::FrameKind::CompactMono)?TRUE:FALSE;
 }
 
 // The proven CPU-world renderer can include the exact predicted pose used

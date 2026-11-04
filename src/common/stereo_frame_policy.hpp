@@ -11,7 +11,7 @@ namespace m2vr::transport {
 // binocular projection. A diagnostic frame is intentionally untagged.
 inline constexpr bool SourcePoseMatchesFrame(
     FrameKind kind,std::uint32_t pose_tag,bool exact_pose_in_host_ring) noexcept {
-    if(kind==FrameKind::Diagnostic || kind==FrameKind::GameMonoFallback)
+    if(kind==FrameKind::Diagnostic || IsMonoGame(kind))
         return pose_tag==0u;
     return kind==FrameKind::GameStereo &&
            pose_tag!=0u && exact_pose_in_host_ring;
@@ -41,8 +41,8 @@ public:
         if(!HasRecent(snapshot.timestamp_qpc,now,ticks_per_second) ||
            snapshot.frame_id==0 || snapshot.frame_id<=last_id_ ||
            !ValidSourceKind(snapshot.kind) ||
-           snapshot.eyes[0].size()!=kBytesPerEye ||
-           snapshot.eyes[1].size()!=kBytesPerEye)return false;
+           !ValidEyePayload(snapshot.kind,snapshot.eyes[0].size(),
+                            snapshot.eyes[1].size()))return false;
         last_id_=snapshot.frame_id;
         last_qpc_=snapshot.timestamp_qpc;
         kind_=snapshot.kind;
