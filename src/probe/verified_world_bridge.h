@@ -189,6 +189,25 @@ Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRender
 // Return TRUE only during an independently authorized current-thread world
 // transaction. Adapters must fail before reading original D3D9 draw memory.
 __declspec(dllexport) BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread();
+// Explicit one-Draw opt-in for an independently authenticated native
+// Daytona race World3D adapter. Arm only AFTER BeginVerifiedWorldFrame
+// succeeded and from the same render thread, using the physical upcoming
+// Present, ORIGINAL game EXE Draw caller RVA, family 1..4 and successful
+// source BeginScene ordinal from independent private evidence.
+// The original D3D9 hook consumes the rule exactly once and forwards the
+// actual UP/VB/IB source arguments into the already calibrated CPU two-eye
+// material raster before executing the genuine COM Draw ONCE.
+// cpu_projector_rva=0 uses original fixed XYZ+VIEW/PROJ; nonzero uses
+// separately authenticated CPU ProjectVertexToScreen source XYZRHW.
+// Alpha cutoff 256 means exact original D3D9 alpha test, 0..255 legacy.
+// Missing/mismatched provenance never auto-authorizes a HUD/sky/aux Draw.
+// An unused armed rule makes End reject the entire incomplete binocular
+// source frame; original game and mono backup are unaffected.
+__declspec(dllexport) BOOL __stdcall Model2VR_ArmVerifiedOriginalD3D9Draw(
+    unsigned long long original_present_frame,unsigned int original_family,
+    unsigned int original_caller_rva,unsigned int original_scene_ordinal,
+    unsigned int authenticated_cpu_projector_caller_rva,
+    unsigned int alpha_cutoff);
 // The exact D3D9 COM device whose original Draw/Present epochs are hooked.
 // Secondary devices, overlays and swap-in replacements must never masquerade
 // as this emulator's world output. No refs acquired and no state changed.

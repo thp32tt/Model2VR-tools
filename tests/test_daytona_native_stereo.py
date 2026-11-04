@@ -66,6 +66,38 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("return family>=1u && family<=4u",gate)
         self.assertIn("(result_bits & 0x80000000u)!=0u",gate)
 
+    def test_one_shot_authenticated_physical_draw_to_cpu_world_routes(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        api=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
+        guard=(ROOT/"src/probe/original_d3d9_authenticated_draw.hpp").read_text("utf-8")
+        self.assertIn("Model2VR_ArmVerifiedOriginalD3D9Draw(",api)
+        self.assertIn("TryTakeAuthenticatedOriginalDraw(",bridge)
+        self.assertIn("bool genuine_scene_open",guard)
+        self.assertIn("g.original_draw_one_shot.Pending()",bridge)
+        self.assertIn("g.original_draw_one_shot.Reset();",bridge)
+        self.assertEqual(hooks.count("ForwardAuthenticatedOriginalDraw(d,source_frame,"),4)
+        for family in range(1,5):
+            self.assertIn(
+                f"ForwardAuthenticatedOriginalDraw(d,source_frame,{family}u,caller,",
+                hooks)
+        for name in ("D3D9VBTopologyTextured",
+                     "ProjectedD3D9VBTopologyTextured",
+                     "D3D9IndexedVBTopologyTextured",
+                     "ProjectedD3D9IndexedVBTopologyTextured",
+                     "D3D9PrimitiveUPTopologyTextured",
+                     "ProjectedD3D9PrimitiveUPTopologyTextured",
+                     "D3D9IndexedUPTopologyTextured",
+                     "ProjectedD3D9IndexedUPTopologyTextured"):
+            self.assertIn("Model2VR_AppendVerified"+name, hooks)
+        for name in ("DrawHook(", "IndexedHook(", "DrawUPHook(", "IndexedUPHook("):
+            start=hooks.index("HRESULT STDMETHODCALLTYPE "+name)
+            end=hooks.index("    return hr;",start)
+            section=hooks[start:end]
+            self.assertLess(section.index("ForwardAuthenticatedOriginalDraw("),
+                            section.index("const HRESULT hr=g_draw"))
+        self.assertIn("if(!rendered)Model2VR_RejectVerifiedD3D9SourceDraw(family);",hooks)
+
     def test_original_up_three_source_shapes_bind_real_com_draw_and_present(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         # Original Win32 primitive-UP and indexed-UP are executed only

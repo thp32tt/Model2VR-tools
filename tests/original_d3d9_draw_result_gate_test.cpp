@@ -1,5 +1,6 @@
 #include "../src/probe/original_d3d9_draw_result_gate.hpp"
 #include "../src/probe/verified_world_source_epoch.hpp"
+#include "../src/probe/original_d3d9_authenticated_draw.hpp"
 #include <cstdint>
 #include <cstdio>
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"source Draw HRESULT line %d: %s\n",__LINE__,#x);return 1;}}while(0)
@@ -33,5 +34,32 @@ int main(){
     CHECK(prebegin.CanBegin(42u,40u));
     CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalDrawFailed)==17u);
     CHECK(frames.CanBegin(42u,40u));
+    // Independent source authorization: never inferred from a generic
+    // Draw, scene phase, caller address or successful HRESULT alone.
+    OriginalDrawOneShot permits{};
+    ArmedOriginalDraw proof{77u,3u,0x1234u,2u,0x9876u,256u};
+    ArmedOriginalDraw taken{};
+    CHECK(!permits.Pending());
+    CHECK(!permits.Arm({77u,0u,0x1234u,2u,0u,0u}));
+    CHECK(!permits.Arm({77u,3u,0u,2u,0u,0u}));
+    CHECK(!permits.Arm({77u,3u,0x1234u,0u,0u,0u}));
+    CHECK(!permits.Arm({77u,3u,0x1234u,2u,0u,257u}));
+    CHECK(permits.Arm(proof));
+    CHECK(permits.Pending());
+    CHECK(!permits.Arm(proof));
+    CHECK(!permits.Take(76u,3u,0x1234u,2u,true,taken));
+    CHECK(!permits.Take(77u,1u,0x1234u,2u,true,taken));
+    CHECK(!permits.Take(77u,3u,0x1111u,2u,true,taken));
+    CHECK(!permits.Take(77u,3u,0x1234u,1u,true,taken));
+    CHECK(!permits.Take(77u,3u,0x1234u,2u,false,taken));
+    CHECK(permits.Pending());
+    CHECK(permits.Take(77u,3u,0x1234u,2u,true,taken));
+    CHECK(!permits.Pending());
+    CHECK(taken.frame==77u && taken.family==3u && taken.cpu_projector==0x9876u);
+    CHECK(taken.alpha_cutoff==256u);
+    CHECK(!permits.Take(77u,3u,0x1234u,2u,true,taken));
+    CHECK(permits.Arm({78u,1u,0x1234u,3u,0u,0u}));
+    permits.Reset();
+    CHECK(!permits.Pending());
     return 0;
 }

@@ -11,11 +11,13 @@
 #include "original_d3d9_draw_result_gate.hpp"
 #include "verified_world_source_result.hpp"
 #include "verified_world_projection_epoch.hpp"
+#include "original_d3d9_authenticated_draw.hpp"
 #include "daytona_native_stereo.hpp"
 #include "../common/daytona_producer_health.hpp"
 #include "logger.h"
 #include <Windows.h>
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -42,6 +44,8 @@ struct Bridge {
     m2vr::vr::DrawEvidence evidence{};
     std::uint64_t frame=0,last_completed=0,pose_sequence=0;
     m2vr::vrbridge::OriginalSourceFrameEpoch source_epoch{};
+    m2vr::vrbridge::OriginalDrawOneShot original_draw_one_shot{};
+    std::atomic<bool> original_draw_armed{false};
     m2vr::vrbridge::OriginalProjectedCameraEpoch projected_camera{};
     m2vr::vrbridge::OriginalFixedCameraEpoch fixed_camera{};
     m2vr::vrbridge::OriginalCameraFamilyEpoch camera_family{};
@@ -66,6 +70,8 @@ struct Bridge {
         owner=0;frame=0;pose_sequence=0;pose_published_qpc=0;
         draw_count=0;triangle_count=0;
         projected_camera.Reset();fixed_camera.Reset();camera_family.Reset();
+        original_draw_one_shot.Reset();
+        original_draw_armed.store(false,std::memory_order_release);
         evidence={};calibration={};
     }
 };
@@ -186,6 +192,36 @@ bool AdmitVerifiedFixedD3D9SourcePass(
     return true;
 }
 } // namespace m2vr::vrbridge
+namespace m2vr::vrbridge {
+bool TryTakeAuthenticatedOriginalDraw(std::uint64_t frame,
+    std::uint32_t family,std::uint32_t caller,std::uint32_t scene,
+    bool genuine_scene_open,ArmedOriginalDraw& result) noexcept {
+    if(!g.original_draw_armed.load(std::memory_order_acquire))return false;
+    std::scoped_lock lock(g.mutex);
+    if(!Owner() || g.frame!=frame)return false;
+    if(!g.original_draw_one_shot.Take(frame,family,caller,scene,
+                                     genuine_scene_open,result))return false;
+    g.original_draw_armed.store(false,std::memory_order_release);
+    // Source proof is one-use. The actual original COM Draw HRESULT still
+    // decides the physical Present. Never emit game geometry or matrices.
+    m2vr::LogEvent("model2_vr_authenticated_original_draw_taken",
+        frame,family,caller,scene);
+    return true;
+}
+} // namespace m2vr::vrbridge
+extern "C" BOOL __stdcall Model2VR_ArmVerifiedOriginalD3D9Draw(
+    unsigned long long frame,unsigned int family,unsigned int caller,
+    unsigned int scene,unsigned int cpu_projector,unsigned int alpha_cutoff){
+    const auto source_frame=Model2VR_NextOriginalD3D9PresentFrameId();
+    std::scoped_lock lock(g.mutex);
+    if(!Owner() || g.frame!=frame || frame!=source_frame)return FALSE;
+    m2vr::vrbridge::ArmedOriginalDraw rule{};
+    rule.frame=frame;rule.family=family;rule.caller=caller;rule.scene=scene;
+    rule.cpu_projector=cpu_projector;rule.alpha_cutoff=alpha_cutoff;
+    if(!g.original_draw_one_shot.Arm(rule))return FALSE;
+    g.original_draw_armed.store(true,std::memory_order_release);
+    return TRUE;
+}
 extern "C" BOOL __stdcall Model2VR_VerifiedWorldFrameOwnedByCurrentThread(){
     std::scoped_lock lock(g.mutex);
     return Owner()?TRUE:FALSE;
@@ -241,6 +277,8 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
             g.raster=std::make_unique<m2vr::vr::StereoWorldRaster>();
         g.raster->Clear();
         g.projected_camera.Reset();g.fixed_camera.Reset();g.camera_family.Reset();
+        g.original_draw_one_shot.Reset();
+        g.original_draw_armed.store(false,std::memory_order_release);
         g.head_origin=next_origin;
         g.camera_epoch=next_camera;
         g.frame=frame_id;
@@ -551,6 +589,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     std::scoped_lock lock(g.mutex);
     if(!Owner())return FALSE;
     if(!g.draw_count || !g.raster ||
+       g.original_draw_one_shot.Pending() ||
        !g.raster->StereoPairUsable() || !OriginalWorldPoseLive()){
         g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;
@@ -574,6 +613,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrameOnOriginalPresent(){
     std::scoped_lock lock(g.mutex);
     if(!Owner())return FALSE;
     if(!g.draw_count || !g.raster ||
+       g.original_draw_one_shot.Pending() ||
        !g.raster->StereoPairUsable() || !OriginalWorldPoseLive()){
         g.Reject(m2vr::vrbridge::CurrentOriginalSourceDrawKind());
         return FALSE;

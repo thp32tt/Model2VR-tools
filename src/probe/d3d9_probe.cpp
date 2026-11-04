@@ -10,6 +10,8 @@
 #include "d3d9_primary_device_owner.hpp"
 #include "verified_world_present_gate.hpp"
 #include "original_d3d9_draw_result_gate.hpp"
+#include "original_d3d9_authenticated_draw.hpp"
+#include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
 #include "d3d9_projected_vb_observer.hpp"
 #include "d3d9_indexed_up_window.hpp"
@@ -1100,6 +1102,24 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
         (original_frame<<32)|family);
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
+// Only a separately authenticated, one-use rule may forward a physical
+// original primary-device EXE Draw to the already existing CPU-world raster.
+// The actual emulator COM Draw and steering/FFB are never replayed here.
+template<class Submit>
+void ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
+    std::uint64_t frame,unsigned family,void* caller,
+    unsigned scene,bool original_scene_open,Submit&& submit){
+    m2vr::vrbridge::ArmedOriginalDraw permission{};
+    if(!m2vr::vrbridge::TryTakeAuthenticatedOriginalDraw(
+          frame,family,CallerRva(caller),scene,
+          original_scene_open && g_original_scene_hooks_ready.load(
+              std::memory_order_acquire),permission))return;
+    const BOOL rendered=submit(permission.cpu_projector,
+                               permission.alpha_cutoff);
+    // Append exports already reject their own invalid materials. Explicitly
+    // revoke if the adapter failed before it could own any eye pixels.
+    if(!rendered)Model2VR_RejectVerifiedD3D9SourceDraw(family);
+}
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     // Consume the original CPU projector witnesses once this physical
     // D3D9 Draw completes; no same-Present sample reuse by later Draws.
@@ -1119,6 +1139,14 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,1,p,count,caller)?
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
+    ForwardAuthenticatedOriginalDraw(d,source_frame,1u,caller,
+        source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
+        return cpu
+            ?Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured(
+                d,static_cast<unsigned>(p),start,count,cpu,alpha)
+            :Model2VR_AppendVerifiedD3D9VBTopologyTextured(
+                d,static_cast<unsigned>(p),start,count,alpha);
+    });
     const HRESULT hr=g_draw(d,p,start,count);
     RecordOriginalSourceResult(witness,hr,caller,1u,
                                source_frame,source_ordinal,
@@ -1148,6 +1176,14 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,2,p,count,caller)?
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
+    ForwardAuthenticatedOriginalDraw(d,source_frame,2u,caller,
+        source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
+        return cpu
+            ?Model2VR_AppendVerifiedProjectedD3D9IndexedVBTopologyTextured(
+                d,static_cast<unsigned>(p),base,min,num,start,count,cpu,alpha)
+            :Model2VR_AppendVerifiedD3D9IndexedVBTopologyTextured(
+                d,static_cast<unsigned>(p),base,min,num,start,count,alpha);
+    });
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
     RecordOriginalSourceResult(witness,hr,caller,2u,
                                source_frame,source_ordinal,
@@ -1177,6 +1213,14 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,3,p,count,caller)?
         ObserveUP(d,3,p,count,caller,verts,stride):0u;
+    ForwardAuthenticatedOriginalDraw(d,source_frame,3u,caller,
+        source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
+        return cpu
+            ?Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopologyTextured(
+                d,static_cast<unsigned>(p),count,verts,stride,cpu,alpha)
+            :Model2VR_AppendVerifiedD3D9PrimitiveUPTopologyTextured(
+                d,static_cast<unsigned>(p),count,verts,stride,alpha);
+    });
     const HRESULT hr=g_draw_up(d,p,count,verts,stride);
     RecordOriginalSourceResult(witness,hr,caller,3u,
                                source_frame,source_ordinal,
@@ -1206,6 +1250,16 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,4,p,count,caller)?
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num):0u;
+    ForwardAuthenticatedOriginalDraw(d,source_frame,4u,caller,
+        source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
+        return cpu
+            ?Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyTextured(
+                d,static_cast<unsigned>(p),min,num,count,idx,
+                static_cast<unsigned>(fmt),verts,stride,cpu,alpha)
+            :Model2VR_AppendVerifiedD3D9IndexedUPTopologyTextured(
+                d,static_cast<unsigned>(p),min,num,count,idx,
+                static_cast<unsigned>(fmt),verts,stride,alpha);
+    });
     const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
     RecordOriginalSourceResult(witness,hr,caller,4u,
                                source_frame,source_ordinal,
