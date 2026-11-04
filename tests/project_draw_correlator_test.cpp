@@ -25,6 +25,37 @@ int main(){
     CHECK(joined.source_caller_rva==0x1234u);
     CHECK(!c.Match(6,face,3).Complete());
     CHECK(!c.Match(5,face,2).Complete());
+    // Multi-triangle original DPUP/DIPUP draws must not silently lose
+    // provenance merely because their vertex count exceeds three.
+    ProjectDrawCorrelator multi{};
+    const ProjectedDrawVertex two_faces[6]{
+        {10.f,11.f},{20.f,11.f},{10.f,21.f},
+        {30.f,11.f},{40.f,11.f},{30.f,21.f}};
+    for(unsigned i=0;i<6;++i)
+        Capture(multi,43u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f);
+    const auto full_batch=multi.MatchTriangleList(43u,two_faces,6u);
+    CHECK(full_batch.inspected==2u && full_batch.complete==2u);
+    CHECK(full_batch.partial==0u && full_batch.ambiguous==0u);
+    CHECK(full_batch.common_source_caller_rva==0x55u);
+    CHECK(multi.MatchTriangleList(44u,two_faces,6u).complete==0u);
+    CHECK(multi.MatchTriangleList(43u,two_faces,5u).inspected==0u);
+    CHECK(multi.MatchTriangleList(43u,two_faces,27u).inspected==0u);
+    ProjectDrawCorrelator cross_source{};
+    for(unsigned i=0;i<6;++i)
+        Capture(cross_source,44u,i<3u?0x55u:0x66u,
+                two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f);
+    const auto mixed_batch=cross_source.MatchTriangleList(
+        44u,two_faces,6u);
+    CHECK(mixed_batch.complete==2u &&
+          mixed_batch.common_source_caller_rva==0u);
+    Capture(multi,43u,0x55u,10.f,11.f,9.f,9.f,9.f);
+    const auto conflicting_batch=multi.MatchTriangleList(
+        43u,two_faces,6u);
+    CHECK(conflicting_batch.complete==1u &&
+          conflicting_batch.ambiguous==1u);
+
     const ProjectedDrawVertex shifted[3]{{101.f,150.f},{200.f,150.f},{100.f,250.f}};
     CHECK(c.Match(5,shifted,3).matched==2u);
     // Overlapping CPU points must never silently become a unique source.

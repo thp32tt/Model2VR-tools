@@ -45,6 +45,17 @@ viewport or missing camera proof fails closed. This is a concrete missing
 CPU-to-draw topology bridge, **not** world/HUD classification or verified
 head-relative 6DoF. No private original executable data is shipped.
 
+**Multi-triangle original CPU→D3D9 source correlation (2026-11-04):**
+The bounded read-only source witness now inspects up to eight consecutive
+triangle-list primitives in one sampled original UP draw (including indexed UP
+and exact known Daytona shader-UP declaration). Previously it inspected
+only the first triangle or only complete single-triangle draws. Aggregates
+preserve complete/partial/ambiguous joins and same-CPU-caller consistency,
+without retaining raw private vertices in logs, changing game rendering, or
+claiming world ownership. A guarded source read must remain inside its 64KiB
+sample cap. Multi-triangle provenance is still candidate evidence, **not**
+game camera calibration, verified HUD/world separation, or 6DoF HMD proof.
+
 **Still unfinished, in priority order:** authenticate real Daytona
 world/camera transform and correct head-relative 6DoF, discriminate
 HUD/menu/postprocessing from 3D scene beyond the known shader-UP

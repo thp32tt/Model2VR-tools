@@ -175,7 +175,8 @@ bool Sample(IDirect3DDevice9* dev,unsigned family,
 // The small SEH helper contains no C++ objects requiring unwinding.
 bool SafeReadBytes(const void* source,std::size_t offset,
                    void* destination,std::size_t size) noexcept {
-    if(!source||!destination||!size||size>16u||offset>65536u)return false;
+    if(!source||!destination||!size||size>16u||
+       offset>65536u-size)return false;
     const auto* p=static_cast<const volatile std::uint8_t*>(source);
     auto* out=static_cast<std::uint8_t*>(destination);
     __try {
@@ -299,8 +300,14 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
         index_format!=D3DFMT_INDEX32)))return;
 
     struct Observation {std::uint32_t index=0; VertexWitness vertex{};};
-    std::array<Observation,MaxVertices> observations{};
-    const unsigned count=elements<MaxVertices?elements:MaxVertices;
+    // Capture at most eight triangle-list primitives in one original Draw.
+    // Leave unrelated topology sampling at the historical three vertices.
+    constexpr unsigned kJoinSampleVertices=
+        3u*m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles;
+    std::array<Observation,kJoinSampleVertices> observations{};
+    const unsigned limit=type==D3DPT_TRIANGLELIST?
+        kJoinSampleVertices:MaxVertices;
+    const unsigned count=elements<limit?elements:limit;
     for(unsigned i=0;i<count;++i){
         std::uint32_t index=i;
         if(family==4u){
@@ -329,7 +336,9 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     m2vr::LogEvent("model2_d3d9_up_meta",sample_id,
         g_present_count.load(std::memory_order_relaxed)+1u,
         CallerRva(caller),(std::uint64_t{family}<<32)|stride);
-    for(unsigned i=0;i<count;++i){
+    // Preserve the original three-vertex per-witness log volume/schema.
+    // Extra source triangles are correlated only via aggregate metadata.
+    for(unsigned i=0;i<count && i<MaxVertices;++i){
         const auto& v=observations[i].vertex;
         m2vr::LogEvent("model2_d3d9_up_vertex",sample_id,
             observations[i].index,PackPair(v.x,v.y),PackPair(v.z,v.rhw));
@@ -337,16 +346,23 @@ void ObserveUP(IDirect3DDevice9* dev,unsigned family,
     // The sampled original UP triangle can now be associated with
     // immediately preceding CPU projector outputs on this SAME thread and
     // Present epoch. Even a full match is a candidate, never world proof.
-    if(count==3u){
-        std::array<ProjectedDrawVertex,3> screen{};
-        for(unsigned i=0;i<3u;++i){
-            screen[i].x=observations[i].vertex.x;
-            screen[i].y=observations[i].vertex.y;
+    if(type==D3DPT_TRIANGLELIST && count>=3u){
+        std::array<ProjectedDrawVertex,kJoinSampleVertices> screen{};
+        for(unsigned i=0;i<count;++i) {
+            screen[i]={observations[i].vertex.x,observations[i].vertex.y};
         }
-        const auto join=ThreadProjectDrawCorrelator().Match(
-            CurrentProjectDrawEpoch(),screen.data(),screen.size());
+        const auto epoch=CurrentProjectDrawEpoch();
+        const auto& correlator=ThreadProjectDrawCorrelator();
+        // Backward-compatible first-triangle event.
+        const auto join=correlator.Match(epoch,screen.data(),3u);
         m2vr::LogEvent("model2_d3d9_cpu_up_join",sample_id,
             join.matched,join.ambiguous,join.source_caller_rva);
+        const auto batch=correlator.MatchTriangleList(
+            epoch,screen.data(),count);
+        m2vr::LogEvent("model2_d3d9_cpu_up_join_batch",sample_id,
+            (std::uint64_t{batch.inspected}<<32)|batch.complete,
+            (std::uint64_t{batch.partial}<<32)|batch.ambiguous,
+            batch.common_source_caller_rva);
     }
 }
 
@@ -452,6 +468,50 @@ void ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
                 screen.data(),screen.size());
             m2vr::LogEvent("model2_d3d9_cpu_shader_up_join",id,
                 join.matched,join.ambiguous,join.source_caller_rva);
+            // The earlier witness stopped after the first triangle even
+            // for hundreds of original shader-UP world candidates. Sample
+            // up to seven more, never read shader bytecode or change state.
+            constexpr unsigned max_vertices=
+                3u*m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles;
+            std::array<m2vr::drawprobe::ProjectedDrawVertex,max_vertices>
+                batch_vertices{};
+            for(unsigned i=0;i<3u;++i)batch_vertices[i]=screen[i];
+            unsigned valid_triangles=1u;
+            const unsigned limit=primitive_count<
+                m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles?
+                primitive_count:static_cast<unsigned>(
+                m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles);
+            for(unsigned tri=1u;tri<limit;++tri){
+                bool valid=true;
+                for(unsigned j=0u;j<3u;++j){
+                    const std::size_t vertex_index=std::size_t(tri)*3u+j;
+                    std::array<std::uint8_t,32> bytes{};
+                    m2vr::drawprobe::DaytonaUPVertex vertex{};
+                    if(!SafeReadBytes(vertices,vertex_index*stride,
+                                      bytes.data(),16u) ||
+                       !SafeReadBytes(vertices,vertex_index*stride+24u,
+                                      bytes.data()+24u,8u) ||
+                       !m2vr::drawprobe::DecodeDaytonaUPVertex(bytes,vertex) ||
+                       !m2vr::drawprobe::CandidateClipToViewport(
+                           vertex.position.data(),vp.X,vp.Y,
+                           vp.Width,vp.Height,
+                           batch_vertices[vertex_index])){
+                        valid=false;break;
+                    }
+                }
+                if(!valid)break; // never count a partial triangle
+                ++valid_triangles;
+            }
+            const auto batch=
+                m2vr::drawprobe::ThreadProjectDrawCorrelator()
+                    .MatchTriangleList(
+                        m2vr::drawprobe::CurrentProjectDrawEpoch(),
+                        batch_vertices.data(),
+                        std::size_t(valid_triangles)*3u);
+            m2vr::LogEvent("model2_d3d9_cpu_shader_up_join_batch",id,
+                (std::uint64_t{batch.inspected}<<32)|batch.complete,
+                (std::uint64_t{batch.partial}<<32)|batch.ambiguous,
+                batch.common_source_caller_rva);
         }
     }
 }

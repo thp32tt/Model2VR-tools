@@ -37,6 +37,16 @@ inline bool CandidateClipToViewport(const float clip[4],
     out={px,py};
     return true;
 }
+struct ProjectedTriangleBatchJoin {
+    // First N original triangles from ONE Draw. Each complete member
+    // independently matches three distinct same-thread CPU projections.
+    // No field here establishes world/HUD classification.
+    std::uint32_t inspected=0;
+    std::uint32_t complete=0;
+    std::uint32_t partial=0;
+    std::uint32_t ambiguous=0;
+    std::uint32_t common_source_caller_rva=0;
+};
 struct ProjectedSourceJoin {
     std::uint32_t matched=0;
     std::uint32_t ambiguous=0;
@@ -116,6 +126,33 @@ public:
         }
         result.source_caller_rva=common_caller;
         return result;
+    }
+    // Analyze up to eight original triangle-list primitives, not merely
+    // draws consisting of exactly one triangle. A capped batch avoids
+    // unbounded CPU work in the hooked D3D9 render path.
+    static constexpr std::size_t kMaxJoinTriangles=8u;
+    ProjectedTriangleBatchJoin MatchTriangleList(
+        std::uint64_t epoch,const ProjectedDrawVertex* vertices,
+        std::size_t vertex_count) const noexcept {
+        ProjectedTriangleBatchJoin batch{};
+        if(!vertices || !epoch || vertex_count<3u ||
+           vertex_count%3u || vertex_count>3u*kMaxJoinTriangles)
+            return batch;
+        for(std::size_t i=0;i<vertex_count;i+=3u){
+            const auto join=Match(epoch,vertices+i,3u);
+            ++batch.inspected;
+            if(join.Complete()){
+                if(!batch.complete)
+                    batch.common_source_caller_rva=join.source_caller_rva;
+                else if(batch.common_source_caller_rva!=join.source_caller_rva)
+                    batch.common_source_caller_rva=0u;
+                ++batch.complete;
+            }else if(join.matched){
+                ++batch.partial;
+            }
+            if(join.ambiguous)++batch.ambiguous;
+        }
+        return batch;
     }
 private:
     struct Entry {
