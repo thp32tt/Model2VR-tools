@@ -9,6 +9,7 @@
 #include "verified_world_present_gate.hpp"
 #include "d3d9_world_source.hpp"
 #include "d3d9_projected_vb_observer.hpp"
+#include "projected_up_world_source.hpp"
 #include <Windows.h>
 #include <d3d9.h>
 #include <MinHook.h>
