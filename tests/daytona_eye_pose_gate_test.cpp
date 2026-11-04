@@ -57,6 +57,27 @@ int main(){
     assert(!AdmitLiveEyePose(f,now,hz).valid);
     f=ValidTestPose();f.eyes[1].position_m[0]=0.132f;
     assert(!AdmitLiveEyePose(f,now,hz).valid); // implausible IPD
+    // A right-to-left baseline has a valid physical magnitude but is
+    // incompatible with XR_PRIMARY_STEREO left/right source order.
+    f=ValidTestPose();
+    f.eyes[0].position_m[0]=0.032f;
+    f.eyes[1].position_m[0]=-0.032f;
+    assert(!AdmitLiveEyePose(f,now,hz).valid);
+    // Also reject a plausible 64mm vertical baseline.
+    f=ValidTestPose();
+    f.eyes[0].position_m[0]=0.f;f.eyes[1].position_m[0]=0.f;
+    f.eyes[0].position_m[1]=-0.032f;f.eyes[1].position_m[1]=0.032f;
+    assert(!AdmitLiveEyePose(f,now,hz).valid);
+    // A 90-degree HMD yaw rotates both eye positions and local X.
+    f=ValidTestPose();
+    f.eyes[0].orientation_xyzw[1]=0.70710678f;
+    f.eyes[0].orientation_xyzw[3]=0.70710678f;
+    f.eyes[1].orientation_xyzw[1]=0.70710678f;
+    f.eyes[1].orientation_xyzw[3]=0.70710678f;
+    f.eyes[0].position_m[0]=f.eyes[1].position_m[0]=0.f;
+    f.eyes[0].position_m[2]=0.032f;
+    f.eyes[1].position_m[2]=-0.032f;
+    assert(AdmitLiveEyePose(f,now,hz).valid);
     f=ValidTestPose();assert(!AdmitLiveEyePose(f,now+hz,hz).valid);
     f=ValidTestPose();assert(!AdmitLiveEyePose(f,now,0).valid);
     f=ValidTestPose();assert(!AdmitLiveEyePose(f,900000000ull,hz).valid);

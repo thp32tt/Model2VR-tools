@@ -463,3 +463,18 @@ as complete would expose uninitialized auxiliary eye pixels and
 incorrectly greenlight a later stereo source blit. Initial subview
 clears now remain fail-closed; established auxiliary frames continue
 to preserve later partial clear rectangles.
+
+
+## Binocular source-order and full FLOAT4 sanity (2026-11-04)
+
+Native Daytona GPU-eye replay now rejects a physically plausible IPD whose
+right-minus-left direction contradicts the HMD left-eye local +X orientation
+(e.g., reversed pair order or a vertical 64mm pair). This uses the actual
+tracked OpenXR quaternion so normal room-space head rotation is allowed
+and a loose 0.5 directional dot threshold tolerates canted stereo views.
+The shader-UP source also checks finite POSITION Y and Z, in addition
+to the previous finite X and positive-bounded homogeneous W, before
+shifting either eye for a particular triangle. Bad triangles remain
+flat without invalidating independent safe source triangles. Original
+D3D9 state/game draw and FFB are unchanged. These safety checks do
+not calibrate the original game's camera or prove Quest visuals.

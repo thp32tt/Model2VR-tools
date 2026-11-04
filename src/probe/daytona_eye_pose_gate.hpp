@@ -52,6 +52,17 @@ inline EyePoseAdmission AdmitLiveEyePose(
     const float ipd=std::sqrt(dx*dx+dy*dy+dz*dz);
     if(!std::isfinite(ipd)||ipd<0.02f||ipd>0.11f)
         return {}; // no bogus stereo with identical eye poses
+    // XR_PRIMARY_STEREO view index 0 is left, index 1 right. A malformed
+    // packet can have plausible IPD length but reversed/swapped view order.
+    // Verify the right-eye baseline points broadly along the left view's
+    // tracked local +X axis in XR LOCAL coordinates (allow for canted HMDs).
+    const auto& q=l.orientation_xyzw;
+    const float bx=1.f-2.f*(q[1]*q[1]+q[2]*q[2]);
+    const float by=2.f*(q[0]*q[1]+q[3]*q[2]);
+    const float bz=2.f*(q[0]*q[2]-q[3]*q[1]);
+    const float alignment=((-dx)*bx+(-dy)*by+(-dz)*bz)/ipd;
+    if(!std::isfinite(alignment)||alignment<0.5f)
+        return {}; // reversed or non-horizontal binocular pair
     out.valid=true;
     out.sequence=frame.sequence;
     out.ipd_scale=(std::clamp)(ipd/0.064f,0.6f,1.5f);

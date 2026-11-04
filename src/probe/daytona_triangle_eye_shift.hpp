@@ -28,10 +28,13 @@ inline ShiftResult ShiftSafeUPTriangles(
         // Check all 3 source vertices BEFORE mutating any triangle bytes.
         for(std::size_t v=0;v<3u;++v) {
             const auto offset=base+v*32u;
-            float x=0.f,w=0.f;
+            float x=0.f,y=0.f,z=0.f,w=0.f;
             std::memcpy(&x,left_eye+offset,sizeof x);
+            std::memcpy(&y,left_eye+offset+4u,sizeof y);
+            std::memcpy(&z,left_eye+offset+8u,sizeof z);
             std::memcpy(&w,left_eye+offset+12u,sizeof w);
-            if(!std::isfinite(x) || !SafeStereoHomogeneousW(w)){
+            if(!std::isfinite(x) || !std::isfinite(y) ||
+               !std::isfinite(z) || !SafeStereoHomogeneousW(w)){
                 safe=false;break;
             }
             const float left=x+eye_offset,right=x-eye_offset;

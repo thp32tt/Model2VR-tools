@@ -50,5 +50,28 @@ int main(){
     const auto held=ShiftSafeUPTriangles(left.data(),right.data(),192u,2u,0.07f);
     REQUIRE(held.shifted==0u && held.held_flat==2u);
     REQUIRE(left==base && right==base);
+    // The GPU vertex declaration is FLOAT4. Infinite and NaN Y/Z are as
+    // unsafe as the already rejected X/W source fields.
+    base.fill(0x2d);
+    for(unsigned v=0;v<6u;++v){
+        const float x=0.35f+0.1f*v,w=1.f;
+        std::memcpy(base.data()+v*32u,&x,sizeof x);
+        std::memcpy(base.data()+v*32u+12u,&w,sizeof w);
+    }
+    float bad_y=std::numeric_limits<float>::infinity();
+    std::memcpy(base.data()+32u+4u,&bad_y,sizeof bad_y);
+    left=base;right=base;
+    const auto bad_y_result=ShiftSafeUPTriangles(
+        left.data(),right.data(),192u,2u,0.07f);
+    REQUIRE(bad_y_result.shifted==1u && bad_y_result.held_flat==1u);
+    REQUIRE(std::memcmp(left.data(),base.data(),96u)==0);
+    REQUIRE(std::memcmp(right.data(),base.data(),96u)==0);
+    float bad_z=std::numeric_limits<float>::quiet_NaN();
+    std::memcpy(base.data()+32u+4u,base.data()+4u,4u); // Restore finite Y
+    std::memcpy(base.data()+32u+8u,&bad_z,sizeof bad_z);
+    left=base;right=base;
+    const auto bad_z_result=ShiftSafeUPTriangles(
+        left.data(),right.data(),192u,2u,0.07f);
+    REQUIRE(bad_z_result.shifted==1u && bad_z_result.held_flat==1u);
     return 0;
 }
