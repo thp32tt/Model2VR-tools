@@ -328,11 +328,23 @@ void LogOriginalFixedStageEvidence(IDirect3DDevice9* dev,
        SUCCEEDED(dev->GetRenderState(D3DRS_DESTBLEND,&blend_dst)) &&
        SUCCEEDED(dev->GetRenderState(D3DRS_BLENDOP,&blend_op)) &&
        SUCCEEDED(dev->GetRenderState(
-           D3DRS_SEPARATEALPHABLENDENABLE,&separate_alpha)))
+           D3DRS_SEPARATEALPHABLENDENABLE,&separate_alpha))) {
         m2vr::LogEvent("model2_d3d9_source_blend",witness,
             (std::uint64_t{blend_enable}<<32)|blend_src,
             (std::uint64_t{blend_dst}<<32)|blend_op,
             separate_alpha);
+        // Independent ADD alpha factors MUST belong to this SAME original
+        // Draw witness and FVF/stride, not a later Present or another pass.
+        if(blend_enable==1u && separate_alpha==1u) {
+            DWORD asrc=0u,adst=0u,aop=0u;
+            if(SUCCEEDED(dev->GetRenderState(D3DRS_SRCBLENDALPHA,&asrc)) &&
+               SUCCEEDED(dev->GetRenderState(D3DRS_DESTBLENDALPHA,&adst)) &&
+               SUCCEEDED(dev->GetRenderState(D3DRS_BLENDOPALPHA,&aop)))
+                m2vr::LogEvent("model2_d3d9_source_separate_alpha_blend",
+                    witness,(std::uint64_t{asrc}<<32)|adst,aop,
+                    (std::uint64_t{fvf}<<32)|stride);
+        }
+    }
     // Original fixed-function vertex stage for the SAME sampled Draw.
     // Neither source FVF nor a CPU projector match establishes the
     // unobserved shade/clip/vertex-blend state or race-world ownership.
