@@ -215,6 +215,27 @@ class SourceAuditTests(unittest.TestCase):
         data["source_context"]=(17, 0x3FFD, pack(640, 480))
         self.assertIsNone(REPORT.same_witness_projection_pass_candidate(
             data, 18, 0x1234))
+        # A genuine same-Present source FILLMODE is NOT sufficient if it
+        # belongs to another FVF or another Draw/vertex declaration.
+        data["origin"]=(0x1234,pack(1,0x144),pack(2048,28))
+        data["source_fill"]=(3,17,pack(0x144,28))
+        self.assertEqual(
+            REPORT.same_witness_projection_pass_candidate(data,17,0x1234),
+            (0x55,0x1000,0xAABB,0x77))
+        data["source_fill"]=(3,17,pack(0x144,24))
+        self.assertIsNone(REPORT.same_witness_projection_pass_candidate(
+            data,17,0x1234))
+        data["source_fill"]=(2,17,pack(0x144,28))
+        self.assertIsNone(REPORT.same_witness_projection_pass_candidate(
+            data,17,0x1234))
+        data["source_fill"]=(3,17,pack(0x144,28))
+        data["source_vertex_pipeline"]=(pack(2,1),pack(0,0),pack(0,17))
+        self.assertEqual(
+            REPORT.same_witness_projection_pass_candidate(data,17,0x1234),
+            (0x55,0x1000,0xAABB,0x77))
+        data["source_vertex_pipeline"]=(pack(2,0),pack(0,0),pack(0,17))
+        self.assertIsNone(REPORT.same_witness_projection_pass_candidate(
+            data,17,0x1234))
 
     def test_disjoint_draw_witnesses_do_not_join(self):
         with tempfile.TemporaryDirectory() as tmp:
