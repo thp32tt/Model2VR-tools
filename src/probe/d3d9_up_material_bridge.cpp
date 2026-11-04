@@ -220,10 +220,12 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
        !count || count>2048 || !index_count ||
        index_count%3 || index_count>6144u || alpha_cutoff>256u)
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
     DWORD fvf=0;
     if(FAILED(d->GetFVF(&fvf)))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
     const auto layout=m2vr::drawprobe::DecodeWorldUpFVF(fvf,stride);
     // D3D9 missing FVF DIFFUSE has an exact source-defined value:
     // opaque white 0xffffffff, already produced by DecodeWorldVertex.
@@ -236,7 +238,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
        !m2vr::drawprobe::FixedStageUVAvailableForSources(
            layout.has_uv,rgb_source,alpha_source))
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
     D3DMATRIX world{},view{},projection{};
     if(FAILED(d->GetTransform(D3DTS_WORLD,&world)) ||
        FAILED(d->GetTransform(D3DTS_VIEW,&view)) ||
@@ -245,7 +248,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
        !m2vr::drawprobe::AffineMatrix(view) ||
        !m2vr::drawprobe::StandardPerspectiveProjection(projection))
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
     std::vector<std::uint8_t> raw;
     std::vector<std::uint32_t> safe_indices;
     std::vector<float> positions,uv;
@@ -262,15 +266,18 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
         if(!GuardCopy(raw.data(),source,raw.size()) ||
            !GuardCopy(safe_indices.data(),triangle_indices,
                       safe_indices.size()*sizeof(std::uint32_t)))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
         for(const auto index:safe_indices)if(index>=count)return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
         for(unsigned int i=0;i<count;++i){
             m2vr::drawprobe::WorldVertex vertex{};
             if(!m2vr::drawprobe::DecodeWorldVertex(
                   raw.data()+std::size_t(i)*stride,stride,layout,
                   world,view,vertex))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
             for(unsigned k=0;k<3;++k)
                 positions[std::size_t(i)*3u+k]=vertex.view_xyz[k];
             for(unsigned k=0;k<2;++k)
@@ -283,9 +290,11 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
                 rgb_source,alpha_source) &&
            !m2vr::drawprobe::SnapshotCurrentTexture(d,texture))
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
     }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),1u);}
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);}
     // No second haptic owner, no duplicated emulator CPU draw or state.
     return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (Model2VR_AppendVerifiedTexturedTrianglesWithMaterialColorMaskSeparateAlphaRenderStates(
@@ -306,7 +315,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
         alpha_compare,alpha_reference,
         separate_policy.enabled?1u:0u,
         static_cast<unsigned>(separate_policy.source),
-        static_cast<unsigned>(separate_policy.destination))),1u);
+        static_cast<unsigned>(separate_policy.destination))),
+        m2vr::vrbridge::OriginalSourceDrawKind::PrimitiveUP);
 }
 
 // Actual original x86 D3D9 DrawPrimitiveUP XYZRHW/TEX1 vertices may already
@@ -324,7 +334,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
        !original_vertices || !expected_cpu_caller ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        triangles<2u || triangles>kMaxTriangles || cutoff>256u)return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
     m2vr::vr::SamplerPolicy sampler{};
     m2vr::vr::RasterPolicy raster{};
     m2vr::drawprobe::FixedStageSource rgb_source=
@@ -347,15 +358,18 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
        !m2vr::drawprobe::FixedStageUVAvailableForSources(
            (fvf&D3DFVF_TEXCOUNT_MASK)==D3DFVF_TEX1,
            rgb_source,alpha_source))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
     D3DVIEWPORT9 viewport{};
     if(FAILED(d->GetViewport(&viewport)))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
     try {
         const auto count=std::size_t(triangles)*3u;
         std::vector<std::uint8_t> raw(count*stride);
         if(!GuardCopy(raw.data(),original_vertices,raw.size()))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
         std::array<m2vr::drawprobe::ProjectedDrawVertex,24> screen{};
         std::vector<float> uv(count*2u),positions(count*3u);
         std::vector<std::uint32_t> indices(count);
@@ -367,7 +381,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
             m2vr::drawprobe::ProjectedUPWorldVertex decoded{};
             if(!m2vr::drawprobe::DecodeProjectedUPWorldVertex(
                 raw.data()+i*stride,fvf,stride,decoded))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
             screen[i]={decoded.screen_xy[0],decoded.screen_xy[1]};
             uv[i*2u]=decoded.uv[0];
             uv[i*2u+1u]=decoded.uv[1];
@@ -385,12 +400,14 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
                joined.common_matrix_fingerprint,
                joined.common_geometry_command))
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
         const auto fit=m2vr::drawprobe::FitSourcePerspective(
             joined.camera_samples.data(),joined.camera_sample_count,
             viewport.X,viewport.Y,viewport.Width,viewport.Height);
         if(!fit.plausible)return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
         for(std::size_t i=0;i<count;++i)
             for(unsigned k=0;k<3u;++k)
                 positions[i*3u+k]=joined.camera_samples[i].source_xyz[k];
@@ -401,7 +418,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
                 rgb_source,alpha_source) &&
            !m2vr::drawprobe::SnapshotCurrentTexture(d,texture))
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
         // Same authenticated owner and exact existing rasterization/pose
         // contract as the other fixed-function original Draw adapters.
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
@@ -424,7 +442,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         alpha_compare,alpha_reference,
         separate_policy.enabled?1u:0u,
         static_cast<unsigned>(separate_policy.source),
-        static_cast<unsigned>(separate_policy.destination))),2u);
+        static_cast<unsigned>(separate_policy.destination))),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
     }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),2u);}
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);}
 }

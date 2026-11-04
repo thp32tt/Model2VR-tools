@@ -67,11 +67,13 @@ class ProbeLogTests(unittest.TestCase):
             self.assertEqual(routes["cpu_world_mono_failed_gpu_eyes_backup"],1)
             self.assertEqual(routes["cpu_world_partial_source_revoked"],2)
             self.assertEqual(routes["cpu_world_rejected_source_kind_10"],1)
+            self.assertEqual(routes["cpu_world_rejected_projected_indexed_vertex_buffer"],1)
             self.assertEqual(routes["cpu_world_rejected_source_kind_0"],1)
             source_examples=report["d3d9"]["native_stereo_source_route_examples"]
             revoked=[x for x in source_examples
                      if x["route"]=="cpu_world_partial_source_revoked"]
             self.assertEqual(revoked[0]["prior_source_triangles"],48)
+            self.assertEqual(revoked[0]["original_source_draw_kind"],"projected_indexed_vertex_buffer")
             self.assertEqual(revoked[0]["original_present_frame"],15)
             self.assertEqual(report["d3d9"]["native_stereo_source_route_invalid_records"],3)
             self.assertIn("Original D3D9 Present -> x86 IPC -> OpenXR source route",

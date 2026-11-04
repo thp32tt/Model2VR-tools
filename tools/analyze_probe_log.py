@@ -11,6 +11,27 @@ from pathlib import Path
 
 # D3D9 eye-clone bootstrap failures are source-side metadata, NOT private
 # pixel dumps or evidence of an authenticated race-world pass.
+# Source-rejection IDs are DIAGNOSTIC only, not race-world proof.
+CPU_WORLD_REJECT_KINDS = {
+    0: "native_cpu_raster",
+    1: "primitive_u_p",
+    2: "projected_primitive_u_p",
+    3: "indexed_u_p",
+    4: "projected_indexed_u_p",
+    5: "topology_primitive_u_p",
+    6: "projected_topology_primitive_u_p",
+    7: "vertex_buffer",
+    8: "indexed_vertex_buffer",
+    9: "projected_vertex_buffer",
+    10: "projected_indexed_vertex_buffer",
+    11: "topology_vertex_buffer",
+    12: "topology_indexed_vertex_buffer",
+    13: "projected_topology_vertex_buffer",
+    14: "projected_topology_indexed_vertex_buffer",
+    15: "topology_indexed_u_p",
+    16: "projected_topology_indexed_u_p",
+}
+
 EYE_BOOTSTRAP_FAILURES = {
     1: "BACKBUFFER_QUERY",
     2: "BACKBUFFER_LAYOUT",
@@ -361,18 +382,20 @@ def analyze(path: Path):
                 # a2=already appended Draws; a3=already appended triangles.
                 # Rejection revokes ALL partially composed CPU eyes: the
                 # original game and GPU/mono Present fallback still run.
-                if (a0 <= 0 or not 0 <= a1 <= 16 or
+                if (a0 <= 0 or a1 not in CPU_WORLD_REJECT_KINDS or
                         not 0 <= a2 <= 2048 or not 0 <= a3 <= 2048):
                     source_route_invalid_records += 1
                 else:
                     source_route_counts["cpu_world_partial_source_revoked"] += 1
                     source_route_counts[f"cpu_world_rejected_source_kind_{a1}"] += 1
+                    source_route_counts[f"cpu_world_rejected_{CPU_WORLD_REJECT_KINDS[a1]}"] += 1
                     if len(source_route_examples) < 16:
                         source_route_examples.append({
                             "original_present_frame": a0,
                             "route": "cpu_world_partial_source_revoked",
                             "source_mode": "CPU-world",
                             "reason_mask": a1,
+                            "original_source_draw_kind": CPU_WORLD_REJECT_KINDS[a1],
                             "prior_source_draws": a2,
                             "prior_source_triangles": a3,
                             "hmd_runtime_validation": "UNTESTED",

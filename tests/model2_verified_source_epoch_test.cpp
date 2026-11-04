@@ -3,6 +3,10 @@
 #include <cstdio>
 #define CHECK(x) do{ if(!(x)){std::fprintf(stderr,"world source epoch line %d\n",__LINE__);return 1;} }while(0)
 int main() {
+    using m2vr::vrbridge::OriginalSourceDrawKind;
+    CHECK(static_cast<std::uint32_t>(OriginalSourceDrawKind::NativeCpuRaster)==0u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceDrawKind::ProjectedIndexedVertexBuffer)==10u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceDrawKind::ProjectedTopologyIndexedUP)==16u);
     m2vr::vrbridge::OriginalSourceFrameEpoch epoch;
     CHECK(!epoch.CanBegin(0u,0u));
     CHECK(epoch.CanBegin(13u,12u));

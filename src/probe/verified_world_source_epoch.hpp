@@ -5,6 +5,26 @@
 #include <cstdint>
 
 namespace m2vr::vrbridge {
+// Stable diagnostic IDs, never gameplay-world/HUD proof.
+enum class OriginalSourceDrawKind : std::uint32_t {
+    NativeCpuRaster=0u,
+    PrimitiveUP=1u,
+    ProjectedPrimitiveUP=2u,
+    IndexedUP=3u,
+    ProjectedIndexedUP=4u,
+    TopologyPrimitiveUP=5u,
+    ProjectedTopologyPrimitiveUP=6u,
+    VertexBuffer=7u,
+    IndexedVertexBuffer=8u,
+    ProjectedVertexBuffer=9u,
+    ProjectedIndexedVertexBuffer=10u,
+    TopologyVertexBuffer=11u,
+    TopologyIndexedVertexBuffer=12u,
+    ProjectedTopologyVertexBuffer=13u,
+    ProjectedTopologyIndexedVertexBuffer=14u,
+    TopologyIndexedUP=15u,
+    ProjectedTopologyIndexedUP=16u,
+};
 class OriginalSourceFrameEpoch {
 public:
     constexpr bool CanBegin(std::uint64_t frame,

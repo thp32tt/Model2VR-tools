@@ -75,7 +75,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTopologyTextured(
     const void* vertices,unsigned stride,unsigned alpha_cutoff) {
     if(!Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
        alpha_cutoff>256u)return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),15u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::TopologyIndexedUP);
     try {
         std::vector<std::uint8_t> source;
         std::vector<std::uint32_t> relative;
@@ -85,15 +86,18 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTopologyTextured(
             static_cast<D3DFORMAT>(format),vertices,stride,
             source,relative,copied_count))
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),15u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::TopologyIndexedUP);
         // Existing UP route verifies XYZ/TEX1, world/view/projection,
         // original texture/sampler/Z state and owned stereo frame.
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (Model2VR_AppendVerifiedD3D9UPTextured(
             device,source.data(),copied_count,stride,relative.data(),
-            static_cast<unsigned>(relative.size()),alpha_cutoff)),15u);
+            static_cast<unsigned>(relative.size()),alpha_cutoff)),
+        m2vr::vrbridge::OriginalSourceDrawKind::TopologyIndexedUP);
     }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),15u);}
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::TopologyIndexedUP);}
 }
 
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyTextured(
@@ -105,7 +109,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyT
        !cpu_caller || alpha_cutoff>256u || triangles<2u ||
        triangles>m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles)
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),16u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);
     try {
         std::vector<std::uint8_t> source,expanded;
         std::vector<std::uint32_t> relative;
@@ -115,24 +120,29 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyT
             min_vertex,vertex_count,triangles,
             indices,static_cast<D3DFORMAT>(format),vertices,stride,
             source,relative,copied_count))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),16u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);
         DWORD fvf=0;
         if(FAILED(d->GetFVF(&fvf)))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),16u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);
         m2vr::drawprobe::VBVertexWindow window{};
         window.first=0u;window.count=copied_count;
         window.indices=std::move(relative);
         if(!m2vr::drawprobe::ExpandProjectedVBWindow(
             source.data(),source.size(),fvf,stride,window,expanded))
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),16u);
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);
         // Exact original triangle order then same-thread/Present CPU
         // projector join, perspective fit and texture/Z/pose checks.
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (Model2VR_AppendVerifiedProjectedD3D9UPTextured(
-            device,expanded.data(),triangles,stride,cpu_caller,alpha_cutoff)),16u);
+            device,expanded.data(),triangles,stride,cpu_caller,alpha_cutoff)),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);
     }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (FALSE),16u);}
+        (FALSE),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);}
 }
 
 // Preserve the previously shipped public TRIANGLELIST ABI for existing
@@ -144,7 +154,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9IndexedUPTextured(
     return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (Model2VR_AppendVerifiedD3D9IndexedUPTopologyTextured(
         device,D3DPT_TRIANGLELIST,min_vertex,vertex_count,triangles,
-        indices,format,vertices,stride,alpha_cutoff)),3u);
+        indices,format,vertices,stride,alpha_cutoff)),
+        m2vr::vrbridge::OriginalSourceDrawKind::IndexedUP);
 }
 extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTextured(
     void* device,unsigned min_vertex,unsigned vertex_count,
@@ -154,5 +165,6 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTextured(
     return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyTextured(
         device,D3DPT_TRIANGLELIST,min_vertex,vertex_count,triangles,
-        indices,format,vertices,stride,cpu_caller,alpha_cutoff)),4u);
+        indices,format,vertices,stride,cpu_caller,alpha_cutoff)),
+        m2vr::vrbridge::OriginalSourceDrawKind::ProjectedIndexedUP);
 }
