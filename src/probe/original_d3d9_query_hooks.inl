@@ -36,6 +36,9 @@ void OriginalQueryCoverageUnknown() noexcept {
 }
 HRESULT STDMETHODCALLTYPE OriginalQueryIssueHook(IDirect3DQuery9* query,DWORD flags){
     if(!g_original_query_issue)return D3DERR_INVALIDCALL;
+    // Query invoked by our own eye renderer must not reenter its mutex.
+    if(m2vr::daytona::IsEyeReplayActive())
+        return g_original_query_issue(query,flags);
     const auto rva=CallerRva(_ReturnAddress());
     const auto owner=OriginalQueryDeviceOwner(query);
     if(owner==OriginalQueryOwner::Primary){
@@ -56,6 +59,8 @@ HRESULT STDMETHODCALLTYPE OriginalQueryIssueHook(IDirect3DQuery9* query,DWORD fl
 HRESULT STDMETHODCALLTYPE OriginalQueryGetDataHook(
     IDirect3DQuery9* query,void* data,DWORD size,DWORD flags){
     if(!g_original_query_get_data)return D3DERR_INVALIDCALL;
+    if(m2vr::daytona::IsEyeReplayActive())
+        return g_original_query_get_data(query,data,size,flags);
     const auto rva=CallerRva(_ReturnAddress());
     const auto owner=OriginalQueryDeviceOwner(query);
     if(owner==OriginalQueryOwner::Primary){
@@ -100,6 +105,8 @@ bool EnsureOriginalQueryObserved(IDirect3DQuery9* query){
 HRESULT STDMETHODCALLTYPE OriginalCreateQueryHook(
     IDirect3DDevice9* device,D3DQUERYTYPE type,IDirect3DQuery9** out){
     if(!g_create_query)return D3DERR_INVALIDCALL;
+    if(m2vr::daytona::IsEyeReplayActive())
+        return g_create_query(device,type,out);
     const bool primary=g_primary_device.Owns(device);
     const auto rva=primary?CallerRva(_ReturnAddress()):0u;
     const HRESULT hr=g_create_query(device,type,out);

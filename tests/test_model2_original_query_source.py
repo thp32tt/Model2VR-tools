@@ -21,6 +21,18 @@ class OriginalQuerySourceTest(unittest.TestCase):
         self.assertIn("Hook(vtable[118]",self.probe)
         self.assertIn("MH_DisableHook(vtable[118]);MH_RemoveHook(vtable[118]);",self.probe)
         self.assertIn("&&create_query&&dp",self.probe)
+        self.assertIn("!g_query_hooks_enabled || Hook(vtable[118]",self.probe)
+        self.assertIn("g_native_stereo=native_stereo && g_query_hooks_enabled;",self.probe)
+        self.assertIn("model2_d3d9_query_startup_safe_mode",self.probe)
+        self.assertIn("MODEL2VR_EXPERIMENTAL_QUERY_HOOKS",self.probe)
+        self.assertIn("IsEyeReplayActive()",self.hooks)
+        h=(ROOT/"src/probe/daytona_native_stereo.hpp").read_text("utf-8")
+        cpp=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        self.assertIn("bool IsEyeReplayActive() noexcept;",h)
+        self.assertIn("return g_in_eye_replay;",cpp)
+        for name in ("OriginalCreateQueryHook","OriginalQueryIssueHook",
+                     "OriginalQueryGetDataHook"):
+            self.assertIn("IsEyeReplayActive()",self.body(self.hooks,name))
         self.assertIn("g_create_query=nullptr;",self.probe)
         self.assertIn('#include "original_d3d9_query_hooks.inl"',self.probe)
         self.assertIn("if(!(issue&&data))",self.hooks)

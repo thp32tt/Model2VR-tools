@@ -26,6 +26,8 @@ using OriginalColorFill=HRESULT (STDMETHODCALLTYPE*)(
 using OriginalDrawUP=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,const void*,UINT);
 void Configure(bool enabled,std::uint32_t shift_milliunits) noexcept;
+// Pure thread-local guard: internal eye calls may already own the GPU mutex.
+bool IsEyeReplayActive() noexcept;
 void MirrorDraw(IDirect3DDevice9* device,D3DPRIMITIVETYPE primitive,
                 UINT count,const void* data,UINT stride,
                 std::uint32_t caller_rva,OriginalDrawUP original) noexcept;

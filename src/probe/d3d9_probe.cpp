@@ -443,6 +443,7 @@ std::atomic<bool> g_device_installed{false};
 m2vr::drawprobe::OriginalD3D9DeviceOwner g_primary_device{};
 std::atomic<unsigned> g_secondary_presents{0u};
 bool g_native_stereo=false;
+bool g_query_hooks_enabled=false;
 // Internal callback into the independently proven CPU-world renderer.
 // No verified-world frame is generated or self-authorized by this probe.
 extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
@@ -3086,7 +3087,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_create_additional_swap_chain);
     const bool get_swap_chain=Hook(vtable[14],
         reinterpret_cast<void*>(&OriginalGetSwapChainHook),g_get_swap_chain);
-    const bool create_query=Hook(vtable[118],
+    // Safe startup after original hardware Query crashes: opt-in only.
+    const bool create_query=!g_query_hooks_enabled || Hook(vtable[118],
         reinterpret_cast<void*>(&OriginalCreateQueryHook),g_create_query);
     const bool dp=Hook(vtable[81],reinterpret_cast<void*>(&DrawHook),g_draw);
     const bool di=Hook(vtable[82],reinterpret_cast<void*>(&IndexedHook),g_draw_indexed);
@@ -3217,7 +3219,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(gamma){MH_DisableHook(vtable[21]);MH_RemoveHook(vtable[21]);}
         if(create_swap_chain){MH_DisableHook(vtable[13]);MH_RemoveHook(vtable[13]);}
         if(get_swap_chain){MH_DisableHook(vtable[14]);MH_RemoveHook(vtable[14]);}
-        if(create_query){MH_DisableHook(vtable[118]);MH_RemoveHook(vtable[118]);}
+        if(create_query && g_query_hooks_enabled){MH_DisableHook(vtable[118]);MH_RemoveHook(vtable[118]);}
         if(dp){MH_DisableHook(vtable[81]);MH_RemoveHook(vtable[81]);}
         if(di){MH_DisableHook(vtable[82]);MH_RemoveHook(vtable[82]);}
         if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
@@ -3488,8 +3490,18 @@ bool InstallD3D9ReadOnlyProbe(HMODULE executable,std::uint32_t exe_size,
     g_exe_size=exe_size;
     // A diagnostic setting is an integer [64,4096] after INI parsing.
     // Preserve conservative sampling if this function is called directly.
-    g_native_stereo=native_stereo;
-    m2vr::daytona::Configure(native_stereo,eye_shift_milliunits);
+    char query_opt_in[8]{};
+    // Disabled unless the user deliberately requests a diagnostic A/B.
+    // Unobserved original GPU Queries cannot certify an XR GameStereo eye.
+    const DWORD opt_in_size=GetEnvironmentVariableA(
+        "MODEL2VR_EXPERIMENTAL_QUERY_HOOKS",query_opt_in,sizeof(query_opt_in));
+    g_query_hooks_enabled=opt_in_size==1u && query_opt_in[0]=='1';
+    g_native_stereo=native_stereo && g_query_hooks_enabled;
+    m2vr::daytona::Configure(g_native_stereo,eye_shift_milliunits);
+    LogEvent("model2_d3d9_query_startup_safe_mode",
+        g_query_hooks_enabled?1u:0u,native_stereo?1u:0u,
+        g_native_stereo?1u:0u,0u);
+    FlushLog();
     g_draw_sample_every=(draw_sample_every>=64u &&
         draw_sample_every<=4096u)?draw_sample_every:1024u;
     LogEvent("model2_d3d9_draw_interval",g_draw_sample_every);

@@ -1266,6 +1266,7 @@ EyeClones g_eye;
 } // namespace
 
 namespace m2vr::daytona {
+bool IsEyeReplayActive()noexcept{return g_in_eye_replay;}
 void Configure(bool enabled,std::uint32_t shift)noexcept{
     g_eye.Configure(enabled,shift);
 }
