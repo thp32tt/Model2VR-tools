@@ -122,6 +122,16 @@ public:
         state_={};owned_target_=owned_depth_=false;
         resolved_=false;secondary_mask_=0u;++revision_;
     }
+    // Avoid building speculative CPU-world eye pixels if this original
+    // physical Draw lacks an EXE-owned, compatible RT0/depth state. The
+    // original hardware Draw ALWAYS runs and the mono path is unaffected.
+    bool CanAttemptVerifiedWorldDraw() noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return !sealed_ && resolved_ && owned_target_ && owned_depth_ &&
+            secondary_mask_==0u && flags_==0u &&
+            state_.target!=OriginalPhysicalRtClass::Unknown &&
+            state_.depth==OriginalPhysicalDepthClass::Compatible;
+    }
     Token EnterDraw() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         if(secondary_mask_)flags_|=kMrtActive;
