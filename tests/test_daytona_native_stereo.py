@@ -198,11 +198,15 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("ProcessVertices=35",lineage)
         self.assertIn("kOriginalLineageKinds=36",lineage)
         self.assertIn("g_original_unmirrored_samples",hooks)
+        # A sparse sampled log could falsely pass an intervening original
+        # unsafe patch Draw; every affected physical Present is recorded.
+        self.assertNotIn("(frame==1u || frame%8u==0u) &&\n       g_original_unmirrored_samples",hooks)
         self.assertIn("g_original_unmirrored_calls",hooks)
         self.assertIn("model2_d3d9_original_unmirrored_com_counts",hooks)
         self.assertIn("frame%120u==0u",hooks)
         self.assertIn("g.source_epoch.Revoke(physical_present);",bridge)
         self.assertIn("OriginalSourceFailure::OriginalUnmirroredGeometry",bridge)
+        self.assertIn("if(method==5u)",bridge)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",bridge)
         self.assertIn("HasProcessedVertices()",hooks)
         self.assertIn("AfterSuccessfulDeviceReset()",state)

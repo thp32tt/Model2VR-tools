@@ -34,6 +34,9 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(path,rows)
             good=REPORT.audit_csv(path)["sources"][0]
             self.assertEqual(good["original_surface_failure_witnesses"],0)
+            # Frame 7 is neither frame 1 nor a multiple of 8/120; the
+            # original failure still has to revoke its matching Draw.
+            self.assertNotEqual(7%8,0)
             for method in range(1,6):
                 shape=(7,0,pack(5,0),0) if method==5 else (
                     7,0x1234,pack(method,12 if method in (1,2) else 0),0)

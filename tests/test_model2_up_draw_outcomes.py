@@ -51,6 +51,9 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         good=self.report(self.projected()+[
             event("model2_d3d9_original_present_result",7,0,1,0)])
         self.assertEqual(good["counts"]["same_witness_cpu_camera_present_candidate"],1)
+        # Frame 7 is outside diagnostic cadence. Its unsafe original
+        # patch method must still revoke the physical UP candidate.
+        self.assertNotEqual(7%8,0)
         for method in range(1,6):
             shape=(7,0,pack(5,0),0) if method==5 else (
                 7,0x4321,pack(method,12 if method in (1,2) else 0),0)

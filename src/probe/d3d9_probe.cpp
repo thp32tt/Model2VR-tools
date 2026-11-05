@@ -2152,8 +2152,9 @@ void RejectUnmirrored(unsigned method,void* caller,std::uint64_t ordinal,HRESULT
     const auto frame=g_present_count.load(std::memory_order_acquire)+1u;
     Model2VR_RejectOriginalD3D9UnmirroredGeometry(
         frame,method,rva,ordinal,static_cast<std::uint32_t>(hr));
+    // Every affected physical frame needs an auditable fail-closed marker.
+    // Limit to one per COM family in that frame, not every original mesh.
     if(method>=1u && method<=4u &&
-       (frame==1u || frame%8u==0u) &&
        g_original_unmirrored_samples[method-1u].fetch_add(
            1u,std::memory_order_relaxed)==0u)
         m2vr::LogEvent("model2_d3d9_original_unmirrored_geometry",
