@@ -299,8 +299,35 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(recovered["counts"]["original_clear_failed"],1)
         self.assertEqual(recovered["counts"]["original_source_draw_and_present_succeeded"],1)
 
+    def test_real_texture_upload_lineage_and_late_up_eye_rejection(self):
+        evidence=event("model2_d3d9_source_texture_upload_lineage",21,7,3,0)
+        good=self.report(self.projected()+[
+            evidence,event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(good["counts"]["original_texture_upload_lineage_witness"],1)
+        self.assertEqual(good["counts"]["same_witness_cpu_camera_present_candidate"],1)
+        rejected=event("model2_d3d9_original_texture_upload_rejected",7,0x4321,12,0)
+        blocked=self.report(self.projected()+[
+            evidence,rejected,event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(blocked["counts"]["original_surface_failed"],1)
+        self.assertNotIn("same_witness_cpu_camera_present_candidate",blocked["counts"])
+        for bad in ((0,0x4321,12,0),(7,0,12,0),
+                    (7,0x4321,10000001,0),(7,0x4321,12,1)):
+            with self.assertRaisesRegex(ValueError,"texture upload"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_texture_upload_rejected",*bad)])
+        for bad in ((0,3,0),(7,1000001,0),(7,3,1)):
+            with self.assertRaisesRegex(ValueError,"texture upload"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_source_texture_upload_lineage",21,*bad)])
+        with self.assertRaisesRegex(ValueError,"texture upload"):
+            self.report(self.projected()+[evidence,evidence])
+        mismatched=self.report(self.projected()+[
+            event("model2_d3d9_source_texture_upload_lineage",21,8,3,0),
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(mismatched["counts"]["source_identity_or_frame_mismatch"],1)
+
     def test_real_original_surface_failure_blocks_same_witness_up(self):
-        for method in range(1,26):
+        for method in range(1,31):
             events=self.projected()+[
                 event("model2_d3d9_original_surface_failed",
                       7,method,0x8876086C,0x4321),
@@ -363,7 +390,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_stateblock_mutation",*bad)])
         for bad in ((0,0x8876086C,0x4321),
-                    (26,0x8876086C,0x4321),
+                    (31,0x8876086C,0x4321),
                     (2,0,0x4321),
                     (3,0x8876086C,0)):
             events=self.projected()+[

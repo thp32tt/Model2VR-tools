@@ -31,6 +31,7 @@ META = {
     "model2_d3d9_up_source_fvf": "fvf",
     "model2_d3d9_source_draw_phase": "draw_phase",
     "model2_d3d9_source_scene_phase": "scene_phase",
+    "model2_d3d9_source_texture_upload_lineage": "texture_upload_lineage",
     "model2_d3d9_source_fixed_function_lineage": "fixed_function_lineage",
     "model2_d3d9_up_layout_frame": "layout_frame",
     "model2_d3d9_source_pass_context": "context",
@@ -161,7 +162,9 @@ def audit_csv(path):
                 (phase is not None and not phase_matches) or
                 not scene_matches or
                 (rec.get("fixed_function_lineage") is not None and
-                 rec["fixed_function_lineage"][0] != frame)):
+                 rec["fixed_function_lineage"][0] != frame) or
+                (rec.get("texture_upload_lineage") is not None and
+                 rec["texture_upload_lineage"][0] != frame)):
                 status = "source_identity_or_frame_mismatch"
             elif draw_hresult & 0x80000000:
                 status = "original_draw_failed"
@@ -187,6 +190,8 @@ def audit_csv(path):
         kind = rec.get("kind", "unknown_source")
         counts["source_kind_" + kind] += 1
         if status == "original_source_draw_and_present_succeeded":
+            if rec.get("texture_upload_lineage") is not None:
+                counts["original_texture_upload_lineage_witness"] += 1
             if rec.get("fixed_function_lineage") is not None:
                 counts["original_fixed_function_lineage_witness"] += 1
             if rec.get("scene_phase") is None:
@@ -256,6 +261,7 @@ def audit_csv(path):
                 "model2_d3d9_original_stateblock_mutation",
                 "model2_d3d9_original_instancing_unsupported",
                 "model2_d3d9_original_instancing_active",
+                "model2_d3d9_original_texture_upload_rejected",
             }):
                 continue
             try:
@@ -308,6 +314,17 @@ def audit_csv(path):
                     raise ValueError("original stateblock mutation capacity exceeded")
                 failed_original_surface_frames.add(a0)
                 continue
+            if event == "model2_d3d9_original_texture_upload_rejected":
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or
+                    not 0 < a1 <= 0xffffffff or
+                    a2 > 10_000_000 or a3 != 0):
+                    raise ValueError("invalid original texture upload rejection")
+                if len(failed_original_surface_frames)>=MAX_PENDING and (
+                    a0 not in failed_original_surface_frames):
+                    raise ValueError("original texture upload capacity")
+                failed_original_surface_frames.add(a0)
+                continue
             if event in ("model2_d3d9_original_surface_failed",
                           "model2_d3d9_original_lineage_drift"):
                 if event == "model2_d3d9_original_lineage_drift":
@@ -318,7 +335,7 @@ def audit_csv(path):
                 else:
                     valid = (0 < a0 <= 0xffffffff and
                              a0 > observed_present_frame and
-                             1 <= a1 <= 25 and a2 <= 0xffffffff and
+                             1 <= a1 <= 30 and a2 <= 0xffffffff and
                              (a2 & 0x80000000) != 0 and
                              0 < a3 <= 0xffffffff)
                 if not valid:
@@ -438,6 +455,12 @@ def audit_csv(path):
                         a1 <= observed_present_frame):
                         raise ValueError("invalid original D3D9 scene phase")
                     once(rec, key, (a1, a2, a3), a0)
+                elif key == "texture_upload_lineage":
+                    if (not 0 < a1 <= 0xffffffff or
+                        a1 <= observed_present_frame or
+                        a2 > 1_000_000 or a3 != 0 or key in rec):
+                        raise ValueError("invalid original UP texture upload lineage")
+                    once(rec,key,(a1,a2,a3),a0)
                 elif key == "fixed_function_lineage":
                     # Private source diagnosis only; never World3D authority.
                     revs = halves(a2) + halves(a3)
