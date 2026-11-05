@@ -1349,12 +1349,14 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
 template<class Submit>
 void ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
     std::uint64_t frame,std::uint64_t ordinal,unsigned family,
-    void* caller,unsigned scene,bool original_scene_open,Submit&& submit){
+    void* caller,unsigned scene,bool original_scene_open,
+    const m2vr::drawprobe::OriginalLineageStamp& lineage,Submit&& submit){
     m2vr::vrbridge::ArmedOriginalDraw permission{};
     if(!m2vr::vrbridge::TryTakeAuthenticatedOriginalDraw(
           frame,ordinal,family,CallerRva(caller),scene,
           original_scene_open && g_original_scene_hooks_ready.load(
-              std::memory_order_acquire),permission))return;
+              std::memory_order_acquire),
+          m2vr::drawprobe::OriginalLineageNonce(lineage),permission))return;
     const BOOL rendered=submit(permission.cpu_projector,
                                permission.alpha_cutoff);
     // Append exports already reject their own invalid materials. Explicitly
@@ -1383,7 +1385,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const auto original_lineage=ReadOriginalLineage(source_frame);
     ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         1u,caller,
-        source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
+        source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
             ?Model2VR_AppendVerifiedProjectedD3D9VBTopologyTextured(
                 d,static_cast<unsigned>(p),start,count,cpu,alpha)
@@ -1422,7 +1424,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const auto original_lineage=ReadOriginalLineage(source_frame);
     ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         2u,caller,
-        source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
+        source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
             ?Model2VR_AppendVerifiedProjectedD3D9IndexedVBTopologyTextured(
                 d,static_cast<unsigned>(p),base,min,num,start,count,cpu,alpha)
@@ -1461,7 +1463,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const auto original_lineage=ReadOriginalLineage(source_frame);
     ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         3u,caller,
-        source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
+        source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
             ?Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopologyTextured(
                 d,static_cast<unsigned>(p),count,verts,stride,cpu,alpha)
@@ -1500,7 +1502,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const auto original_lineage=ReadOriginalLineage(source_frame);
     ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         4u,caller,
-        source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
+        source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
             ?Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyTextured(
                 d,static_cast<unsigned>(p),min,num,count,idx,
