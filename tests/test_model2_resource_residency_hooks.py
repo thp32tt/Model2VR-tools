@@ -24,6 +24,8 @@ class OriginalResourceResidencyTest(unittest.TestCase):
         self.assertIn("vt[9]",h)
         self.assertIn("OriginalResourceDeviceOwner(",h)
         self.assertIn("OriginalResourceOwner::Unknown",h)
+        self.assertIn("g_authenticated_original_resource_depth",h)
+        self.assertEqual(h.count("ScopedAuthenticatedOriginalResourceCall original_scope(primary && rva);"),2)
         self.assertIn("OriginalResourceResidencyUnknown(CallerRva(origin));",h)
         self.assertIn("const DWORD previous=original(resource,priority);",h)
         self.assertEqual(h.count("original(resource);"),2)  # eye replay bypass and the original game path are mutually exclusive

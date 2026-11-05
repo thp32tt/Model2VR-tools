@@ -81,6 +81,26 @@ m2vr::vrbridge::OriginalResourceOwner OriginalResourceDeviceOwner(
     return m2vr::vrbridge::DecideOriginalResourceOwner(
         SUCCEEDED(result),found,primary);
 }
+// A real EXE-owned resource call can itself invoke another resource COM
+// internally. Its parent has already revoked this physical eye epoch; the
+// nested driver call must not be mistaken for an unrelated foreign owner.
+thread_local unsigned g_authenticated_original_resource_depth=0u;
+class ScopedAuthenticatedOriginalResourceCall final {
+public:
+    explicit ScopedAuthenticatedOriginalResourceCall(bool authenticated) noexcept
+        : entered_(authenticated) {
+        if(entered_)++g_authenticated_original_resource_depth;
+    }
+    ~ScopedAuthenticatedOriginalResourceCall() noexcept {
+        if(entered_)--g_authenticated_original_resource_depth;
+    }
+    ScopedAuthenticatedOriginalResourceCall(
+        const ScopedAuthenticatedOriginalResourceCall&)=delete;
+    ScopedAuthenticatedOriginalResourceCall& operator=(
+        const ScopedAuthenticatedOriginalResourceCall&)=delete;
+private:
+    bool entered_;
+};
 void OriginalResourceMutationBeforeCom(std::uint32_t caller_rva) noexcept {
     if(caller_rva)OriginalResidencySourceBoundary(caller_rva,1u);
     else {
@@ -96,7 +116,8 @@ DWORD STDMETHODCALLTYPE OriginalResourceSetPriorityHook(
     if(!original)return 0u; // unreachable for an installed complete hook
     // Internal eye surface/material setup is not an original EXE draw.
     // Avoid reentering the GPU lock and poisoning the real source epoch.
-    if(m2vr::daytona::IsEyeReplayActive())
+    if(m2vr::daytona::IsEyeReplayActive() ||
+       g_authenticated_original_resource_depth)
         return original(resource,priority);
     void* const origin=_ReturnAddress();
     const auto owner=OriginalResourceDeviceOwner(resource);
@@ -105,6 +126,7 @@ DWORD STDMETHODCALLTYPE OriginalResourceSetPriorityHook(
     if(primary)OriginalResourceMutationBeforeCom(rva);
     else if(owner==m2vr::vrbridge::OriginalResourceOwner::Unknown)
         OriginalResourceResidencyUnknown(CallerRva(origin));
+    ScopedAuthenticatedOriginalResourceCall original_scope(primary && rva);
     const DWORD previous=original(resource,priority);
     if(rva){
         g_original_resource_residency_calls[0].fetch_add(1u,
@@ -122,7 +144,8 @@ void STDMETHODCALLTYPE OriginalResourcePreLoadHook(IDirect3DResource9* resource)
     const auto original=OriginalResourceTrampoline(
         g_original_preload_targets,vt?vt[9]:nullptr);
     if(!original)return; // unreachable for an installed complete hook
-    if(m2vr::daytona::IsEyeReplayActive()){
+    if(m2vr::daytona::IsEyeReplayActive() ||
+       g_authenticated_original_resource_depth){
         original(resource);
         return;
     }
@@ -133,6 +156,7 @@ void STDMETHODCALLTYPE OriginalResourcePreLoadHook(IDirect3DResource9* resource)
     if(primary)OriginalResourceMutationBeforeCom(rva);
     else if(owner==m2vr::vrbridge::OriginalResourceOwner::Unknown)
         OriginalResourceResidencyUnknown(CallerRva(origin));
+    ScopedAuthenticatedOriginalResourceCall original_scope(primary && rva);
     original(resource);
     if(rva){
         g_original_resource_residency_calls[1].fetch_add(1u,
