@@ -215,6 +215,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(hooks.count("if(forwarded && !m2vr::drawprobe::SameOriginalLineage("),4)
         self.assertEqual(hooks.count("Model2VR_RejectOriginalD3D9SourceLineageDrift("),4)
         self.assertIn("g.source_epoch.Revoke(physical_frame);",bridge)
+        self.assertIn("g.source_epoch.Revoke(frame);",bridge)
+        self.assertIn("g.source_epoch.Revoke(invalid_source_present);",bridge)
         self.assertIn("OriginalSourceFailure::OriginalLineageMismatch",bridge)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",bridge)
         self.assertIn("model2_d3d9_original_lineage_drift",bridge)

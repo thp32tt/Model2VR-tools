@@ -213,6 +213,10 @@ bool TryTakeAuthenticatedOriginalDraw(std::uint64_t frame,
             // Revoke the entire physical Present epoch, even if earlier
             // authentic CPU-world triangles had already reached both eyes.
             g.Reject(CurrentOriginalSourceDrawKind());
+            // Rejection of an armed exact original Draw is a PHYSICAL
+            // Present failure, not just a transient CPU image abort.
+            // A second Begin/arm in this same source Present must fail.
+            g.source_epoch.Revoke(frame);
             g_current_original_source_failure=prior;
             m2vr::LogEvent("model2_vr_original_draw_lineage_rejected",
                 frame,ordinal,(std::uint64_t{family}<<32)|caller,scene);
@@ -761,8 +765,14 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
 extern "C" void __stdcall Model2VR_RejectVerifiedD3D9SourceDraw(
     unsigned int source_kind) {
     std::scoped_lock lock(g.mutex);
-    if(g.owner==GetCurrentThreadId() && (g.active || g.pending_present))
+    if(g.owner==GetCurrentThreadId() && (g.active || g.pending_present)){
+        // An original game Draw that cannot produce both verified eyes
+        // must never be retried using another adapter call in this Present.
+        const auto invalid_source_present=g.frame;
         g.Reject(source_kind);
+        if(invalid_source_present)
+            g.source_epoch.Revoke(invalid_source_present);
+    }
 }
 // Any failed authentic original D3D9 Draw revokes the whole physical
 // Present, including when the CPU-world adapter has not begun yet.
