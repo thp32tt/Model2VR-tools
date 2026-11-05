@@ -225,6 +225,7 @@ int main(){
     assert(targets.NeedsResolution());
     targets.ResolveIfUnchanged(cold,main_depth);
     assert(!targets.NeedsResolution());
+    assert(!targets.CanAttemptVerifiedWorldDraw());
     auto inferred=targets.EnterDraw();
     targets.CompleteDraw(inferred,true,true);
     auto inferred_summary=targets.FinishPresent();
@@ -234,6 +235,7 @@ int main(){
     targets.ReopenAfterPhysicalPresentReturn();
     targets.RenderTargetBind(true,true,0u,true,main_depth);
     targets.DepthBind(true,true,main_depth);
+    assert(targets.CanAttemptVerifiedWorldDraw());
     for(unsigned family=0;family<4u;++family){
         (void)family;
         auto pass=targets.EnterDraw();
@@ -297,6 +299,7 @@ int main(){
     // A successful real MRT slot 1 bind persists until the original EXE
     // explicitly unbinds it. It is not a single RT0 OpenXR source.
     targets.RenderTargetBind(true,true,1u,true,offscreen_depth);
+    assert(!targets.CanAttemptVerifiedWorldDraw());
     auto mrt=targets.EnterDraw();targets.CompleteDraw(mrt,true,true);
     auto active_mrt=targets.FinishPresent();
     assert(active_mrt.backbuffer==1u &&
@@ -309,6 +312,7 @@ int main(){
     targets.ReopenAfterPhysicalPresentReturn();
     auto stateblock=targets.EnterDraw();
     targets.InvalidateOpaqueStateBlock();
+    assert(!targets.CanAttemptVerifiedWorldDraw());
     targets.CompleteDraw(stateblock,true,true);
     auto opaque=targets.FinishPresent();
     assert((opaque.flags&
