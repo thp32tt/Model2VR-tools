@@ -930,7 +930,7 @@ def audit_csv(path):
                     (last_capture_frame and last_capture_frame!=frame) or
                     any(n>10000000 for n in
                         (backbuffer,auxiliary,unknown,failed,bad_depth)) or
-                    flags>511 or total>10000000 or
+                    flags>2047 or total>10000000 or
                     bad_depth>backbuffer+auxiliary+unknown or
                     bool(flags&8)!=bool(bad_depth) or
                     (total!=last_scene_draw_total and not flags&256)):
