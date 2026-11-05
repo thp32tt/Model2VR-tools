@@ -608,12 +608,17 @@ m2vr::drawprobe::OriginalRasterSnapshot ReadPhysicalOriginalRaster(
     if(rt)rt->Release();
     D3DVIEWPORT9 vp{};
     DWORD zen=0u,zwrite=0u,scissor=0u;
+    DWORD color_write=0u,stencil=0u,z_func=0u,clip_planes=0u;
     const bool known=target && desc.Width>0u && desc.Height>0u &&
         desc.Width<=16384u && desc.Height<=16384u &&
         SUCCEEDED(d->GetViewport(&vp)) &&
         SUCCEEDED(d->GetRenderState(D3DRS_ZENABLE,&zen)) &&
         SUCCEEDED(d->GetRenderState(D3DRS_ZWRITEENABLE,&zwrite)) &&
-        SUCCEEDED(d->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor));
+        SUCCEEDED(d->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor)) &&
+        SUCCEEDED(d->GetRenderState(D3DRS_COLORWRITEENABLE,&color_write)) &&
+        SUCCEEDED(d->GetRenderState(D3DRS_STENCILENABLE,&stencil)) &&
+        SUCCEEDED(d->GetRenderState(D3DRS_ZFUNC,&z_func)) &&
+        SUCCEEDED(d->GetRenderState(D3DRS_CLIPPLANEENABLE,&clip_planes));
     if(!known)return result;
     result.known=true;
     bool full_scissor=scissor==0u;
@@ -628,7 +633,9 @@ m2vr::drawprobe::OriginalRasterSnapshot ReadPhysicalOriginalRaster(
     result.full_main_depth_view=vp.X==0u && vp.Y==0u &&
         vp.Width==desc.Width && vp.Height==desc.Height &&
         vp.MinZ==0.0f && vp.MaxZ==1.0f &&
-        zen==D3DZB_TRUE && zwrite==TRUE && full_scissor;
+        zen==D3DZB_TRUE && zwrite==TRUE && full_scissor &&
+        m2vr::drawprobe::OriginalPhysicalDirectEyeWriteProfile(
+            color_write,stencil,z_func,clip_planes);
     return result;
 }
 void EnsurePhysicalOriginalRtDepth(IDirect3DDevice9* d) noexcept {
@@ -2934,8 +2941,14 @@ HRESULT STDMETHODCALLTYPE SetSamplerStateHook(IDirect3DDevice9* d,DWORD sampler,
 HRESULT STDMETHODCALLTYPE SetRenderStateHook(IDirect3DDevice9* d,D3DRENDERSTATETYPE state,DWORD value){
     if(!g_primary_device.Owns(d))return g_set_render_state(d,state,value);
     void* const caller=_ReturnAddress();
+    // All write-profile mutations have entry-before-real-COM tickets:
+    // otherwise a SetRenderState overlapping Draw/Present could promote
+    // an obsolete cached direct-eye raster profile after a color/stencil
+    // state change. Original COM invocation and HRESULT remain unmodified.
     const bool raster_state=state==D3DRS_ZENABLE ||
-        state==D3DRS_ZWRITEENABLE || state==D3DRS_SCISSORTESTENABLE;
+        state==D3DRS_ZWRITEENABLE || state==D3DRS_SCISSORTESTENABLE ||
+        state==D3DRS_COLORWRITEENABLE || state==D3DRS_STENCILENABLE ||
+        state==D3DRS_ZFUNC || state==D3DRS_CLIPPLANEENABLE;
     const auto token=raster_state?
         g_original_target_draw_coverage.EnterBind():
         m2vr::drawprobe::OriginalPhysicalTargetDrawCoverage::BindToken{};

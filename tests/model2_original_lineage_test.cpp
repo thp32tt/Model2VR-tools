@@ -468,6 +468,18 @@ int main(){
     // Genuine original unsampled Draw region readback: target/depth ownership
     // alone cannot certify an OpenXR eye if the actual GPU viewport, Z write,
     // or scissor window is partial/unreadable. Original mono still draws.
+    // Authentic Draws with depth-only/partial color writes, stencil
+    // masking, inverted Z-test or enabled user clip planes are negative
+    // controls even when viewport/RT0/depth/scissor look full-screen.
+    static_assert(OriginalPhysicalDirectEyeWriteProfile(15u,0u,2u,0u));
+    static_assert(OriginalPhysicalDirectEyeWriteProfile(15u,0u,4u,0u));
+    static_assert(!OriginalPhysicalDirectEyeWriteProfile(0u,0u,4u,0u));
+    static_assert(!OriginalPhysicalDirectEyeWriteProfile(7u,0u,4u,0u));
+    static_assert(!OriginalPhysicalDirectEyeWriteProfile(31u,0u,4u,0u));
+    static_assert(!OriginalPhysicalDirectEyeWriteProfile(15u,1u,4u,0u));
+    static_assert(!OriginalPhysicalDirectEyeWriteProfile(15u,0u,5u,0u));
+    static_assert(!OriginalPhysicalDirectEyeWriteProfile(15u,0u,4u,1u));
+    static_assert(!OriginalPhysicalDirectEyeWriteProfile(15u,0u,4u,0xffffffffu));
     OriginalPhysicalTargetDrawCoverage raster{true};
     raster.RenderTargetBind(true,true,0u,true,main_depth);
     raster.DepthBind(true,true,main_depth);

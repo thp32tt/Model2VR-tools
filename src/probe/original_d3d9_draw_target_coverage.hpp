@@ -19,6 +19,17 @@ inline constexpr bool OriginalPhysicalDepthCompatible(
         rt_width==z_width && rt_height==z_height &&
         rt_msaa==z_msaa && rt_quality==z_quality;
 }
+// Exact D3D9 original source pixel-write profile. D3DCOLORWRITEENABLE_*
+// occupies mask bits 0..3; D3DCMP_LESS/LESSEQUAL are numeric 2/4.
+// A partial color target, enabled stencil, user clip plane or alternate
+// Z comparator is NOT safely reproducible as a direct OpenXR color/depth eye.
+// This rejects unsafe source; it never proves Daytona's World3D camera.
+inline constexpr bool OriginalPhysicalDirectEyeWriteProfile(
+    std::uint32_t color_mask,std::uint32_t stencil_enabled,
+    std::uint32_t z_func,std::uint32_t clip_plane_mask) noexcept {
+    return color_mask==0x0fu && stencil_enabled==0u &&
+        (z_func==2u || z_func==4u) && clip_plane_mask==0u;
+}
 enum class OriginalPhysicalRtClass : std::uint32_t {
     Unknown=0u, Backbuffer=1u, Auxiliary=2u
 };
