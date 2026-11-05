@@ -8,6 +8,17 @@
 
 namespace m2vr::drawprobe {
 
+// A depth Surface with the same width/height but different MSAA type or
+// quality does NOT reproduce the authentic game's D3D9 raster source.
+inline constexpr bool OriginalPhysicalDepthCompatible(
+    std::uint32_t rt_width,std::uint32_t rt_height,
+    std::uint32_t rt_msaa,std::uint32_t rt_quality,
+    std::uint32_t z_width,std::uint32_t z_height,
+    std::uint32_t z_msaa,std::uint32_t z_quality) noexcept {
+    return rt_width!=0u && rt_height!=0u &&
+        rt_width==z_width && rt_height==z_height &&
+        rt_msaa==z_msaa && rt_quality==z_quality;
+}
 enum class OriginalPhysicalRtClass : std::uint32_t {
     Unknown=0u, Backbuffer=1u, Auxiliary=2u
 };
