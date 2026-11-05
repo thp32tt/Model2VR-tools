@@ -539,7 +539,14 @@ def audit_csv(path):
     original_capture_nonce = None
     last_capture_frame = 0
     last_scene_coverage_frame = 0
-    physical_scene_coverage = {}
+    # Stream aggregate EVERY physical Present, retaining only 1/8th
+    # control frames for the independent original four-family count join.
+    # Keeping all frames in a dictionary would reject valid >100k-frame
+    # private sessions and waste memory for multi-race capture auditing.
+    scene_coverage_sampled = {}
+    scene_coverage_totals = Counter()
+    scene_flagged_frame_count = 0
+    scene_trusted_drawn_frame_count = 0
     last_exact_inventory_frame = 0
     exact_inventory_count = 0
     exact_inventory_flags = (0,0)
@@ -875,11 +882,21 @@ def audit_csv(path):
                     frame!=last_scene_coverage_frame+1 or
                     any(n>10000000 for n in (begins,ends,inside,untrusted,failed)) or
                     flags>127 or inside+untrusted+failed>10000000 or
-                    (last_capture_frame and last_capture_frame!=frame) or
-                    len(physical_scene_coverage)>=MAX_WITNESSES):
+                    (last_capture_frame and last_capture_frame!=frame)):
                     raise ValueError("invalid original physical Scene/Draw coverage")
-                physical_scene_coverage[frame]=(begins,ends,inside,untrusted,
-                                                failed,flags)
+                if frame==1 or frame%8==0:
+                    if len(scene_coverage_sampled)>=MAX_WITNESSES:
+                        raise ValueError("original Scene/Draw control sample capacity")
+                    scene_coverage_sampled[frame]=(begins,ends,inside,untrusted,
+                                                   failed,flags)
+                for key,value in (("begins",begins),("ends",ends),
+                                  ("inside",inside),("untrusted",untrusted),
+                                  ("failed",failed)):
+                    scene_coverage_totals[key]+=value
+                if flags!=0 or begins!=ends:
+                    scene_flagged_frame_count+=1
+                elif inside>0 and untrusted==0 and failed==0:
+                    scene_trusted_drawn_frame_count+=1
                 last_scene_coverage_frame=frame
                 continue
             if event == "model2_d3d9_original_capture_run":
@@ -1786,15 +1803,9 @@ def audit_csv(path):
     # ALL four primitive families. Their exact attempted Draw count must
     # equal in-scene successful + untrusted successful + failed originals.
     for frame,values in original_control_presents.items():
-        sample=physical_scene_coverage.get(frame)
+        sample=scene_coverage_sampled.get(frame)
         if sample is not None and sum(sample[2:5])!=sum(values[1:]):
             raise ValueError("original physical Scene/Draw count mismatch")
-    successful_scene_frames=[
-        item for item in physical_scene_coverage.values()
-        if item[2]>0 and item[3]==0 and item[4]==0 and
-        item[5]==0 and item[0]==item[1]]
-    scene_flags=sum(item[5]!=0 or item[0]!=item[1]
-                    for item in physical_scene_coverage.values())
     successful_controls=[
         values for values in original_control_presents.values()
         if values[0]&0x80000000==0]
@@ -1807,17 +1818,18 @@ def audit_csv(path):
             {"physical_present_count":last_scene_coverage_frame,
              "first_present_frame":1,
              "last_present_frame":last_scene_coverage_frame,
-             "original_begin_scene_count":sum(v[0] for v in physical_scene_coverage.values()),
-             "original_end_scene_count":sum(v[1] for v in physical_scene_coverage.values()),
-             "original_successful_in_scene_draw_count":sum(v[2] for v in physical_scene_coverage.values()),
-             "original_successful_untrusted_scene_draw_count":sum(v[3] for v in physical_scene_coverage.values()),
-             "original_failed_draw_count":sum(v[4] for v in physical_scene_coverage.values()),
-             "flagged_present_count":scene_flags,
-             "trusted_scene_drawn_present_count":len(successful_scene_frames),
+             "original_begin_scene_count":scene_coverage_totals["begins"],
+             "original_end_scene_count":scene_coverage_totals["ends"],
+             "original_successful_in_scene_draw_count":scene_coverage_totals["inside"],
+             "original_successful_untrusted_scene_draw_count":scene_coverage_totals["untrusted"],
+             "original_failed_draw_count":scene_coverage_totals["failed"],
+             "flagged_present_count":scene_flagged_frame_count,
+             "trusted_scene_drawn_present_count":scene_trusted_drawn_frame_count,
              "all_original_scene_draws_trusted":bool(
-                 scene_flags==0 and
-                 all(v[3]==0 and v[4]==0 for v in physical_scene_coverage.values()))}
-            if physical_scene_coverage else None),
+                 scene_flagged_frame_count==0 and
+                 scene_coverage_totals["untrusted"]==0 and
+                 scene_coverage_totals["failed"]==0)}
+            if last_scene_coverage_frame else None),
         "original_capture_run": (
             {"nonce_hex":f"0x{original_capture_nonce:016x}",
              "first_present_frame":1,
