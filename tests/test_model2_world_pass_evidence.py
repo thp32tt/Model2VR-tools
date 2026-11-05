@@ -57,6 +57,13 @@ def report(*sources):
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
         "world_pass_proof": "NOT_ESTABLISHED",
         "hmd_runtime_validation": "UNTESTED",
+        "original_control_present_sample_count":3,
+        "original_control_successful_present_count":3,
+        "original_control_successful_drawn_present_count":3,
+        "original_control_four_family_draw_totals":{
+            "DrawPrimitive":0,"DrawIndexedPrimitive":9,
+            "DrawPrimitiveUP":0,"DrawIndexedPrimitiveUP":0,
+        },
         "sources": list(sources),
     }
 
@@ -252,6 +259,29 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                                             "nonrace CPU projector provenance"):
                     compare_sessions([report(witness()),report(witness())],
                                      controls(aux=report(bad)))
+
+    def test_physical_present_absent_or_unrendered_control_is_not_negative(self):
+        for key,value in (
+            ("original_control_present_sample_count",0),
+            ("original_control_successful_present_count",0),
+            ("original_control_successful_drawn_present_count",0),
+            ("original_control_four_family_draw_totals",{}),
+            ("original_control_four_family_draw_totals",{
+                "DrawPrimitive":0,"DrawIndexedPrimitive":0,
+                "DrawPrimitiveUP":0,"DrawIndexedPrimitiveUP":0}),
+        ):
+            with self.subTest(key=key,value=value):
+                control=report()
+                control[key]=value
+                with self.assertRaisesRegex(ValueError,
+                                            "original physical control Present"):
+                    compare_sessions([report(witness()),report(witness())],
+                                     controls(menu=control))
+        missing=report()
+        del missing["original_control_present_sample_count"]
+        with self.assertRaisesRegex(ValueError,"original physical control Present"):
+            compare_sessions([report(witness()),report(witness())],
+                             controls(aux=missing))
 
     def test_missing_negative_control_label_is_rejected(self):
         for label in CONTROL_TYPES:
