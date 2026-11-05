@@ -48,6 +48,14 @@ class OriginalCursorStereoSourceTest(unittest.TestCase):
         self.assertIn("g_original_cursor_unknown.load(",self.probe)
         self.assertIn("BeforeOriginalPresentationControl(0u,9u)",self.probe)
 
+    def test_proven_hidden_cursor_moves_do_not_discard_racing_eyes(self):
+        move=self.body("OriginalSetCursorPositionHook")
+        self.assertIn("const bool may_draw=!visibility_known",move)
+        self.assertIn("if(rva && may_draw)BeforeOriginalPresentationControl(rva,7u)",move)
+        self.assertIn("if(may_draw)RecordOriginalLineageWrite(",move)
+        self.assertIn("else if(!rva) {",move)
+        self.assertIn("g_original_cursor_unknown.store(true",move)
+
     def test_actual_show_cursor_returns_previous_not_new_visibility(self):
         body=self.body("OriginalShowCursorHook")
         self.assertIn("const BOOL was_visible=g_original_show_cursor(device,show);",body)
