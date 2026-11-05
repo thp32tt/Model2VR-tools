@@ -1,6 +1,11 @@
 import copy
 import unittest
-from tools.model2_world_pass_evidence import compare_sessions
+from tools.model2_world_pass_evidence import compare_sessions, CONTROL_TYPES, main
+from contextlib import redirect_stderr
+from pathlib import Path
+import io
+import json
+import tempfile
 
 
 def witness(cpu="0x004bb400", count=3):
@@ -56,17 +61,21 @@ def report(*sources):
     }
 
 
+def controls(**overrides):
+    return {label:overrides.get(label,report()) for label in CONTROL_TYPES}
+
+
 class OriginalWorldPassEvidenceTest(unittest.TestCase):
     def test_clear_failure_field_cannot_be_omitted_or_replayed(self):
         clean=witness()
         del clean["original_clear_failure_witnesses"]
-        got=compare_sessions([report(clean),report(witness())],[report()])
+        got=compare_sessions([report(clean),report(witness())],controls())
         self.assertFalse(got["candidates"])
         self.assertEqual(got["rejected"][0]["reason"],
                          "missing_same_draw_matrix_material_or_render_evidence")
         bad=witness()
         bad["original_clear_failure_witnesses"]=1
-        got=compare_sessions([report(bad),report(witness())],[report()])
+        got=compare_sessions([report(bad),report(witness())],controls())
         self.assertFalse(got["candidates"])
         self.assertEqual(got["rejected"][0]["reason"],
                          "missing_same_draw_matrix_material_or_render_evidence")
@@ -76,7 +85,7 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         # Same CPU caller, different matrix/command fingerprints per
         # independent run; matrices can change while a car/camera moves.
         b["same_witness_joint_cpu_matrix_commands"][0][2] = "0xaaaaaaaa"
-        got = compare_sessions([report(a), report(b)], [report()])
+        got = compare_sessions([report(a), report(b)], controls())
         self.assertEqual(len(got["candidates"]), 1)
         self.assertFalse(got["adapter_auto_enable"])
         self.assertFalse(got["candidates"][0]["world_pass_authorized"])
@@ -95,7 +104,7 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                "caller_rva_hex": candidate["caller_rva_hex"],
                "caller_is_in_executable": True}
         result = compare_sessions([report(candidate), report(candidate)],
-                                  [report(neg)])
+                                  controls(menu=report(neg)))
         self.assertFalse(result["candidates"])
         self.assertEqual(result["rejected"][0]["reason"],
                          "caller_also_used_outside_race")
@@ -115,7 +124,7 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 first = witness()
                 first.update(damaged)
                 got = compare_sessions([report(first), report(witness())],
-                                       [report()])
+                                       controls())
                 self.assertEqual(got["candidates"], [])
                 self.assertEqual(len(got["rejected"]), 1)
 
@@ -151,7 +160,7 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 source = witness()
                 source.update(damaged)
                 result = compare_sessions([report(source), report(witness())],
-                                          [report()])
+                                          controls())
                 self.assertEqual(result["candidates"], [])
                 self.assertEqual(result["rejected"][0]["reason"],
                                  "missing_same_draw_matrix_material_or_render_evidence")
@@ -159,32 +168,32 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
     def test_cpu_caller_drift_and_mixed_projector_fail_closed(self):
         got = compare_sessions(
             [report(witness()), report(witness("0x004bb500"))],
-            [report()])
+            controls())
         self.assertEqual(got["rejected"][0]["reason"],
                          "conflicting_original_cpu_projector_callers")
         mixed = witness()
         mixed["same_witness_joint_cpu_matrix_commands"][1][0] = "0x004bb500"
-        got = compare_sessions([report(witness()), report(mixed)], [report()])
+        got = compare_sessions([report(witness()), report(mixed)], controls())
         self.assertFalse(got["candidates"])
 
     def test_missing_race_and_unknown_callers(self):
-        got = compare_sessions([report(witness()), report()], [report()])
+        got = compare_sessions([report(witness()), report()], controls())
         self.assertEqual(got["rejected"][0]["reason"],
                          "missing_in_race_capture")
         unknown = witness()
         unknown["caller_rva_hex"] = "0x00000000"
         unknown["caller_is_in_executable"] = False
-        got = compare_sessions([report(unknown), report(unknown)], [report()])
+        got = compare_sessions([report(unknown), report(unknown)], controls())
         self.assertEqual(got["rejected"][0]["reason"], "unknown_gpu_caller")
 
     def test_spoofed_original_caller_and_malformed_states_rejected(self):
         bad = witness()
         bad["caller_is_in_executable"] = False
         with self.assertRaises(ValueError):
-            compare_sessions([report(bad), report(witness())], [report()])
+            compare_sessions([report(bad), report(witness())], controls())
         bad = witness()
         bad["original_source_fill_status"] = [["solid"]]
-        got = compare_sessions([report(bad), report(witness())], [report()])
+        got = compare_sessions([report(bad), report(witness())], controls())
         self.assertFalse(got["candidates"])
 
     def test_bad_source_kind_or_claimed_proof_rejected(self):
@@ -199,15 +208,98 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             bad[field] = value
             with self.subTest(field=field):
                 with self.assertRaises(ValueError):
-                    compare_sessions([bad, good], [report()])
+                    compare_sessions([bad, good], controls())
 
     def test_duplicates_and_insufficient_phases_rejected(self):
         with self.assertRaises(ValueError):
-            compare_sessions([report(witness())], [report()])
+            compare_sessions([report(witness())], controls())
         with self.assertRaises(ValueError):
             compare_sessions([report(witness(), witness()), report(witness())],
-                             [report()])
+                             controls())
 
+
+    def test_original_gpu_caller_reused_with_different_primitive_family(self):
+        original=witness()
+        sky=witness()
+        sky["draw_family"]="DrawPrimitive"
+        got=compare_sessions([report(original),report(original)],
+                             controls(sky=report(sky)))
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "caller_also_used_outside_race")
+
+    def test_cpu_projector_alias_rejects_distinct_gpu_callers(self):
+        original=witness()
+        hud=witness()
+        hud["caller_rva_hex"]="0x004f1234"
+        got=compare_sessions([report(original),report(original)],
+                             controls(hud=report(hud)))
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "cpu_projector_also_used_outside_race")
+
+    def test_malformed_control_cpu_projection_cannot_hide_negative_evidence(self):
+        for records in (
+            ["bogus"],
+            [["0x004bb400"]],
+            [["0x00000000","0x010f0068","0x12345678","0x00000120"]],
+        ):
+            with self.subTest(records=records):
+                bad=witness()
+                bad["caller_rva_hex"]="0x004f1234"
+                bad["same_witness_joint_cpu_matrix_commands"]=records
+                with self.assertRaisesRegex(ValueError,
+                                            "nonrace CPU projector provenance"):
+                    compare_sessions([report(witness()),report(witness())],
+                                     controls(aux=report(bad)))
+
+    def test_missing_negative_control_label_is_rejected(self):
+        for label in CONTROL_TYPES:
+            observed=controls()
+            del observed[label]
+            with self.subTest(label=label):
+                with self.assertRaisesRegex(ValueError,"title/menu/sky/hud/aux"):
+                    compare_sessions([report(witness()),report(witness())],
+                                     observed)
+        good=compare_sessions([report(witness()),report(witness())],controls())
+        self.assertTrue(good["complete_negative_controls"])
+        self.assertEqual(good["control_types"],sorted(CONTROL_TYPES))
+        self.assertEqual(len(good["candidates"]),1)
+        self.assertFalse(good["adapter_auto_enable"])
+        self.assertFalse(good["candidates"][0]["world_pass_authorized"])
+
+    def test_cli_requires_distinct_bytes_and_all_five_named_classes(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root=Path(dirname)
+            captures={}
+            for label in ("race_a","race_b",*sorted(CONTROL_TYPES)):
+                source=report(witness()) if label.startswith("race") else report()
+                source["test_session_identity"]=label
+                destination=root/(label+".json")
+                destination.write_text(json.dumps(source),encoding="utf-8")
+                captures[label]=destination
+            argv=["--race",str(captures["race_a"]),
+                  "--race",str(captures["race_b"])]
+            for label in sorted(CONTROL_TYPES):
+                argv.extend(["--control",label,str(captures[label])])
+            output=root/"private-local-triage.json"
+            main(argv+["--output",str(output)])
+            data=json.loads(output.read_text("utf-8"))
+            self.assertEqual(len(data["candidates"]),1)
+            self.assertEqual(data["nonrace_session_count"],5)
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    main(argv[:-3])
+            identical=root/"duplicate-race.json"
+            identical.write_bytes(captures["race_a"].read_bytes())
+            duplicate=list(argv)
+            duplicate[3]=str(identical)
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    main(duplicate)
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    main(argv+["--control","hud",str(captures["hud"])])
 
 if __name__ == "__main__":
     unittest.main()
