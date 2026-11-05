@@ -2,6 +2,16 @@
 
 ## Race-world original Draw source: five-class negative-control gate (2026-11-06)
 
+Each genuine original primary D3D9 Present, including games rendering only UP
+geometry with no sampled VB/IB world candidate, now emits a bounded post-COM
+`model2_d3d9_original_control_present_phase` at frame 1 and every eighth
+physical original Present. The four numeric fields are actual frame ID,
+original HRESULT, packed DP/DIP draw counts, and packed DPUP/DIPUP counts.
+The report computes successful and nonempty original Draw+Present coverage
+from this event. Failed, empty or missing real frame coverage cannot qualify
+as a title/menu/sky/HUD/aux negative-control witness; the original mono
+and OpenXR fallback remain untouched.
+
 The read-only candidate comparator now requires **two separate original Daytona
 race captures** plus **five labelled nonrace controls**: title, menu, sky, HUD,
 and auxiliary. A shared physical EXE Draw caller (even across different
