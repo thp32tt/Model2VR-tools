@@ -116,6 +116,15 @@ public:
         m2vr::LogEvent("model2_vr_gpu_original_texture_upload_stale",
             scene_draws_,mirrored_draws_,mirrored_stretches_,0u);
     }
+    void MarkOriginalGpuSurfaceMutationAfterEyes(std::uint32_t method)noexcept{
+        if(method<1u || method>4u)return;
+        std::lock_guard lock(mu_);
+        if(!enabled_ || source_original_failed_ ||
+           (mirrored_draws_==0u && mirrored_stretches_==0u))return;
+        source_original_failed_=true;
+        m2vr::LogEvent("model2_vr_gpu_original_gpu_surface_mutation_stale",
+            method,scene_draws_,mirrored_draws_,mirrored_stretches_);
+    }
     void MarkOriginalBufferMutationAfterEyes(std::uint32_t family)noexcept{
         if(family<1u || family>2u)return;
         std::lock_guard lock(mu_);
@@ -1286,6 +1295,9 @@ void MarkOriginalLineageMismatch()noexcept{
 }
 void MarkOriginalTextureUploadAfterEyes()noexcept{
     g_eye.MarkOriginalTextureUploadAfterEyes();
+}
+void MarkOriginalGpuSurfaceMutationAfterEyes(std::uint32_t method)noexcept{
+    g_eye.MarkOriginalGpuSurfaceMutationAfterEyes(method);
 }
 void MarkOriginalPaletteMutationAfterEyes(std::uint32_t method)noexcept{
     g_eye.MarkOriginalPaletteMutationAfterEyes(method);

@@ -91,6 +91,8 @@ void MarkFailedOriginalSurface(std::uint32_t method,
 void MarkOriginalLineageMismatch() noexcept;
 // A successful source texture upload after GPU eye Draw invalidates texels.
 void MarkOriginalTextureUploadAfterEyes() noexcept;
+// Real original GPU Surface contents changed after a mirrored eye Draw.
+void MarkOriginalGpuSurfaceMutationAfterEyes(std::uint32_t method) noexcept;
 void MarkOriginalPaletteMutationAfterEyes(std::uint32_t method) noexcept;
 // Bound original VB/IB write after independent-eye Draw is unsafe.
 void MarkOriginalBufferMutationAfterEyes(std::uint32_t family) noexcept;

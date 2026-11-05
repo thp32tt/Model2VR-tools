@@ -405,6 +405,9 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9BufferHookCoverage(
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9TextureUpload(
     unsigned long long physical_present,unsigned int caller_rva,
     unsigned long long preceding_draw_ordinal);
+extern "C" void __stdcall Model2VR_ObserveOriginalD3D9GpuSurfaceMutation(
+    unsigned long long physical_present,unsigned int caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int method);
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PaletteMutation(
     unsigned long long physical_present,unsigned int caller_rva,
     unsigned long long preceding_draw_ordinal,unsigned int method);
@@ -618,11 +621,12 @@ void RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind kind,
 // OpenXR eye pair, even when no CPU LockRect/texture binding occurs. Revoke
 // before executing the real original API, not only after observing success.
 // Original Draw, stereo authorization and mono gameplay remain unchanged.
-void BeforeOriginalGpuSurfaceWrite(std::uint32_t caller_rva) noexcept {
-    if(!caller_rva)return;
-    Model2VR_ObserveOriginalD3D9TextureUpload(
+void BeforeOriginalGpuSurfaceWrite(std::uint32_t caller_rva,
+                                   std::uint32_t method) noexcept {
+    if(!caller_rva || method<1u || method>4u)return;
+    Model2VR_ObserveOriginalD3D9GpuSurfaceMutation(
         g_present_count.load(std::memory_order_acquire)+1u,caller_rva,
-        g_original_frame_draw_ordinal.load(std::memory_order_acquire));
+        g_original_frame_draw_ordinal.load(std::memory_order_acquire),method);
 }
 void RecordOriginalGpuSurfaceWrite(std::uint32_t caller_rva,HRESULT hr,
                                    std::uint32_t family) noexcept {
@@ -1918,7 +1922,7 @@ HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
         return g_clear(d,count,rects,flags,color,z,stencil);
     void* const caller=_ReturnAddress();
     const auto caller_rva=CallerRva(caller);
-    BeforeOriginalGpuSurfaceWrite(caller_rva);
+    BeforeOriginalGpuSurfaceWrite(caller_rva,1u);
     const HRESULT hr=g_clear(d,count,rects,flags,color,z,stencil);
     RecordOriginalGpuSurfaceWrite(caller_rva,hr,1u);
     if(caller_rva && FAILED(hr))
@@ -1936,7 +1940,7 @@ HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
     if(!g_primary_device.Owns(d))return g_update_surface(d,src,src_rect,dst,dst_point);
     void* const caller=_ReturnAddress();
     const auto caller_rva=CallerRva(caller);
-    BeforeOriginalGpuSurfaceWrite(caller_rva);
+    BeforeOriginalGpuSurfaceWrite(caller_rva,2u);
     const HRESULT hr=g_update_surface(d,src,src_rect,dst,dst_point);
     RecordOriginalGpuSurfaceWrite(caller_rva,hr,2u);
     if(caller_rva && FAILED(hr))
@@ -2008,7 +2012,7 @@ HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
     if(!g_primary_device.Owns(d))return g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
     void* const caller=_ReturnAddress();
     const auto caller_rva=CallerRva(caller);
-    BeforeOriginalGpuSurfaceWrite(caller_rva);
+    BeforeOriginalGpuSurfaceWrite(caller_rva,3u);
     const HRESULT hr=g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
     RecordOriginalGpuSurfaceWrite(caller_rva,hr,3u);
     if(caller_rva && FAILED(hr))
@@ -2026,7 +2030,7 @@ HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
     if(!g_primary_device.Owns(d))return g_color_fill(d,dst,rect,color);
     void* const caller=_ReturnAddress();
     const auto caller_rva=CallerRva(caller);
-    BeforeOriginalGpuSurfaceWrite(caller_rva);
+    BeforeOriginalGpuSurfaceWrite(caller_rva,4u);
     const HRESULT hr=g_color_fill(d,dst,rect,color);
     RecordOriginalGpuSurfaceWrite(caller_rva,hr,4u);
     if(caller_rva && FAILED(hr))

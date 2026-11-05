@@ -910,6 +910,35 @@ extern "C" void __stdcall Model2VR_ObserveOriginalD3D9TextureUpload(
             physical_present,original_caller_rva,preceding_draw_ordinal,0u);
     m2vr::daytona::MarkOriginalTextureUploadAfterEyes();
 }
+// Actual primary EXE-owned GPU Surface commands (Clear, UpdateSurface,
+// StretchRect, ColorFill) can change active render content without any
+// LockRect/SetTexture. Revoke incomplete XR eyes BEFORE the original D3D9
+// COM method runs. This is NOT evidence of world-pass ownership.
+extern "C" void __stdcall Model2VR_ObserveOriginalD3D9GpuSurfaceMutation(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int method){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || !original_caller_rva ||
+        method<1u || method>4u || preceding_draw_ordinal>10000000u ||
+        Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool rejected=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.frame==physical_present && (g.active || g.pending_present)){
+            const auto previous=g_current_original_source_failure;
+            g_current_original_source_failure=
+                OriginalSourceFailure::OriginalGpuSurfaceMutationAfterStereo;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=previous;
+            g.source_epoch.Revoke(physical_present);
+            rejected=true;
+        }
+    }
+    if(rejected)
+        m2vr::LogEvent("model2_d3d9_original_gpu_surface_mutation_rejected",
+            physical_present,original_caller_rva,preceding_draw_ordinal,method);
+    m2vr::daytona::MarkOriginalGpuSurfaceMutationAfterEyes(method);
+}
 // Authentic writable original VB/IB Lock may change already-bound geometry
 // without another device stream/index setter. No buffer bytes cross into IPC.
 // Existing eye frames are revoked before the game can modify the buffer.
