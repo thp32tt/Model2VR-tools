@@ -33,6 +33,11 @@ HRESULT STDMETHODCALLTYPE OriginalBufferLockHook(IDirect3DResource9* resource,
     const unsigned family=kind==D3DRTYPE_VERTEXBUFFER?1u:2u;
     if(FAILED(hr)) {
         TrackFailedOriginalD3D9Surface(hr,family==1u?37u:38u,rva);
+    } else if(!m2vr::drawprobe::IsWritableBufferLock(flags) &&
+              g_original_bound_write_locks.Contains(resource)) {
+        // A nested READONLY Lock against an outstanding writable map cannot
+        // safely clear the original resource's mutable source epoch.
+        OriginalBufferCoverageUnknown(rva,family);
     } else if(m2vr::drawprobe::IsWritableBufferLock(flags)) {
         RecordOriginalLineageWrite(family==1u?
             m2vr::drawprobe::OriginalLineageKind::VertexBufferContent:

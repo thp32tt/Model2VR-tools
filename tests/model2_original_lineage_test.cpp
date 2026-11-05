@@ -41,6 +41,8 @@ int main(){
     assert(!active.HasOutstandingWrites());
     assert(active.Begin(reinterpret_cast<const void*>(0x1234)));
     assert(active.HasOutstandingWrites());
+    assert(active.Contains(reinterpret_cast<const void*>(0x1234)));
+    assert(!active.Contains(reinterpret_cast<const void*>(0x5678)));
     assert(!active.Begin(reinterpret_cast<const void*>(0x1234)));
     active.SuccessfulUnlock(reinterpret_cast<const void*>(0x5678));
     assert(active.HasOutstandingWrites());
@@ -49,6 +51,17 @@ int main(){
     assert(active.Begin(reinterpret_cast<const void*>(0x1234)));
     active.AfterSuccessfulDeviceReset();
     assert(!active.HasOutstandingWrites());
+    // At most 64 outstanding original writable resource mappings. The 65th
+    // must fail closed without overwriting any earlier pointer state.
+    for(std::uintptr_t i=0;i<64u;++i)
+        assert(active.Begin(reinterpret_cast<const void*>(0x1000u+i*16u)));
+    assert(active.HasOutstandingWrites());
+    assert(!active.Begin(reinterpret_cast<const void*>(0x9000u)));
+    active.SuccessfulUnlock(reinterpret_cast<const void*>(0x1000u));
+    assert(active.Begin(reinterpret_cast<const void*>(0x9000u)));
+    active.AfterSuccessfulDeviceReset();
+    assert(!active.HasOutstandingWrites());
+    assert(!active.Contains(reinterpret_cast<const void*>(0x9000u)));
     static_assert(IsWritableBufferLock(0u));
     static_assert(IsWritableBufferLock(0x2000u)); // DISCARD
     static_assert(IsWritableBufferLock(0x1000u)); // NOOVERWRITE

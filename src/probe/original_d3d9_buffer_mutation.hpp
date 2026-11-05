@@ -37,6 +37,12 @@ public:
         }
         // READONLY and non-EXE locks may unlock without a write entry.
     }
+    bool Contains(const void* resource)const noexcept {
+        if(!resource)return false;
+        std::lock_guard lock(mu_);
+        for(const auto* slot:slots_)if(slot==resource)return true;
+        return false;
+    }
     bool HasOutstandingWrites()const noexcept {
         return count_.load(std::memory_order_acquire)!=0u;
     }
