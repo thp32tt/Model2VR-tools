@@ -678,7 +678,7 @@ def audit_csv(path):
                              0 < caller <= 10000000)
                 else:
                     valid = (0 < frame <= 0xffffffff and
-                             1 <= method <= 64 and
+                             1 <= method <= 67 and
                              result <= 0xffffffff and
                              (result & 0x80000000) != 0 and
                              0 < caller <= 0xffffffff)
