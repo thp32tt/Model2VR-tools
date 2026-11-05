@@ -130,6 +130,63 @@ int main(){
         OriginalPhysicalSceneDrawCoverage::kHooksMissing)!=0u);
     scene.Reset();
     assert(scene.FinishPresent(false,false,true).TotalDraws()==0u);
+    // Genuine operations now carry a physical-Present epoch through the
+    // ACTUAL original COM call. All four Draw families share this contract.
+    scene.ReopenAfterPhysicalPresentAdvance();
+    const auto scene_begin_ticket=scene.EnterOperation();
+    scene.Begin(scene_begin_ticket,true,true);
+    for(unsigned family=0u;family<4u;++family){
+        const auto draw_ticket=scene.EnterOperation();
+        scene.Draw(draw_ticket,true,true,true);
+    }
+    const auto scene_end_ticket=scene.EnterOperation();
+    scene.End(scene_end_ticket,true,true,true);
+    const auto ticketed_good=scene.FinishPresent(false,false,true);
+    assert(ticketed_good.CompleteSourceScene() &&
+           ticketed_good.successful_in_scene==4u &&
+           ticketed_good.flags==0u);
+    scene.ReopenAfterPhysicalPresentAdvance();
+    // An original Draw that has entered COM but has not returned at
+    // physical Present invalidates THIS frame even when earlier Draws pass.
+    scene.Begin(true,true);
+    scene.Draw(true,true,true);
+    scene.End(true,true,true);
+    const auto in_flight=scene.EnterOperation();
+    const auto in_flight_frame=scene.FinishPresent(false,false,true);
+    assert((in_flight_frame.flags&
+            OriginalPhysicalSceneDrawCoverage::kInFlightAtPresent)!=0u);
+    assert(in_flight_frame.RejectUnprovenStereoSource());
+    scene.ReopenAfterPhysicalPresentAdvance();
+    // Its late successful COM completion must NOT become a trusted Draw of
+    // the next physical Present, including if source Scene appears valid.
+    scene.Draw(in_flight,true,true,true);
+    const auto late_frame=scene.FinishPresent(false,false,true);
+    assert((late_frame.flags&
+            OriginalPhysicalSceneDrawCoverage::kCrossPresent)!=0u);
+    assert(late_frame.successful_in_scene==0u);
+    assert(late_frame.RejectUnprovenStereoSource());
+    // The small interval before the original counter actually advances
+    // cannot admit Scene/Draw operations for either source frame.
+    const auto during_cut=scene.EnterOperation();
+    scene.Draw(during_cut,true,true,true);
+    const auto cut_frame=scene.FinishPresent(false,false,true);
+    assert((cut_frame.flags&
+            OriginalPhysicalSceneDrawCoverage::kCrossPresent)!=0u);
+    scene.ReopenAfterPhysicalPresentAdvance();
+    // Reset also invalidates an old original COM return without losing it.
+    const auto reset_ticket=scene.EnterOperation();
+    scene.Reset();
+    scene.Draw(reset_ticket,true,true,true);
+    const auto reset_frame=scene.FinishPresent(false,false,true);
+    assert((reset_frame.flags&
+            OriginalPhysicalSceneDrawCoverage::kCrossPresent)!=0u);
+    assert(reset_frame.successful_in_scene==0u);
+    scene.ReopenAfterPhysicalPresentAdvance();
+    const auto recovered_ticket=scene.EnterOperation();
+    scene.Draw(recovered_ticket,true,true,true);
+    const auto recovered_frame=scene.FinishPresent(false,false,true);
+    assert(recovered_frame.successful_in_scene==1u &&
+           recovered_frame.flags==0u);
     OriginalDrawCallerInventory exact{};
     assert(exact.Count()==0u && !exact.Incomplete());
     assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);
