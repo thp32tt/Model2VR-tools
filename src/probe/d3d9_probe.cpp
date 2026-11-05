@@ -46,6 +46,8 @@ using ResetFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRESENT_PARAMETE
 using SceneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);
 using UpdateSurfaceFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,IDirect3DSurface9*,const POINT*);
+using UpdateTextureFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,IDirect3DBaseTexture9*,IDirect3DBaseTexture9*);
 using StretchRectFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,
     IDirect3DSurface9*,const RECT*,D3DTEXTUREFILTERTYPE);
@@ -106,6 +108,7 @@ SceneFn g_begin_scene=nullptr;
 SceneFn g_end_scene=nullptr;
 ClearFn g_clear=nullptr;
 UpdateSurfaceFn g_update_surface=nullptr;
+UpdateTextureFn g_update_texture=nullptr;
 StretchRectFn g_stretch_rect=nullptr;
 ColorFillFn g_color_fill=nullptr;
 SetRenderTargetFn g_set_render_target=nullptr;
@@ -156,7 +159,7 @@ std::array<std::atomic<unsigned>,4> g_family_samples{};
 // Bound original Clear + surface-transfer scene provenance to one source
 // witness per operation and every eighth physical Present. A continuous
 // 60fps game must not flood local private analysis logs with raw content.
-std::array<std::atomic<unsigned>,4> g_original_mutation_samples{};
+std::array<std::atomic<unsigned>,5> g_original_mutation_samples{};
 // Successful game-owned target transitions: bounded per-real-Present evidence.
 std::array<std::atomic<unsigned>,2> g_original_target_bind_samples{};
 std::array<std::atomic<unsigned>,4> g_original_transform_samples{};
@@ -215,6 +218,9 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
     unsigned int original_caller_rva,unsigned int frequency);
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9ActiveInstancing(
     unsigned long long physical_present,unsigned int active_stream_mask);
+extern "C" void __stdcall Model2VR_ObserveOriginalD3D9TextureUpload(
+    unsigned long long physical_present,unsigned int caller_rva,
+    unsigned long long preceding_draw_ordinal);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -257,13 +263,14 @@ void TrackFailedOriginalD3D9Scene(HRESULT hr,std::uint32_t transition,
 void LogOriginalD3D9MutationPhase(std::uint32_t method,
                                   std::uint32_t caller_rva,
                                   HRESULT hr)noexcept{
-    if(!caller_rva || method<1u || method>4u || FAILED(hr))return;
+    if(!caller_rva || method<1u || method>5u || FAILED(hr))return;
     const auto frame=g_present_count.load(std::memory_order_relaxed)+1u;
     if(frame!=1u && frame%8u!=0u)return;
     const auto prior=g_original_mutation_samples[method-1u].fetch_add(
         1u,std::memory_order_relaxed);
     if(prior!=0u)return;
-    // Kind 1=Clear, 2=UpdateSurface, 3=StretchRect, 4=ColorFill;
+    // Kind 1=Clear, 2=UpdateSurface, 3=StretchRect, 4=ColorFill,
+    // 5=UpdateTexture (slot 31). Source schedule only, no texel contents.
     // a0=original Present, a1=EXE-relative return caller,
     // a2=(kind << 32)|all-family original Draw ordinal,
     // a3=(original scene ordinal << 32)|genuine scene-open flag.
@@ -1430,6 +1437,8 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
         m2vr::LogEvent("model2_d3d9_source_fixed_function_lineage",witness,
             original_frame,(std::uint64_t{w[25]}<<32)|w[26],
             (std::uint64_t{w[27]}<<32)|w[28]);
+        m2vr::LogEvent("model2_d3d9_source_texture_upload_lineage",witness,
+            original_frame,w[29],0u);
     }
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
@@ -1701,6 +1710,27 @@ HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
         if(g_native_stereo)
             m2vr::daytona::MirrorUpdateSurface(
                 d,src,src_rect,dst,dst_point,g_update_surface);
+    }
+    return hr;
+}
+// Real original UpdateTexture writes texels even without SetTexture. Preserve
+// the game's actual COM HRESULT; only independent-eye provenance is tracked.
+HRESULT STDMETHODCALLTYPE UpdateTextureHook(IDirect3DDevice9* d,
+    IDirect3DBaseTexture9* source,IDirect3DBaseTexture9* destination){
+    if(!g_primary_device.Owns(d))
+        return g_update_texture(d,source,destination);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_update_texture(d,source,destination);
+    const auto caller_rva=CallerRva(origin);
+    if(caller_rva && FAILED(hr))
+        TrackFailedOriginalD3D9Surface(hr,30u,caller_rva);
+    if(caller_rva && SUCCEEDED(hr)){
+        RecordOriginalLineageWrite(
+            m2vr::drawprobe::OriginalLineageKind::TextureUpload,caller_rva,hr);
+        LogOriginalD3D9MutationPhase(5u,caller_rva,hr);
+        Model2VR_ObserveOriginalD3D9TextureUpload(
+            g_present_count.load(std::memory_order_acquire)+1u,caller_rva,
+            g_original_frame_draw_ordinal.load(std::memory_order_acquire));
     }
     return hr;
 }
@@ -2287,6 +2317,7 @@ bool HookDevice(IDirect3DDevice9* dev){
     // Failed source transfers invalidate CPU world even in non-GPU mode.
     // They are pure original COM observers unless native-eye replay is on.
     const bool update=Hook(vtable[30],reinterpret_cast<void*>(&UpdateSurfaceHook),g_update_surface);
+    const bool texture_upload=Hook(vtable[31],reinterpret_cast<void*>(&UpdateTextureHook),g_update_texture);
     const bool stretch=Hook(vtable[34],reinterpret_cast<void*>(&StretchRectHook),g_stretch_rect);
     const bool fill=Hook(vtable[35],reinterpret_cast<void*>(&ColorFillHook),g_color_fill);
     // IDirect3DDevice9 SetRenderTarget=37, SetDepthStencilSurface=39.
@@ -2339,7 +2370,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&texture_upload&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -2357,6 +2388,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         // strand an enabled trampoline on a partial install failure.
         if(clear){MH_DisableHook(vtable[43]);MH_RemoveHook(vtable[43]);}
         if(update){MH_DisableHook(vtable[30]);MH_RemoveHook(vtable[30]);}
+        if(texture_upload){MH_DisableHook(vtable[31]);MH_RemoveHook(vtable[31]);}
         if(stretch){MH_DisableHook(vtable[34]);MH_RemoveHook(vtable[34]);}
         if(fill){MH_DisableHook(vtable[35]);MH_RemoveHook(vtable[35]);}
         if(rt){MH_DisableHook(vtable[37]);MH_RemoveHook(vtable[37]);}
@@ -2390,7 +2422,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(end_block){MH_DisableHook(vtable[61]);MH_RemoveHook(vtable[61]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
-        g_update_surface=nullptr;
+        g_update_surface=nullptr;g_update_texture=nullptr;
         g_stretch_rect=nullptr;g_color_fill=nullptr;
         g_set_render_target=nullptr;g_set_depth_surface=nullptr;
         g_set_transform=nullptr;g_set_vs_constant_f=nullptr;
@@ -2417,6 +2449,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
                        update,stretch,fill,clear);
+        m2vr::LogEvent("model2_d3d9_texture_upload_hook_rollback",
+                       texture_upload,0u,0u,0u);
         m2vr::LogEvent("model2_d3d9_target_hook_rollback",rt,depth,0u,0u);
         m2vr::LogEvent("model2_d3d9_transform_hook_rollback",transform,vs_constants,0u,0u);
         m2vr::LogEvent("model2_d3d9_region_hook_rollback",viewport,scissor,0u,0u);

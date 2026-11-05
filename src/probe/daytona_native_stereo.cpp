@@ -108,6 +108,14 @@ public:
         m2vr::LogEvent("model2_vr_gpu_original_clear_failed",
             flags,original_hresult,scene_draws_,mirrored_clears_);
     }
+    void MarkOriginalTextureUploadAfterEyes()noexcept{
+        std::lock_guard lock(mu_);
+        if(!enabled_ || source_original_failed_ ||
+           (mirrored_draws_==0u && mirrored_stretches_==0u))return;
+        source_original_failed_=true;
+        m2vr::LogEvent("model2_vr_gpu_original_texture_upload_stale",
+            scene_draws_,mirrored_draws_,mirrored_stretches_,0u);
+    }
     void MarkOriginalLineageMismatch()noexcept{
         std::lock_guard lock(mu_);
         if(!enabled_ || source_original_failed_)return;
@@ -119,9 +127,10 @@ public:
                                    std::uint32_t original_hresult)noexcept{
         // Keep in lockstep with original_d3d9_surface_result_gate.hpp:
         // 8/9=viewport/scissor; 10..15=geometry/shader;
-// 16..25=material/constants/instancing; 26..29=fixed-function state.
+        // 16..25=material/constants/instancing; 26..29=fixed-function,
+        // 30=real UpdateTexture failure.
         // A failed original state mutation cannot publish GPU binocular eyes.
-        if(method<1u || method>29u ||
+        if(method<1u || method>30u ||
            !(original_hresult&0x80000000u))return;
         std::lock_guard lock(mu_);
         if(!enabled_ || source_original_failed_)return;
@@ -1256,6 +1265,9 @@ void MarkFailedOriginalSurface(std::uint32_t method,
 }
 void MarkOriginalLineageMismatch()noexcept{
     g_eye.MarkOriginalLineageMismatch();
+}
+void MarkOriginalTextureUploadAfterEyes()noexcept{
+    g_eye.MarkOriginalTextureUploadAfterEyes();
 }
 void MarkFailedOriginalClear(std::uint32_t flags,
                              std::uint32_t original_hresult)noexcept{

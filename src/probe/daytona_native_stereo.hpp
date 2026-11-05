@@ -89,6 +89,8 @@ void MarkFailedOriginalSurface(std::uint32_t method,
 // A valid original CPU Draw permission lost camera/RT/viewport equivalence.
 // Never send half-updated speculative GPU-eye images to the x64 host.
 void MarkOriginalLineageMismatch() noexcept;
+// A successful source texture upload after GPU eye Draw invalidates texels.
+void MarkOriginalTextureUploadAfterEyes() noexcept;
 // A failed primary-device game EXE Draw in any of four families invalidates
 // speculative GPU eyes, but never changes the original Draw HRESULT.
 void MarkFailedOriginalDraw(std::uint32_t family,
