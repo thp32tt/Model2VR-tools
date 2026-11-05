@@ -66,6 +66,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_model2_camera_state_phase.py -v
       - name: Audit authentic original GPU-to-CPU Surface readback source
         run: python -m unittest discover -s tests -p test_model2_gpu_readback_source.py -v
+      - name: Verify local-only private seven-session capture bundle
+        run: python -m unittest discover -s tests -p test_daytona_private_capture_bundle.py -v
       - name: Audit original texture/vertex/index getter aliases
         run: python -m unittest discover -s tests -p test_model2_getter_resource_source.py -v
       - name: Configure original game x86 hook
@@ -131,6 +133,11 @@ jobs:
            Copy-Item tools/model2_mutation_phase_report.py stage/Analyze-OriginalMutation-Phase.py
           Copy-Item scripts/Analyze-Daytona-UP-Source.cmd stage/
           Copy-Item scripts/Analyze-Daytona-Transform-Source.cmd stage/
+          # Complete local-only, seven genuine original x86 session workflow.
+          Copy-Item tools/model2_draw_source_report.py stage/
+          Copy-Item tools/model2_world_pass_evidence.py stage/
+          Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 stage/
+          Copy-Item scripts/Collect-Daytona-Original-Evidence.cmd stage/
           Copy-Item docs/MODEL2_WORLD_PASS_EVIDENCE.md stage/ORIGINAL-WORLD-SOURCE-EVIDENCE.md
           Copy-Item docs/vr_wizard/PLAYTEST.md stage/PLAYTEST-WIZARD.md
           Copy-Item docs/vr_wizard/PHASE_PLAN.md stage/VR-WIZARD-STATUS.md

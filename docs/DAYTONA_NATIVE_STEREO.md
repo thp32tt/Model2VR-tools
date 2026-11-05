@@ -174,6 +174,36 @@ are **not** yet applied to the emulator's original game camera.
 Expect possible incorrect depth/parallax, mismatched HUD/particles,
 artifacts and high GPU/CPU overhead. Actual Quest 3 runtime is untested.
 
+## Private original Daytona A/B and five-control local collector (2026-11-06)
+
+The matched Win32 producer + independent Win64 OpenXR release ZIP now
+includes `Collect-Daytona-Original-Evidence.cmd`, its PowerShell helper,
+`model2_draw_source_report.py`, and `model2_world_pass_evidence.py`.
+All analysis stays on the user's own Windows PC. It never uploads ROMs,
+original D3D9 CSVs, EXE bytes or source camera/caller records to GitHub.
+
+Run the CMD from the extracted matched release folder. Each prompt asks
+the user to launch a **new** original emulator session and genuinely visit
+the labelled `race_a`, `race_b`, `title`, `menu`, `sky`, `hud`,
+or `aux` scene, **exit the emulator**, then press Enter. The collector
+chooses only a newly written, distinct `logs/daytona_vr_startup_*.csv`,
+checks source path/size/SHA256, makes a sealed local copy under
+`logs/private_original_evidence_<UTC>`, then runs the fail-closed
+four-family original Draw+Present candidate triage. For previously
+collected distinct CSVs named `race_a.csv` etc, run
+`Collect-Daytona-Original-Evidence.cmd -ExistingSessionFolder "D:\\private-daytona"`.
+No automatic scene labelling or gameplay World3D authorization is inferred:
+labels are supplied by the human tester. The archive and any candidate
+JSON remain PRIVATE locally. A missing/newly truncated, duplicate, invalid
+or incompletely authenticated original source fails the local analysis;
+no results are uploaded or silently treated as PASS.
+
+The game process, ROM, input, FFB, original renderer/mono and native XR
+present route are unchanged by this collector. `RUNTIME_VALIDATION=UNTESTED`
+and `world_pass_proof=NOT_ESTABLISHED` until genuine CPU projector-to-
+physical Draw/Scene/Present and calibrated Quest 3 independent left/right
+headset evidence are separately established.
+
 ## Install and run
 
 1. Connect Quest 3 through Virtual Desktop / VDXR (active OpenXR runtime).
