@@ -2,6 +2,15 @@
 
 Updated: 2026-11-05 KST
 
+### Final exact native CI / same-feature corrections — 2026-11-05 13:58 KST
+
+- **Final code SHA** `8c61e6a48603854c69d3c0a1d83d2ff5d541d1b5`. Public tools GitHub Actions `41970861001` SUCCESS, ModDev `41970860995` SUCCESS, original Win32 x86 native probe `41970861124` SUCCESS, original Daytona game Win32 + OpenXR host Win64 + matched release bundle `41970861007` SUCCESS (4/4; bundle subjobs 3/3). Matched artifact `DaytonaUSA-NativeStereo-Quest3-Win32-Win64`, id `13389174438`, expires 2026-11-19 04:58 UTC.
+- Original 19-state D3D9 camera/geometry/texture/sampler/material nonce now double-checks before and **after the physical original COM Draw**, and both one-shot pre-Draw identity drift and post-Draw state mutation reject the original physical Present CPU and experimental GPU eye candidates; source frame epoch is revoked so a same-Present rearm fails closed. Real D3D9 Draw executes once, HRESULT preserved, game mono/FFB untouched.
+- Private synthetic physical-Draw and race-vs-control auditor `thp32tt/Model2VR-analysis-private@a10460bd40b6682314a7e328ecfd593bcd5d658c`, GitHub Actions `41970400870` SUCCESS. All private audits remain nonauthorizing: no actual independent race A/B / HUD / sky / menu traces yet.
+- All post-core commits `4225f09e8f7f56a58834a222d01449fc7152cb53`, `7c16601b77358bd349eb7fdaba712124c615d8de`, `7ae30c0e29b5fd2a0f1244ae126d93b5afdd6205`, `cf96559c825ab1a587afc441590b6322da83c03b`, `8c61e6a48603854c69d3c0a1d83d2ff5d541d1b5` are **same-feature safety/test corrections +0**, not another score milestone. AI 2 previous 2596 + one distinct original material source feature +1 = **2597 cumulative**, scoreboard SSOT `thp32tt/ai-dev-lab@c74fbf881c12f0445738480edf146ccd1a1032f6` as of implementation.
+- `RUNTIME_VALIDATION=UNTESTED`: official Windows CI / packaging does not establish actual original Daytona physical World3D geometry authenticity or stereo Quest 3+VDXR gameplay. NEXT requires private real A/B race and separate title/menu/sky/HUD/auxiliary recordings, actual CPU projector and geometry command per same original physical Draw, camera axes/meters-per-unit, and tracked OpenXR pose; only separately proved geometry may arm binocular world.
+
+
 ## 2026-11-05 — original D3D9 material/sampler/render/PS-constant Draw lineage (implementation)
 
 - Observe five authentic Win32 original-device calls: SetPixelShaderConstantF, SetTexture, SetTextureStageState, SetSamplerState, SetRenderState. Every successful original EXE write joins the physical original Draw's 19-state source nonce and bounded private-only evidence; original HRESULT, draw, mono and FFB unchanged.
