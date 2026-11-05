@@ -42,7 +42,7 @@ enum class OriginalSourceFailure : std::uint32_t {
     PresentUnarmed=11u, PresentStale=12u,
     PresentRejected=13u, DeviceReset=14u, PresentFrameMismatch=15u,
     OriginalSceneFailed=16u, OriginalDrawFailed=17u,
-    OriginalClearFailed=18u
+    OriginalClearFailed=18u, OriginalSurfaceFailed=19u
 };
 inline thread_local OriginalSourceFailure g_current_original_source_failure=
     OriginalSourceFailure::Unknown;

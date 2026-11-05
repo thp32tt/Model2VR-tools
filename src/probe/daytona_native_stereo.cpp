@@ -108,6 +108,18 @@ public:
         m2vr::LogEvent("model2_vr_gpu_original_clear_failed",
             flags,original_hresult,scene_draws_,mirrored_clears_);
     }
+    void MarkFailedOriginalSurface(std::uint32_t method,
+                                   std::uint32_t original_hresult)noexcept{
+        if(method<1u || method>3u ||
+           !(original_hresult&0x80000000u))return;
+        std::lock_guard lock(mu_);
+        if(!enabled_ || source_original_failed_)return;
+        // A failed game-owned surface transfer invalidates speculative eyes,
+        // not the actual original backbuffer/mono HMD backup.
+        source_original_failed_=true;
+        m2vr::LogEvent("model2_vr_gpu_original_surface_failed",
+            method,original_hresult,scene_draws_,mirrored_stretches_);
+    }
     void MarkFailedOriginalDraw(std::uint32_t family,
                                 std::uint32_t original_hresult)noexcept{
         if(family<1u || family>4u || !(original_hresult&0x80000000u))return;
@@ -1226,6 +1238,10 @@ void MirrorIndexedUP(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
                      OriginalDrawIndexedUP original)noexcept{
     try{g_eye.IndexedUP(d,p,min,num,count,indices,format,vertices,stride,original);}
     catch(...){g_eye.ResetExternal();}
+}
+void MarkFailedOriginalSurface(std::uint32_t method,
+                               std::uint32_t original_hresult)noexcept{
+    g_eye.MarkFailedOriginalSurface(method,original_hresult);
 }
 void MarkFailedOriginalClear(std::uint32_t flags,
                              std::uint32_t original_hresult)noexcept{

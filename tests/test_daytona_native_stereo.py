@@ -151,7 +151,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("vtable[42],reinterpret_cast<void*>(&EndSceneHook)", hooks)
         self.assertEqual(hooks.count("const HRESULT hr=g_begin_scene(d);"),1)
         self.assertEqual(hooks.count("const HRESULT hr=g_end_scene(d);"),1)
-        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),3)
+        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),6)
         self.assertEqual(hooks.count("TrackFailedOriginalD3D9Scene(hr,"),2)
         self.assertIn("g_original_scene_poisoned.store(true",hooks)
         self.assertEqual(hooks.count("g_original_scene_poisoned.store(false"),2)
@@ -234,6 +234,39 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("if(failed_present)g.source_epoch.Revoke(failed_present)",clear_reject)
         self.assertIn("OriginalSourceFailure::OriginalClearFailed",clear_reject)
         self.assertIn("g.Reject(FailedOriginalD3D9ClearSourceKind())",clear_reject)
+
+    def test_failed_original_surface_transfer_revokes_same_present(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        api=(ROOT/"src/probe/daytona_native_stereo.hpp").read_text("utf-8")
+        source=(ROOT/"src/probe/verified_world_source_epoch.hpp").read_text("utf-8")
+        self.assertIn("OriginalSurfaceFailed=19u",source)
+        self.assertIn("Model2VR_RejectFailedOriginalD3D9Surface(",hooks)
+        self.assertIn("model2_d3d9_original_surface_failed",hooks)
+        self.assertIn("m2vr::daytona::MarkFailedOriginalSurface(",hooks)
+        self.assertIn("MarkFailedOriginalSurface",api)
+        self.assertIn("model2_vr_gpu_original_surface_failed",gpu)
+        self.assertIn("if(failed_present)g.source_epoch.Revoke(failed_present);",cpu)
+        self.assertIn("OriginalSourceFailure::OriginalSurfaceFailed",cpu)
+        self.assertIn("g.Reject(FailedOriginalD3D9SurfaceSourceKind(method))",cpu)
+        for name,original,method in (
+            ("UpdateSurfaceHook","g_update_surface",1),
+            ("StretchRectHook","g_stretch_rect",2),
+            ("ColorFillHook","g_color_fill",3)):
+            body=hooks.split("HRESULT STDMETHODCALLTYPE "+name+"(")[1].split(
+                "HRESULT STDMETHODCALLTYPE ")[0]
+            self.assertEqual(body.count("const HRESULT hr="+original+"("),1)
+            self.assertIn("const auto caller_rva=CallerRva(caller);",body)
+            self.assertIn("if(caller_rva && FAILED(hr))",body)
+            self.assertIn(f"TrackFailedOriginalD3D9Surface(hr,{method}u,caller_rva)",body)
+            self.assertIn("else if(SUCCEEDED(hr) && g_native_stereo)",body)
+        for method in (30,34,35,43):
+            self.assertIn(f"if(",hooks)
+            self.assertIn(f"MH_RemoveHook(vtable[{method}]);",hooks)
+        self.assertNotIn("const bool update=!g_native_stereo ||",hooks)
+        self.assertNotIn("const bool stretch=!g_native_stereo ||",hooks)
+        self.assertNotIn("const bool fill=!g_native_stereo ||",hooks)
 
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):
         workflow=(ROOT/".github/workflows/daytona-native-stereo.yml").read_text("utf-8")

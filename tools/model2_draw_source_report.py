@@ -499,6 +499,7 @@ def audit_csv(path):
     original_scene_failures = set()
     original_draw_failures = set()
     original_clear_failures = set()
+    original_surface_failures = set()
     # All four physical Draw families share one ordinal space. Even UP
     # phases are observed here to detect a counterfeited duplicate VB phase.
     physical_draw_phase_owners = {}
@@ -525,6 +526,21 @@ def audit_csv(path):
                 original_draw_failures.add(frame)
                 if len(original_draw_failures) > MAX_WITNESSES:
                     raise ValueError("original Draw failures exceeded limit")
+                continue
+            if event == "model2_d3d9_original_surface_failed":
+                try:
+                    frame, method, result, caller = (
+                        number(row[k]) for k in ("a0", "a1", "a2", "a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original surface failure row") from exc
+                if (not 0 < frame <= 0xffffffff or
+                        method not in (1, 2, 3) or
+                        result > 0xffffffff or (result & 0x80000000) == 0 or
+                        not 0 < caller <= 0xffffffff):
+                    raise ValueError("invalid original surface failure")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures) > MAX_WITNESSES:
+                    raise ValueError("original surface failures exceeded limit")
                 continue
             if event == "model2_d3d9_original_clear_failed":
                 try:
@@ -735,6 +751,7 @@ def audit_csv(path):
         "original_scene_phase_inconsistent_witnesses": 0,
         "original_scene_transition_failure_witnesses": 0,
         "original_clear_failure_witnesses": 0,
+        "original_surface_failure_witnesses": 0,
         "other_original_draw_failure_witnesses": 0,
         "original_scene_ordinals": set(),
         "original_scene_attested_physical_material_present_frames": set(),
@@ -839,6 +856,11 @@ def audit_csv(path):
         original_clear_failed = present_frame in original_clear_failures
         if original_clear_failed:
             entry["original_clear_failure_witnesses"] += 1
+        # Even a late actual UpdateSurface/StretchRect/ColorFill HRESULT
+        # failure invalidates the already sampled original-world Draw.
+        original_surface_failed = present_frame in original_surface_failures
+        if original_surface_failed:
+            entry["original_surface_failure_witnesses"] += 1
         # A failed UNSAMPLED original Draw in any family invalidates the
         # physical stereo source frame even if this sampled VB Draw passed.
         another_original_draw_failed = present_frame in original_draw_failures
@@ -1112,7 +1134,8 @@ def audit_csv(path):
                         present_frame)
                     if (scene_attested and not scene_transition_failed and
                             not another_original_draw_failed and
-                            not original_clear_failed):
+                            not original_clear_failed and
+                            not original_surface_failed):
                         entry["original_scene_attested_physical_material_present_frames"].add(
                             present_frame)
             # This qualifies a SOURCE MATERIAL candidate only. A private

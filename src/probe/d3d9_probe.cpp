@@ -11,6 +11,7 @@
 #include "verified_world_present_gate.hpp"
 #include "original_d3d9_draw_result_gate.hpp"
 #include "original_d3d9_clear_result_gate.hpp"
+#include "original_d3d9_surface_result_gate.hpp"
 #include "original_d3d9_authenticated_draw.hpp"
 #include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
@@ -117,6 +118,9 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Scene(
 extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Clear(
     std::uint32_t flags,std::uint32_t result_bits,
     std::uint32_t caller_rva);
+extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Surface(
+    std::uint32_t method,std::uint32_t result_bits,
+    std::uint32_t caller_rva);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -171,6 +175,22 @@ void TrackFailedOriginalD3D9Clear(HRESULT hr,std::uint32_t flags,
     if(g_native_stereo)
         m2vr::daytona::MarkFailedOriginalClear(
             flags,static_cast<std::uint32_t>(hr));
+}
+void TrackFailedOriginalD3D9Surface(HRESULT hr,std::uint32_t method,
+                                    std::uint32_t caller_rva)noexcept {
+    if(!m2vr::vrbridge::IsFailedOriginalD3D9Surface(
+           method,static_cast<std::uint32_t>(hr)) || !caller_rva)return;
+    g_original_scene_poisoned.store(true,std::memory_order_release);
+    g_original_scene_open.store(false,std::memory_order_release);
+    g_original_scene_owner_thread.store(0u,std::memory_order_release);
+    m2vr::LogEvent("model2_d3d9_original_surface_failed",
+        g_present_count.load(std::memory_order_relaxed)+1u,
+        method,static_cast<std::uint32_t>(hr),caller_rva);
+    Model2VR_RejectFailedOriginalD3D9Surface(
+        method,static_cast<std::uint32_t>(hr),caller_rva);
+    if(g_native_stereo)
+        m2vr::daytona::MarkFailedOriginalSurface(
+            method,static_cast<std::uint32_t>(hr));
 }
 HRESULT TrackOriginalD3D9DrawResult(HRESULT hr,std::uint32_t family,
                                     void* caller,IDirect3DDevice9* device) noexcept {
@@ -1343,8 +1363,12 @@ HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
      IDirect3DSurface9* src,const RECT* src_rect,IDirect3DSurface9* dst,
      const POINT* dst_point){
     if(!g_primary_device.Owns(d))return g_update_surface(d,src,src_rect,dst,dst_point);
+    void* const caller=_ReturnAddress();
     const HRESULT hr=g_update_surface(d,src,src_rect,dst,dst_point);
-    if(SUCCEEDED(hr) && g_native_stereo)
+    const auto caller_rva=CallerRva(caller);
+    if(caller_rva && FAILED(hr))
+        TrackFailedOriginalD3D9Surface(hr,1u,caller_rva);
+    else if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorUpdateSurface(
             d,src,src_rect,dst,dst_point,g_update_surface);
     return hr;
@@ -1353,8 +1377,12 @@ HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
      IDirect3DSurface9* src,const RECT* src_rect,IDirect3DSurface9* dst,
      const RECT* dst_rect,D3DTEXTUREFILTERTYPE filter){
     if(!g_primary_device.Owns(d))return g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
+    void* const caller=_ReturnAddress();
     const HRESULT hr=g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
-    if(SUCCEEDED(hr) && g_native_stereo)
+    const auto caller_rva=CallerRva(caller);
+    if(caller_rva && FAILED(hr))
+        TrackFailedOriginalD3D9Surface(hr,2u,caller_rva);
+    else if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorStretchRect(
             d,src,src_rect,dst,dst_rect,filter,g_stretch_rect);
     return hr;
@@ -1362,8 +1390,12 @@ HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
 HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
      IDirect3DSurface9* dst,const RECT* rect,D3DCOLOR color){
     if(!g_primary_device.Owns(d))return g_color_fill(d,dst,rect,color);
+    void* const caller=_ReturnAddress();
     const HRESULT hr=g_color_fill(d,dst,rect,color);
-    if(SUCCEEDED(hr) && g_native_stereo)
+    const auto caller_rva=CallerRva(caller);
+    if(caller_rva && FAILED(hr))
+        TrackFailedOriginalD3D9Surface(hr,3u,caller_rva);
+    else if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorColorFill(d,dst,rect,color,g_color_fill);
     return hr;
 }
@@ -1478,12 +1510,11 @@ bool HookDevice(IDirect3DDevice9* dev){
         vtable[16],reinterpret_cast<void*>(&ResetHook),g_reset);
     // Always observe real source Clear HRESULTs, including CPU-only mode.
     const bool clear=Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear);
-    const bool update=!g_native_stereo ||
-        Hook(vtable[30],reinterpret_cast<void*>(&UpdateSurfaceHook),g_update_surface);
-    const bool stretch=!g_native_stereo ||
-        Hook(vtable[34],reinterpret_cast<void*>(&StretchRectHook),g_stretch_rect);
-    const bool fill=!g_native_stereo ||
-        Hook(vtable[35],reinterpret_cast<void*>(&ColorFillHook),g_color_fill);
+    // Failed source transfers invalidate CPU world even in non-GPU mode.
+    // They are pure original COM observers unless native-eye replay is on.
+    const bool update=Hook(vtable[30],reinterpret_cast<void*>(&UpdateSurfaceHook),g_update_surface);
+    const bool stretch=Hook(vtable[34],reinterpret_cast<void*>(&StretchRectHook),g_stretch_rect);
+    const bool fill=Hook(vtable[35],reinterpret_cast<void*>(&ColorFillHook),g_color_fill);
     // Scene boundary observation is optional: if either COM hook cannot
     // be installed, rollback BOTH and mark scene source unknown. This
     // must never prevent the normal original game/mono fallback path.
@@ -1511,10 +1542,12 @@ bool HookDevice(IDirect3DDevice9* dev){
             MH_DisableHook(vtable[42]);MH_RemoveHook(vtable[42]);
         }
         g_begin_scene=nullptr;g_end_scene=nullptr;
-        if(g_native_stereo&&clear){MH_DisableHook(vtable[43]);MH_RemoveHook(vtable[43]);}
-        if(g_native_stereo&&update){MH_DisableHook(vtable[30]);MH_RemoveHook(vtable[30]);}
-        if(g_native_stereo&&stretch){MH_DisableHook(vtable[34]);MH_RemoveHook(vtable[34]);}
-        if(g_native_stereo&&fill){MH_DisableHook(vtable[35]);MH_RemoveHook(vtable[35]);}
+        // All four hooks are mandatory in either CPU or GPU mode. Do not
+        // strand an enabled trampoline on a partial install failure.
+        if(clear){MH_DisableHook(vtable[43]);MH_RemoveHook(vtable[43]);}
+        if(update){MH_DisableHook(vtable[30]);MH_RemoveHook(vtable[30]);}
+        if(stretch){MH_DisableHook(vtable[34]);MH_RemoveHook(vtable[34]);}
+        if(fill){MH_DisableHook(vtable[35]);MH_RemoveHook(vtable[35]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_update_surface=nullptr;

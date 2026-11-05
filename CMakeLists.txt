@@ -140,6 +140,14 @@ add_test(NAME model2_original_source_frame_rejection
 # Four physical original D3D9 Draw HRESULTs must revoke an independently
 # authenticated CPU eye pair before matching original Present.
 # A failed genuine original Clear must revoke same-Present world stereo.
+# Original D3D9 render-target transfer failures are physical Present poison
+# on both the CPU-only and experimental GPU-eye routes.
+add_executable(model2_original_d3d9_surface_result_test
+    tests/original_d3d9_surface_result_gate_test.cpp)
+target_compile_features(model2_original_d3d9_surface_result_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_d3d9_failed_surface_transfer_revocation
+         COMMAND model2_original_d3d9_surface_result_test)
+
 add_executable(model2_original_d3d9_clear_result_test
     tests/original_d3d9_clear_result_gate_test.cpp)
 target_compile_features(model2_original_d3d9_clear_result_test PRIVATE cxx_std_20)

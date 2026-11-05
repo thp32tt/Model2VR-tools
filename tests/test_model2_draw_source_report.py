@@ -176,6 +176,40 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original Clear failure"):
                     REPORT.audit_csv(p)
 
+    def test_real_original_surface_failure_rejects_same_present_material(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"original_surface_hresult.csv"
+            prefix=[
+                ("model2_d3d9_vb_present_frame", 501, 17, 1, 0),
+                ("model2_d3d9_vb_source", 501, 0x1234,
+                 pack(1, 0x104), pack(4096, 24)),
+                ("model2_d3d9_source_draw_phase", 501,
+                 17, 12, pack(0x1234, 1)),
+                ("model2_d3d9_source_scene_phase", 501, 17, 1, 1),
+                ("model2_d3d9_vb_original_result", 501,
+                 0, 0x1234, pack(17, 1)),
+            ]
+            original_present=("model2_d3d9_original_present_result", 17, 0, 1, 0)
+            for method in (1, 2, 3):
+                failure=("model2_d3d9_original_surface_failed",17,
+                         method,0x8876086C,0x4321)
+                self.write_log(p,prefix+[failure,original_present])
+                source=REPORT.audit_csv(p)["sources"][0]
+                self.assertEqual(source["original_surface_failure_witnesses"],1)
+                self.assertEqual(
+                    source["distinct_scene_attested_physically_presented_material_present_frame_count"],0)
+                self.write_log(p,prefix+[original_present])
+                self.assertEqual(REPORT.audit_csv(p)["sources"][0]
+                                 ["original_surface_failure_witnesses"],0)
+            for bad in ((0,0x8876086C,0x4321),
+                        (4,0x8876086C,0x4321),
+                        (1,0,0x4321),
+                        (2,0x8876086C,0)):
+                failure=("model2_d3d9_original_surface_failed",17,*bad)
+                self.write_log(p,prefix+[failure,original_present])
+                with self.assertRaisesRegex(ValueError,"invalid original surface failure"):
+                    REPORT.audit_csv(p)
+
     def test_unknown_failed_or_outside_original_scene_cannot_attest_world(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "scene_phase.csv"

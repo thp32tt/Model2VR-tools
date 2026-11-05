@@ -276,6 +276,30 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(recovered["counts"]["original_clear_failed"],1)
         self.assertEqual(recovered["counts"]["original_source_draw_and_present_succeeded"],1)
 
+    def test_real_original_surface_failure_blocks_same_witness_up(self):
+        for method in (1,2,3):
+            events=self.projected()+[
+                event("model2_d3d9_original_surface_failed",
+                      7,method,0x8876086C,0x4321),
+                event("model2_d3d9_original_present_result",7,0,1,0),
+            ]
+            got=self.report(events)
+            self.assertEqual(got["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",
+                             got["counts"])
+            recovered=self.report(events+self.projected(witness=22,frame=8)+[
+                event("model2_d3d9_original_present_result",8,0,1,0)])
+            self.assertEqual(
+                recovered["counts"]["same_witness_cpu_camera_present_candidate"],1)
+        for bad in ((0,0x8876086C,0x4321),
+                    (4,0x8876086C,0x4321),
+                    (2,0,0x4321),
+                    (3,0x8876086C,0)):
+            events=self.projected()+[
+                event("model2_d3d9_original_surface_failed",7,*bad)]
+            with self.assertRaisesRegex(ValueError,"invalid original surface failure"):
+                self.report(events)
+
     def test_missing_or_inactive_original_scene_cannot_claim_camera(self):
         original = self.projected()
         got = self.report([e for e in original
