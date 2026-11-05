@@ -551,8 +551,12 @@ m2vr::drawprobe::OriginalTargetSnapshot ReadPhysicalOriginalRtDepth(
             D3DSURFACE_DESC rt_desc{},depth_desc{};
             const bool known=SUCCEEDED(rt->GetDesc(&rt_desc)) &&
                 SUCCEEDED(depth->GetDesc(&depth_desc));
-            if(known)result.depth=(rt_desc.Width==depth_desc.Width &&
-                rt_desc.Height==depth_desc.Height)?
+            if(known)result.depth=OriginalPhysicalDepthCompatible(
+                rt_desc.Width,rt_desc.Height,
+                static_cast<std::uint32_t>(rt_desc.MultiSampleType),
+                rt_desc.MultiSampleQuality,depth_desc.Width,depth_desc.Height,
+                static_cast<std::uint32_t>(depth_desc.MultiSampleType),
+                depth_desc.MultiSampleQuality)?
                 OriginalPhysicalDepthClass::Compatible:
                 OriginalPhysicalDepthClass::Incompatible;
         }else result.depth=OriginalPhysicalDepthClass::Incompatible;
