@@ -42,6 +42,8 @@ class SourceAuditTests(unittest.TestCase):
                      frame,0xfedcba9876543210,0,0),
                     ("model2_d3d9_original_scene_draw_coverage",
                      frame,pack(1,1),pack(1,0),pack(0,0)),
+                    ("model2_d3d9_original_draw_target_coverage",
+                     frame,pack(1,0),pack(0,0),pack(0,0)),
                 ))
             self.write_log(path,events)
             data=REPORT.audit_csv(path)
@@ -51,6 +53,11 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(scene["original_successful_in_scene_draw_count"],512)
             self.assertEqual(scene["trusted_scene_drawn_present_count"],512)
             self.assertTrue(scene["all_original_scene_draws_trusted"])
+            target=data["original_physical_draw_target_coverage"]
+            self.assertEqual(target["physical_present_count"],512)
+            self.assertEqual(target["original_backbuffer_draw_count"],512)
+            self.assertEqual(target["trusted_backbuffer_present_count"],512)
+            self.assertTrue(target["all_original_draw_targets_trusted"])
             self.assertEqual(data["original_control_present_sample_count"],65)
             self.assertEqual(data["original_control_four_family_draw_totals"][
                 "DrawPrimitive"],65)
@@ -65,6 +72,47 @@ class SourceAuditTests(unittest.TestCase):
             poisoned=REPORT.audit_csv(path)["original_physical_scene_draw_coverage"]
             self.assertFalse(poisoned["all_original_scene_draws_trusted"])
             self.assertEqual(poisoned["original_successful_untrusted_scene_draw_count"],1)
+            # Native RT0/depth event is a separate physical witness. Its
+            # count/epoch must agree with the ORIGINAL unsampled Draw total.
+            target_index=next(i for i,row in enumerate(events)
+                if row[0]=="model2_d3d9_original_draw_target_coverage"
+                and row[1]==frames-1)
+            for flags,depth in ((4,0),(32,0),(64,0),(8,1)):
+                bad=list(events)
+                bad[target_index]=(
+                    "model2_d3d9_original_draw_target_coverage",
+                    frames-1,pack(1,0),pack(0,0),pack(depth,flags))
+                self.write_log(path,bad)
+                state=REPORT.audit_csv(path)[
+                    "original_physical_draw_target_coverage"]
+                self.assertFalse(state["all_original_draw_targets_trusted"])
+                self.assertEqual(state["flagged_present_count"],1)
+            # A failed/omitted physical Draw cannot be borrowed from the
+            # adjacent valid frame by silently editing just its target row.
+            for bad_event in (
+                ("model2_d3d9_original_draw_target_coverage",
+                 frames-1,pack(0,0),pack(0,0),pack(0,0)),
+                ("model2_d3d9_original_draw_target_coverage",
+                 frames-1,pack(1,0),pack(0,0),pack(0,512)),
+                ("model2_d3d9_original_draw_target_coverage",
+                 frames-1,pack(1,0),pack(0,0),pack(1,0)),
+            ):
+                bad=list(events)
+                bad[target_index]=bad_event
+                self.write_log(path,bad)
+                with self.assertRaisesRegex(
+                    ValueError,"invalid original physical target Draw coverage"):
+                    REPORT.audit_csv(path)
+            # If the genuine original source cuts two COM epochs, the
+            # 256 count-mismatch bit is a valid negative evidence record.
+            crossed=list(events)
+            crossed[target_index]=(
+                "model2_d3d9_original_draw_target_coverage",
+                frames-1,pack(0,0),pack(0,0),pack(0,256))
+            self.write_log(path,crossed)
+            self.assertFalse(REPORT.audit_csv(path)[
+                "original_physical_draw_target_coverage"][
+                "all_original_draw_targets_trusted"])
             # Every real Present includes unsampled coverage. A COM call
             # spanning Present poisons that physical frame and the next;
             # neither flag is unknown metadata nor trusted world evidence.
