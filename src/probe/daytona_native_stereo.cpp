@@ -148,7 +148,7 @@ public:
         // 16..25=material/constants/instancing; 26..29=fixed-function,
         // 30=real UpdateTexture; 31/32=palette; 33..35=raster.
         // A failed original state mutation cannot publish GPU binocular eyes.
-        if(method<1u || method>67u ||
+        if(method<1u || method>69u ||
            !(original_hresult&0x80000000u))return;
         std::lock_guard lock(mu_);
         if(!enabled_ || source_original_failed_)return;

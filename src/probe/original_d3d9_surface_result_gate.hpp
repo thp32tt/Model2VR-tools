@@ -28,15 +28,16 @@ namespace m2vr::vrbridge {
 // 60=CreateTexture, 61=CreateVolumeTexture, 62=CreateCubeTexture;
 // 63=CreateVertexBuffer, 64=CreateIndexBuffer;
 // 65=CreateRenderTarget, 66=CreateDepthStencilSurface,
-// 67=CreateOffscreenPlainSurface (pre-first-use Surface sources):
+// 67=CreateOffscreenPlainSurface (pre-first-use Surface sources);
+// 68=GetRenderTargetData, 69=GetFrontBufferData (GPU-to-CPU Surface copies):
 // original source-state and resource operation failures.
 inline constexpr bool IsFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits)noexcept {
-    return method>=1u && method<=67u && (result_bits&0x80000000u)!=0u;
+    return method>=1u && method<=69u && (result_bits&0x80000000u)!=0u;
 }
 inline constexpr std::uint32_t FailedOriginalD3D9SurfaceSourceKind(
     std::uint32_t method)noexcept {
     // Separate from Draw 17..20 and Clear 21.
-    return method>=1u && method<=67u?21u+method:0u;
+    return method>=1u && method<=69u?21u+method:0u;
 }
 } // namespace m2vr::vrbridge
