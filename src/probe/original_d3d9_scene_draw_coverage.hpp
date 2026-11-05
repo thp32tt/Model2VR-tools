@@ -141,9 +141,12 @@ public:
     }
 private:
     bool Complete(OperationTicket ticket)noexcept {
+        // Failed/saturated EnterOperation never reserved an active slot.
+        // Do not consume another live original COM operation's slot.
+        if(ticket==0u){Flag(kOverflow);return false;}
         if(active_==0u){Flag(kCrossPresent);return false;}
         --active_;
-        if(ticket==0u || ticket!=epoch_ || present_cut_){
+        if(ticket!=epoch_ || present_cut_){
             Flag(kCrossPresent);
             return false;
         }
