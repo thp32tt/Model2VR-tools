@@ -174,7 +174,7 @@ class OriginalControlPhysicalPresentTest(unittest.TestCase):
             self.assertEqual(chunk.count(
                 f"ObserveOriginalAllFamilyDrawCaller(caller,source_frame,source_ordinal,{family}u);"),1)
             self.assertLess(chunk.index("if(!g_primary_device.Owns(d))"),
-                            chunk.index("ObserveOriginalAllFamilyDrawCaller(caller);"))
+                            chunk.index(f"ObserveOriginalAllFamilyDrawCaller(caller,source_frame,source_ordinal,{family}u);"))
         gate=(ROOT/"src/probe/original_d3d9_control_present.hpp").read_text("utf-8")
         self.assertIn("kMaxOriginalControlDraws=10000000u",gate)
         self.assertIn("frame==1u || frame%8u==0u",gate)
