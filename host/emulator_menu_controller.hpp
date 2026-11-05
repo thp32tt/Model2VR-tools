@@ -12,6 +12,8 @@ class EmulatorMenuController final {
 public:
     bool Initialize(XrInstance instance,XrSession session);
     void Shutdown() noexcept;
+    bool Active() const noexcept {return active_;}
+    bool RayOnMenu() const noexcept {return ray_on_menu_;}
     void Poll(XrSession session,XrSpace local_space,XrTime predicted_time,
               bool focused,bool menu_visible,std::uint32_t pid,
               const monoquad::Placement& quad,EmulatorWindowCapture& capture);
@@ -23,5 +25,6 @@ private:
     std::array<XrPath,2> hand_paths_{XR_NULL_PATH,XR_NULL_PATH};
     std::array<XrSpace,2> aim_spaces_{XR_NULL_HANDLE,XR_NULL_HANDLE};
     bool active_=false;
+    bool ray_on_menu_=false;
 };
 } // namespace m2vr::host

@@ -102,6 +102,7 @@ bool EmulatorMenuController::Initialize(XrInstance instance,XrSession session){
 }
 void EmulatorMenuController::Shutdown() noexcept {
     active_=false;
+    ray_on_menu_=false;
     for(auto& space:aim_spaces_){
         if(space!=XR_NULL_HANDLE)xrDestroySpace(space);
         space=XR_NULL_HANDLE;
@@ -119,6 +120,7 @@ void EmulatorMenuController::Poll(
     bool focused,bool menu_visible,std::uint32_t pid,
     const monoquad::Placement& quad,EmulatorWindowCapture& capture){
     capture.SetControllerReticle(false,0,0);
+    ray_on_menu_=false;
     if(!active_ || !focused)return;
     const XrActiveActionSet set{set_,XR_NULL_PATH};
     XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};
@@ -160,6 +162,7 @@ void EmulatorMenuController::Poll(
             static_cast<std::uint32_t>(height),
             transport::kWidth,transport::kHeight);
         if(!hit.valid)continue;
+        ray_on_menu_=true;
         capture.SetControllerReticle(true,hit.texture_x,hit.texture_y);
         state_get.action=select_;
         XrActionStateBoolean button{XR_TYPE_ACTION_STATE_BOOLEAN};

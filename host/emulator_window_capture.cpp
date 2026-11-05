@@ -189,12 +189,27 @@ bool EmulatorWindowCapture::DeliverControllerClick(
     if(width<160 || height<100 || width>4096 || height>4096 ||
        window_x>=static_cast<std::uint32_t>(width) ||
        window_y>=static_cast<std::uint32_t>(height))return false;
+    // A topmost overlay or foreign HWND can cover part of the emulator
+    // despite correct foreground focus. Never inject at that screen point.
+    const POINT target_point{
+        rect.left+static_cast<int>(window_x),
+        rect.top+static_cast<int>(window_y)
+    };
+    DWORD point_pid=0;
+    const HWND point_hwnd=WindowFromPoint(target_point);
+    if(!point_hwnd || !IsWindow(point_hwnd))return false;
+    GetWindowThreadProcessId(point_hwnd,&point_pid);
+    if(point_pid!=static_cast<DWORD>(pid))return false;
     // Desktop-wide SetCursorPos preserves negative multi-monitor origins.
     // SendInput is confined to the genuine foreground emulator HWND;
     // never use WM_* messages or inject into the original D3D9 game.
-    if(!SetCursorPos(rect.left+static_cast<int>(window_x),
-                     rect.top+static_cast<int>(window_y)))return false;
+    if(!SetCursorPos(target_point.x,target_point.y))return false;
     if(GetForegroundWindow()!=window_)return false;
+    DWORD post_warp_pid=0;
+    const HWND post_warp=WindowFromPoint(target_point);
+    if(!post_warp)return false;
+    GetWindowThreadProcessId(post_warp,&post_warp_pid);
+    if(post_warp_pid!=static_cast<DWORD>(pid))return false;
     INPUT click[2]{};
     click[0].type=INPUT_MOUSE;
     click[0].mi.dwFlags=MOUSEEVENTF_LEFTDOWN;

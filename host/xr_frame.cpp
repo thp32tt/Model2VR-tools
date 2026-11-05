@@ -144,7 +144,11 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"mono_quad_anchor_valid="<<(mono_quad_anchor_.Valid()?1:0)<<"\n"
           <<"mono_quad_distance_m="<<mono_quad_distance_m_<<"\n"
           <<"mono_quad_width_m="<<mono_quad_width_m_<<"\n"
-          <<"native_stereo_confirmed="<<(paired_frame_fresh &&
+          <<"emulator_menu_quad_visible="<<(emulator_window_on_quad_?1:0)<<"\n"
+           <<"quest_menu_controller_enabled="<<(menu_controller_.Active()?1:0)<<"\n"
+           <<"quest_menu_controller_has_ray_hit="<<(menu_controller_.RayOnMenu()?1:0)<<"\n"
+           <<"quest_menu_openxr_focused="<<(xr_session_focused_?1:0)<<"\n"
+           <<"native_stereo_confirmed="<<(paired_frame_fresh &&
                 transport::IsStereoGame(frame_gate_.kind())?1:0)<<"\n"
           <<"producer_health_fresh="<<(producer_health_fresh_?1:0)<<"\n"
           <<"producer_last_frame_id="<<producer_health_status_.frame_id<<"\n"
