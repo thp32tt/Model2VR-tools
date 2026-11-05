@@ -204,6 +204,9 @@ std::array<std::atomic<std::uint32_t>,3> g_original_surface_getters{};
 GetRenderTargetDataFn g_get_render_target_data=nullptr;
 GetFrontBufferDataFn g_get_front_buffer_data=nullptr;
 std::array<std::atomic<std::uint32_t>,2> g_original_surface_readbacks{};
+// Original content writes by *physical* game D3D9 GPU methods.
+// Counts are anonymous/per-Present: Clear, UpdateSurface, StretchRect, ColorFill.
+std::array<std::atomic<std::uint32_t>,4> g_original_gpu_surface_writes{};
 UpdateSurfaceFn g_update_surface=nullptr;
 UpdateTextureFn g_update_texture=nullptr;
 SetPaletteEntriesFn g_set_palette_entries=nullptr;
@@ -610,6 +613,24 @@ void RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind kind,
     while(old<=m2vr::drawprobe::kMaxLineageWritesPerPresent &&
           !counter.compare_exchange_weak(old,old+1u,
               std::memory_order_acq_rel,std::memory_order_relaxed)){}
+}
+// A GPU write may race an already staged speculative CPU or native GPU
+// OpenXR eye pair, even when no CPU LockRect/texture binding occurs. Revoke
+// before executing the real original API, not only after observing success.
+// Original Draw, stereo authorization and mono gameplay remain unchanged.
+void BeforeOriginalGpuSurfaceWrite(std::uint32_t caller_rva) noexcept {
+    if(!caller_rva)return;
+    Model2VR_ObserveOriginalD3D9TextureUpload(
+        g_present_count.load(std::memory_order_acquire)+1u,caller_rva,
+        g_original_frame_draw_ordinal.load(std::memory_order_acquire));
+}
+void RecordOriginalGpuSurfaceWrite(std::uint32_t caller_rva,HRESULT hr,
+                                   std::uint32_t family) noexcept {
+    if(!caller_rva || FAILED(hr) || family<1u || family>4u)return;
+    RecordOriginalLineageWrite(
+        m2vr::drawprobe::OriginalLineageKind::GpuSurfaceContents,caller_rva,hr);
+    g_original_gpu_surface_writes[family-1u].fetch_add(
+        1u,std::memory_order_relaxed);
 }
 void TrackFailedOriginalD3D9Clear(HRESULT hr,std::uint32_t flags,
                                   std::uint32_t caller_rva) noexcept {
@@ -1637,6 +1658,8 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
             original_frame,(std::uint64_t{w[44]}<<32)|w[45],w[46]);
         m2vr::LogEvent("model2_d3d9_source_texture_lod_lineage",witness,
             original_frame,w[47],0u);
+        m2vr::LogEvent("model2_d3d9_source_gpu_surface_lineage",witness,
+            original_frame,w[48],0u);
         m2vr::LogEvent("model2_d3d9_source_palette_lineage",witness,
             original_frame,(std::uint64_t{w[30]}<<32)|w[31],0u);
         m2vr::LogEvent("model2_d3d9_source_raster_mode_lineage",witness,
@@ -1894,8 +1917,10 @@ HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
     if(!g_primary_device.Owns(d))
         return g_clear(d,count,rects,flags,color,z,stencil);
     void* const caller=_ReturnAddress();
-    const HRESULT hr=g_clear(d,count,rects,flags,color,z,stencil);
     const auto caller_rva=CallerRva(caller);
+    BeforeOriginalGpuSurfaceWrite(caller_rva);
+    const HRESULT hr=g_clear(d,count,rects,flags,color,z,stencil);
+    RecordOriginalGpuSurfaceWrite(caller_rva,hr,1u);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Clear(hr,flags,caller_rva);
     else if(SUCCEEDED(hr)){
@@ -1910,8 +1935,10 @@ HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
      const POINT* dst_point){
     if(!g_primary_device.Owns(d))return g_update_surface(d,src,src_rect,dst,dst_point);
     void* const caller=_ReturnAddress();
-    const HRESULT hr=g_update_surface(d,src,src_rect,dst,dst_point);
     const auto caller_rva=CallerRva(caller);
+    BeforeOriginalGpuSurfaceWrite(caller_rva);
+    const HRESULT hr=g_update_surface(d,src,src_rect,dst,dst_point);
+    RecordOriginalGpuSurfaceWrite(caller_rva,hr,2u);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,1u,caller_rva);
     else if(SUCCEEDED(hr)){
@@ -1980,8 +2007,10 @@ HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
      const RECT* dst_rect,D3DTEXTUREFILTERTYPE filter){
     if(!g_primary_device.Owns(d))return g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
     void* const caller=_ReturnAddress();
-    const HRESULT hr=g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
     const auto caller_rva=CallerRva(caller);
+    BeforeOriginalGpuSurfaceWrite(caller_rva);
+    const HRESULT hr=g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
+    RecordOriginalGpuSurfaceWrite(caller_rva,hr,3u);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,2u,caller_rva);
     else if(SUCCEEDED(hr)){
@@ -1996,8 +2025,10 @@ HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
      IDirect3DSurface9* dst,const RECT* rect,D3DCOLOR color){
     if(!g_primary_device.Owns(d))return g_color_fill(d,dst,rect,color);
     void* const caller=_ReturnAddress();
-    const HRESULT hr=g_color_fill(d,dst,rect,color);
     const auto caller_rva=CallerRva(caller);
+    BeforeOriginalGpuSurfaceWrite(caller_rva);
+    const HRESULT hr=g_color_fill(d,dst,rect,color);
+    RecordOriginalGpuSurfaceWrite(caller_rva,hr,4u);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,3u,caller_rva);
     else if(SUCCEEDED(hr)){
@@ -2628,6 +2659,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(std::size_t i=0;i<surface_creates.size();++i)
         surface_creates[i]=g_original_surface_creates[i].exchange(
             0u,std::memory_order_relaxed);
+    std::array<std::uint32_t,4> gpu_surface_writes{};
+    for(std::size_t i=0;i<gpu_surface_writes.size();++i)
+        gpu_surface_writes[i]=g_original_gpu_surface_writes[i].exchange(
+            0u,std::memory_order_relaxed);
     std::array<std::uint32_t,3> surface_getters{};
     for(std::size_t i=0;i<surface_getters.size();++i)
         surface_getters[i]=g_original_surface_getters[i].exchange(
@@ -2663,6 +2698,12 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_surface_getter_counts",
             frame,surface_getters[0],surface_getters[1],surface_getters[2]);
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_gpu_surface_write_counts",
+            frame,
+            (std::uint64_t{gpu_surface_writes[0]}<<32u)|gpu_surface_writes[1],
+            (std::uint64_t{gpu_surface_writes[2]}<<32u)|gpu_surface_writes[3],
+            0u);
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_texture_lock_counts",
             frame,texture_locks,
@@ -2774,6 +2815,8 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     for(auto& count:g_original_surface_readbacks)
         count.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_surface_getters)
+        count.store(0u,std::memory_order_relaxed);
+    for(auto& count:g_original_gpu_surface_writes)
         count.store(0u,std::memory_order_relaxed);
     g_original_texture_lock_writes.store(0u,std::memory_order_relaxed);
     g_original_texture_surface_writes.store(0u,std::memory_order_relaxed);

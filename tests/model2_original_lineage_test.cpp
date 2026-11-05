@@ -158,6 +158,13 @@ int main(){
     ++index_contents.successful_writes[39];
     assert(!SameOriginalLineage(initial,index_contents));
     assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(index_contents));
+    // A successful original GPU Surface write is a distinct source mutation
+    // even without CPU LockRect/texture binds; never recycle earlier eyes.
+    static_assert(static_cast<unsigned>(OriginalLineageKind::GpuSurfaceContents)==48u);
+    auto gpu_surface_changed=initial;
+    ++gpu_surface_changed.successful_writes[48];
+    assert(!SameOriginalLineage(initial,gpu_surface_changed));
+    assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(gpu_surface_changed));
     auto new_frame=initial;
     ++new_frame.physical_present;
     assert(!SameOriginalLineage(initial,new_frame));
