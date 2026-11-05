@@ -22,6 +22,37 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_real_original_display_dialog_gamma_revoke_same_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"private_display_source.csv"
+            prefix=[
+                ("model2_d3d9_vb_present_frame",501,17,1,0),
+                ("model2_d3d9_vb_source",501,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",501,17,12,pack(0x1234,1)),
+                ("model2_d3d9_vb_original_result",501,0,0x1234,pack(17,1)),
+            ]
+            self.write_log(p,prefix+[(
+                "model2_d3d9_original_present_result",17,0,1,0)])
+            clean=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(clean["original_surface_failure_witnesses"],0)
+            for caller,ordinal,method in ((0x4321,12,1),(0x4321,12,2),
+                                          (0,0,3),(0,0,4)):
+                self.write_log(p,prefix+[
+                    ("model2_d3d9_original_presentation_control_rejected",
+                     17,caller,ordinal,method),
+                    ("model2_d3d9_original_present_result",17,0,1,0)])
+                got=REPORT.audit_csv(p)["sources"][0]
+                self.assertEqual(got["original_surface_failure_witnesses"],1)
+                self.assertFalse(got["world_pass_proven"])
+            for invalid in ((0,0x4321,12,1),(17,0,12,1),
+                            (17,0x4321,10000001,2),(17,0x4321,12,5),
+                            (17,0x4321,0,3),(17,0,1,4)):
+                self.write_log(p,prefix+[
+                    ("model2_d3d9_original_presentation_control_rejected",
+                     *invalid)])
+                with self.assertRaisesRegex(ValueError,"presentation control rejection"):
+                    REPORT.audit_csv(p)
+
     def test_real_alternate_swap_chain_present_revokes_original_vb_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/"private_alternate_swap_chain.csv"
@@ -516,7 +547,7 @@ class SourceAuditTests(unittest.TestCase):
                  0, 0x1234, pack(17, 1)),
             ]
             original_present=("model2_d3d9_original_present_result", 17, 0, 1, 0)
-            for method in range(1, 70):
+            for method in range(1, 71):
                 failure=("model2_d3d9_original_surface_failed",17,
                          method,0x8876086C,0x4321)
                 self.write_log(p,prefix+[failure,original_present])
@@ -606,7 +637,7 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
                     REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
-                        (70,0x8876086C,0x4321),
+                        (71,0x8876086C,0x4321),
                         (1,0,0x4321),
                         (2,0x8876086C,0)):
                 failure=("model2_d3d9_original_surface_failed",17,*bad)
