@@ -364,6 +364,40 @@ class SourceAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"texture upload"):
                 REPORT.audit_csv(p)
 
+
+    def test_original_dirty_mip_lineage_bound_to_same_physical_vb_draw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"mip_source.csv"
+            rows=[
+                ("model2_d3d9_vb_present_frame",601,21,1,0),
+                ("model2_d3d9_vb_source",601,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",601,21,14,pack(0x1234,1)),
+                ("model2_d3d9_source_scene_phase",601,21,1,1),
+                ("model2_d3d9_source_texture_mip_lineage",601,21,pack(2,3),4),
+                ("model2_d3d9_vb_original_result",601,0,0x1234,pack(21,1)),
+                ("model2_d3d9_original_present_result",21,0,1,0),
+            ]
+            self.write_log(p,rows)
+            result=REPORT.audit_csv(p)
+            self.assertEqual(result["sources"][0]["original_texture_mip_lineage_witnesses"],1)
+            self.assertEqual(result["world_pass_proof"],"NOT_ESTABLISHED")
+            for bad in ((22,pack(2,3),4),(21,pack(1_000_001,3),4),
+                        (21,pack(2,1_000_001),4),(21,pack(2,3),1_000_001)):
+                changed=list(rows)
+                changed[4]=("model2_d3d9_source_texture_mip_lineage",601,*bad)
+                self.write_log(p,changed)
+                with self.assertRaisesRegex(ValueError,"mip/dirty texture"):
+                    REPORT.audit_csv(p)
+            self.write_log(p,rows[:5]+[rows[4]]+rows[5:])
+            with self.assertRaisesRegex(ValueError,"mip/dirty texture"):
+                REPORT.audit_csv(p)
+            for method in range(56,60):
+                failure=("model2_d3d9_original_surface_failed",21,method,
+                         0x8876086c,0x1234)
+                self.write_log(p,rows[:-1]+[failure,rows[-1]])
+                self.assertEqual(REPORT.audit_csv(p)["sources"][0]
+                                 ["original_surface_failure_witnesses"],1)
+
     def test_real_original_surface_failure_rejects_same_present_material(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"original_surface_hresult.csv"
@@ -378,7 +412,7 @@ class SourceAuditTests(unittest.TestCase):
                  0, 0x1234, pack(17, 1)),
             ]
             original_present=("model2_d3d9_original_present_result", 17, 0, 1, 0)
-            for method in range(1, 56):
+            for method in range(1, 60):
                 failure=("model2_d3d9_original_surface_failed",17,
                          method,0x8876086C,0x4321)
                 self.write_log(p,prefix+[failure,original_present])
@@ -468,7 +502,7 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
                     REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
-                        (56,0x8876086C,0x4321),
+                        (60,0x8876086C,0x4321),
                         (1,0,0x4321),
                         (2,0x8876086C,0)):
                 failure=("model2_d3d9_original_surface_failed",17,*bad)

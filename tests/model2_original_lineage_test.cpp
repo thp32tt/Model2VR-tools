@@ -31,7 +31,7 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==44);
+    static_assert(kOriginalLineageKinds==47);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ProcessVertices)==35u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::TextureTransform)==36u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::OtherTransform)==37u);
@@ -41,6 +41,9 @@ int main(){
     static_assert(static_cast<unsigned>(OriginalLineageKind::CubeTextureContent)==41u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::VolumeTextureContent)==42u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::SurfaceTexelContent)==43u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::TextureMipGeneration)==44u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::TextureDirtyRegion)==45u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::TextureAutoGenFilter)==46u);
     OriginalBoundWriteLocks active{};
     assert(!active.HasOutstandingWrites());
     assert(active.Begin(reinterpret_cast<const void*>(0x1234)));
