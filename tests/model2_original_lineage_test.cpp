@@ -202,6 +202,18 @@ int main(){
            (saturated.flags&OriginalPhysicalSceneDrawCoverage::kInFlightAtPresent)==0u);
     // Actual RT0/depth provenance now accompanies each of the four original
     // physical Draw COM methods and survives scene/target bind changes.
+    static_assert(OriginalPhysicalDepthCompatible(
+        1024u,1024u,0u,0u,1024u,1024u,0u,0u));
+    static_assert(OriginalPhysicalDepthCompatible(
+        2048u,1024u,4u,2u,2048u,1024u,4u,2u));
+    static_assert(!OriginalPhysicalDepthCompatible(
+        2048u,1024u,4u,2u,2048u,1024u,0u,0u));
+    static_assert(!OriginalPhysicalDepthCompatible(
+        2048u,1024u,4u,2u,2048u,1024u,4u,1u));
+    static_assert(!OriginalPhysicalDepthCompatible(
+        2048u,1024u,4u,2u,2048u,1023u,4u,2u));
+    static_assert(!OriginalPhysicalDepthCompatible(
+        0u,1024u,0u,0u,0u,1024u,0u,0u));
     const OriginalTargetSnapshot main_depth{
         OriginalPhysicalRtClass::Backbuffer,OriginalPhysicalDepthClass::Compatible};
     const OriginalTargetSnapshot offscreen_depth{
