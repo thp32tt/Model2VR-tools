@@ -65,9 +65,9 @@ class CameraStatePhaseTests(unittest.TestCase):
         full = 1 | 2 | 4 | 8 | 16 | 64 | (31 << 18) | (31 << 23)
         partial = 1 | 2 | 4 | 8 | 32 | 128 | (4 << 8) | (4 << 13) | (16 << 18) | (16 << 23)
         got = self.run_audit([region(1, 1, full), region(1, 2, partial),
-                              region(8, 1, 1)])
-        self.assertEqual(got["witness_count"], 3)
-        self.assertEqual(got["method_counts"], {"viewport": 2, "scissor": 1})
+                              region(8, 1, 1), region(1, 1, full | (1 << 28))])
+        self.assertEqual(got["witness_count"], 4)
+        self.assertEqual(got["method_counts"], {"viewport": 3, "scissor": 1})
         self.assertFalse(got["adapter_auto_enable"])
         self.assertEqual(got["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertTrue(got["samples"][0]["covers_rt0"])
@@ -78,7 +78,7 @@ class CameraStatePhaseTests(unittest.TestCase):
             [region(1, 3, full)],
             [region(1, 1, full, scene=0)],
             [region(1, 1, full | 128)],
-            [region(1, 1, full | (1 << 28))],
+            [region(1, 1, full | (4 << 28))],
             [region(1, 1, 1 | 4)],
             [region(1, 1, 1 | 8)],
             [region(1, 1, 1 | 16)],
@@ -106,6 +106,8 @@ class CameraStatePhaseTests(unittest.TestCase):
         self.assertIn("model2_d3d9_original_vs_constants_phase", source)
         self.assertIn("model2_d3d9_original_region_phase", source)
         self.assertIn("g_original_region_samples", source)
+        self.assertIn("if(source_write>=4u)return;", source)
+        self.assertIn("flags|=source_write<<28u;", source)
 
 if __name__ == "__main__":
     unittest.main()

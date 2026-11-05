@@ -269,8 +269,11 @@ void LogOriginalRegionPhase(IDirect3DDevice9* d,unsigned method,
     if(!d || !rva || method<1u || method>2u)return;
     const auto frame=g_present_count.load(std::memory_order_relaxed)+1u;
     if(frame!=1u && frame%8u!=0u)return;
-    if(g_original_region_samples[method-1u].fetch_add(
-        1u,std::memory_order_relaxed)!=0u)return;
+    // Four first source region writes per family expose mid-frame HUD/sky
+    // transitions without unbounded original-game logging.
+    const auto source_write=g_original_region_samples[method-1u].fetch_add(
+        1u,std::memory_order_relaxed);
+    if(source_write>=4u)return;
     const auto draw=g_original_frame_draw_ordinal.load(std::memory_order_relaxed);
     const auto scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     if(draw>10000000u || scene>100000u)return;
@@ -311,9 +314,11 @@ void LogOriginalRegionPhase(IDirect3DDevice9* d,unsigned method,
         ((known && kind==2u)?128u:0u);
     if(valid)flags|=(bin(x,tw)<<8u)|(bin(y,th)<<13u)|
                     (bin(w,tw)<<18u)|(bin(h,th)<<23u);
+    // Upper nibble = original write ordinal 0..3 in this sampled frame.
+    flags|=source_write<<28u;
     // a0=original Present; a1=original caller RVA;
     // a2=(method<<32)|all-family Draw ordinal;
-    // a3=(scene ordinal<<32)|normalized region flags.
+    // a3=(scene ordinal<<32)|relative region flags and 0..3 write ordinal.
     m2vr::LogEvent("model2_d3d9_original_region_phase",
         frame,rva,(std::uint64_t{method}<<32u)|draw,
         (std::uint64_t{scene}<<32u)|flags);

@@ -67,7 +67,8 @@ def audit(path):
                 known, valid, inside, full = [bool(flags & (1 << bit)) for bit in (1, 2, 3, 4)]
                 backbuffer, aux = bool(flags & 64), bool(flags & 128)
                 bins = [(flags >> n) & 31 for n in (8, 13, 18, 23)]
-                if (method not in (1, 2) or flags >> 28 or
+                write_ordinal = flags >> 28
+                if (method not in (1, 2) or write_ordinal >= 4 or
                     (backbuffer and aux) or (valid and not known) or
                     (inside and not valid) or (full and not inside) or
                     (full and bins != [0, 0, 31, 31]) or
@@ -75,13 +76,14 @@ def audit(path):
                     (not known and (backbuffer or aux))):
                     raise ValueError("invalid original viewport/scissor provenance")
                 name = "viewport" if method == 1 else "scissor"
-                detail = {"rt0_known": known, "positive_region": valid,
+                detail = {"source_region_write": write_ordinal,
+                          "rt0_known": known, "positive_region": valid,
                           "inside_rt0": inside, "covers_rt0": full,
                           "scissor_enabled": bool(flags & 32),
                           "target_class": "main_backbuffer" if backbuffer else (
                               "auxiliary" if aux else "unknown"),
                           "relative_5bit_xywh": bins}
-                key = (frame, event, method)
+                key = (frame, event, method, write_ordinal)
             if draw > 10_000_000 or scene > 100_000 or (opened and not scene):
                 raise ValueError("invalid original Draw/Scene ordinal")
             if key in seen:
