@@ -2,6 +2,16 @@
 
 Updated: 2026-11-06 KST
 
+## 2026-11-06 — Original x86 physical Present per-process source-run stamp → independently captured PRIVATE A/B + five controls (CI verified)
+
+- **New independent real-source feature:** `src/probe/d3d9_probe.cpp` preserves the original Win32 D3D9 Device9::Present COM call/HRESULT and records a 64-bit process-stable Windows CSPRNG nonce after **every** genuine primary physical Present. `bcrypt` native linking and fail-closed zero/RNG failure keep the original Draw/ROM/FFB/input and game pixels untouched; no process ID or machine identity is emitted.
+- **Authenticated physical-log consistency, not gameplay authority:** `tools/model2_draw_source_report.py` rejects missing/zero/mixed/non-contiguous or orphaned `model2_d3d9_original_capture_run` stamp sequences, cross-binds all original Draw caller exact identities and cumulative bloom to physical frame counts and exposes only a PRIVATE run nonce summary. `tools/model2_world_pass_evidence.py` requires seven **distinct original process-run stamps** for two race A/B and title/menu/sky/HUD/aux controls, rejecting the same game process reused with modified CSV bytes or renamed paths. User labels and mutable JSON do not automatically prove real gameplay ownership. New regression tests exercise malformed/missing/changed frame stamp, zero nonce, missing session, and cross-session duplicate.
+- **Connected one-feature source commits:** original physical hook + Python gate/tests `f27c34d7ebd4b786246129cf625bdd3dfc9e1127`, negative-control diagnostics and Win32 link-regression repair `a4a9baf148acc1f765b4c41dbc59339657b3759e`, final code/test **`57af18090d086318a3c99e1faf8e17dbbe773890`**. The final Python-only correction did not alter native x86 C++ relative to `a4a9baf`.
+- **Exact final source GitHub CI:** Public tools **42092615125 SUCCESS**, ModDev **42092614995 SUCCESS**, matched original Daytona Win32 game producer + independent Win64 OpenXR host + bundle **42092614679 SUCCESS**, native CTest Windows x86 code-identical `a4a9baf` **42092520051 SUCCESS**; integrated Win32 Generic DD build **42092520055 SUCCESS**. Final artifact `DaytonaUSA-NativeStereo-Quest3-Win32-Win64` ID **13445373383**, expires **2026-11-19T19:20:27Z**. Earlier failed intermediate CI is not another outcome, retry or point.
+- **Unfinished actual gameplay work:** independent user-held PRIVATE original Daytona race A/B + five nonrace recordings still absent, real original CPU projector ↔ camera/world Draw/Scene/RT ownership not proven, calibration of original game axes/meters and tracked Quest3/VDXR left/right eye poses not measured. `RUNTIME_VALIDATION=UNTESTED`, `world_pass_proof=NOT_ESTABLISHED`, World3D auto-enable OFF. Existing mono/menu, original input and FFB remain untouched; OutRun and webport not modified.
+- **AI 2 SSOT:** `thp32tt/ai-dev-lab@7d31d9aaee78c0785715195a41a4df3a8c2aabfd`, RUN_KEY `MODEL2VR-ORIGINAL-PROCESS-RUN-NONCE-20261106-57AF1809`, **2633 + one newly source-complete, CI-verified process-run integrity capability +1 = 2634** lifetime score. Existing exact-caller/native collector feature, multiple repairs, CI repeats, docs and user run rechecks +0. AI 1 unaffected.
+
+
 
 ## 2026-11-06 — Exact original 32-bit four-family Draw caller inventory plus PRIVATE seven-session Daytona race/controls → original source-to-XR gate (4/4 SUCCESS)
 
