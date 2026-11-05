@@ -2,6 +2,14 @@
 
 Updated: 2026-11-05 KST
 
+## 2026-11-05 — original D3D9 camera-state write phase, native CI verified
+
+- **One connected feature:** genuine original EXE-owned primary D3D9 SetTransform(44) and SetVertexShaderConstantF(94), single original HRESULT-preserving call, bounded real original Present/Draw/Scene/caller/transform-state or VS register-span witnesses. No matrices, shader floats, ROMs, game pixels or pointers in public logs. Failure revokes CPU/GPU binocular source for the physical Present; original mono fallback remains.
+- **Code SHA:** `95f0e393b6ffccdc1033721accf548af08eb5514`. Public CI 41957272338, ModDev 41957272479, Windows x86/CTest 41957272605: SUCCESS. **Release SHA:** `fd98ca9fb369a9c3eb544f20cfa7473035cc2c79`. Public CI 41957434092, Daytona Win32 + Win64 OpenXR + ZIP 41957434005: SUCCESS. Artifact `13383193126` expires 2026-11-19 UTC. Same-feature repairs/tests/package/docs earn +0.
+- **Private analysis:** `tools/model2_camera_state_phase_report.py` with synthetic fail-closed regression. `RUNTIME_VALIDATION=UNTESTED`; source phases do NOT prove race World3D and never auto-enable binocular gameplay.
+- **Score SSOT:** RUN_KEY `MODEL2VR-ORIGINAL-D3D9-CAMERA-STATE-PHASE-20261105-FD98CA9F`, `thp32tt/ai-dev-lab@efafa58262991dd4e29c4018d942ba9a07665c37`: 2591 + one independent camera-state source capability +1 = **2592 AI2 cumulative**.
+- **NEXT:** two private actual race captures and separate title/menu/sky/HUD/aux captures; correlate exact original CPU projector A/B matrix, geometry command, camera axes/meters-per-unit, physical D3D9 Draw/Scene/Present/RT/depth and headset pose. Promote only proven race-world calls; unknown remains mono 2D. OutRun and web port untouched.
+
 ## 2026-11-05 — authenticated original D3D9 RT/depth bind source phase and fail-closed stereo (CI 4/4, AI2 +1)
 
 - **One new connected original-game source result:** `edeb1c9d18f2096bd4806abdb3710aca4fedda82` implemented primary original Win32 D3D9 SetRenderTarget slot 37 + SetDepthStencilSurface slot 39 passive hooks; `993eda8a6145eb07622c35c3e0fa1e82c3172d51` added bounded private original target-bind auditor, original Present source report, C++ and Python regression; final source/CI-bearing `ec287b99c88d666b45df8ef4cbbfe959b699b456` corrected the existing source-hook count test. These commits plus CI/package/docs are **ONE feature**, not three scoring events. Same previous original Clear/surface failure capability is not re-awarded.
