@@ -60,7 +60,7 @@ class OriginalResourceResidencyTest(unittest.TestCase):
         self.assertIn("OriginalResidencySourceBoundary(0u,3u);",h)
         self.assertIn("OriginalResidencySourceBoundary(0u,2u);",h)
         self.assertIn("source_original_failed_",self.sources["src/probe/daytona_native_stereo.cpp"])
-        self.assertIn("kOriginalLineageKinds=59",self.sources["src/probe/original_d3d9_lineage.hpp"])
+        self.assertIn("kOriginalLineageKinds=61",self.sources["src/probe/original_d3d9_lineage.hpp"])
         self.assertIn("ResourceSetPriority=57, ResourcePreLoad=58",self.sources["src/probe/original_d3d9_lineage.hpp"])
         self.assertIn("model2_d3d9_original_resource_residency_phase",h)
         self.assertIn("RecordOriginalResourceResidencyPhase(rva,1u);",h)
