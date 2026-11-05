@@ -124,11 +124,14 @@ def _validate_report(report):
         type(run["last_present_frame"]) is not int or
         not 1<=run["last_present_frame"]<=0xffffffff or
         type(run["physical_present_count"]) is not int or
-        run["physical_present_count"]!=run["last_present_frame"] or
-        any(isinstance(record,dict) and
-            record.get("physical_present_count")!=run["physical_present_count"]
-            for record in (exact,bloom))):
+        run["physical_present_count"]!=run["last_present_frame"]):
         raise ValueError("missing or inconsistent original capture run identity")
+    if (isinstance(exact,dict) and
+        exact.get("physical_present_count")!=run["physical_present_count"]):
+        raise ValueError("inconsistent exact original capture run identity")
+    if (isinstance(bloom,dict) and
+        bloom.get("physical_present_count")!=run["physical_present_count"]):
+        raise ValueError("inconsistent original all-family capture run identity")
     # An empty title/menu/sky/HUD/aux report from a crashed or unhooked
     # emulator must never count as a negative scene witness. The native
     # original post-COM Present event is independent of VB/IB sampling and
