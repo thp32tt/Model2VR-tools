@@ -104,15 +104,21 @@ using SetVSConstantFFn=HRESULT (STDMETHODCALLTYPE*)(
 using SetViewportFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,const D3DVIEWPORT9*);
 using SetScissorFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,const RECT*);
 using SetStreamSourceFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT stream,IDirect3DVertexBuffer9* buffer,UINT offset,UINT stride);
+using GetStreamSourceFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,UINT,IDirect3DVertexBuffer9**,UINT*,UINT*);
 using BufferLockFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DResource9*,UINT,UINT,void**,DWORD);
 using BufferUnlockFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DResource9*);
 using SetIndicesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDirect3DIndexBuffer9* buffer);
+using GetIndicesFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,IDirect3DIndexBuffer9**);
 using SetVertexDeclarationFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDirect3DVertexDeclaration9* declaration);
 using SetFVFFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD fvf);
 using SetVertexShaderFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDirect3DVertexShader9* shader);
 using SetPixelShaderFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDirect3DPixelShader9* shader);
 using SetPSConstantFFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const float*,UINT);
 using SetTextureFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,IDirect3DBaseTexture9*);
+using GetTextureFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,DWORD,IDirect3DBaseTexture9**);
 using TextureLockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DTexture9*,UINT,D3DLOCKED_RECT*,const RECT*,DWORD);
 using TextureUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DTexture9*,UINT);
 using TextureGetSurfaceLevelFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -207,6 +213,8 @@ std::array<std::atomic<std::uint32_t>,2> g_original_surface_readbacks{};
 // Original content writes by *physical* game D3D9 GPU methods.
 // Counts are anonymous/per-Present: Clear, UpdateSurface, StretchRect, ColorFill.
 std::array<std::atomic<std::uint32_t>,4> g_original_gpu_surface_writes{};
+// Three read-only binding-return aliases; never leak resource identities.
+std::array<std::atomic<std::uint32_t>,3> g_original_resource_getters{};
 UpdateSurfaceFn g_update_surface=nullptr;
 UpdateTextureFn g_update_texture=nullptr;
 SetPaletteEntriesFn g_set_palette_entries=nullptr;
@@ -221,6 +229,7 @@ SetVSConstantFFn g_set_vs_constant_f=nullptr;
 SetViewportFn g_set_viewport=nullptr;
 SetScissorFn g_set_scissor=nullptr;
 SetStreamSourceFn g_set_stream_source=nullptr;
+GetStreamSourceFn g_get_stream_source=nullptr;
 BufferLockFn g_vb_lock=nullptr,g_ib_lock=nullptr;
 BufferUnlockFn g_vb_unlock=nullptr,g_ib_unlock=nullptr;
 void* g_vb_lock_target=nullptr;
@@ -232,12 +241,14 @@ std::atomic<bool> g_buffer_hook_unknown{false};
 m2vr::drawprobe::OriginalBoundWriteLocks g_original_bound_write_locks{};
 std::array<std::atomic<std::uint32_t>,2> g_original_buffer_writes{};
 SetIndicesFn g_set_indices=nullptr;
+GetIndicesFn g_get_indices=nullptr;
 SetVertexDeclarationFn g_set_vertex_declaration=nullptr;
 SetFVFFn g_set_f_v_f=nullptr;
 SetVertexShaderFn g_set_vertex_shader=nullptr;
 SetPixelShaderFn g_set_pixel_shader=nullptr;
 SetPSConstantFFn g_set_ps_constant_f=nullptr;
 SetTextureFn g_set_texture=nullptr;
+GetTextureFn g_get_texture=nullptr;
 TextureLockRectFn g_texture_lock_rect=nullptr;
 TextureUnlockRectFn g_texture_unlock_rect=nullptr;
 TextureGetSurfaceLevelFn g_texture_get_surface_level=nullptr;
@@ -2202,6 +2213,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 #include "original_d3d9_surface_create_hooks.inl"
 #include "original_d3d9_readback_hooks.inl"
 #include "original_d3d9_surface_get_hooks.inl"
+#include "original_d3d9_resource_get_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
 // preserved, while failures poison only speculative binocular output.
 HRESULT STDMETHODCALLTYPE SetStreamSourceHook(IDirect3DDevice9* d,UINT stream,IDirect3DVertexBuffer9* buffer,UINT offset,UINT stride){
@@ -2683,6 +2695,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(std::size_t i=0;i<surface_creates.size();++i)
         surface_creates[i]=g_original_surface_creates[i].exchange(
             0u,std::memory_order_relaxed);
+    std::array<std::uint32_t,3> original_resource_getters{};
+    for(std::size_t i=0;i<original_resource_getters.size();++i)
+        original_resource_getters[i]=g_original_resource_getters[i].exchange(
+            0u,std::memory_order_relaxed);
     std::array<std::uint32_t,4> gpu_surface_writes{};
     for(std::size_t i=0;i<gpu_surface_writes.size();++i)
         gpu_surface_writes[i]=g_original_gpu_surface_writes[i].exchange(
@@ -2728,6 +2744,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             (std::uint64_t{gpu_surface_writes[0]}<<32u)|gpu_surface_writes[1],
             (std::uint64_t{gpu_surface_writes[2]}<<32u)|gpu_surface_writes[3],
             0u);
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_resource_getter_counts",
+            frame,original_resource_getters[0],
+            original_resource_getters[1],original_resource_getters[2]);
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_texture_lock_counts",
             frame,texture_locks,
@@ -2842,6 +2862,8 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         count.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_gpu_surface_writes)
         count.store(0u,std::memory_order_relaxed);
+    for(auto& count:g_original_resource_getters)
+        count.store(0u,std::memory_order_relaxed);
     g_original_texture_lock_writes.store(0u,std::memory_order_relaxed);
     g_original_texture_surface_writes.store(0u,std::memory_order_relaxed);
     for(auto& n:g_original_texture_shape_writes)
@@ -2941,13 +2963,19 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool scissor=Hook(vtable[75],reinterpret_cast<void*>(&SetScissorRectHook),g_set_scissor);
     // Six original D3D9 bindings complete the one-shot Draw source nonce.
     const bool stream_source=Hook(vtable[100],reinterpret_cast<void*>(&SetStreamSourceHook),g_set_stream_source);
+    const bool get_stream=Hook(vtable[101],
+        reinterpret_cast<void*>(&OriginalGetStreamSourceHook),g_get_stream_source);
     const bool indices=Hook(vtable[104],reinterpret_cast<void*>(&SetIndicesHook),g_set_indices);
+    const bool get_indices=Hook(vtable[105],
+        reinterpret_cast<void*>(&OriginalGetIndicesHook),g_get_indices);
     const bool vertex_declaration=Hook(vtable[87],reinterpret_cast<void*>(&SetVertexDeclarationHook),g_set_vertex_declaration);
     const bool f_v_f=Hook(vtable[89],reinterpret_cast<void*>(&SetFVFHook),g_set_f_v_f);
     const bool vertex_shader=Hook(vtable[92],reinterpret_cast<void*>(&SetVertexShaderHook),g_set_vertex_shader);
     const bool pixel_shader=Hook(vtable[107],reinterpret_cast<void*>(&SetPixelShaderHook),g_set_pixel_shader);
     const bool ps_constants=Hook(vtable[109],reinterpret_cast<void*>(&SetPSConstantFHook),g_set_ps_constant_f);
     const bool texture=Hook(vtable[65],reinterpret_cast<void*>(&SetTextureHook),g_set_texture);
+    const bool get_texture=Hook(vtable[66],
+        reinterpret_cast<void*>(&OriginalGetTextureHook),g_get_texture);
     const bool texture_stage=Hook(vtable[67],reinterpret_cast<void*>(&SetTextureStageStateHook),g_set_texture_stage);
     const bool sampler=Hook(vtable[69],reinterpret_cast<void*>(&SetSamplerStateHook),g_set_sampler_state);
     const bool render_state=Hook(vtable[57],reinterpret_cast<void*>(&SetRenderStateHook),g_set_render_state);
@@ -2985,7 +3013,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -3029,13 +3057,16 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(viewport){MH_DisableHook(vtable[47]);MH_RemoveHook(vtable[47]);}
         if(scissor){MH_DisableHook(vtable[75]);MH_RemoveHook(vtable[75]);}
         if(stream_source){MH_DisableHook(vtable[100]);MH_RemoveHook(vtable[100]);}
+        if(get_stream){MH_DisableHook(vtable[101]);MH_RemoveHook(vtable[101]);}
         if(indices){MH_DisableHook(vtable[104]);MH_RemoveHook(vtable[104]);}
+        if(get_indices){MH_DisableHook(vtable[105]);MH_RemoveHook(vtable[105]);}
         if(vertex_declaration){MH_DisableHook(vtable[87]);MH_RemoveHook(vtable[87]);}
         if(f_v_f){MH_DisableHook(vtable[89]);MH_RemoveHook(vtable[89]);}
         if(vertex_shader){MH_DisableHook(vtable[92]);MH_RemoveHook(vtable[92]);}
         if(pixel_shader){MH_DisableHook(vtable[107]);MH_RemoveHook(vtable[107]);}
         if(ps_constants){MH_DisableHook(vtable[109]);MH_RemoveHook(vtable[109]);}
         if(texture){MH_DisableHook(vtable[65]);MH_RemoveHook(vtable[65]);}
+        if(get_texture){MH_DisableHook(vtable[66]);MH_RemoveHook(vtable[66]);}
         if(texture_stage){MH_DisableHook(vtable[67]);MH_RemoveHook(vtable[67]);}
         if(sampler){MH_DisableHook(vtable[69]);MH_RemoveHook(vtable[69]);}
         if(render_state){MH_DisableHook(vtable[57]);MH_RemoveHook(vtable[57]);}
@@ -3075,14 +3106,14 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_set_transform=nullptr;g_multiply_transform=nullptr;
         g_set_vs_constant_f=nullptr;
         g_set_viewport=nullptr;g_set_scissor=nullptr;
-        g_set_stream_source=nullptr;
-        g_set_indices=nullptr;
+        g_set_stream_source=nullptr;g_get_stream_source=nullptr;
+        g_set_indices=nullptr;g_get_indices=nullptr;
         g_set_vertex_declaration=nullptr;
         g_set_f_v_f=nullptr;
         g_set_vertex_shader=nullptr;
         g_set_pixel_shader=nullptr;
         g_set_ps_constant_f=nullptr;
-        g_set_texture=nullptr;g_set_texture_stage=nullptr;
+        g_set_texture=nullptr;g_get_texture=nullptr;g_set_texture_stage=nullptr;
         g_set_sampler_state=nullptr;g_set_render_state=nullptr;
         g_vs_i=nullptr;
         g_vs_b=nullptr;
@@ -3120,6 +3151,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         m2vr::LogEvent("model2_d3d9_region_hook_rollback",viewport,scissor,0u,0u);
         m2vr::LogEvent("model2_d3d9_pipeline_hook_rollback",
             stream_source,indices,vertex_declaration,f_v_f);
+        m2vr::LogEvent("model2_d3d9_resource_getter_hook_rollback",
+            get_stream,get_indices,get_texture,0u);
         m2vr::LogEvent("model2_d3d9_shader_hook_rollback",
             vertex_shader,pixel_shader,ps_constants,0u);
         m2vr::LogEvent("model2_d3d9_material_hook_rollback",
