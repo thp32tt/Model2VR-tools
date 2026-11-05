@@ -1029,15 +1029,18 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
 // method 1=SetDialogBoxMode, 2=SetGammaRamp, 3=active original GDI-dialog
 // fallback at physical Present, 4=uncalibrated gamma at physical Present,
 // 5=non-EXE primary-device presentation mutation with unknown source owner.
+// 6/7/8=EXE-owned cursor bitmap/position/visibility changes.
+// 9=visible or unknown genuine D3D9 cursor at physical Present.
 // Caller/ordinal are nonzero only for actual original EXE-owned Set* calls.
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PresentationMutation(
     unsigned long long physical_present,unsigned int original_caller_rva,
     unsigned long long preceding_draw_ordinal,unsigned int method){
     using namespace m2vr::vrbridge;
-    if(!physical_present || method<1u || method>5u ||
+    if(!physical_present || method<1u || method>9u ||
        preceding_draw_ordinal>10000000u ||
-       (method<=2u && !original_caller_rva) ||
-       (method>=3u && (original_caller_rva || preceding_draw_ordinal)) ||
+       ((method<=2u || (method>=6u && method<=8u)) && !original_caller_rva) ||
+       (((method>=3u && method<=5u) || method==9u) &&
+        (original_caller_rva || preceding_draw_ordinal)) ||
        Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
     bool first=false;
     {
