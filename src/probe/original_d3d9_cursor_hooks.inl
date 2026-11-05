@@ -31,18 +31,26 @@ void STDMETHODCALLTYPE OriginalSetCursorPositionHook(
         return;
     }
     const auto rva=CallerRva(_ReturnAddress());
-    if(rva)BeforeOriginalPresentationControl(rva,7u);
-    else {
+    // A proven hidden cursor position has no visible output and must not
+    // needlessly poison every racing eye pair during mouse movement.
+    // First-ever or untrusted visibility still fails closed.
+    const bool visibility_known=g_original_cursor_visibility_known.load(
+        std::memory_order_acquire);
+    const bool may_draw=!visibility_known ||
+        g_original_cursor_visible.load(std::memory_order_acquire) ||
+        g_original_cursor_unknown.load(std::memory_order_acquire);
+    if(rva && may_draw)BeforeOriginalPresentationControl(rva,7u);
+    else if(!rva) {
         g_original_external_presentation_unproven.store(true,std::memory_order_release);
         BeforeOriginalPresentationControl(0u,5u);
     }
     // Immediate cursor updates can change a hardware/GDI cursor mid-frame.
     g_original_set_cursor_position(device,x,y,flags);
     if(rva){
-        if(!g_original_cursor_visibility_known.load(std::memory_order_acquire))
+        if(!visibility_known)
             g_original_cursor_unknown.store(true,std::memory_order_release);
         g_original_cursor_controls[1].fetch_add(1u,std::memory_order_relaxed);
-        RecordOriginalLineageWrite(
+        if(may_draw)RecordOriginalLineageWrite(
             m2vr::drawprobe::OriginalLineageKind::DeviceCursorPosition,rva,S_OK);
     }
 }
