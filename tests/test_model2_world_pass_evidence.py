@@ -24,6 +24,10 @@ def witness(cpu="0x004bb400", count=3):
         "distinct_physically_presented_material_present_frame_count": count,
         "distinct_phase_attested_physically_presented_material_present_frame_count": count,
         "distinct_scene_attested_physically_presented_material_present_frame_count": count,
+        "distinct_post_com_retained_present_frame_count": count,
+        "original_draw_completion_missing_witnesses": 0,
+        "original_draw_completion_untrusted_witnesses": 0,
+        "original_draw_completion_inconsistent_witnesses": 0,
         "original_scene_phase_missing_witnesses": 0,
         "original_scene_phase_inactive_witnesses": 0,
         "original_scene_phase_inconsistent_witnesses": 0,
@@ -146,6 +150,27 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             "distinct_scene_attested_physically_presented_material_present_frame_count"]=4
         with self.assertRaisesRegex(ValueError,"per-caller Scene/Draw"):
             compare_sessions([race,report(witness())],controls())
+
+    def test_race_cpu_gpu_same_original_draw_requires_post_com_completion(self):
+        # A pre-COM projected match cannot borrow another physical Draw's
+        # successful scene or RT state after its actual COM return.
+        race_a=report(witness())
+        race_b=report(witness())
+        valid=compare_sessions([race_a,race_b],controls())
+        self.assertTrue(valid["candidates"])
+        for field,bad in (
+            ("distinct_post_com_retained_present_frame_count",0),
+            ("original_draw_completion_missing_witnesses",1),
+            ("original_draw_completion_untrusted_witnesses",1),
+            ("original_draw_completion_inconsistent_witnesses",1),
+        ):
+            with self.subTest(field=field):
+                race=report(witness())
+                race["sources"][0][field]=bad
+                result=compare_sessions([race,report(witness())],controls())
+                self.assertEqual(result["candidates"],[])
+                self.assertEqual(result["rejected"][0]["reason"],
+                    "missing_same_draw_matrix_material_or_render_evidence")
 
     def test_original_rt0_depth_all_family_source_required_for_seven_sessions(self):
         # New original producer always emits physical RT0/depth evidence,

@@ -281,6 +281,7 @@ def _enough_original_source(source):
         "distinct_physically_presented_material_present_frame_count",
         "distinct_phase_attested_physically_presented_material_present_frame_count",
         "distinct_scene_attested_physically_presented_material_present_frame_count",
+        "distinct_post_com_retained_present_frame_count",
         "distinct_same_witness_joint_present_frame_count",
         "distinct_context_present_frame_count",
     ):
@@ -291,6 +292,9 @@ def _enough_original_source(source):
         "original_draw_failure_witnesses",
         "original_draw_result_missing_witnesses",
         "original_draw_result_inconsistent_witnesses",
+        "original_draw_completion_missing_witnesses",
+        "original_draw_completion_untrusted_witnesses",
+        "original_draw_completion_inconsistent_witnesses",
         "original_draw_phase_missing_witnesses",
         "original_draw_phase_inconsistent_witnesses",
         "original_scene_phase_missing_witnesses",
