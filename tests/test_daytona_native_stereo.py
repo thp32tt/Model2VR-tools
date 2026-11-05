@@ -1414,6 +1414,10 @@ class NativeStereoTest(unittest.TestCase):
                             body.index("const HRESULT hr="+original+";"))
             self.assertIn(f"RecordOriginalGpuSurfaceWrite(caller_rva,hr,{family}u);",body)
             self.assertIn("if(caller_rva && FAILED(hr))",body)
+            if family>1:
+                self.assertIn("ObserveOriginalGpuSurfaceDestination(dst,caller_rva)",body)
+        self.assertIn("ObserveOriginalTextureSurface(destination,caller_rva)",native)
+        self.assertIn("OriginalTextureCoverageUnknown(caller_rva)",native)
 
     def test_native_surface_writes_preserve_original_and_eye_gate(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")

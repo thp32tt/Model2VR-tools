@@ -617,6 +617,18 @@ void RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind kind,
           !counter.compare_exchange_weak(old,old+1u,
               std::memory_order_acq_rel,std::memory_order_relaxed)){}
 }
+// The actual original destination may be passed directly to a GPU
+// transfer before Create*/Get*/SetRenderTarget ever reveals its Surface.
+// Install existing CPU/GDI hooks before the next map (no pixel inspection).
+bool ObserveOriginalTextureSurface(IDirect3DSurface9* surf,
+                                   std::uint32_t caller_rva);
+void OriginalTextureCoverageUnknown(std::uint32_t caller_rva) noexcept;
+void ObserveOriginalGpuSurfaceDestination(IDirect3DSurface9* destination,
+                                          std::uint32_t caller_rva) noexcept {
+    if(!caller_rva)return;
+    if(!destination || !ObserveOriginalTextureSurface(destination,caller_rva))
+        OriginalTextureCoverageUnknown(caller_rva);
+}
 // A GPU write may race an already staged speculative CPU or native GPU
 // OpenXR eye pair, even when no CPU LockRect/texture binding occurs. Revoke
 // before executing the real original API, not only after observing success.
@@ -1943,6 +1955,8 @@ HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
     BeforeOriginalGpuSurfaceWrite(caller_rva,2u);
     const HRESULT hr=g_update_surface(d,src,src_rect,dst,dst_point);
     RecordOriginalGpuSurfaceWrite(caller_rva,hr,2u);
+    if(caller_rva && SUCCEEDED(hr))
+        ObserveOriginalGpuSurfaceDestination(dst,caller_rva);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,1u,caller_rva);
     else if(SUCCEEDED(hr)){
@@ -2017,6 +2031,8 @@ HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
     BeforeOriginalGpuSurfaceWrite(caller_rva,3u);
     const HRESULT hr=g_stretch_rect(d,src,src_rect,dst,dst_rect,filter);
     RecordOriginalGpuSurfaceWrite(caller_rva,hr,3u);
+    if(caller_rva && SUCCEEDED(hr))
+        ObserveOriginalGpuSurfaceDestination(dst,caller_rva);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,2u,caller_rva);
     else if(SUCCEEDED(hr)){
@@ -2035,6 +2051,8 @@ HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
     BeforeOriginalGpuSurfaceWrite(caller_rva,4u);
     const HRESULT hr=g_color_fill(d,dst,rect,color);
     RecordOriginalGpuSurfaceWrite(caller_rva,hr,4u);
+    if(caller_rva && SUCCEEDED(hr))
+        ObserveOriginalGpuSurfaceDestination(dst,caller_rva);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,3u,caller_rva);
     else if(SUCCEEDED(hr)){
