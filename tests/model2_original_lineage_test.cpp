@@ -262,10 +262,13 @@ int main(){
     assert((drift.flags&OriginalPhysicalTargetDrawCoverage::kTargetDrift)!=0u &&
            drift.unknown==1u && drift.RejectUnprovenStereoSource());
     targets.ReopenAfterPhysicalPresentReturn();
+    assert(!targets.CanAttemptVerifiedWorldDraw()); // auxiliary is not an eye
     auto aux_draw=targets.EnterDraw();
     targets.CompleteDraw(aux_draw,true,true);
     auto auxiliary=targets.FinishPresent();
-    assert(auxiliary.auxiliary==1u && auxiliary.flags==0u);
+    assert(auxiliary.auxiliary==1u &&
+           (auxiliary.flags&OriginalPhysicalTargetDrawCoverage::kAuxiliarySource)!=0u &&
+           auxiliary.RejectUnprovenStereoSource());
     targets.ReopenAfterPhysicalPresentReturn();
     targets.DepthBind(true,true,bad_depth);
     auto depth_draw=targets.EnterDraw();
@@ -339,6 +342,29 @@ int main(){
     // Genuine original x86 SetRT/SetDepth are IN-FLIGHT source mutations.
     // No eye raster may run during the real COM call, even when the old
     // RT0/depth looked compatible before it entered.
+    // Offscreen then backbuffer within one physical Present must reject
+    // BOTH speculative OpenXR eyes; real original mono Draws still execute.
+    OriginalPhysicalTargetDrawCoverage mixed_rt{};
+    mixed_rt.RenderTargetBind(true,true,0u,true,main_depth);
+    mixed_rt.DepthBind(true,true,main_depth);
+    mixed_rt.ResolveSecondaryIfUnchanged(mixed_rt.Revision(),{0u,true});
+    assert(mixed_rt.CanAttemptVerifiedWorldDraw());
+    auto main_first=mixed_rt.EnterDraw();
+    mixed_rt.CompleteDraw(main_first,true,true);
+    mixed_rt.RenderTargetBind(true,true,0u,true,offscreen_depth);
+    assert(!mixed_rt.CanAttemptVerifiedWorldDraw());
+    auto aux_middle=mixed_rt.EnterDraw();
+    mixed_rt.CompleteDraw(aux_middle,true,true);
+    mixed_rt.RenderTargetBind(true,true,0u,true,main_depth);
+    assert(!mixed_rt.CanAttemptVerifiedWorldDraw()); // Present is tainted
+    auto main_last=mixed_rt.EnterDraw();
+    mixed_rt.CompleteDraw(main_last,true,true);
+    const auto mixed_result=mixed_rt.FinishPresent();
+    assert(mixed_result.backbuffer==2u && mixed_result.auxiliary==1u);
+    assert((mixed_result.flags&OriginalPhysicalTargetDrawCoverage::kAuxiliarySource)!=0u);
+    assert(mixed_result.RejectUnprovenStereoSource());
+    mixed_rt.ReopenAfterPhysicalPresentReturn();
+    assert(mixed_rt.CanAttemptVerifiedWorldDraw()); // fresh Present
     OriginalPhysicalTargetDrawCoverage binds{};
     auto clean_rt=binds.EnterBind();
     binds.CompleteRenderTargetBind(clean_rt,true,true,0u,true,main_depth);

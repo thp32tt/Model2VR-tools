@@ -930,9 +930,10 @@ def audit_csv(path):
                     (last_capture_frame and last_capture_frame!=frame) or
                     any(n>10000000 for n in
                         (backbuffer,auxiliary,unknown,failed,bad_depth)) or
-                    flags>4095 or total>10000000 or
+                    flags>8191 or total>10000000 or
                     bad_depth>backbuffer+auxiliary+unknown or
                     bool(flags&8)!=bool(bad_depth) or
+                    (auxiliary>0 and not (flags&4096)) or
                     (total!=last_scene_draw_total and not flags&256)):
                     raise ValueError("invalid original physical target Draw coverage")
                 for key,value in (
@@ -940,7 +941,7 @@ def audit_csv(path):
                     ("unknown",unknown),("failed",failed),
                     ("incompatible_depth",bad_depth)):
                     target_coverage_totals[key]+=value
-                if flags!=0 or unknown or failed or bad_depth:
+                if flags!=0 or unknown or failed or bad_depth or auxiliary:
                     target_flagged_frames+=1
                 elif backbuffer:
                     target_valid_backbuffer_frames+=1
@@ -1906,6 +1907,7 @@ def audit_csv(path):
              "trusted_backbuffer_present_count":target_valid_backbuffer_frames,
              "all_original_draw_targets_trusted":bool(
                  target_flagged_frames==0 and
+                 target_coverage_totals["auxiliary"]==0 and
                  target_coverage_totals["unknown"]==0 and
                  target_coverage_totals["failed"]==0 and
                  target_coverage_totals["incompatible_depth"]==0)}

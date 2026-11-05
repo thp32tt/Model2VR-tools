@@ -199,6 +199,7 @@ def _validate_report(report):
            target["original_unknown_target_draw_count"] or
         (target["all_original_draw_targets_trusted"] and (
             target["flagged_present_count"] or
+            target["original_auxiliary_draw_count"] or
             target["original_unknown_target_draw_count"] or
             target["original_failed_draw_count"] or
             target["original_incompatible_depth_draw_count"]))):

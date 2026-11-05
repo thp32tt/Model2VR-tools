@@ -44,7 +44,7 @@ struct OriginalPhysicalTargetSummary {
     }
     bool RejectUnprovenStereoSource() const noexcept {
         return flags!=0u || unknown!=0u || failed!=0u ||
-            incompatible_depth!=0u;
+            incompatible_depth!=0u || auxiliary!=0u;
     }
 };
 class OriginalPhysicalTargetDrawCoverage final {
@@ -62,6 +62,8 @@ public:
     static constexpr std::uint32_t kOpaqueStateBlock=512u;
     static constexpr std::uint32_t kMrtActive=1024u;
     static constexpr std::uint32_t kMrtUnresolved=2048u;
+    // An offscreen RT0 needs independently verified compositing before eye use.
+    static constexpr std::uint32_t kAuxiliarySource=4096u;
     struct Token {
         std::uint64_t epoch=0u, revision=0u;
         OriginalTargetSnapshot state{};
@@ -149,11 +151,13 @@ public:
         return !sealed_ && active_binds_==0u && resolved_ && owned_target_ && owned_depth_ &&
             secondary_resolved_ && secondary_known_ &&
             secondary_mask_==0u && flags_==0u &&
-            state_.target!=OriginalPhysicalRtClass::Unknown &&
+            state_.target==OriginalPhysicalRtClass::Backbuffer &&
             state_.depth==OriginalPhysicalDepthClass::Compatible;
     }
     Token EnterDraw() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
+        if(state_.target==OriginalPhysicalRtClass::Auxiliary)
+            flags_|=kAuxiliarySource;
         if(secondary_mask_)flags_|=kMrtActive;
         if(!secondary_resolved_ || !secondary_known_)
             flags_|=kMrtUnresolved;

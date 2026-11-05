@@ -79,7 +79,7 @@ class SourceAuditTests(unittest.TestCase):
                 and row[1]==frames-1)
             for flags,depth in ((4,0),(32,0),(64,0),(8,1),
                                 (512,0),(1024,0),(1536,0),
-                                (2048,0),(3072,0)):
+                                (2048,0),(3072,0),(4096,0)):
                 bad=list(events)
                 bad[target_index]=(
                     "model2_d3d9_original_draw_target_coverage",
@@ -89,13 +89,30 @@ class SourceAuditTests(unittest.TestCase):
                     "original_physical_draw_target_coverage"]
                 self.assertFalse(state["all_original_draw_targets_trusted"])
                 self.assertEqual(state["flagged_present_count"],1)
+            # Authentic auxiliary RT0 Draws are never direct-eye evidence.
+            offscreen=list(events)
+            offscreen[target_index]=(
+                "model2_d3d9_original_draw_target_coverage",
+                frames-1,pack(0,1),pack(0,0),pack(0,4096))
+            self.write_log(path,offscreen)
+            source=REPORT.audit_csv(path)["original_physical_draw_target_coverage"]
+            self.assertEqual(source["original_auxiliary_draw_count"],1)
+            self.assertEqual(source["flagged_present_count"],1)
+            self.assertFalse(source["all_original_draw_targets_trusted"])
+            offscreen[target_index]=(
+                "model2_d3d9_original_draw_target_coverage",
+                frames-1,pack(0,1),pack(0,0),pack(0,0))
+            self.write_log(path,offscreen)
+            with self.assertRaisesRegex(
+                    ValueError,"invalid original physical target Draw coverage"):
+                REPORT.audit_csv(path)
             # A failed/omitted physical Draw cannot be borrowed from the
             # adjacent valid frame by silently editing just its target row.
             for bad_event in (
                 ("model2_d3d9_original_draw_target_coverage",
                  frames-1,pack(0,0),pack(0,0),pack(0,0)),
                 ("model2_d3d9_original_draw_target_coverage",
-                 frames-1,pack(1,0),pack(0,0),pack(0,4096)),
+                 frames-1,pack(1,0),pack(0,0),pack(0,8192)),
                 ("model2_d3d9_original_draw_target_coverage",
                  frames-1,pack(1,0),pack(0,0),pack(1,0)),
             ):

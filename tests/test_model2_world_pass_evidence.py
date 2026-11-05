@@ -169,6 +169,18 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                     ValueError,"physical RT0/depth Draw coverage"):
                     compare_sessions([race,report(witness())],controls())
         race_a=report(witness())
+        # A positive-looking report cannot launder auxiliary RT0 draws.
+        aux_race=report(witness())
+        aux_target=aux_race["original_physical_draw_target_coverage"]
+        aux_target["original_backbuffer_draw_count"]-=1
+        aux_target["original_auxiliary_draw_count"]=1
+        with self.assertRaisesRegex(
+                ValueError,"physical RT0/depth Draw coverage"):
+            compare_sessions([aux_race,report(witness())],controls())
+        aux_target["all_original_draw_targets_trusted"]=False
+        aux_target["flagged_present_count"]=1
+        aux_candidates=compare_sessions([aux_race,report(witness())],controls())
+        self.assertEqual(aux_candidates["candidates"],[])
         race_b=report(witness())
         race_b["original_physical_draw_target_coverage"][
             "all_original_draw_targets_trusted"]=False
