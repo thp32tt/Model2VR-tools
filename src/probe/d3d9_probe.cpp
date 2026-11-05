@@ -91,6 +91,7 @@ using SurfaceLockRectFn=HRESULT (STDMETHODCALLTYPE*)(
 using SurfaceUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*);
 using SurfaceGetDCFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,HDC*);
 using SurfaceReleaseDCFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,HDC);
+using MipLodFn=DWORD (STDMETHODCALLTYPE*)(IDirect3DBaseTexture9*,DWORD);
 using MipFilterFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DBaseTexture9*,D3DTEXTUREFILTERTYPE);
 using MipGenerateFn=void (STDMETHODCALLTYPE*)(IDirect3DBaseTexture9*);
 using TextureDirtyFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DTexture9*,const RECT*);
@@ -199,6 +200,8 @@ void* g_surface_get_dc_target=nullptr;
 void* g_surface_release_dc_target=nullptr;
 std::mutex g_texture_surface_hook_mutex;
 std::atomic<std::uint32_t> g_original_texture_surface_writes{0u};
+std::array<MipLodFn,3> g_mip_lod{};
+std::array<void*,3> g_mip_lod_target{};
 std::array<MipFilterFn,3> g_mip_filter{};
 std::array<MipGenerateFn,3> g_mip_generate{};
 std::array<void*,3> g_mip_filter_target{};
@@ -1582,6 +1585,8 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
             original_frame,(std::uint64_t{w[41]}<<32)|w[42],w[43]);
         m2vr::LogEvent("model2_d3d9_source_texture_mip_lineage",witness,
             original_frame,(std::uint64_t{w[44]}<<32)|w[45],w[46]);
+        m2vr::LogEvent("model2_d3d9_source_texture_lod_lineage",witness,
+            original_frame,w[47],0u);
         m2vr::LogEvent("model2_d3d9_source_palette_lineage",witness,
             original_frame,(std::uint64_t{w[30]}<<32)|w[31],0u);
         m2vr::LogEvent("model2_d3d9_source_raster_mode_lineage",witness,

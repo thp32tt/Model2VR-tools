@@ -50,6 +50,7 @@ NAMES = {
     "model2_d3d9_source_buffer_content_lineage",
     "model2_d3d9_source_texture_shape_lineage",
     "model2_d3d9_source_texture_mip_lineage",
+    "model2_d3d9_source_texture_lod_lineage",
 }
 
 def number(raw):
@@ -813,6 +814,13 @@ def audit_csv(path):
                     "texture_mip_lineage" in fields):
                     raise ValueError("invalid original mip/dirty texture Draw lineage")
                 fields["texture_mip_lineage"] = values
+            elif event == "model2_d3d9_source_texture_lod_lineage":
+                frame, lod_revision, reserved = values
+                if (not 0 < frame <= 0xffffffff or
+                    lod_revision > 1_000_000 or reserved != 0 or
+                    "texture_lod_lineage" in fields):
+                    raise ValueError("invalid original managed texture LOD Draw lineage")
+                fields["texture_lod_lineage"] = values
             elif event == "model2_d3d9_source_raster_mode_lineage":
                 frame, packed, npatch = values
                 revisions = halves(packed) + [npatch]
@@ -918,6 +926,7 @@ def audit_csv(path):
         "original_texture_upload_lineage_witnesses": 0,
         "original_texture_shape_lineage_witnesses": 0,
         "original_texture_mip_lineage_witnesses": 0,
+        "original_texture_lod_lineage_witnesses": 0,
         "original_palette_lineage_witnesses": 0,
         "original_raster_mode_lineage_witnesses": 0,
         "original_material_stage_states": set(),
@@ -1000,7 +1009,7 @@ def audit_csv(path):
                                    "source_scene_phase",
                                     "fixed_function_lineage",
                                     "texture_upload_lineage", "texture_shape_lineage",
-                                     "texture_mip_lineage",
+                                     "texture_mip_lineage", "texture_lod_lineage",
                                     "palette_lineage", "raster_mode_lineage"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
@@ -1045,6 +1054,11 @@ def audit_csv(path):
             if texture_mip[0] != present_frame:
                 raise ValueError("mip/dirty texture original Draw frame mismatch")
             entry["original_texture_mip_lineage_witnesses"] += 1
+        texture_lod = data.get("texture_lod_lineage")
+        if texture_lod is not None:
+            if texture_lod[0] != present_frame:
+                raise ValueError("managed texture LOD original Draw frame mismatch")
+            entry["original_texture_lod_lineage_witnesses"] += 1
         palette = data.get("palette_lineage")
         if palette is not None:
             if palette[0] != present_frame:

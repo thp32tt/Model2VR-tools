@@ -24,9 +24,9 @@ enum class OriginalLineageKind : std::uint32_t {
     TextureLockContent=40, CubeTextureContent=41,
     VolumeTextureContent=42, SurfaceTexelContent=43,
     TextureMipGeneration=44, TextureDirtyRegion=45,
-    TextureAutoGenFilter=46
+    TextureAutoGenFilter=46, TextureManagedLOD=47
 };
-inline constexpr std::size_t kOriginalLineageKinds=47;
+inline constexpr std::size_t kOriginalLineageKinds=48;
 inline constexpr std::uint32_t kMaxLineageWritesPerPresent=1000000u;
 struct OriginalLineageStamp {
     std::uint64_t physical_present=0;

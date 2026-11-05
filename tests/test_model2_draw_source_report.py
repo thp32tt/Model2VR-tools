@@ -398,6 +398,32 @@ class SourceAuditTests(unittest.TestCase):
                 self.assertEqual(REPORT.audit_csv(p)["sources"][0]
                                  ["original_surface_failure_witnesses"],1)
 
+    def test_original_texture_lod_revision_is_physical_and_bounded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"lod.csv"
+            rows=[
+                ("model2_d3d9_vb_present_frame",801,27,1,0),
+                ("model2_d3d9_vb_source",801,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",801,27,9,pack(0x1234,1)),
+                ("model2_d3d9_source_scene_phase",801,27,1,1),
+                ("model2_d3d9_source_texture_lod_lineage",801,27,5,0),
+                ("model2_d3d9_vb_original_result",801,0,0x1234,pack(27,1)),
+                ("model2_d3d9_original_present_result",27,0,1,0),
+            ]
+            self.write_log(p,rows)
+            good=REPORT.audit_csv(p)
+            self.assertEqual(good["sources"][0]["original_texture_lod_lineage_witnesses"],1)
+            self.assertEqual(good["world_pass_proof"],"NOT_ESTABLISHED")
+            for bad in ((28,5,0),(27,1_000_001,0),(27,5,1)):
+                changed=list(rows)
+                changed[4]=("model2_d3d9_source_texture_lod_lineage",801,*bad)
+                self.write_log(p,changed)
+                with self.assertRaisesRegex(ValueError,"managed texture LOD"):
+                    REPORT.audit_csv(p)
+            self.write_log(p,rows[:5]+[rows[4]]+rows[5:])
+            with self.assertRaisesRegex(ValueError,"managed texture LOD"):
+                REPORT.audit_csv(p)
+
     def test_real_original_surface_failure_rejects_same_present_material(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"original_surface_hresult.csv"
