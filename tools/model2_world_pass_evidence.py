@@ -163,6 +163,49 @@ def _validate_report(report):
             scene["physical_present_count"] or
         scene["all_original_scene_draws_trusted"] is not True):
         raise ValueError("incomplete physical original Scene/Draw ownership")
+    # Every original x86 physical Present must have genuine RT0/depth
+    # source Draw coverage in a NEW capture. A result from the earlier probe
+    # without this continuous witness cannot assert native world ownership.
+    target=report.get("original_physical_draw_target_coverage")
+    target_keys={"physical_present_count","first_present_frame",
+                 "last_present_frame","original_backbuffer_draw_count",
+                 "original_auxiliary_draw_count","original_unknown_target_draw_count",
+                 "original_failed_draw_count","original_incompatible_depth_draw_count",
+                 "flagged_present_count","trusted_backbuffer_present_count",
+                 "all_original_draw_targets_trusted"}
+    target_numbers=target_keys-{"all_original_draw_targets_trusted"}
+    if (not isinstance(target,dict) or set(target)!=target_keys or
+        any(type(target.get(key)) is not int or
+            not 0<=target[key]<=MAX_SOURCES*10000000
+            for key in target_numbers) or
+        type(target.get("all_original_draw_targets_trusted")) is not bool or
+        target["first_present_frame"]!=1 or
+        target["physical_present_count"]!=run["physical_present_count"] or
+        target["last_present_frame"]!=run["physical_present_count"] or
+        target["trusted_backbuffer_present_count"]>
+            target["physical_present_count"] or
+        target["flagged_present_count"]>target["physical_present_count"] or
+        (target["original_backbuffer_draw_count"]+
+         target["original_auxiliary_draw_count"]+
+         target["original_unknown_target_draw_count"]+
+         target["original_failed_draw_count"] !=
+         scene["original_successful_in_scene_draw_count"]+
+         scene["original_successful_untrusted_scene_draw_count"]+
+         scene["original_failed_draw_count"] and
+         target["flagged_present_count"]==0) or
+        target["original_incompatible_depth_draw_count"]>
+           target["original_backbuffer_draw_count"]+
+           target["original_auxiliary_draw_count"]+
+           target["original_unknown_target_draw_count"] or
+        (target["all_original_draw_targets_trusted"] and (
+            target["flagged_present_count"] or
+            target["original_unknown_target_draw_count"] or
+            target["original_failed_draw_count"] or
+            target["original_incompatible_depth_draw_count"]))):
+        raise ValueError("incomplete original physical RT0/depth Draw coverage")
+    # Controls are allowed to be authentic 2D/no-depth captures: their
+    # negative evidence is useful precisely because they are NOT World3D.
+    # Race candidates, however, require a fully source-owned RT/depth path.
     # An empty title/menu/sky/HUD/aux report from a crashed or unhooked
     # emulator must never count as a negative scene witness. The native
     # original post-COM Present event is independent of VB/IB sampling and
@@ -358,6 +401,9 @@ def compare_sessions(race_reports, nonrace_reports):
             reason="caller_exactly_used_outside_race"
         elif any(key not in session for session in race):
             reason="missing_in_race_capture"
+        elif any(not r["original_physical_draw_target_coverage"][
+                "all_original_draw_targets_trusted"] for r in race_reports):
+            reason="race_original_rt0_depth_draw_provenance_untrusted"
         elif any(not _enough_original_source(session[key]) for session in race):
             reason="missing_same_draw_matrix_material_or_render_evidence"
         else:
