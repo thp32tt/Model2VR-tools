@@ -54,6 +54,9 @@ class OriginalQuerySourceTest(unittest.TestCase):
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",self.cpu)
         self.assertIn("model2_d3d9_original_query_source_rejected",self.cpu)
         self.assertIn("g_original_query_rejected_present.compare_exchange_weak(",self.hooks)
+        before=self.body(self.hooks,"OriginalQuerySourceBoundary")
+        self.assertLess(before.index("Model2VR_RejectOriginalD3D9QueryUse("),
+                        before.index("compare_exchange_weak("))
         self.assertIn("OriginalQuerySourceBoundary(0u,3u)",self.probe)
         self.assertIn("g_original_query_source_unproven.store(true",self.hooks)
         self.assertIn("QueryIssue=54",self.lineage)

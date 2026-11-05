@@ -17,17 +17,18 @@ OriginalQueryOwner OriginalQueryDeviceOwner(IDirect3DQuery9* query) noexcept {
 void OriginalQuerySourceBoundary(std::uint32_t rva,std::uint32_t reason) noexcept {
     const auto frame=static_cast<std::uint64_t>(
         g_present_count.load(std::memory_order_acquire))+1u;
+    if(g_original_query_rejected_present.load(std::memory_order_acquire)>=frame)
+        return;
+    // IMPORTANT: revoke the CPU/GPU eye epoch before publishing the
+    // de-duplication marker. A second thread must not interpret an in-flight
+    // (not yet rejected) frame as safe while Issue/GetData crosses COM.
+    Model2VR_RejectOriginalD3D9QueryUse(
+        frame,reason==3u?0u:rva,
+        reason==3u?0u:g_original_frame_draw_ordinal.load(
+            std::memory_order_acquire),reason);
     auto old=g_original_query_rejected_present.load(std::memory_order_acquire);
-    while(old<frame){
-        if(g_original_query_rejected_present.compare_exchange_weak(
-                old,frame,std::memory_order_acq_rel,std::memory_order_acquire)){
-            Model2VR_RejectOriginalD3D9QueryUse(
-                frame,reason==3u?0u:rva,
-                reason==3u?0u:g_original_frame_draw_ordinal.load(
-                    std::memory_order_acquire),reason);
-            return;
-        }
-    }
+    while(old<frame && !g_original_query_rejected_present.compare_exchange_weak(
+        old,frame,std::memory_order_acq_rel,std::memory_order_acquire)){};
 }
 void OriginalQueryCoverageUnknown() noexcept {
     g_original_query_source_unproven.store(true,std::memory_order_release);
