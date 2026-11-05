@@ -1,5 +1,38 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Race-world original Draw source: five-class negative-control gate (2026-11-06)
+
+The read-only candidate comparator now requires **two separate original Daytona
+race captures** plus **five labelled nonrace controls**: title, menu, sky, HUD,
+and auxiliary. A shared physical EXE Draw caller (even across different
+D3D9 Draw families), or a shared CPU projector caller under a different GPU
+caller, makes a race candidate unsafe and it is rejected. Control class labels
+are supplied by the local tester and must be checked against the real game
+state. Same file path, duplicate class or byte-identical capture is rejected.
+
+Run locally with original probe CSVs or independently generated read-only
+`model2_draw_source_report` JSON files. **Do not commit originals or private
+capture reports into the public repository.**
+
+```bash
+python tools/model2_world_pass_evidence.py \
+  --race private/daytona/race_a.csv \
+  --race private/daytona/race_b.csv \
+  --control title private/daytona/title.csv \
+  --control menu private/daytona/menu.csv \
+  --control sky private/daytona/sky.csv \
+  --control hud private/daytona/hud.csv \
+  --control aux private/daytona/aux.csv \
+  --output private/daytona/original_world_candidates.json
+```
+
+All **seven** captures must be independently witnessed. A successful
+comparison is only a negative-evidence **candidate**, never World3D authority.
+Original in-game CPU geometry-command ↔ active A/B camera matrix ↔ physical
+Draw/scene/RT/Present identity, axes/meters calibration and Quest3 VDXR tracked
+left/right hardware proof remain mandatory. No automatic x86→x64 stereo
+promotion or modification to original game/FFB/input.
+
 ## Original Win32 shader integer/Boolean constants and stream instancing (2026-11-05)
 
 Five additional genuine primary EXE-owned D3D9 calls:
