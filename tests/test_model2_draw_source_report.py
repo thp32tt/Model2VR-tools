@@ -1771,5 +1771,44 @@ class SourceAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "malformed"):
                 REPORT.audit_csv(p)
 
+    def test_actual_post_com_draw_completion_source_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"post_com_draw_source.csv"
+            base=[
+                ("model2_d3d9_vb_source",501,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_vb_present_frame",501,17,1,0),
+                ("model2_d3d9_source_draw_phase",501,17,12,pack(0x1234,1)),
+                ("model2_d3d9_source_scene_phase",501,17,4,1),
+                ("model2_d3d9_vb_original_result",501,0,0x1234,pack(17,1)),
+                ("model2_d3d9_original_present_result",17,0,1,0),
+            ]
+            self.write_log(path,base+[(
+                "model2_d3d9_source_draw_completion",501,17,12,15)])
+            complete=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(complete["original_draw_completion_attested_witnesses"],1)
+            self.assertEqual(complete["distinct_post_com_retained_present_frame_count"],1)
+            for mask in (0,1,3,7,11,13,14):
+                with self.subTest(mask=mask):
+                    self.write_log(path,base+[(
+                        "model2_d3d9_source_draw_completion",501,17,12,mask)])
+                    partial=REPORT.audit_csv(path)["sources"][0]
+                    self.assertEqual(partial["original_draw_completion_untrusted_witnesses"],1)
+                    self.assertEqual(partial["distinct_post_com_retained_present_frame_count"],0)
+            for frame,ordinal in ((18,12),(17,13)):
+                with self.subTest(frame=frame,ordinal=ordinal):
+                    self.write_log(path,base+[(
+                        "model2_d3d9_source_draw_completion",501,frame,ordinal,15)])
+                    stale=REPORT.audit_csv(path)["sources"][0]
+                    self.assertEqual(stale["original_draw_completion_inconsistent_witnesses"],1)
+            self.write_log(path,base+[(
+                "model2_d3d9_source_draw_completion",501,17,12,16)])
+            with self.assertRaisesRegex(ValueError,"invalid original physical Draw completion"):
+                REPORT.audit_csv(path)
+            self.write_log(path,base+[
+                ("model2_d3d9_source_draw_completion",501,17,12,15),
+                ("model2_d3d9_source_draw_completion",501,17,12,15)])
+            with self.assertRaisesRegex(ValueError,"conflicting original Draw witness"):
+                REPORT.audit_csv(path)
+
 if __name__ == "__main__":
     unittest.main()

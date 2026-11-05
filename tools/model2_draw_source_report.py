@@ -20,6 +20,7 @@ NAMES = {
     "model2_d3d9_vb_original_result",
     "model2_d3d9_source_draw_phase",
     "model2_d3d9_source_scene_phase",
+    "model2_d3d9_source_draw_completion",
     "model2_d3d9_vb_draw_args", "model2_d3d9_ib_source",
     "model2_d3d9_vb_camera", "model2_d3d9_vb_camera_unknown",
     "model2_d3d9_vb_texture",
@@ -1076,6 +1077,13 @@ def audit_csv(path):
                     raise ValueError("invalid original scene phase")
                 store_original_draw_witness_field(
                     fields, "source_scene_phase", values, witness)
+            elif event == "model2_d3d9_source_draw_completion":
+                frame, ordinal, mask = values
+                if (not 0 < frame <= 0xffffffff or
+                        not 0 < ordinal <= 10000000 or mask > 15):
+                    raise ValueError("invalid original physical Draw completion")
+                store_original_draw_witness_field(
+                    fields, "source_draw_completion", values, witness)
             elif event == "model2_d3d9_source_draw_phase":
                 frame, ordinal, packed = values
                 phase_caller, phase_family = halves(packed)
@@ -1293,6 +1301,11 @@ def audit_csv(path):
         "original_draw_failure_witnesses": 0,
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
+        "original_draw_completion_attested_witnesses": 0,
+        "original_draw_completion_untrusted_witnesses": 0,
+        "original_draw_completion_inconsistent_witnesses": 0,
+        "original_draw_completion_missing_witnesses": 0,
+        "original_post_com_retained_present_frames": set(),
         "original_scene_phase_attested_witnesses": 0,
         "original_scene_phase_missing_witnesses": 0,
         "original_scene_phase_inactive_witnesses": 0,
@@ -1339,6 +1352,7 @@ def audit_csv(path):
                                    "source_fill",
                                    "source_phase",
                                    "source_scene_phase",
+                                   "source_draw_completion",
                                     "fixed_function_lineage",
                                     "texture_upload_lineage", "texture_shape_lineage",
                                      "texture_mip_lineage", "texture_lod_lineage",
@@ -1477,6 +1491,28 @@ def audit_csv(path):
             else:
                 original_success = True
                 entry["original_draw_success_witnesses"] += 1
+        # This GPU completion must belong to the sampled CPU witness's
+        # same physical original frame/ordinal/Scene and real HRESULT.
+        # All bits describe post-COM facts; no bit grants World3D.
+        completion=data.get("source_draw_completion")
+        post_com_retained=False
+        if completion is None:
+            entry["original_draw_completion_missing_witnesses"]+=1
+        else:
+            end_frame,end_ordinal,end_mask=completion
+            coherent=bool(
+                phase_attested and end_frame==present_frame and
+                end_ordinal==phase[1] and scene is not None and
+                (not (end_mask&2) or scene_attested) and
+                result is not None and result[0]<=0xffffffff and
+                bool(end_mask&1)==(not bool(result[0]&0x80000000)))
+            if not coherent:
+                entry["original_draw_completion_inconsistent_witnesses"]+=1
+            elif end_mask!=15:
+                entry["original_draw_completion_untrusted_witnesses"]+=1
+            else:
+                post_com_retained=True
+                entry["original_draw_completion_attested_witnesses"]+=1
         # Even an authentic successful COM Draw may never reach the screen
         # if the physical original Present failed (e.g. lost D3D9 device).
         original_present_success = False
@@ -1489,6 +1525,9 @@ def audit_csv(path):
             else:
                 original_present_success = True
                 entry["original_present_success_witnesses"] += 1
+                if post_com_retained:
+                    entry["original_post_com_retained_present_frames"].add(
+                        present_frame)
         if "source_context" in data:
             ctx_frame, ctx_flags, ctx_size = data["source_context"]
             target = ctx_flags & 3
@@ -1795,6 +1834,8 @@ def audit_csv(path):
             value["original_phase_attested_physical_material_present_frames"])
         record["distinct_scene_attested_physically_presented_material_present_frame_count"] = len(
             value["original_scene_attested_physical_material_present_frames"])
+        record["distinct_post_com_retained_present_frame_count"] = len(
+            value["original_post_com_retained_present_frames"])
         scene_ordinals = value["original_scene_ordinals"]
         record["original_scene_ordinal_min"] = (
             min(scene_ordinals) if scene_ordinals else None)
@@ -1818,6 +1859,7 @@ def audit_csv(path):
                         "original_physically_presented_material_present_frames",
                         "original_phase_attested_physical_material_present_frames",
                         "original_scene_attested_physical_material_present_frames",
+                        "original_post_com_retained_present_frames",
                         "original_scene_ordinals",
                         "original_draw_phase_ordinals",
                        "same_witness_joint_present_frames"):
