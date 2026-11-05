@@ -122,7 +122,7 @@ public:
         if(r.TotalDraws()>kLimit)r.flags|=kOverflow;
         return r;
     }
-    void ReopenAfterPhysicalPresentAdvance() noexcept {
+    void ReopenAfterPhysicalPresentReturn() noexcept {
         std::lock_guard<std::mutex> guard(lock_);
         present_cut_=false;
     }
