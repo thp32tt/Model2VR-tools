@@ -904,6 +904,33 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
         physical_frame,family,original_caller_rva,ordinal);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// Unknown original D3D9 StateBlock::Apply restores camera/material state
+// without the individual hooked Set* calls. Regardless of original HRESULT,
+// reject BOTH speculative binocular paths for the physical source Present.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
+    unsigned long long physical_present,unsigned int stage,
+    unsigned int original_caller_rva,unsigned int original_hresult){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || stage<1u || stage>2u ||
+       !original_caller_rva ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_present &&
+           (g.active || g.pending_present)){
+            const auto old_reason=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalStateBlockUnknown;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=old_reason;
+        }
+        g.source_epoch.Revoke(physical_present);
+    }
+    // Public-safe witness: physical frame, stage, original EXE caller RVA,
+    // original HRESULT (zero means observer setup failed). No COM pointers.
+    m2vr::LogEvent("model2_d3d9_original_stateblock_mutation",
+        physical_present,stage,original_caller_rva,original_hresult);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);
     // A physical original device Reset invalidates all stored CPU-world

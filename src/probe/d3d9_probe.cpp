@@ -71,6 +71,14 @@ using SetTextureFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,IDirect3
 using SetTextureStageStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,D3DTEXTURESTAGESTATETYPE,DWORD);
 using SetSamplerStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,D3DSAMPLERSTATETYPE,DWORD);
 using SetRenderStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DRENDERSTATETYPE,DWORD);
+// IDirect3DDevice9 COM 59/60/61 and IDirect3DStateBlock9::Apply slot 5.
+// Block Apply may restore unobserved camera/material values without Set* COM.
+using CreateStateBlockFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,D3DSTATEBLOCKTYPE,IDirect3DStateBlock9**);
+using BeginStateBlockFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);
+using EndStateBlockFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,IDirect3DStateBlock9**);
+using StateBlockApplyFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DStateBlock9*);
 using ClearFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,DWORD,const D3DRECT*,DWORD,D3DCOLOR,float,DWORD);
 using PrimitiveFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,UINT);
@@ -108,6 +116,13 @@ SetTextureFn g_set_texture=nullptr;
 SetTextureStageStateFn g_set_texture_stage=nullptr;
 SetSamplerStateFn g_set_sampler_state=nullptr;
 SetRenderStateFn g_set_render_state=nullptr;
+CreateStateBlockFn g_create_state_block=nullptr;
+BeginStateBlockFn g_begin_state_block=nullptr;
+EndStateBlockFn g_end_state_block=nullptr;
+StateBlockApplyFn g_state_block_apply=nullptr;
+void* g_state_block_apply_target=nullptr;
+std::mutex g_state_block_hook_mutex;
+std::atomic<bool> g_state_block_apply_unobserved{false};
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -173,6 +188,9 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Clear(
 extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits,
     std::uint32_t caller_rva);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
+    unsigned long long physical_present,unsigned int stage,
+    unsigned int original_caller_rva,unsigned int original_hresult);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -1375,6 +1393,10 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
             (std::uint64_t{w[16]}<<32)|w[17]);
         m2vr::LogEvent("model2_d3d9_source_render_lineage",witness,
             original_frame,w[18],0u);
+        // Apply bypasses the ordinary per-state COM setters. Track its
+        // revision separately; unknown state contents never grant World3D.
+        m2vr::LogEvent("model2_d3d9_source_stateblock_lineage",witness,
+            original_frame,w[19],0u);
     }
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
@@ -1386,6 +1408,8 @@ bool ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
     std::uint64_t frame,std::uint64_t ordinal,unsigned family,
     void* caller,unsigned scene,bool original_scene_open,
     const m2vr::drawprobe::OriginalLineageStamp& lineage,Submit&& submit){
+    if(g_state_block_apply_unobserved.load(std::memory_order_acquire))
+        return false; // unknown original Apply implementation: no World3D
     m2vr::vrbridge::ArmedOriginalDraw permission{};
     if(!m2vr::vrbridge::TryTakeAuthenticatedOriginalDraw(
           frame,ordinal,family,CallerRva(caller),scene,
@@ -1918,6 +1942,74 @@ HRESULT STDMETHODCALLTYPE SetScissorRectHook(IDirect3DDevice9* d,
         m2vr::drawprobe::OriginalLineageKind::Scissor,rva,hr);
     return hr;
 }
+// Dynamic original IDirect3DStateBlock9::Apply vtable hook. The device's
+// CreateStateBlock and EndStateBlock paths register the runtime's actual
+// COM implementation without reading original state-block contents.
+HRESULT STDMETHODCALLTYPE StateBlockApplyHook(IDirect3DStateBlock9* block){
+    void* const origin=_ReturnAddress();
+    IDirect3DDevice9* device=nullptr;
+    const HRESULT owner_result=block?block->GetDevice(&device):E_POINTER;
+    const bool primary=SUCCEEDED(owner_result) && device &&
+                       g_primary_device.Owns(device);
+    if(device)device->Release();
+    const HRESULT hr=g_state_block_apply(block); // original COM exactly once
+    const auto rva=CallerRva(origin);
+    if(!rva)return hr; // never attribute internal mirror/other DLL calls
+    const auto frame=g_present_count.load(std::memory_order_acquire)+1u;
+    if(primary){
+        RecordOriginalLineageWrite(
+            m2vr::drawprobe::OriginalLineageKind::StateBlockApply,rva,hr);
+        // Even successful Apply may replace unobserved state. Discard the
+        // whole physical source frame; do NOT tamper with original mono.
+        Model2VR_RejectOriginalD3D9StateBlockMutation(
+            frame,1u,rva,static_cast<std::uint32_t>(hr));
+    }else if(FAILED(owner_result)){
+        g_state_block_apply_unobserved.store(true,std::memory_order_release);
+        Model2VR_RejectOriginalD3D9StateBlockMutation(
+            frame,2u,rva,static_cast<std::uint32_t>(hr));
+    }
+    return hr;
+}
+bool EnsureStateBlockApplyObserved(IDirect3DStateBlock9* block){
+    if(!block)return false;
+    void* const target=(*reinterpret_cast<void***>(block))[5];
+    if(!target)return false;
+    std::lock_guard lock(g_state_block_hook_mutex);
+    if(g_state_block_apply_target)
+        return target==g_state_block_apply_target && g_state_block_apply;
+    if(!Hook(target,reinterpret_cast<void*>(&StateBlockApplyHook),
+             g_state_block_apply))return false;
+    g_state_block_apply_target=target;
+    return true;
+}
+void StateBlockHookCoverageFailed(std::uint32_t rva)noexcept{
+    g_state_block_apply_unobserved.store(true,std::memory_order_release);
+    if(rva)Model2VR_RejectOriginalD3D9StateBlockMutation(
+        g_present_count.load(std::memory_order_acquire)+1u,2u,rva,0u);
+}
+HRESULT STDMETHODCALLTYPE CreateStateBlockHook(IDirect3DDevice9* d,
+    D3DSTATEBLOCKTYPE type,IDirect3DStateBlock9** out){
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_create_state_block(d,type,out);
+    if(g_primary_device.Owns(d) && SUCCEEDED(hr) && out && *out &&
+       !EnsureStateBlockApplyObserved(*out))
+        StateBlockHookCoverageFailed(CallerRva(origin));
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE BeginStateBlockHook(IDirect3DDevice9* d){
+    // Recording itself is not a safe indication of state Apply. Never
+    // fabricate a source mutation while the original block is constructed.
+    return g_begin_state_block(d);
+}
+HRESULT STDMETHODCALLTYPE EndStateBlockHook(IDirect3DDevice9* d,
+    IDirect3DStateBlock9** out){
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_end_state_block(d,out);
+    if(g_primary_device.Owns(d) && SUCCEEDED(hr) && out && *out &&
+       !EnsureStateBlockApplyObserved(*out))
+        StateBlockHookCoverageFailed(CallerRva(origin));
+    return hr;
+}
 // Every COM Present path must execute the original game's method exactly
 // once; a secondary device is excluded from all primary frame accounting.
 HRESULT CallOriginalPresentOnce(IDirect3DDevice9* d,CONST RECT* a,
@@ -1935,6 +2027,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         return CallOriginalPresentOnce(d,a,b,w,dirty);
     }
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
+    // An unobserved state-block Apply vtable stays unsafe across Reset and
+    // Present. Keep the HMD on original mono, not stale speculative eyes.
+    if(g_state_block_apply_unobserved.load(std::memory_order_acquire) &&
+       g_native_stereo)m2vr::daytona::MarkOriginalLineageMismatch();
     g_original_frame_draw_ordinal.exchange(0u,std::memory_order_relaxed);
     g_original_scene_ordinal.exchange(0u,std::memory_order_relaxed);
     g_original_scene_poisoned.store(false,std::memory_order_release);
@@ -2077,6 +2173,11 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool texture_stage=Hook(vtable[67],reinterpret_cast<void*>(&SetTextureStageStateHook),g_set_texture_stage);
     const bool sampler=Hook(vtable[69],reinterpret_cast<void*>(&SetSamplerStateHook),g_set_sampler_state);
     const bool render_state=Hook(vtable[57],reinterpret_cast<void*>(&SetRenderStateHook),g_set_render_state);
+    // Saved-state Apply can mutate camera/texture/shader without calling
+    // the public Set* COM methods. Hook both state-block creation routes.
+    const bool create_block=Hook(vtable[59],reinterpret_cast<void*>(&CreateStateBlockHook),g_create_state_block);
+    const bool begin_block=Hook(vtable[60],reinterpret_cast<void*>(&BeginStateBlockHook),g_begin_state_block);
+    const bool end_block=Hook(vtable[61],reinterpret_cast<void*>(&EndStateBlockHook),g_end_state_block);
     // Scene boundary observation is optional: if either COM hook cannot
     // be installed, rollback BOTH and mark scene source unknown. This
     // must never prevent the normal original game/mono fallback path.
@@ -2090,7 +2191,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -2127,6 +2228,9 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(texture_stage){MH_DisableHook(vtable[67]);MH_RemoveHook(vtable[67]);}
         if(sampler){MH_DisableHook(vtable[69]);MH_RemoveHook(vtable[69]);}
         if(render_state){MH_DisableHook(vtable[57]);MH_RemoveHook(vtable[57]);}
+        if(create_block){MH_DisableHook(vtable[59]);MH_RemoveHook(vtable[59]);}
+        if(begin_block){MH_DisableHook(vtable[60]);MH_RemoveHook(vtable[60]);}
+        if(end_block){MH_DisableHook(vtable[61]);MH_RemoveHook(vtable[61]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_update_surface=nullptr;
@@ -2143,6 +2247,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_set_ps_constant_f=nullptr;
         g_set_texture=nullptr;g_set_texture_stage=nullptr;
         g_set_sampler_state=nullptr;g_set_render_state=nullptr;
+        g_create_state_block=nullptr;g_begin_state_block=nullptr;
+        g_end_state_block=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
@@ -2156,6 +2262,8 @@ bool HookDevice(IDirect3DDevice9* dev){
             vertex_shader,pixel_shader,ps_constants,0u);
         m2vr::LogEvent("model2_d3d9_material_hook_rollback",
             texture,texture_stage,sampler,render_state);
+        m2vr::LogEvent("model2_d3d9_stateblock_hook_rollback",
+            create_block,begin_block,end_block,0u);
         return false;
     }
     // Vtable methods are shared by D3D9 devices. Bind the real first
@@ -2244,7 +2352,8 @@ Model2VR_NextOriginalD3D9PresentFrameId(){
 // scene owner thread only. Does not grant World3D or stereo by itself.
 extern "C" __declspec(dllexport) unsigned long long __stdcall
 Model2VR_CurrentOriginalD3D9LineageNonce(){
-    if(!Model2VR_CurrentOriginalD3D9SceneOrdinal())return 0u;
+    if(g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
+       !Model2VR_CurrentOriginalD3D9SceneOrdinal())return 0u;
     return m2vr::drawprobe::OriginalLineageNonce(ReadOriginalLineage(
         Model2VR_NextOriginalD3D9PresentFrameId()));
 }

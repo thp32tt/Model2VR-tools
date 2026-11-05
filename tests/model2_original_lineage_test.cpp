@@ -3,7 +3,7 @@
 #include <cassert>
 int main(){
     using namespace m2vr::drawprobe;
-    static_assert(kOriginalLineageKinds==19);
+    static_assert(kOriginalLineageKinds==20);
     OriginalLineageStamp initial{77,{}};
     assert(!OriginalLineageUsable(initial));
     assert(OriginalLineageNonce(initial)==0);
@@ -59,7 +59,7 @@ int main(){
     rule.expected_lineage_nonce=OriginalLineageNonce(initial);
     assert(one_shot.Arm(rule));
     auto rebound=initial;
-    ++rebound.successful_writes[static_cast<std::size_t>(OriginalLineageKind::RenderState)];
+    ++rebound.successful_writes[static_cast<std::size_t>(OriginalLineageKind::StateBlockApply)];
     assert(!one_shot.Take(77u,5u,2u,0x345u,3u,true,accepted,
                          OriginalLineageNonce(rebound),&mismatch));
     assert(mismatch && !one_shot.Pending());

@@ -397,6 +397,11 @@ __declspec(dllexport) void __stdcall Model2VR_RejectVerifiedD3D9SourceDraw(
 __declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
     unsigned long long physical_frame,unsigned long long ordinal,
     unsigned int family,unsigned int original_caller_rva);
+// Fail-closed authentic IDirect3DStateBlock9::Apply / missing observer.
+// No automatic World3D grant; preserves original COM Apply/HRESULT and mono.
+__declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
+    unsigned long long physical_frame,unsigned int stage,
+    unsigned int original_caller_rva,unsigned int original_hresult);
 }
 
 // Optional explicit recenter on a proven scene/device restart.
