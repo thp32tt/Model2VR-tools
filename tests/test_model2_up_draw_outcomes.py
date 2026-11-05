@@ -47,6 +47,28 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0, caller, pack(frame, 3)),
         ]
 
+    def test_original_query_gpu_cpu_result_guards_same_up_present(self):
+        base=self.projected()+[
+            event("model2_d3d9_original_present_result",7,0,1,0)]
+        self.assertEqual(self.report(base)["counts"][
+            "same_witness_cpu_camera_present_candidate"],1)
+        for caller,ordinal,reason in ((0x4321,12,1),(0x4321,12,2),(0,0,3)):
+            rows=self.projected()+[
+                event("model2_d3d9_original_query_source_rejected",
+                      7,caller,ordinal,reason),
+                event("model2_d3d9_original_present_result",7,0,1,0)]
+            result=self.report(rows)
+            self.assertEqual(result["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",
+                             result["counts"])
+        for bad in ((0,0x4321,12,1),(7,0,12,1),(7,0,12,2),
+                    (7,0x4321,12,3),(7,0,1,3),
+                    (7,0x4321,10000001,2),(7,0x4321,0,4)):
+            with self.assertRaisesRegex(ValueError,"Query source rejection"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_query_source_rejected",*bad),
+                    event("model2_d3d9_original_present_result",7,0,1,0)])
+
     def test_real_gpu_surface_lineage_up_is_bounded_and_same_present(self):
         lineage=event("model2_d3d9_source_gpu_surface_lineage",21,7,9,0)
         good=self.report(self.projected()+[

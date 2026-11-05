@@ -22,6 +22,35 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_original_query_issue_and_result_fail_closed_original_vb(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"query_private_source.csv"
+            source=[
+                ("model2_d3d9_vb_present_frame",501,7,1,0),
+                ("model2_d3d9_vb_source",501,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",501,7,12,pack(0x1234,1)),
+                ("model2_d3d9_vb_original_result",501,0,0x1234,pack(7,1)),
+            ]
+            clean=source+[("model2_d3d9_original_present_result",7,0,1,0)]
+            self.write_log(path,clean)
+            self.assertEqual(REPORT.audit_csv(path)["sources"][0][
+                "original_surface_failure_witnesses"],0)
+            for caller,ordinal,reason in ((0x4321,12,1),(0x4321,12,2),(0,0,3)):
+                self.write_log(path,source+[
+                    ("model2_d3d9_original_query_source_rejected",
+                     7,caller,ordinal,reason),
+                    ("model2_d3d9_original_present_result",7,0,1,0)])
+                result=REPORT.audit_csv(path)["sources"][0]
+                self.assertEqual(result["original_surface_failure_witnesses"],1)
+                self.assertFalse(result["world_pass_proven"])
+            for bad in ((0,0x4321,12,1),(7,0,12,1),(7,0,12,2),
+                        (7,0x4321,12,3),(7,0,1,3),
+                        (7,0x4321,10000001,2),(7,0x4321,0,4)):
+                self.write_log(path,source+[
+                    ("model2_d3d9_original_query_source_rejected",*bad)])
+                with self.assertRaisesRegex(ValueError,"Query source rejection"):
+                    REPORT.audit_csv(path)
+
     def test_real_original_display_dialog_gamma_revoke_same_present(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"private_display_source.csv"
