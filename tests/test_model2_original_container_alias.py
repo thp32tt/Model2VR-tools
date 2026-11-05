@@ -14,6 +14,8 @@ class OriginalContainerAliasesTest(unittest.TestCase):
 
     def test_surface_and_volume_com_slots_transactional(self):
         self.assertIn('#include "original_d3d9_container_hooks.inl"',self.probe)
+        cmake=(ROOT/"CMakeLists.txt").read_text("utf-8")
+        self.assertIn("target_link_libraries(model2vr_probe PRIVATE minhook dxguid)",cmake)
         for code,slot,fn,trampoline,target in (
             (self.surface,11,"OriginalSurfaceGetContainerHook",
              "g_surface_get_container","g_surface_container_target"),
