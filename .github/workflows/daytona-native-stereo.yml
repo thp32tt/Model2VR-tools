@@ -115,6 +115,7 @@ jobs:
           Copy-Item scripts/Run-Daytona-VR.bat stage/
           Copy-Item docs/DAYTONA_NATIVE_STEREO.md stage/README-KO.md
           Copy-Item tools/model2_up_draw_outcomes.py stage/Analyze-OriginalUP-Present.py
+           Copy-Item tools/model2_mutation_phase_report.py stage/Analyze-OriginalMutation-Phase.py
           Copy-Item scripts/Analyze-Daytona-UP-Source.cmd stage/
           Copy-Item docs/MODEL2_WORLD_PASS_EVIDENCE.md stage/ORIGINAL-WORLD-SOURCE-EVIDENCE.md
           Copy-Item docs/vr_wizard/PLAYTEST.md stage/PLAYTEST-WIZARD.md

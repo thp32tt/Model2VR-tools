@@ -80,6 +80,10 @@ std::atomic<unsigned> g_draws{0},g_indexed{0},g_up{0},g_indexed_up{0};
 // Independent draw-family sampling; rare UP paths are not hidden by
 // thousands of indexed world draws. All counters reset each Present.
 std::array<std::atomic<unsigned>,4> g_family_samples{};
+// Bound original Clear + surface-transfer scene provenance to one source
+// witness per operation and every eighth physical Present. A continuous
+// 60fps game must not flood local private analysis logs with raw content.
+std::array<std::atomic<unsigned>,4> g_original_mutation_samples{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 // Physical original Draw order across all four API families, including
@@ -159,6 +163,31 @@ void TrackFailedOriginalD3D9Scene(HRESULT hr,std::uint32_t transition,
     if(g_native_stereo)
         m2vr::daytona::MarkFailedOriginalScene(
             transition,static_cast<std::uint32_t>(hr));
+}
+void LogOriginalD3D9MutationPhase(std::uint32_t method,
+                                  std::uint32_t caller_rva,
+                                  HRESULT hr)noexcept{
+    if(!caller_rva || method<1u || method>4u || FAILED(hr))return;
+    const auto frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    if(frame!=1u && frame%8u!=0u)return;
+    const auto prior=g_original_mutation_samples[method-1u].fetch_add(
+        1u,std::memory_order_relaxed);
+    if(prior!=0u)return;
+    // Kind 1=Clear, 2=UpdateSurface, 3=StretchRect, 4=ColorFill;
+    // a0=original Present, a1=EXE-relative return caller,
+    // a2=(kind << 32)|all-family original Draw ordinal,
+    // a3=(original scene ordinal << 32)|genuine scene-open flag.
+    // Only source scheduling metadata, never game matrices/pixels/ROM.
+    const auto draw=g_original_frame_draw_ordinal.load(std::memory_order_relaxed);
+    const auto scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
+    const bool open=g_original_scene_hooks_ready.load(std::memory_order_acquire) &&
+       !g_original_scene_poisoned.load(std::memory_order_acquire) &&
+       g_original_scene_open.load(std::memory_order_acquire) &&
+       g_original_scene_owner_thread.load(std::memory_order_acquire)==GetCurrentThreadId();
+    if(draw>10000000ull || scene>100000u)return;
+    m2vr::LogEvent("model2_d3d9_original_mutation_phase",
+        frame,caller_rva,(std::uint64_t(method)<<32)|draw,
+        (std::uint64_t(scene)<<32)|(open?1ull:0ull));
 }
 void TrackFailedOriginalD3D9Clear(HRESULT hr,std::uint32_t flags,
                                   std::uint32_t caller_rva) noexcept {
@@ -1355,8 +1384,11 @@ HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
     const auto caller_rva=CallerRva(caller);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Clear(hr,flags,caller_rva);
-    else if(SUCCEEDED(hr) && g_native_stereo)
-        m2vr::daytona::MirrorClear(d,count,rects,flags,color,z,stencil,g_clear);
+    else if(SUCCEEDED(hr)){
+        LogOriginalD3D9MutationPhase(1u,caller_rva,hr);
+        if(g_native_stereo)
+            m2vr::daytona::MirrorClear(d,count,rects,flags,color,z,stencil,g_clear);
+    }
     return hr;
 }
 HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
@@ -1368,9 +1400,12 @@ HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(IDirect3DDevice9* d,
     const auto caller_rva=CallerRva(caller);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,1u,caller_rva);
-    else if(SUCCEEDED(hr) && g_native_stereo)
-        m2vr::daytona::MirrorUpdateSurface(
-            d,src,src_rect,dst,dst_point,g_update_surface);
+    else if(SUCCEEDED(hr)){
+        LogOriginalD3D9MutationPhase(2u,caller_rva,hr);
+        if(g_native_stereo)
+            m2vr::daytona::MirrorUpdateSurface(
+                d,src,src_rect,dst,dst_point,g_update_surface);
+    }
     return hr;
 }
 HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
@@ -1382,9 +1417,12 @@ HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
     const auto caller_rva=CallerRva(caller);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,2u,caller_rva);
-    else if(SUCCEEDED(hr) && g_native_stereo)
-        m2vr::daytona::MirrorStretchRect(
-            d,src,src_rect,dst,dst_rect,filter,g_stretch_rect);
+    else if(SUCCEEDED(hr)){
+        LogOriginalD3D9MutationPhase(3u,caller_rva,hr);
+        if(g_native_stereo)
+            m2vr::daytona::MirrorStretchRect(
+                d,src,src_rect,dst,dst_rect,filter,g_stretch_rect);
+    }
     return hr;
 }
 HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
@@ -1395,8 +1433,11 @@ HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
     const auto caller_rva=CallerRva(caller);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,3u,caller_rva);
-    else if(SUCCEEDED(hr) && g_native_stereo)
-        m2vr::daytona::MirrorColorFill(d,dst,rect,color,g_color_fill);
+    else if(SUCCEEDED(hr)){
+        LogOriginalD3D9MutationPhase(4u,caller_rva,hr);
+        if(g_native_stereo)
+            m2vr::daytona::MirrorColorFill(d,dst,rect,color,g_color_fill);
+    }
     return hr;
 }
 // Every COM Present path must execute the original game's method exactly
@@ -1447,6 +1488,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Snapshot sampling state belongs to a frame, not a process lifetime.
     for(auto& counter:g_family_samples)
         counter.store(0u,std::memory_order_relaxed);
+    for(auto& counter:g_original_mutation_samples)
+        counter.store(0u,std::memory_order_relaxed);
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
@@ -1485,6 +1528,8 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     if(!g_primary_device.Owns(d))return g_reset(d,pp);
     g_original_frame_draw_ordinal.store(0u,std::memory_order_relaxed);
     g_original_scene_ordinal.store(0u,std::memory_order_relaxed);
+    for(auto& counter:g_original_mutation_samples)
+        counter.store(0u,std::memory_order_relaxed);
     g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
