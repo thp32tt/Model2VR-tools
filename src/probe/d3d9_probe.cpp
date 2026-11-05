@@ -48,6 +48,10 @@ using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,CONST RECT*,CONST RECT*,HWND,CONST RGNDATA*);
 using ResetFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRESENT_PARAMETERS*);
 using SceneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);
+using CreateVertexBufferFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,UINT,DWORD,DWORD,D3DPOOL,IDirect3DVertexBuffer9**,HANDLE*);
+using CreateIndexBufferFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,UINT,DWORD,D3DFORMAT,D3DPOOL,IDirect3DIndexBuffer9**,HANDLE*);
 using CreateTextureFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,UINT,UINT,UINT,DWORD,D3DFORMAT,D3DPOOL,
     IDirect3DTexture9**,HANDLE*);
@@ -164,6 +168,9 @@ ResetFn g_reset=nullptr;
 SceneFn g_begin_scene=nullptr;
 SceneFn g_end_scene=nullptr;
 ClearFn g_clear=nullptr;
+CreateVertexBufferFn g_create_vertex_buffer=nullptr;
+CreateIndexBufferFn g_create_index_buffer=nullptr;
+std::array<std::atomic<std::uint32_t>,2> g_original_buffer_creates{};
 CreateTextureFn g_create_texture=nullptr;
 CreateVolumeTextureFn g_create_volume_texture=nullptr;
 CreateCubeTextureFn g_create_cube_texture=nullptr;
@@ -2106,6 +2113,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 #include "original_d3d9_texture_shapes_hooks.inl"
 #include "original_d3d9_texture_hooks.inl"
 #include "original_d3d9_texture_create_hooks.inl"
+#include "original_d3d9_buffer_create_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
 // preserved, while failures poison only speculative binocular output.
 HRESULT STDMETHODCALLTYPE SetStreamSourceHook(IDirect3DDevice9* d,UINT stream,IDirect3DVertexBuffer9* buffer,UINT offset,UINT stride){
@@ -2575,6 +2583,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(std::size_t i=0;i<unmirrored_counts.size();++i)
         unmirrored_counts[i]=g_original_unmirrored_calls[i].exchange(
             0u,std::memory_order_relaxed);
+    std::array<std::uint32_t,2> buffer_creates{};
+    for(std::size_t i=0;i<buffer_creates.size();++i)
+        buffer_creates[i]=g_original_buffer_creates[i].exchange(
+            0u,std::memory_order_relaxed);
     std::array<std::uint32_t,3> original_creates{};
     for(std::size_t i=0;i<original_creates.size();++i)
         original_creates[i]=g_original_texture_creates[i].exchange(
@@ -2591,6 +2603,9 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         0u,std::memory_order_relaxed);
     const auto ib_write=g_original_buffer_writes[1].exchange(
         0u,std::memory_order_relaxed);
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_buffer_creation_counts",
+            frame,buffer_creates[0],buffer_creates[1],0u);
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_texture_creation_counts",
             frame,original_creates[0],original_creates[1],original_creates[2]);
@@ -2696,6 +2711,8 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     for(auto& sample:g_original_unmirrored_samples)sample.store(0u,std::memory_order_relaxed);
     for(auto& calls:g_original_unmirrored_calls)calls.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_buffer_writes)count.store(0u,std::memory_order_relaxed);
+    for(auto& count:g_original_buffer_creates)
+        count.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_texture_creates)
         count.store(0u,std::memory_order_relaxed);
     g_original_texture_lock_writes.store(0u,std::memory_order_relaxed);
@@ -2750,6 +2767,10 @@ bool HookDevice(IDirect3DDevice9* dev){
                                 g_create_volume_texture);
     const bool make_cube=Hook(vtable[25],reinterpret_cast<void*>(&OriginalCreateCubeTextureHook),
                               g_create_cube_texture);
+    const bool make_vb=Hook(vtable[26],reinterpret_cast<void*>(&OriginalCreateVertexBufferHook),
+                            g_create_vertex_buffer);
+    const bool make_ib=Hook(vtable[27],reinterpret_cast<void*>(&OriginalCreateIndexBufferHook),
+                            g_create_index_buffer);
     const bool update=Hook(vtable[30],reinterpret_cast<void*>(&UpdateSurfaceHook),g_update_surface);
     const bool texture_upload=Hook(vtable[31],reinterpret_cast<void*>(&UpdateTextureHook),g_update_texture);
     const bool palette_entries=Hook(vtable[71],reinterpret_cast<void*>(&SetPaletteEntriesHook),g_set_palette_entries);
@@ -2815,7 +2836,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -2835,6 +2856,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(make_tex){MH_DisableHook(vtable[23]);MH_RemoveHook(vtable[23]);}
         if(make_volume){MH_DisableHook(vtable[24]);MH_RemoveHook(vtable[24]);}
         if(make_cube){MH_DisableHook(vtable[25]);MH_RemoveHook(vtable[25]);}
+        if(make_vb){MH_DisableHook(vtable[26]);MH_RemoveHook(vtable[26]);}
+        if(make_ib){MH_DisableHook(vtable[27]);MH_RemoveHook(vtable[27]);}
         if(update){MH_DisableHook(vtable[30]);MH_RemoveHook(vtable[30]);}
         if(texture_upload){MH_DisableHook(vtable[31]);MH_RemoveHook(vtable[31]);}
         if(palette_entries){MH_DisableHook(vtable[71]);MH_RemoveHook(vtable[71]);}
@@ -2880,6 +2903,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(end_block){MH_DisableHook(vtable[61]);MH_RemoveHook(vtable[61]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
+        g_create_vertex_buffer=nullptr;g_create_index_buffer=nullptr;
         g_create_texture=nullptr;g_create_volume_texture=nullptr;
         g_create_cube_texture=nullptr;
         g_update_surface=nullptr;g_update_texture=nullptr;
@@ -2914,6 +2938,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
                        update,stretch,fill,clear);
+        m2vr::LogEvent("model2_d3d9_buffer_create_hook_rollback",
+                        make_vb,make_ib,0u,0u);
         m2vr::LogEvent("model2_d3d9_texture_create_hook_rollback",
                         make_tex,make_volume,make_cube,0u);
         m2vr::LogEvent("model2_d3d9_texture_upload_hook_rollback",
