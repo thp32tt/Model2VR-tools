@@ -94,14 +94,30 @@ foreach ($label in @("title","menu","sky","hud","aux")) {
   $argsForPython += @("--control",$label,$copies[$label])
 }
 $argsForPython += @("--output",(Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"))
-if (Get-Command py -ErrorAction SilentlyContinue) {
-  & py -3 @argsForPython
-} elseif (Get-Command python -ErrorAction SilentlyContinue) {
-  & python @argsForPython
-} else {
-  throw "Python 3 is required for local private source validation. Archive kept: $destination"
+# External Python intentionally fails on synthetic/missing original evidence.
+# GitHub pwsh can promote a native nonzero exit code into a terminating error
+# before LASTEXITCODE is inspected. Preserve a local fail-closed message and
+# the archived private files, independent of the host shell preference.
+$previousNativePreference = $PSNativeCommandUseErrorActionPreference
+$previousErrorAction = $ErrorActionPreference
+$pythonExitCode = 0
+try {
+  $PSNativeCommandUseErrorActionPreference = $false
+  $ErrorActionPreference = "Continue"
+  if (Get-Command py -ErrorAction SilentlyContinue) {
+    & py -3 @argsForPython
+    $pythonExitCode = $LASTEXITCODE
+  } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+    & python @argsForPython
+    $pythonExitCode = $LASTEXITCODE
+  } else {
+    throw "Python 3 is required for local private source validation. Archive kept: $destination"
+  }
+} finally {
+  $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+  $ErrorActionPreference = $previousErrorAction
 }
-if ($LASTEXITCODE -ne 0) {
+if ($pythonExitCode -ne 0) {
   throw "Private source evidence FAIL-CLOSED. Archive kept for local inspection: $destination"
 }
 Write-Host ""
