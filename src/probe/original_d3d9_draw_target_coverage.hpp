@@ -8,15 +8,15 @@
 
 namespace m2vr::drawprobe {
 
-enum class OriginalTargetClass : std::uint32_t {
+enum class OriginalPhysicalRtClass : std::uint32_t {
     Unknown=0u, Backbuffer=1u, Auxiliary=2u
 };
-enum class OriginalDepthClass : std::uint32_t {
+enum class OriginalPhysicalDepthClass : std::uint32_t {
     Unknown=0u, Compatible=1u, Incompatible=2u
 };
 struct OriginalTargetSnapshot {
-    OriginalTargetClass target=OriginalTargetClass::Unknown;
-    OriginalDepthClass depth=OriginalDepthClass::Unknown;
+    OriginalPhysicalRtClass target=OriginalPhysicalRtClass::Unknown;
+    OriginalPhysicalDepthClass depth=OriginalPhysicalDepthClass::Unknown;
 };
 struct OriginalPhysicalTargetSummary {
     std::uint32_t backbuffer=0u, auxiliary=0u, unknown=0u, failed=0u;
@@ -48,8 +48,8 @@ public:
     };
     bool NeedsResolution() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        return state_.target==OriginalTargetClass::Unknown ||
-            state_.depth==OriginalDepthClass::Unknown;
+        return state_.target==OriginalPhysicalRtClass::Unknown ||
+            state_.depth==OriginalPhysicalDepthClass::Unknown;
     }
     // A read-only initial D3D9 COM snapshot is not EXE source ownership.
     // Do not overwrite an authentic SetRT/SetDepth completed concurrently.
@@ -61,9 +61,9 @@ public:
                             OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         if(prior!=revision_)return;
-        if(state_.target==OriginalTargetClass::Unknown)
+        if(state_.target==OriginalPhysicalRtClass::Unknown)
             state_.target=actual.target;
-        if(state_.depth==OriginalDepthClass::Unknown)
+        if(state_.depth==OriginalPhysicalDepthClass::Unknown)
             state_.depth=actual.depth;
     }
     void RenderTargetBind(bool exe_caller,bool succeeded,bool slot_zero,
@@ -77,7 +77,7 @@ public:
         if(!succeeded){flags_|=kFailedBind;return;}
         if(!slot_zero)return; // no claim that MRT slot 1 is the RT0 owner
         state_=actual;
-        owned_target_=actual.target!=OriginalTargetClass::Unknown;
+        owned_target_=actual.target!=OriginalPhysicalRtClass::Unknown;
         // Changing RT0 does not prove original depth-surface ownership.
         ++revision_;
     }
@@ -85,12 +85,12 @@ public:
                    OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         if(!exe_caller) {
-            flags_|=kForeignBind;state_.depth=OriginalDepthClass::Unknown;
+            flags_|=kForeignBind;state_.depth=OriginalPhysicalDepthClass::Unknown;
             owned_depth_=false;++revision_;return;
         }
         if(!succeeded){flags_|=kFailedBind;return;}
         state_=actual;
-        owned_depth_=actual.depth!=OriginalDepthClass::Unknown;
+        owned_depth_=actual.depth!=OriginalPhysicalDepthClass::Unknown;
         ++revision_;
     }
     Token EnterDraw() noexcept {
@@ -120,12 +120,12 @@ public:
         if(!original_succeeded){Increment(failed_);return;}
         if(!exe_caller || !token.owned_target || !token.owned_depth)
             flags_|=kUnownedTarget;
-        if(token.state.depth!=OriginalDepthClass::Compatible){
+        if(token.state.depth!=OriginalPhysicalDepthClass::Compatible){
             flags_|=kInvalidDepth;Increment(bad_depth_);
         }
         switch(token.state.target){
-        case OriginalTargetClass::Backbuffer: Increment(backbuffer_);break;
-        case OriginalTargetClass::Auxiliary: Increment(auxiliary_);break;
+        case OriginalPhysicalRtClass::Backbuffer: Increment(backbuffer_);break;
+        case OriginalPhysicalRtClass::Auxiliary: Increment(auxiliary_);break;
         default: Increment(unknown_);break;
         }
     }
