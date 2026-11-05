@@ -44,13 +44,17 @@ def audit(path):
                 state, opened = flags >> 1, flags & 1
                 valid = (kind == 1 and state == 2 or kind == 2 and state == 3
                          or kind == 3 and 256 <= state <= 511
-                         or kind == 4 and 16 <= state <= 23
-                         or kind == 5 and 0 <= state <= 511 and
-                            state not in (2, 3) and not 16 <= state <= 23
-                            and not 256 <= state <= 511)
+                         or kind == 4 and event == TRANSFORM and
+                            0 <= state <= 511 and state not in (2, 3) and
+                            not 256 <= state <= 511
+                         or kind == 4 and event == MULTIPLY and 16 <= state <= 23
+                         or kind == 5 and event == MULTIPLY and
+                            0 <= state <= 511 and state not in (2, 3) and
+                            not 16 <= state <= 23 and not 256 <= state <= 511)
                 if not valid:
                     raise ValueError("unknown transform category/state")
-                name = ("multiply_" if event == MULTIPLY else "") + KINDS[kind]
+                name = ("multiply_" if event == MULTIPLY else "") + (
+                    "other" if event == TRANSFORM and kind == 4 else KINDS[kind])
                 detail = {"transform_state": state}
                 key = (frame, event, kind)
             elif event == VS:

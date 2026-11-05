@@ -48,13 +48,15 @@ class CameraStatePhaseTests(unittest.TestCase):
             transform(1, 3, 256), transform(1, 4, 16),
             vs(1, 0, 4), transform(8, 3, 257),
             multiply(1, 1, 2), multiply(8, 4, 16),
+            transform(8, 4, 24),  # pre-existing SetTransform other event
         ])
-        self.assertEqual(data["witness_count"], 8)
+        self.assertEqual(data["witness_count"], 9)
         self.assertFalse(data["adapter_auto_enable"])
         self.assertEqual(data["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(data["method_counts"]["world"], 2)
         self.assertEqual(data["method_counts"]["multiply_view"], 1)
         self.assertEqual(data["method_counts"]["multiply_texture"], 1)
+        self.assertEqual(data["method_counts"]["other"], 2)
 
     def test_bad_camera_state_fails_closed(self):
         bad = [
@@ -64,6 +66,7 @@ class CameraStatePhaseTests(unittest.TestCase):
             [multiply(1, 4, 256)],
             [multiply(1, 1, 3)],
             [multiply(1, 5, 16)],
+            [transform(1, 5, 24)],
             [multiply(1, 2, 3), multiply(1, 2, 3)],
             [transform(1, 1, 2, scene=0, opened=1)],
             [vs(1, 255, 2)],

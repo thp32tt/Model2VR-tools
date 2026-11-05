@@ -1897,7 +1897,12 @@ void RecordOriginalTransformOperation(D3DTRANSFORMSTATETYPE state,
     const auto scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     if(ordinal>10000000u || scene>100000u)return;
     const auto category=static_cast<unsigned>(kind);
-    const auto slot=(operation-1u)*5u+category-1u;
+    // Preserve the legacy SetTransform CSV category 4="other" for old
+    // PRIVATE traces. Internal nonce still differentiates texture/other.
+    // Only newly introduced MultiplyTransform uses precise category 4/5.
+    const auto observed_category=(operation==1u && category==5u)?
+        4u:category;
+    const auto slot=(operation-1u)*5u+observed_category-1u;
     if(g_original_transform_samples[slot].fetch_add(
            1u,std::memory_order_relaxed)!=0u)return;
     const bool open=g_original_scene_hooks_ready.load(
@@ -1911,7 +1916,7 @@ void RecordOriginalTransformOperation(D3DTRANSFORMSTATETYPE state,
     m2vr::LogEvent(
         operation==1u?"model2_d3d9_original_transform_phase":
                       "model2_d3d9_original_multiply_transform_phase",
-        frame,rva,(std::uint64_t{category}<<32u)|ordinal,
+        frame,rva,(std::uint64_t{observed_category}<<32u)|ordinal,
         (std::uint64_t{scene}<<32u)|
         (std::uint64_t{static_cast<unsigned>(state)}<<1u)|
         (open?1u:0u));
