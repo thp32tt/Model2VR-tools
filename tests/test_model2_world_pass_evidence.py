@@ -123,6 +123,18 @@ def controls(**overrides):
 
 
 class OriginalWorldPassEvidenceTest(unittest.TestCase):
+    def test_sampled_race_scene_cannot_borrow_unrelated_physical_frame(self):
+        race=report(witness())
+        race["original_physical_scene_draw_coverage"][
+            "trusted_scene_drawn_present_count"]=2
+        with self.assertRaisesRegex(ValueError,"per-caller Scene/Draw"):
+            compare_sessions([race,report(witness())],controls())
+        race=report(witness())
+        race["sources"][0][
+            "distinct_scene_attested_physically_presented_material_present_frame_count"]=4
+        with self.assertRaisesRegex(ValueError,"per-caller Scene/Draw"):
+            compare_sessions([race,report(witness())],controls())
+
     def test_original_unsampled_scene_draw_controls_required_for_all_seven(self):
         for field,bad in (
             ("original_physical_scene_draw_coverage",None),

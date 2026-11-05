@@ -545,6 +545,10 @@ def audit_csv(path):
     # private sessions and waste memory for multi-race capture auditing.
     scene_coverage_sampled = {}
     scene_coverage_totals = Counter()
+    # One byte per physical frame, not an unbounded list of game geometry:
+    # prevents a sampled world/CPU pass from borrowing scene integrity
+    # from an unrelated healthy physical frame in the same CSV.
+    scene_frame_trusted = bytearray()
     scene_flagged_frame_count = 0
     scene_trusted_drawn_frame_count = 0
     last_exact_inventory_frame = 0
@@ -893,9 +897,12 @@ def audit_csv(path):
                                   ("inside",inside),("untrusted",untrusted),
                                   ("failed",failed)):
                     scene_coverage_totals[key]+=value
+                trusted = (flags==0 and begins==ends and inside>0 and
+                           untrusted==0 and failed==0)
+                scene_frame_trusted.append(1 if trusted else 0)
                 if flags!=0 or begins!=ends:
                     scene_flagged_frame_count+=1
-                elif inside>0 and untrusted==0 and failed==0:
+                elif trusted:
                     scene_trusted_drawn_frame_count+=1
                 last_scene_coverage_frame=frame
                 continue
@@ -1710,6 +1717,17 @@ def audit_csv(path):
     sources = []
     for (family, caller), value in sorted(
         grouped.items(), key=lambda kv: (-kv[1]["observations"], kv[0])):
+        # A valid individual source Draw must belong to a physical Present
+        # whose ENTIRE unsampled original four-family Scene/Draw stream was
+        # source-owned. One good title/menu frame cannot lend scene proof
+        # to a different race frame in the same native process capture.
+        scene_attested = value["original_scene_attested_physical_material_present_frames"]
+        if scene_frame_trusted and any(
+                type(frame) is not int or frame<1 or
+                frame>len(scene_frame_trusted) or
+                not scene_frame_trusted[frame-1]
+                for frame in scene_attested):
+            raise ValueError("sampled original world Scene/Draw conflicts with physical frame coverage")
         record = {
             "draw_family": "DrawPrimitive" if family == 1 else "DrawIndexedPrimitive",
             "caller_rva_hex": f"0x{caller:08x}",

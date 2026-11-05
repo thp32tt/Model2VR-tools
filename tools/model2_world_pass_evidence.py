@@ -200,6 +200,12 @@ def _validate_report(report):
             raise ValueError("inconsistent original executable caller ownership")
         if key in result:
             raise ValueError("duplicate original Draw caller in a capture")
+        scene_attested=source.get(
+            "distinct_scene_attested_physically_presented_material_present_frame_count")
+        if (scene_attested is not None and
+            (type(scene_attested) is not int or scene_attested<0 or
+             scene_attested>scene["trusted_scene_drawn_present_count"])):
+            raise ValueError("per-caller Scene/Draw exceeds physical original frame coverage")
         result[key] = source
     return result
 
