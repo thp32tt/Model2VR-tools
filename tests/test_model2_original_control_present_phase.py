@@ -11,6 +11,7 @@ from tools.model2_draw_source_report import audit_csv
 
 ROOT=Path(__file__).resolve().parents[1]
 EVENT="model2_d3d9_original_control_present_phase"
+BLOOM="model2_d3d9_original_all_family_caller_bloom"
 
 def pair(high,low):
     return (high<<32)|low
@@ -41,6 +42,38 @@ class OriginalControlPhysicalPresentTest(unittest.TestCase):
                           "DrawPrimitiveUP":4,"DrawIndexedPrimitiveUP":2})
         self.assertEqual(observed["sources"],[])
         self.assertEqual(observed["world_pass_proof"],"NOT_ESTABLISHED")
+
+    def test_unsampled_up_only_caller_bloom_survives_all_physical_presents(self):
+        # Four-family Draw caller census is not gated on sampled VB/IB data.
+        # The 8th Present carries all preceding unsampled UP caller bits.
+        rows=[]
+        for frame in range(1,9):
+            if frame in (1,8):
+                rows.append(self.present(frame,dpup=3,dipup=2))
+            rows.append((BLOOM,frame,5,9,0))
+        result=self.audit(rows)
+        self.assertEqual(result["original_all_family_caller_bloom"],{
+            "lane0":5,"lane1":9,"unknown_caller":False,
+            "first_present_frame":1,"last_present_frame":8,
+            "physical_present_count":8})
+        self.assertEqual(result["sources"],[])
+
+    def test_missing_gap_replayed_bits_or_unknown_caller_is_rejected(self):
+        valid=[self.present(1), (BLOOM,1,1,2,0)]
+        for rows in (
+            [self.present(1), (BLOOM,2,1,2,0)],
+            [self.present(1), (BLOOM,1,1,2,0), (BLOOM,1,1,2,0)],
+            [self.present(1), (BLOOM,1,1,2,0), (BLOOM,3,3,6,0)],
+            [self.present(1), (BLOOM,1,1,2,0), (BLOOM,2,0,2,0)],
+            [self.present(1), (BLOOM,1,1,2,0), (BLOOM,2,1,2,2)],
+        ):
+            with self.subTest(rows=rows):
+                with self.assertRaisesRegex(ValueError,"caller bloom"):
+                    self.audit(rows)
+        self.assertEqual(self.audit(valid)["original_all_family_caller_bloom"]
+                         ["last_present_frame"],1)
+        with self.assertRaisesRegex(ValueError,"incomplete original all-family"):
+            self.audit([self.present(1),(BLOOM,1,0,0,0)])
 
     def test_failed_or_empty_original_present_does_not_prove_control(self):
         got=self.audit([self.present(1,hr=0x88760868),
@@ -82,6 +115,15 @@ class OriginalControlPhysicalPresentTest(unittest.TestCase):
         self.assertIn("OriginalControlPresentSample(",present)
         self.assertIn("OriginalControlPresentPair(dp,dip)",present)
         self.assertIn("OriginalControlPresentPair(dpup,dipup)",present)
+        self.assertIn('"model2_d3d9_original_all_family_caller_bloom"',present)
+        self.assertLess(present.index('"model2_d3d9_original_control_present_phase"'),
+                        present.index('"model2_d3d9_original_all_family_caller_bloom"'))
+        for name in ("DrawHook","IndexedHook","DrawUPHook","IndexedUPHook"):
+            chunk=native.split("HRESULT STDMETHODCALLTYPE "+name+"(")[1]
+            chunk=chunk.split("\\nHRESULT STDMETHODCALLTYPE ",1)[0]
+            self.assertEqual(chunk.count("ObserveOriginalAllFamilyDrawCaller(caller);"),1)
+            self.assertLess(chunk.index("if(!g_primary_device.Owns(d))"),
+                            chunk.index("ObserveOriginalAllFamilyDrawCaller(caller);"))
         gate=(ROOT/"src/probe/original_d3d9_control_present.hpp").read_text("utf-8")
         self.assertIn("kMaxOriginalControlDraws=10000000u",gate)
         self.assertIn("frame==1u || frame%8u==0u",gate)
