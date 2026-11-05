@@ -22,6 +22,50 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_scene_draw_streamed_every_present_with_bounded_control_samples(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"long_private_original_source.csv"
+            frames=512
+            caller=0x1234
+            lo,hi=REPORT._original_caller_exact_bloom({caller})
+            events=[("model2_d3d9_original_draw_caller_first",
+                     1,caller,pack(1,1),0)]
+            for frame in range(1,frames+1):
+                if frame==1 or frame%8==0:
+                    events.append(("model2_d3d9_original_control_present_phase",
+                                   frame,0,pack(1,0),0))
+                events.extend((
+                    ("model2_d3d9_original_all_family_caller_bloom",
+                     frame,lo,hi,0),
+                    ("model2_d3d9_original_caller_inventory",frame,1,0,0),
+                    ("model2_d3d9_original_capture_run",
+                     frame,0xfedcba9876543210,0,0),
+                    ("model2_d3d9_original_scene_draw_coverage",
+                     frame,pack(1,1),pack(1,0),pack(0,0)),
+                ))
+            self.write_log(path,events)
+            data=REPORT.audit_csv(path)
+            scene=data["original_physical_scene_draw_coverage"]
+            self.assertEqual(scene["physical_present_count"],512)
+            self.assertEqual(scene["original_begin_scene_count"],512)
+            self.assertEqual(scene["original_successful_in_scene_draw_count"],512)
+            self.assertEqual(scene["trusted_scene_drawn_present_count"],512)
+            self.assertTrue(scene["all_original_scene_draws_trusted"])
+            self.assertEqual(data["original_control_present_sample_count"],65)
+            self.assertEqual(data["original_control_four_family_draw_totals"][
+                "DrawPrimitive"],65)
+            # A late unsampled frame change must poison the *whole* capture.
+            late=list(events)
+            target=next(i for i, row in enumerate(late)
+                        if row[0]=="model2_d3d9_original_scene_draw_coverage"
+                        and row[1]==frames-1)
+            late[target]=("model2_d3d9_original_scene_draw_coverage",
+                          frames-1,pack(1,1),pack(0,1),0)
+            self.write_log(path,late)
+            poisoned=REPORT.audit_csv(path)["original_physical_scene_draw_coverage"]
+            self.assertFalse(poisoned["all_original_scene_draws_trusted"])
+            self.assertEqual(poisoned["original_successful_untrusted_scene_draw_count"],1)
+
     def test_original_unsampled_scene_draw_matches_original_physical_counts(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/"scene_coverage.csv"
