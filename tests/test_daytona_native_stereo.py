@@ -147,8 +147,8 @@ class NativeStereoTest(unittest.TestCase):
     def test_failed_original_viewport_scissor_revoke_gpu_eyes(self):
         source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         header=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
-        self.assertIn("method>9u", source)
-        self.assertIn("method<=9u", header)
+        self.assertIn("method>15u", source)
+        self.assertIn("method<=15u", header)
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,8u,rva)", (
             ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8"))
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,9u,rva)", (
@@ -175,7 +175,37 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(probe.count("source_scene,source_scene_open,original_lineage);"),4)
         self.assertIn("model2_d3d9_source_camera_lineage",probe)
         self.assertIn("model2_d3d9_source_region_lineage",probe)
+        self.assertIn("model2_d3d9_source_geometry_lineage",probe)
+        self.assertIn("model2_d3d9_source_shader_lineage",probe)
         self.assertIn("g_original_lineage_writes",probe)
+
+    def test_original_geometry_shader_binding_lineage_rejects_same_present_drift(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        source=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
+        gate=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
+        self.assertIn("kOriginalLineageKinds=14",source)
+        self.assertIn("method<=15u",gate)
+        self.assertIn("method>15u",gpu)
+        for method,slot,kind,fail in (
+            ("SetStreamSource",100,"StreamSource",10),
+            ("SetIndices",104,"IndexBuffer",11),
+            ("SetVertexDeclaration",87,"VertexDeclaration",12),
+            ("SetFVF",89,"VertexFVF",13),
+            ("SetVertexShader",92,"VertexShader",14),
+            ("SetPixelShader",107,"PixelShader",15),
+        ):
+            section=hooks.split(f"HRESULT STDMETHODCALLTYPE {method}Hook(")[1].split(
+                "HRESULT STDMETHODCALLTYPE ",1)[0]
+            self.assertEqual(section.count("const HRESULT hr="),1)
+            self.assertIn("g_primary_device.Owns(d)",section)
+            self.assertIn(f"OriginalLineageKind::{kind}",section)
+            self.assertIn(f"TrackFailedOriginalD3D9Surface(hr,{fail}u,rva)",section)
+            self.assertIn(f"vtable[{slot}]",hooks)
+            self.assertIn(f"MH_RemoveHook(vtable[{slot}]);",hooks)
+        self.assertIn("w[8]",hooks)
+        self.assertIn("w[13]",hooks)
+        self.assertIn("OriginalLineageNonce(lineage),permission",hooks)
 
     def test_original_exe_scene_boundaries_are_optional_and_readonly(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
@@ -184,7 +214,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("vtable[42],reinterpret_cast<void*>(&EndSceneHook)", hooks)
         self.assertEqual(hooks.count("const HRESULT hr=g_begin_scene(d);"),1)
         self.assertEqual(hooks.count("const HRESULT hr=g_end_scene(d);"),1)
-        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),12)  # original source + camera + viewport/scissor writers
+        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),18)  # 12 original sources plus six vertex/shader bindings
         self.assertEqual(hooks.count("TrackFailedOriginalD3D9Scene(hr,"),2)
         self.assertIn("g_original_scene_poisoned.store(true",hooks)
         self.assertEqual(hooks.count("g_original_scene_poisoned.store(false"),2)
