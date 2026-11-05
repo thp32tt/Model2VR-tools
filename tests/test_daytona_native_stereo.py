@@ -351,7 +351,16 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("mono_quad_distance_m_,mono_quad_width_m_",host)
         self.assertNotIn("mono_quad.pose.position.z=-1.65f",host)
         self.assertIn("XR_EYE_VISIBILITY_BOTH",host)
-        self.assertIn("original_mono_quad?1u:chains_.size()",host)
+        # Both genuine original game mono and the pre-game emulator menu
+        # render through ONE world-anchored quad, not two stereo eyes.
+        self.assertIn("flat_quad?1u:chains_.size()",host)
+        self.assertIn("original_mono_quad=picture==desktopmenu::Source::GameMono2D",host)
+        self.assertIn("menu_quad=picture==desktopmenu::Source::EmulatorWindow2D",host)
+        self.assertIn("desktopmenu::MenuUploadToken(emulator_window_capture_.Serial())",host)
+        self.assertIn("emulator_window_capture_.Update(source_pid_)",host)
+        self.assertIn("game_picture,transport::IsStereoGame(frame_gate_.kind()),window_captured",host)
+        self.assertIn("flat_quad && mono_quad_anchor_.Valid()",host)
+        self.assertIn("flat_quad?\"end emulator/game mono 2D quad frame\"",host)
         self.assertIn("XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW",host)
         self.assertIn("CanPublishOriginalMono",source)
         self.assertIn("original_present_ok && !stereo_published",decision)
