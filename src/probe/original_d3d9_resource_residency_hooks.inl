@@ -23,6 +23,24 @@ std::array<OriginalResourceHookTarget<OriginalSetResourcePriorityFn>,
 std::array<OriginalResourceHookTarget<OriginalResourcePreLoadFn>,
     kOriginalResourceHookSlots> g_original_preload_targets{};
 std::array<std::atomic<std::uint32_t>,2> g_original_resource_residency_calls{};
+std::array<std::atomic<std::uint64_t>,2> g_original_resource_residency_logged_frame{};
+void RecordOriginalResourceResidencyPhase(std::uint32_t rva,
+                                          std::uint32_t method) noexcept {
+    if(!rva || method<1u || method>2u)return;
+    const auto frame=std::uint64_t{
+        g_present_count.load(std::memory_order_acquire)}+1u;
+    const auto draw=g_original_frame_draw_ordinal.load(std::memory_order_acquire);
+    // Local private numeric evidence at first/every eighth physical Present.
+    // Each method is emitted at most once per frame; no resource ID/bytes.
+    if((frame!=1u && frame%8u!=0u) || draw>10000000u)return;
+    auto& recorded=g_original_resource_residency_logged_frame[method-1u];
+    auto prior=recorded.load(std::memory_order_acquire);
+    while(prior<frame && !recorded.compare_exchange_weak(
+        prior,frame,std::memory_order_acq_rel,std::memory_order_acquire)){}
+    if(prior>=frame)return;
+    m2vr::LogEvent("model2_d3d9_original_resource_residency_phase",
+        frame,rva,draw,method);
+}
 void OriginalResourceResidencyUnknown(std::uint32_t rva) noexcept {
     // Hook coverage is never inferred from successful texture bindings.
     // Persist through Reset and reject every later physical Present.
@@ -70,6 +88,7 @@ DWORD STDMETHODCALLTYPE OriginalResourceSetPriorityHook(
         // HRESULT. Never classify its high bit as a failure.
         RecordOriginalLineageWrite(
             m2vr::drawprobe::OriginalLineageKind::ResourceSetPriority,rva,S_OK);
+        RecordOriginalResourceResidencyPhase(rva,1u);
     }
     return previous;
 }
@@ -94,6 +113,7 @@ void STDMETHODCALLTYPE OriginalResourcePreLoadHook(IDirect3DResource9* resource)
         // gameplay world pass, and the original operation is not replayed.
         RecordOriginalLineageWrite(
             m2vr::drawprobe::OriginalLineageKind::ResourcePreLoad,rva,S_OK);
+        RecordOriginalResourceResidencyPhase(rva,2u);
     }
 }
 template<class Fn>

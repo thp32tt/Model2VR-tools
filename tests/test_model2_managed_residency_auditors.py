@@ -96,5 +96,35 @@ class ManagedResourcePhysicalAuditorTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audit(module,source+[PRESENT,reject(7,0x4321,12,1)])
 
+    def test_real_resource_residency_phase_rejects_prior_original_world_draw(self):
+        for method in (1,2):
+            row=("model2_d3d9_original_resource_residency_phase",
+                 7,0x4321,12,method)
+            vb=audit(VB,vb_source()+[row,PRESENT])["sources"][0]
+            up=audit(UP,up_source()+[row,PRESENT])
+            self.assertEqual(vb["original_surface_failure_witnesses"],1)
+            self.assertFalse(vb["world_pass_proven"])
+            self.assertEqual(up["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",
+                             up["counts"])
+    def test_real_resource_residency_phase_rejects_malformed_or_postpresent(self):
+        bad=[
+            (0,0x4321,12,1),(7,0,12,1),(7,0x4321,10000001,2),
+            (7,0x4321,12,0),(7,0x4321,12,3),
+            (7,0xffffffff+1,1,1)
+        ]
+        for values in bad:
+            for module,source in ((VB,vb_source()),(UP,up_source())):
+                with self.assertRaisesRegex(ValueError,
+                        "original resource residency phase"):
+                    audit(module,source+[
+                        ("model2_d3d9_original_resource_residency_phase",*values),
+                        PRESENT])
+        for module,source in ((VB,vb_source()),(UP,up_source())):
+            with self.assertRaisesRegex(ValueError,
+                    "original resource residency phase"):
+                audit(module,source+[PRESENT,(
+                    "model2_d3d9_original_resource_residency_phase",
+                    7,0x4321,12,2)])
 if __name__=="__main__":
     unittest.main()

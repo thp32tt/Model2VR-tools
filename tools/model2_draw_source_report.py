@@ -638,6 +638,20 @@ def audit_csv(path):
                 if len(original_surface_failures)>MAX_WITNESSES:
                     raise ValueError("original presentation control capacity")
                 continue
+            if event == "model2_d3d9_original_resource_residency_phase":
+                try:
+                    frame, caller, ordinal, method = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original resource residency phase row") from exc
+                if (not 0 < frame <= 0xffffffff or frame in physical_presents or
+                    not 0 < caller <= 0xffffffff or ordinal > 10000000 or
+                    method not in (1,2)):
+                    raise ValueError("invalid original resource residency phase")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures)>MAX_WITNESSES:
+                    raise ValueError("original resource residency phase capacity")
+                continue
             if event == "model2_d3d9_original_residency_rejected":
                 try:
                     frame, caller, ordinal, reason = (

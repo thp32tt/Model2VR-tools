@@ -288,6 +288,7 @@ def audit_csv(path):
                 "model2_d3d9_original_query_source_rejected",
                 "model2_d3d9_original_validation_rejected",
                 "model2_d3d9_original_residency_rejected",
+                "model2_d3d9_original_resource_residency_phase",
                 "model2_d3d9_original_presentation_control_rejected",
                 "model2_d3d9_original_buffer_mutation_rejected",
                 "model2_d3d9_original_buffer_hook_unobserved",
@@ -387,6 +388,15 @@ def audit_csv(path):
                 if len(failed_original_surface_frames)>=MAX_PENDING and (
                     a0 not in failed_original_surface_frames):
                     raise ValueError("original presentation control capacity")
+                failed_original_surface_frames.add(a0)
+                continue
+            if event == "model2_d3d9_original_resource_residency_phase":
+                if (not 0 < a0 <= 0xffffffff or a0 <= observed_present_frame or
+                    not 0 < a1 <= 0xffffffff or a2 > 10000000 or a3 not in (1,2)):
+                    raise ValueError("invalid original resource residency phase")
+                if len(failed_original_surface_frames)>=MAX_PENDING and (
+                        a0 not in failed_original_surface_frames):
+                    raise ValueError("original resource residency phase capacity")
                 failed_original_surface_frames.add(a0)
                 continue
             if event == "model2_d3d9_original_residency_rejected":
