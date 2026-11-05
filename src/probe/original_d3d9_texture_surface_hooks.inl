@@ -78,20 +78,26 @@ bool ObserveOriginalTextureSurface(IDirect3DSurface9* surf,
     std::lock_guard lock(g_texture_surface_hook_mutex);
     if(g_texture_hook_unknown.load(std::memory_order_acquire))return false;
     auto** vt=*reinterpret_cast<void***>(surf);
-    for(unsigned slot: {13u,14u,15u,16u}){
+    for(unsigned slot: {11u,13u,14u,15u,16u}){
         if(!vt || !vt[slot]){
             OriginalTextureCoverageUnknown(caller_rva);return false;
         }
     }
-    if(g_surface_lock_target || g_surface_unlock_target ||
-       g_surface_get_dc_target || g_surface_release_dc_target){
-        if(g_surface_lock_target==vt[13] && g_surface_unlock_target==vt[14] &&
+    if(g_surface_container_target || g_surface_lock_target ||
+       g_surface_unlock_target || g_surface_get_dc_target ||
+       g_surface_release_dc_target){
+        if(g_surface_container_target==vt[11] &&
+           g_surface_get_container &&
+           g_surface_lock_target==vt[13] && g_surface_unlock_target==vt[14] &&
            g_surface_get_dc_target==vt[15] && g_surface_release_dc_target==vt[16] &&
            g_surface_lock_rect && g_surface_unlock_rect &&
            g_surface_get_dc && g_surface_release_dc)return true;
         OriginalTextureCoverageUnknown(caller_rva);return false;
     }
-    const bool h1=Hook(vt[13],reinterpret_cast<void*>(&OriginalSurfaceLockRectHook),
+    const bool h0=Hook(vt[11],
+        reinterpret_cast<void*>(&OriginalSurfaceGetContainerHook),
+        g_surface_get_container);
+    const bool h1=h0&&Hook(vt[13],reinterpret_cast<void*>(&OriginalSurfaceLockRectHook),
                        g_surface_lock_rect);
     const bool h2=h1&&Hook(vt[14],
         reinterpret_cast<void*>(&OriginalSurfaceUnlockRectHook),g_surface_unlock_rect);
@@ -99,15 +105,18 @@ bool ObserveOriginalTextureSurface(IDirect3DSurface9* surf,
         reinterpret_cast<void*>(&OriginalSurfaceGetDCHook),g_surface_get_dc);
     const bool h4=h3&&Hook(vt[16],
         reinterpret_cast<void*>(&OriginalSurfaceReleaseDCHook),g_surface_release_dc);
-    if(!(h1&&h2&&h3&&h4)){
+    if(!(h0&&h1&&h2&&h3&&h4)){
         if(h4){MH_DisableHook(vt[16]);MH_RemoveHook(vt[16]);}
         if(h3){MH_DisableHook(vt[15]);MH_RemoveHook(vt[15]);}
         if(h2){MH_DisableHook(vt[14]);MH_RemoveHook(vt[14]);}
         if(h1){MH_DisableHook(vt[13]);MH_RemoveHook(vt[13]);}
+        if(h0){MH_DisableHook(vt[11]);MH_RemoveHook(vt[11]);}
+        g_surface_get_container=nullptr;
         g_surface_lock_rect=nullptr;g_surface_unlock_rect=nullptr;
         g_surface_get_dc=nullptr;g_surface_release_dc=nullptr;
         OriginalTextureCoverageUnknown(caller_rva);return false;
     }
+    g_surface_container_target=vt[11];
     g_surface_lock_target=vt[13];g_surface_unlock_target=vt[14];
     g_surface_get_dc_target=vt[15];g_surface_release_dc_target=vt[16];
     return true;

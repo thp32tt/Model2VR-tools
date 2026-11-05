@@ -48,25 +48,36 @@ bool ObserveOriginalVolumeLevel(IDirect3DVolume9* v,std::uint32_t rva){
     if(g_texture_hook_unknown.load(std::memory_order_acquire))return false;
     auto** vt=*reinterpret_cast<void***>(v);
     // IDirect3DVolume9 inherits IUnknown, unlike IDirect3DResource9.
-    if(!vt || !vt[9] || !vt[10]){
+    if(!vt || !vt[7] || !vt[9] || !vt[10]){
         OriginalTextureCoverageUnknown(rva);return false;
     }
-    if(g_volume_level_lock_target || g_volume_level_unlock_target){
-        if(g_volume_level_lock_target==vt[9] &&
+    if(g_volume_container_target || g_volume_level_lock_target ||
+       g_volume_level_unlock_target){
+        if(g_volume_container_target==vt[7] &&
+           g_volume_get_container && g_volume_level_lock_target==vt[9] &&
            g_volume_level_unlock_target==vt[10] &&
            g_volume_level_lock && g_volume_level_unlock)return true;
         OriginalTextureCoverageUnknown(rva);return false;
     }
+    const bool container=Hook(vt[7],
+        reinterpret_cast<void*>(&OriginalVolumeGetContainerHook),
+        g_volume_get_container);
+    if(!container){OriginalTextureCoverageUnknown(rva);return false;}
     if(!Hook(vt[9],reinterpret_cast<void*>(&OriginalVolumeLevelLockBoxHook),
              g_volume_level_lock)){
+        MH_DisableHook(vt[7]);MH_RemoveHook(vt[7]);
+        g_volume_get_container=nullptr;
         OriginalTextureCoverageUnknown(rva);return false;
     }
     if(!Hook(vt[10],reinterpret_cast<void*>(&OriginalVolumeLevelUnlockBoxHook),
              g_volume_level_unlock)){
         MH_DisableHook(vt[9]);MH_RemoveHook(vt[9]);
+        MH_DisableHook(vt[7]);MH_RemoveHook(vt[7]);
+        g_volume_get_container=nullptr;
         g_volume_level_lock=nullptr;
         OriginalTextureCoverageUnknown(rva);return false;
     }
+    g_volume_container_target=vt[7];
     g_volume_level_lock_target=vt[9];
     g_volume_level_unlock_target=vt[10];
     return true;

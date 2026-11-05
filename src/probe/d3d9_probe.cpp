@@ -143,6 +143,8 @@ using TextureLockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DTexture9*,UINT,D3D
 using TextureUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DTexture9*,UINT);
 using TextureGetSurfaceLevelFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DTexture9*,UINT,IDirect3DSurface9**);
+using SurfaceGetContainerFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,REFIID,void**);
+using VolumeGetContainerFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DVolume9*,REFIID,void**);
 using SurfaceLockRectFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DSurface9*,D3DLOCKED_RECT*,const RECT*,DWORD);
 using SurfaceUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*);
@@ -308,11 +310,14 @@ GetTextureFn g_get_texture=nullptr;
 TextureLockRectFn g_texture_lock_rect=nullptr;
 TextureUnlockRectFn g_texture_unlock_rect=nullptr;
 TextureGetSurfaceLevelFn g_texture_get_surface_level=nullptr;
+SurfaceGetContainerFn g_surface_get_container=nullptr;
+VolumeGetContainerFn g_volume_get_container=nullptr;
 SurfaceLockRectFn g_surface_lock_rect=nullptr;
 SurfaceUnlockRectFn g_surface_unlock_rect=nullptr;
 SurfaceGetDCFn g_surface_get_dc=nullptr;
 SurfaceReleaseDCFn g_surface_release_dc=nullptr;
 void* g_texture_get_surface_level_target=nullptr;
+void* g_surface_container_target=nullptr;
 void* g_surface_lock_target=nullptr;
 void* g_surface_unlock_target=nullptr;
 void* g_surface_get_dc_target=nullptr;
@@ -336,6 +341,7 @@ VolumeLevelLockFn g_volume_level_lock=nullptr;
 VolumeLevelUnlockFn g_volume_level_unlock=nullptr;
 void* g_cube_get_surface_target=nullptr;
 void* g_volume_get_level_target=nullptr;
+void* g_volume_container_target=nullptr;
 void* g_volume_level_lock_target=nullptr;
 void* g_volume_level_unlock_target=nullptr;
 std::mutex g_volume_level_hook_mutex;
@@ -2283,6 +2289,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 // Native original bound buffer Lock/Unlock hooks join one physical Present
 // camera/geometry nonce and reject stale partial OpenXR stereo eye frames.
 #include "original_d3d9_buffer_hooks.inl"
+#include "original_d3d9_container_hooks.inl"
 #include "original_d3d9_texture_surface_hooks.inl"
 #include "original_d3d9_texture_mip_hooks.inl"
 #include "original_d3d9_texture_subresource_hooks.inl"
