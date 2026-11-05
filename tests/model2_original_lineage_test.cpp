@@ -1,5 +1,6 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
 #include "../src/probe/original_d3d9_control_present.hpp"
+#include "../src/probe/original_d3d9_scene_draw_coverage.hpp"
 #include "../src/probe/original_d3d9_caller_bloom.hpp"
 #include "../src/probe/original_d3d9_caller_inventory.hpp"
 #include "../src/probe/original_d3d9_validation_policy.hpp"
@@ -70,6 +71,48 @@ int main(){
          caller_bits.lane1|second_bits.lane1},0x004bb400u));
     // Fully exact physical original Draw caller inventory, not a 128-bit
     // bloom oracle; long sessions retain independent caller identities.
+    // Real post-COM BeginScene/Draw/EndScene gate across all four original
+    // families. No source counts are inferred from sampled VB/UP vertices.
+    OriginalPhysicalSceneDrawCoverage scene{};
+    scene.Begin(true,true);
+    scene.Draw(true,true,true); // primary DrawPrimitive COM succeeded
+    scene.Draw(true,true,true); // indexed UP original COM succeeded
+    scene.End(true,true,true);
+    auto good_scene=scene.FinishPresent(false,false,true);
+    assert(good_scene.begins==1u && good_scene.ends==1u);
+    assert(good_scene.successful_in_scene==2u);
+    assert(good_scene.TotalDraws()==2u && good_scene.CompleteSourceScene());
+    // Each physical Present starts a fresh scene proof epoch.
+    auto empty_scene=scene.FinishPresent(false,false,true);
+    assert(empty_scene.TotalDraws()==0u && empty_scene.flags==0u);
+    scene.Begin(true,true);
+    scene.Draw(true,false,true); // source draw outside original scene
+    scene.End(true,true,true);
+    auto outside_scene=scene.FinishPresent(false,false,true);
+    assert(!outside_scene.CompleteSourceScene());
+    assert(outside_scene.successful_untrusted==1u &&
+           outside_scene.successful_in_scene==0u);
+    scene.Draw(false,false,true); // non-EXE primary Draw is unknown
+    auto unknown_scene=scene.FinishPresent(false,false,true);
+    assert((unknown_scene.flags&OriginalPhysicalSceneDrawCoverage::kUnknownDraw)!=0u);
+    scene.Begin(true,true);
+    scene.Draw(true,true,false); // actual failed original COM draw
+    scene.End(true,true,true);
+    auto failed_scene=scene.FinishPresent(false,false,true);
+    assert(failed_scene.failed_draws==1u &&
+           !failed_scene.CompleteSourceScene());
+    scene.Begin(true,true);
+    assert((scene.FinishPresent(true,false,true).flags&
+        OriginalPhysicalSceneDrawCoverage::kUnbalanced)!=0u);
+    scene.Begin(true,true);
+    scene.End(true,true,true);
+    assert((scene.FinishPresent(false,true,true).flags&
+        OriginalPhysicalSceneDrawCoverage::kFailedScene)!=0u);
+    scene.Draw(true,true,true);
+    assert((scene.FinishPresent(false,false,false).flags&
+        OriginalPhysicalSceneDrawCoverage::kHooksMissing)!=0u);
+    scene.Reset();
+    assert(scene.FinishPresent(false,false,true).TotalDraws()==0u);
     OriginalDrawCallerInventory exact{};
     assert(exact.Count()==0u && !exact.Incomplete());
     assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);

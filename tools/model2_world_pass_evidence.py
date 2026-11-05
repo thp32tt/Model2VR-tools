@@ -132,6 +132,37 @@ def _validate_report(report):
     if (isinstance(bloom,dict) and
         bloom.get("physical_present_count")!=run["physical_present_count"]):
         raise ValueError("inconsistent original all-family capture run identity")
+    scene=report.get("original_physical_scene_draw_coverage")
+    if (not isinstance(scene,dict) or
+        set(scene)!={"physical_present_count","first_present_frame",
+                    "last_present_frame","original_begin_scene_count",
+                    "original_end_scene_count",
+                    "original_successful_in_scene_draw_count",
+                    "original_successful_untrusted_scene_draw_count",
+                    "original_failed_draw_count","flagged_present_count",
+                    "trusted_scene_drawn_present_count",
+                    "all_original_scene_draws_trusted"} or
+        any(type(scene.get(key)) is not int or
+            scene[key]<0 or scene[key]>MAX_SOURCES*10000000
+            for key in ("physical_present_count","first_present_frame",
+                        "last_present_frame","original_begin_scene_count",
+                        "original_end_scene_count",
+                        "original_successful_in_scene_draw_count",
+                        "original_successful_untrusted_scene_draw_count",
+                        "original_failed_draw_count","flagged_present_count",
+                        "trusted_scene_drawn_present_count")) or
+        scene["first_present_frame"]!=1 or
+        scene["physical_present_count"]!=run["physical_present_count"] or
+        scene["last_present_frame"]!=run["physical_present_count"] or
+        scene["original_begin_scene_count"]!=scene["original_end_scene_count"] or
+        scene["original_successful_in_scene_draw_count"]<1 or
+        scene["original_successful_untrusted_scene_draw_count"]!=0 or
+        scene["original_failed_draw_count"]!=0 or
+        scene["flagged_present_count"]!=0 or
+        not 1<=scene["trusted_scene_drawn_present_count"]<=
+            scene["physical_present_count"] or
+        scene["all_original_scene_draws_trusted"] is not True):
+        raise ValueError("incomplete physical original Scene/Draw ownership")
     # An empty title/menu/sky/HUD/aux report from a crashed or unhooked
     # emulator must never count as a negative scene witness. The native
     # original post-COM Present event is independent of VB/IB sampling and

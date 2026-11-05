@@ -22,6 +22,54 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_original_unsampled_scene_draw_matches_original_physical_counts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"scene_coverage.csv"
+            caller=0x1234
+            lo,hi=REPORT._original_caller_exact_bloom({caller})
+            rows=[
+                ("model2_d3d9_original_draw_caller_first",
+                 1,caller,pack(3,1),0),
+                ("model2_d3d9_original_control_present_phase",1,0,
+                 pack(0,0),pack(2,0)),
+                ("model2_d3d9_original_all_family_caller_bloom",1,lo,hi,0),
+                ("model2_d3d9_original_caller_inventory",1,1,0,0),
+                ("model2_d3d9_original_capture_run",1,0x123456789abcdef0,0,0),
+                ("model2_d3d9_original_scene_draw_coverage",1,
+                 pack(1,1),pack(2,0),pack(0,0))
+            ]
+            self.write_log(path,rows)
+            got=REPORT.audit_csv(path)
+            cov=got["original_physical_scene_draw_coverage"]
+            self.assertTrue(cov["all_original_scene_draws_trusted"])
+            self.assertEqual(cov["trusted_scene_drawn_present_count"],1)
+            self.assertEqual(cov["original_successful_in_scene_draw_count"],2)
+            for row in (
+                ("model2_d3d9_original_scene_draw_coverage",1,
+                 pack(1,1),pack(1,0),pack(0,0)),
+                ("model2_d3d9_original_scene_draw_coverage",1,
+                 pack(1,1),pack(2,0),pack(0,1)),
+            ):
+                bad=rows.copy()
+                bad[-1]=row
+                self.write_log(path,bad)
+                if row[-1]:
+                    result=REPORT.audit_csv(path)
+                    self.assertFalse(result["original_physical_scene_draw_coverage"][
+                        "all_original_scene_draws_trusted"])
+                else:
+                    with self.assertRaisesRegex(ValueError,"Scene/Draw count mismatch"):
+                        REPORT.audit_csv(path)
+            self.write_log(path,rows[:-1])
+            self.assertIsNone(REPORT.audit_csv(path)[
+                "original_physical_scene_draw_coverage"])
+            bad=rows.copy()
+            bad[-1]=("model2_d3d9_original_scene_draw_coverage",2,
+                     pack(1,1),pack(2,0),0)
+            self.write_log(path,bad)
+            with self.assertRaisesRegex(ValueError,"Scene/Draw coverage"):
+                REPORT.audit_csv(path)
+
     def test_native_original_capture_run_contiguous_physical_presents(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"private_run.csv"

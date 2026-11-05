@@ -538,6 +538,8 @@ def audit_csv(path):
     original_exact_callers = set()
     original_capture_nonce = None
     last_capture_frame = 0
+    last_scene_coverage_frame = 0
+    physical_scene_coverage = {}
     last_exact_inventory_frame = 0
     exact_inventory_count = 0
     exact_inventory_flags = (0,0)
@@ -859,6 +861,26 @@ def audit_csv(path):
                 original_scene_failures.add(frame)
                 if len(original_scene_failures) > MAX_WITNESSES:
                     raise ValueError("original scene failures exceeded limit")
+                continue
+            if event == "model2_d3d9_original_scene_draw_coverage":
+                try:
+                    frame,scenes,draws,tail = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original physical Scene/Draw coverage") from exc
+                begins,ends=halves(scenes)
+                inside,untrusted=halves(draws)
+                failed,flags=halves(tail)
+                if (not 0<frame<=0xffffffff or
+                    frame!=last_scene_coverage_frame+1 or
+                    any(n>10000000 for n in (begins,ends,inside,untrusted,failed)) or
+                    flags>127 or inside+untrusted+failed>10000000 or
+                    (last_capture_frame and last_capture_frame!=frame) or
+                    len(physical_scene_coverage)>=MAX_WITNESSES):
+                    raise ValueError("invalid original physical Scene/Draw coverage")
+                physical_scene_coverage[frame]=(begins,ends,inside,untrusted,
+                                                failed,flags)
+                last_scene_coverage_frame=frame
                 continue
             if event == "model2_d3d9_original_capture_run":
                 try:
@@ -1738,6 +1760,11 @@ def audit_csv(path):
     # Only a complete consecutive physical Present stream can support a
     # cross-session NEGATIVE caller exclusion. An old CSV without this new
     # source is still readable but is NOT a complete negative control.
+    if last_scene_coverage_frame and (
+        last_scene_coverage_frame!=last_capture_frame or
+        last_scene_coverage_frame!=last_exact_inventory_frame or
+        last_scene_coverage_frame!=last_bloom_frame):
+        raise ValueError("orphan original physical Scene/Draw evidence")
     if last_capture_frame and (last_capture_frame!=last_exact_inventory_frame or
         last_capture_frame!=last_bloom_frame):
         raise ValueError("orphan original capture run without complete physical Present")
@@ -1755,6 +1782,19 @@ def audit_csv(path):
              not (original_all_family_bloom[0] or original_all_family_bloom[1]
                   or original_all_family_bloom[2]))):
             raise ValueError("incomplete original all-family caller bloom")
+    # Each first/eighth physical post-COM Present has independently counted
+    # ALL four primitive families. Their exact attempted Draw count must
+    # equal in-scene successful + untrusted successful + failed originals.
+    for frame,values in original_control_presents.items():
+        sample=physical_scene_coverage.get(frame)
+        if sample is not None and sum(sample[2:5])!=sum(values[1:]):
+            raise ValueError("original physical Scene/Draw count mismatch")
+    successful_scene_frames=[
+        item for item in physical_scene_coverage.values()
+        if item[2]>0 and item[3]==0 and item[4]==0 and
+        item[5]==0 and item[0]==item[1]]
+    scene_flags=sum(item[5]!=0 or item[0]!=item[1]
+                    for item in physical_scene_coverage.values())
     successful_controls=[
         values for values in original_control_presents.values()
         if values[0]&0x80000000==0]
@@ -1763,6 +1803,21 @@ def audit_csv(path):
     return {
         "schema": 1,
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
+        "original_physical_scene_draw_coverage": (
+            {"physical_present_count":last_scene_coverage_frame,
+             "first_present_frame":1,
+             "last_present_frame":last_scene_coverage_frame,
+             "original_begin_scene_count":sum(v[0] for v in physical_scene_coverage.values()),
+             "original_end_scene_count":sum(v[1] for v in physical_scene_coverage.values()),
+             "original_successful_in_scene_draw_count":sum(v[2] for v in physical_scene_coverage.values()),
+             "original_successful_untrusted_scene_draw_count":sum(v[3] for v in physical_scene_coverage.values()),
+             "original_failed_draw_count":sum(v[4] for v in physical_scene_coverage.values()),
+             "flagged_present_count":scene_flags,
+             "trusted_scene_drawn_present_count":len(successful_scene_frames),
+             "all_original_scene_draws_trusted":bool(
+                 scene_flags==0 and
+                 all(v[3]==0 and v[4]==0 for v in physical_scene_coverage.values()))}
+            if physical_scene_coverage else None),
         "original_capture_run": (
             {"nonce_hex":f"0x{original_capture_nonce:016x}",
              "first_present_frame":1,

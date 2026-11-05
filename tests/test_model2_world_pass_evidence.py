@@ -76,6 +76,16 @@ def report(*sources):
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
         "world_pass_proof": "NOT_ESTABLISHED",
         "hmd_runtime_validation": "UNTESTED",
+        "original_physical_scene_draw_coverage":{
+            "physical_present_count":8,"first_present_frame":1,
+            "last_present_frame":8,
+            "original_begin_scene_count":3,"original_end_scene_count":3,
+            "original_successful_in_scene_draw_count":9,
+            "original_successful_untrusted_scene_draw_count":0,
+            "original_failed_draw_count":0,"flagged_present_count":0,
+            "trusted_scene_drawn_present_count":3,
+            "all_original_scene_draws_trusted":True,
+        },
         "original_capture_run":{
             "nonce_hex":f"0x{next(_run_nonce_counter):016x}",
             "first_present_frame":1,"last_present_frame":8,
@@ -113,6 +123,30 @@ def controls(**overrides):
 
 
 class OriginalWorldPassEvidenceTest(unittest.TestCase):
+    def test_original_unsampled_scene_draw_controls_required_for_all_seven(self):
+        for field,bad in (
+            ("original_physical_scene_draw_coverage",None),
+            ("original_successful_in_scene_draw_count",0),
+            ("original_successful_untrusted_scene_draw_count",1),
+            ("original_failed_draw_count",1),
+            ("flagged_present_count",1),
+            ("original_end_scene_count",2),
+            ("all_original_scene_draws_trusted",False),
+            ("physical_present_count",7),
+        ):
+            with self.subTest(field=field):
+                c=report()
+                if field=="original_physical_scene_draw_coverage":
+                    del c[field]
+                else:
+                    c["original_physical_scene_draw_coverage"][field]=bad
+                with self.assertRaisesRegex(ValueError,"physical original Scene/Draw"):
+                    compare_sessions([report(witness()),report(witness())],
+                                     controls(menu=c))
+        good=compare_sessions([report(witness()),report(witness())],controls())
+        self.assertTrue(good["complete_negative_controls"])
+        self.assertFalse(good["adapter_auto_enable"])
+
     def test_same_native_process_reused_under_different_capture_bytes_rejected(self):
         race_a=report(witness())
         race_b=report(witness())

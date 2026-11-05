@@ -14,6 +14,7 @@
 #include "original_d3d9_surface_result_gate.hpp"
 #include "original_d3d9_lineage.hpp"
 #include "original_d3d9_control_present.hpp"
+#include "original_d3d9_scene_draw_coverage.hpp"
 #include "original_d3d9_caller_bloom.hpp"
 #include "original_d3d9_caller_inventory.hpp"
 #include "original_d3d9_validation_policy.hpp"
@@ -528,6 +529,7 @@ std::atomic<bool> g_original_scene_open{false};
 std::atomic<bool> g_original_scene_poisoned{false};
 std::atomic<DWORD> g_original_scene_owner_thread{0u};
 std::atomic<bool> g_original_scene_hooks_ready{false};
+m2vr::drawprobe::OriginalPhysicalSceneDrawCoverage g_original_scene_draw_coverage{};
 std::atomic<std::uint64_t> g_witness_serial{0};
 // Only frames containing a real sampled original VB/IB Draw receive a
 // matching physical original Present outcome. No per-Draw GPU readback.
@@ -1938,6 +1940,9 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,1u,CallerRva(caller));
+    g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
+        source_scene_open && !g_original_scene_poisoned.load(std::memory_order_acquire) &&
+        g_original_scene_hooks_ready.load(std::memory_order_acquire),SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,1u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -1988,6 +1993,9 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,2u,CallerRva(caller));
+    g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
+        source_scene_open && !g_original_scene_poisoned.load(std::memory_order_acquire) &&
+        g_original_scene_hooks_ready.load(std::memory_order_acquire),SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,2u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -2038,6 +2046,9 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,3u,CallerRva(caller));
+    g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
+        source_scene_open && !g_original_scene_poisoned.load(std::memory_order_acquire) &&
+        g_original_scene_hooks_ready.load(std::memory_order_acquire),SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,3u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -2090,6 +2101,9 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,4u,CallerRva(caller));
+    g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
+        source_scene_open && !g_original_scene_poisoned.load(std::memory_order_acquire) &&
+        g_original_scene_hooks_ready.load(std::memory_order_acquire),SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,4u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -2114,11 +2128,20 @@ HRESULT STDMETHODCALLTYPE BeginSceneHook(IDirect3DDevice9* d){
                 GetCurrentThreadId(),std::memory_order_release);
             g_original_scene_open.store(true,std::memory_order_release);
         }
+        g_original_scene_draw_coverage.Begin(
+            true,SUCCEEDED(hr) &&
+            !g_original_scene_poisoned.load(std::memory_order_acquire));
+    }else if(g_primary_device.Owns(d)){
+        g_original_scene_draw_coverage.Begin(false,false);
     }
     return hr;
 }
 HRESULT STDMETHODCALLTYPE EndSceneHook(IDirect3DDevice9* d){
     void* const caller=_ReturnAddress();
+    const bool source_was_open=g_original_scene_open.load(
+        std::memory_order_acquire) &&
+        g_original_scene_owner_thread.load(std::memory_order_acquire)==
+            GetCurrentThreadId();
     const HRESULT hr=g_end_scene(d);
     const auto caller_rva=CallerRva(caller);
     if(g_primary_device.Owns(d) && caller_rva){
@@ -2127,6 +2150,9 @@ HRESULT STDMETHODCALLTYPE EndSceneHook(IDirect3DDevice9* d){
             g_original_scene_open.store(false,std::memory_order_release);
             g_original_scene_owner_thread.store(0u,std::memory_order_release);
         }
+        g_original_scene_draw_coverage.End(true,SUCCEEDED(hr),source_was_open);
+    }else if(g_primary_device.Owns(d)){
+        g_original_scene_draw_coverage.End(false,SUCCEEDED(hr),source_was_open);
     }
     return hr;
 }
@@ -2909,6 +2935,12 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         Model2VR_RejectOriginalD3D9ActiveInstancing(
             g_present_count.load(std::memory_order_acquire)+1u,active_freq);
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
+    // Cut the physical ORIGINAL Scene/Draw epoch BEFORE resetting its source
+    // scene/Draw counters. The genuine Present executes exactly once below.
+    const auto original_scene_coverage=g_original_scene_draw_coverage.FinishPresent(
+        g_original_scene_open.load(std::memory_order_acquire),
+        g_original_scene_poisoned.load(std::memory_order_acquire),
+        g_original_scene_hooks_ready.load(std::memory_order_acquire));
     // An unobserved state-block Apply vtable stays unsafe across Reset and
     // Present. Keep the HMD on original mono, not stale speculative eyes.
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) &&
@@ -3139,6 +3171,16 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // A fresh game process must have a distinct nonce for PRIVATE A/B controls.
     m2vr::LogEvent("model2_d3d9_original_capture_run",
         frame,OriginalPrivateCaptureRunNonce(),0u,0u);
+    // All four genuine COM Draw families, including UNSAMPLED VB and UP,
+    // are counted by actual original result + source scene ownership.
+    m2vr::LogEvent("model2_d3d9_original_scene_draw_coverage",
+        frame,
+        (std::uint64_t{original_scene_coverage.begins}<<32u)|
+            original_scene_coverage.ends,
+        (std::uint64_t{original_scene_coverage.successful_in_scene}<<32u)|
+            original_scene_coverage.successful_untrusted,
+        (std::uint64_t{original_scene_coverage.failed_draws}<<32u)|
+            original_scene_coverage.flags);
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair
@@ -3217,6 +3259,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
+    g_original_scene_draw_coverage.Reset();
     m2vr::drawprobe::NextProjectDrawEpoch();
     Model2VR_DiscardPendingWorldOnReset();
     if(g_native_stereo)m2vr::daytona::ResetResources();
