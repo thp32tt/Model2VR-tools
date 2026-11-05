@@ -49,8 +49,10 @@ HRESULT STDMETHODCALLTYPE OriginalTextureUnlockRectHook(IDirect3DTexture9* textu
 bool ObserveOriginalBoundTexture(IDirect3DBaseTexture9* texture,
                                  std::uint32_t caller_rva){
     if(!texture || !caller_rva)return true;
-    // Cube/volume textures require distinct Lock signatures. Fail closed.
-    if(texture->GetType()!=D3DRTYPE_TEXTURE){
+    const auto shape=texture->GetType();
+    if(shape==D3DRTYPE_CUBETEXTURE || shape==D3DRTYPE_VOLUMETEXTURE)
+        return ObserveOriginalBoundShapeTexture(texture,caller_rva,shape);
+    if(shape!=D3DRTYPE_TEXTURE){
         OriginalTextureCoverageUnknown(caller_rva);return false;
     }
     std::lock_guard lock(g_texture_hook_mutex);
