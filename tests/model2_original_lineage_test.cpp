@@ -1,8 +1,10 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
 #include "../src/probe/original_d3d9_stateblock_audit.hpp"
 #include "../src/probe/original_d3d9_stream_frequency.hpp"
+#include "../src/probe/original_d3d9_raster_mode.hpp"
 #include "../src/probe/original_d3d9_authenticated_draw.hpp"
 #include <cassert>
+#include <limits>
 int main(){
     using namespace m2vr::drawprobe;
     OriginalStreamFrequencyState freq{};
@@ -26,7 +28,29 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==32);
+    static_assert(kOriginalLineageKinds==35);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::ClipStatus)==32u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::SoftwareVertexProcessing)==33u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::NPatchMode)==34u);
+    OriginalRasterModeState mode{};
+    assert(mode.UnsupportedMask()==0u);
+    mode.SuccessfulSoftwareVertexWrite(true);
+    assert(mode.UnsupportedMask()==OriginalRasterModeState::kSoftwareVertex);
+    mode.SuccessfulNPatchWrite(3.0f);
+    assert(mode.UnsupportedMask()==3u);
+    mode.SuccessfulSoftwareVertexWrite(false);
+    assert(mode.UnsupportedMask()==OriginalRasterModeState::kNPatch);
+    mode.SuccessfulNPatchWrite(1.0f);
+    assert(!mode.UnsupportedMask());
+    mode.SuccessfulNPatchWrite(0.0f);
+    assert(!mode.UnsupportedMask());
+    mode.SuccessfulNPatchWrite(-1.0f);
+    assert(mode.UnsupportedMask()==OriginalRasterModeState::kNPatch);
+    mode.SuccessfulNPatchWrite(2.0f);
+    mode.SuccessfulNPatchWrite(std::numeric_limits<float>::quiet_NaN());
+    assert(mode.UnsupportedMask()==OriginalRasterModeState::kNPatch);
+    mode.AfterSuccessfulDeviceReset();
+    assert(!mode.UnsupportedMask());
     static_assert(static_cast<unsigned>(OriginalLineageKind::Material)==25u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::Light)==26u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::LightEnable)==27u);
