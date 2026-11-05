@@ -219,7 +219,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("g.source_epoch.Revoke(invalid_source_present);",bridge)
         self.assertIn("OriginalSourceFailure::OriginalLineageMismatch",bridge)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",bridge)
-        self.assertIn("model2_d3d9_original_lineage_drift",bridge)
+        self.assertEqual(bridge.count('m2vr::LogEvent("model2_d3d9_original_lineage_drift",'),2)
         self.assertIn("Model2VR_RejectOriginalD3D9SourceLineageDrift(",api)
 
     def test_original_material_state_lineage_and_failed_call_atomicity(self):

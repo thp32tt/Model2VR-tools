@@ -220,6 +220,11 @@ bool TryTakeAuthenticatedOriginalDraw(std::uint64_t frame,
             g_current_original_source_failure=prior;
             m2vr::LogEvent("model2_vr_original_draw_lineage_rejected",
                 frame,ordinal,(std::uint64_t{family}<<32)|caller,scene);
+            // The private physical Draw auditor must reject this frame too:
+            // a pre-COM one-shot mismatch has the same unsafe source
+            // outcome as an intervening state change during original Draw.
+            m2vr::LogEvent("model2_d3d9_original_lineage_drift",
+                frame,family,caller,ordinal);
             lock.unlock();
             // A camera/target mutation after the adapter arm also
             // invalidates speculative GPU-eye replay, but NOT original mono.
