@@ -20,6 +20,18 @@ int main(){
     assert(center.valid);
     assert(center.texture_x==512u && center.texture_y==512u);
     assert(center.window_x==320u && center.window_y==240u);
+    // A full 5760px virtual desktop must remain ray-addressable,
+    // with the exact click mapping back to its signed screen origin.
+    const auto full_desktop=menuray::Intersect(
+        forward,screen,5760,1440,1024,1024);
+    assert(full_desktop.valid);
+    assert(full_desktop.window_x==2880u && full_desktop.window_y==720u);
+    constexpr desktopmenu::DesktopBounds physical{-1920,-120,5760,1440};
+    const auto click=desktopmenu::MapDesktopPoint(
+        physical,full_desktop.window_x,full_desktop.window_y);
+    assert(click.valid && click.x==960 && click.y==600);
+    assert(!menuray::Intersect(
+        forward,screen,8193,1440,1024,1024).valid);
     const auto right=menuray::Intersect(
         {{0.5f,0.f,0.f},{0.f,0.f,0.f,1.f}},screen,640,480,1024,1024);
     assert(right.valid && right.texture_x==768u && right.window_x==480u);

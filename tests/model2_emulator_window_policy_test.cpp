@@ -2,6 +2,27 @@
 #include <cassert>
 using namespace m2vr::desktopmenu;
 int main(){
+    // Dual-monitor Windows may place its primary origin to the RIGHT of
+    // a second monitor. Quest rays/real cursor use signed VIRTUAL origin.
+    static_assert(DesktopBounds{-1920,-240,5360,1680}.Valid());
+    static_assert(!DesktopBounds{0,0,9000,1440}.Valid());
+    constexpr auto desktop=DesktopBounds{-1920,-240,5360,1680};
+    constexpr auto at_origin=MapDesktopPoint(desktop,1920,240);
+    static_assert(at_origin.valid && at_origin.x==0 && at_origin.y==0);
+    constexpr auto at_secondary=MapDesktopPoint(desktop,0,0);
+    static_assert(at_secondary.valid &&
+                  at_secondary.x==-1920 && at_secondary.y==-240);
+    static_assert(!MapDesktopPoint(desktop,5360,100).valid);
+    static_assert(!MapDesktopPoint(desktop,100,1680).valid);
+    static_assert(!MapDesktopPoint({},100,100).valid);
+    static_assert(Fit(5360,1680,1024,1024).Valid());
+    // Real mouse still has a valid texture position OUTSIDE the small
+    // emulator window, including on the negative-X second monitor.
+    constexpr auto wide_fit=Fit(5360,1680,1024,1024);
+    constexpr auto desktop_cursor=PlacePointer(-1500,300,
+        desktop.left,desktop.top,desktop.width,desktop.height,
+        wide_fit,32,32,1,1);
+    static_assert(desktop_cursor.Valid());
     static_assert(!Fit(0,480,1024,1024).Valid());
     static_assert(!Fit(640,0,1024,1024).Valid());
     static_assert(!Fit(640,480,0,1024).Valid());

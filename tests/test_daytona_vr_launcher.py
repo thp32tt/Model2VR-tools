@@ -16,6 +16,15 @@ class DaytonaVrLauncherTest(unittest.TestCase):
         self.assertIn("XR_TYPE_COMPOSITION_LAYER_QUAD",host)
         self.assertIn('not native stereo',host.lower())
 
+    def test_non_native_openxr_also_shows_desktop_outside_emulator(self):
+        source=(ROOT/"src/openxr_host/main.cpp").read_text("utf-8")
+        self.assertIn('#include "../common/win32_desktop_capture.hpp"',source)
+        self.assertIn("desktopmenu::CaptureDesktopFrame(",source)
+        self.assertIn("desktopmenu::CurrentVirtualDesktop()",source)
+        self.assertIn("capture.Grab(hwnd)",source)
+        self.assertIn("quad.eyeVisibility=XR_EYE_VISIBILITY_BOTH",source)
+        self.assertNotIn("GetClientRect(hwnd,&rc)",source)
+
     def test_no_probe_or_duplicate_ffb_owner_in_launcher(self):
         bat=(ROOT/"scripts/Start-DaytonaVR.cmd").read_text(encoding="utf-8")
         ps=(ROOT/"scripts/Start-DaytonaVR.ps1").read_text(encoding="utf-8")

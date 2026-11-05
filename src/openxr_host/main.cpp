@@ -127,13 +127,18 @@ ComPtr<IDXGIAdapter1> FindRuntimeAdapter(LUID luid){
 int Run(std::wstring window_title,DWORD emulator_pid){
     // The one-click Daytona launcher starts the original emulator once.
     // It may not create its actual game window until after ROM selection.
-    HWND hwnd=nullptr;
-    for(unsigned attempt=0;attempt<120u && !hwnd;++attempt){
-        hwnd=FindEmulator(window_title,emulator_pid);
-        if(!hwnd)Sleep(250);
+    HWND hwnd=FindEmulator(window_title,emulator_pid);
+    // PID launcher already authenticated the real emulator process.
+    // Start the XR DESKTOP screen immediately, including before the first
+    // emulator HWND exists. Legacy title-only mode still requires a HWND.
+    if(!hwnd && !emulator_pid){
+        for(unsigned attempt=0;attempt<120u && !hwnd;++attempt){
+            hwnd=FindEmulator(window_title,emulator_pid);
+            if(!hwnd)Sleep(250);
+        }
+        if(!hwnd)throw std::runtime_error(
+            "Model 2 game window not found within 30 seconds");
     }
-    if(!hwnd)throw std::runtime_error(
-        "Model 2 game window not found within 30 seconds");
     XrOwned xr;
     const char* ext[]={XR_KHR_D3D11_ENABLE_EXTENSION_NAME};
     XrInstanceCreateInfo create{XR_TYPE_INSTANCE_CREATE_INFO};
@@ -225,7 +230,8 @@ int Run(std::wstring window_title,DWORD emulator_pid){
         // transitions. Reacquire only within the same verified process.
         if(!IsWindow(hwnd) || !IsWindowVisible(hwnd)){
             hwnd=FindEmulator(window_title,emulator_pid);
-            if(!hwnd){Sleep(25);continue;}
+            // Continue rendering the entire desktop, not a blank frame,
+            // while the original emulator recreates its window.
         }
         if(!running){Sleep(25);continue;}
         XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};

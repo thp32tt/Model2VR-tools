@@ -6,6 +6,39 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 
 class NativeStereoTest(unittest.TestCase):
+    def test_pregame_entire_windows_desktop_and_cursor_remain_visible(self):
+        capture=(ROOT/"host/emulator_window_capture.cpp").read_text("utf-8")
+        api=(ROOT/"host/emulator_window_capture.hpp").read_text("utf-8")
+        desktop=(ROOT/"src/common/win32_desktop_capture.hpp").read_text("utf-8")
+        ray=(ROOT/"src/common/model2_menu_controller_ray.hpp").read_text("utf-8")
+        ctrl=(ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8")
+        frame=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        self.assertIn("CaptureDesktopFrame(",capture)
+        self.assertIn("CurrentVirtualDesktop()",capture)
+        self.assertIn("desktopmenu::DesktopBounds SourceBounds()",api)
+        self.assertIn("SM_XVIRTUALSCREEN",desktop)
+        self.assertIn("SM_YVIRTUALSCREEN",desktop)
+        self.assertIn("SM_CXVIRTUALSCREEN",desktop)
+        self.assertIn("SM_CYVIRTUALSCREEN",desktop)
+        self.assertIn("SRCCOPY|CAPTUREBLT",desktop)
+        self.assertIn("GetCursorInfo(",desktop)
+        self.assertIn("GetIconInfo(",desktop)
+        self.assertIn("DrawIconEx(",desktop)
+        self.assertIn("44u,96u",desktop)
+        self.assertIn("MapDesktopPoint(",capture)
+        self.assertIn("PtInRect(&rect,target_point)",capture)
+        self.assertIn("point_pid!=static_cast<DWORD>(pid)",capture)
+        self.assertIn("post_warp_pid!=static_cast<DWORD>(pid)",capture)
+        self.assertIn("GetForegroundWindow()!=window_",capture)
+        self.assertIn("capture.SourceBounds()",ctrl)
+        self.assertIn("window_width>8192u",ray)
+        self.assertIn("Model2VR XR pre-game Windows desktop 2D quad",frame)
+        self.assertIn("transport::IsStereoGame(frame_gate_.kind())",frame)
+        self.assertIn("transport::IsMonoGame(frame_gate_.kind())",frame)
+        self.assertIn("desktopmenu::Source::GameMono2D",frame)
+        self.assertIn("desktopmenu::Source::EmulatorWindow2D",frame)
+
+
     def test_native_untextured_and_textured_world_share_poisoned_camera_epoch(self):
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         gate=(ROOT/"src/probe/verified_world_projection_epoch.hpp").read_text("utf-8")

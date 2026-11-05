@@ -1,5 +1,29 @@
 # Daytona USA — Quest 3 VR display (no trace loop)
 
+## Windows desktop visible from the very first XR frame (2026-11-06)
+
+Before the first authentic Daytona game frame arrives, the native Quest OpenXR
+host captures the **entire Windows virtual desktop** (up to 8192x8192), not
+just the emulator's small window. This includes the taskbar, File/Open-ROM
+dialogs, background windows and physical mouse cursor across monitors.
+The cursor artwork is enlarged to at least 44 pixels in the XR screenshot
+and marked with a subtle high-contrast circle, without moving the real mouse.
+Negative monitor coordinates and controller ray mapping are kept consistent.
+
+A Quest controller still cannot inject clicks into unrelated Windows
+applications: any click must lie inside the genuine foreground emulator HWND,
+and the target pixel must belong to the emulator PID. Normal Windows mouse
+input is unchanged. A successful actual native GameStereo or original-game
+mono transport frame still takes priority, so launching Daytona returns to
+the existing game image automatically. Both the combined
+`Run-Daytona-NativeStereo.cmd` package and the separate non-native
+`Start-DaytonaVR.cmd` desktop viewer use the full-desktop capture.
+
+The entire desktop is visible **inside your own headset**, so other
+Windows notifications or applications may also be visible. This change
+does not upload pixels or alter emulator ROMs, input, steering, FFB or files.
+
+
 This is a **working-code OpenXR VR display path**, not a claim of
 geometrically independent game-eye stereo. The original Model 2 Emulator
 remains untouched and the existing Generic DD force feedback plugin stays
