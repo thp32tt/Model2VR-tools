@@ -29,6 +29,13 @@ struct OriginalTargetSnapshot {
     OriginalPhysicalRtClass target=OriginalPhysicalRtClass::Unknown;
     OriginalPhysicalDepthClass depth=OriginalPhysicalDepthClass::Unknown;
 };
+// Three additional MRT surfaces are never inferred from the primary RT0.
+// Read-only GetRenderTarget returns D3DERR_NOTFOUND for a valid empty slot.
+// Any device caps/read failure is UNKNOWN, not an observed empty target.
+struct OriginalSecondaryRtSnapshot {
+    std::uint32_t mask=0u;
+    bool known=false;
+};
 struct OriginalPhysicalTargetSummary {
     std::uint32_t backbuffer=0u, auxiliary=0u, unknown=0u, failed=0u;
     std::uint32_t incompatible_depth=0u, flags=0u;
@@ -54,6 +61,7 @@ public:
     static constexpr std::uint32_t kCountMismatch=256u;
     static constexpr std::uint32_t kOpaqueStateBlock=512u;
     static constexpr std::uint32_t kMrtActive=1024u;
+    static constexpr std::uint32_t kMrtUnresolved=2048u;
     struct Token {
         std::uint64_t epoch=0u, revision=0u;
         OriginalTargetSnapshot state{};
@@ -62,6 +70,19 @@ public:
     bool NeedsResolution() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         return !resolved_;
+    }
+    bool NeedsSecondaryResolution() noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return !secondary_resolved_;
+    }
+    void ResolveSecondaryIfUnchanged(
+        std::uint64_t prior,OriginalSecondaryRtSnapshot actual) noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if(prior!=revision_ || secondary_resolved_ || active_binds_ || sealed_)
+            return; // a concurrent original COM SET cannot be borrowed
+        secondary_mask_=actual.mask&7u;
+        secondary_known_=actual.known && (actual.mask&~7u)==0u;
+        secondary_resolved_=true; // cache FAILED too until next real SET
     }
     // A read-only initial D3D9 COM snapshot is not EXE source ownership.
     // Do not overwrite an authentic SetRT/SetDepth completed concurrently.
@@ -72,7 +93,7 @@ public:
     void ResolveIfUnchanged(std::uint64_t prior,
                             OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        if(prior!=revision_ || resolved_)return;
+        if(prior!=revision_ || resolved_ || active_binds_ || sealed_)return;
         state_=actual;
         resolved_=true;
     }
@@ -117,7 +138,8 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         flags_|=kOpaqueStateBlock;
         state_={};owned_target_=owned_depth_=false;
-        resolved_=false;secondary_mask_=0u;++revision_;
+        resolved_=false;secondary_mask_=0u;
+        secondary_resolved_=secondary_known_=false;++revision_;
     }
     // Avoid building speculative CPU-world eye pixels if this original
     // physical Draw lacks an EXE-owned, compatible RT0/depth state. The
@@ -125,6 +147,7 @@ public:
     bool CanAttemptVerifiedWorldDraw() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         return !sealed_ && active_binds_==0u && resolved_ && owned_target_ && owned_depth_ &&
+            secondary_resolved_ && secondary_known_ &&
             secondary_mask_==0u && flags_==0u &&
             state_.target!=OriginalPhysicalRtClass::Unknown &&
             state_.depth==OriginalPhysicalDepthClass::Compatible;
@@ -132,6 +155,8 @@ public:
     Token EnterDraw() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         if(secondary_mask_)flags_|=kMrtActive;
+        if(!secondary_resolved_ || !secondary_known_)
+            flags_|=kMrtUnresolved;
         if(active_binds_)flags_|=kTargetDrift;
         Token result{epoch_,revision_,state_,owned_target_,owned_depth_,true};
         if(active_>=kLimit){
@@ -189,6 +214,7 @@ public:
         ++revision_;
         state_={};owned_target_=owned_depth_=false;resolved_=false;
         secondary_mask_=0u;
+        secondary_resolved_=secondary_known_=false;
         backbuffer_=auxiliary_=unknown_=failed_=bad_depth_=flags_=0u;
         sealed_=false;
         // Keep active_ AND active_binds_: late original COM operations
@@ -199,7 +225,8 @@ public:
 private:
     void InvalidateOwnedBinding() noexcept {
         state_={};owned_target_=owned_depth_=false;
-        resolved_=false;++revision_;
+        resolved_=false;secondary_mask_=0u;
+        secondary_resolved_=secondary_known_=false;++revision_;
     }
     bool CompleteBind(const BindToken& token) noexcept {
         if(!token.valid){flags_|=kOverflow;InvalidateOwnedBinding();return false;}
@@ -222,7 +249,8 @@ private:
         if(!exe_caller) {
             flags_|=kForeignBind;
             state_={};owned_target_=false;owned_depth_=false;
-            resolved_=false;++revision_;
+            resolved_=false;secondary_mask_=0u;
+            secondary_resolved_=secondary_known_=false;++revision_;
             return;
         }
         if(!succeeded){flags_|=kFailedBind;return;}
@@ -234,6 +262,9 @@ private:
                 const auto bit=1u<<(slot-1u);
                 if(nonnull)secondary_mask_|=bit;
                 else secondary_mask_&=~bit;
+                // If the other physical MRT slots have never been
+                // witnessed, changing this single slot proves nothing.
+                if(!secondary_known_)secondary_resolved_=false;
             }else flags_|=kMrtActive;
             ++revision_;
             return;
@@ -264,5 +295,6 @@ private:
     std::uint32_t secondary_mask_=0u,active_=0u,active_binds_=0u,backbuffer_=0u,auxiliary_=0u,
         unknown_=0u,failed_=0u,bad_depth_=0u,flags_=0u;
     bool owned_target_=false, owned_depth_=false, sealed_=false, resolved_=false;
+    bool secondary_resolved_=false, secondary_known_=false;
 };
 } // namespace m2vr::drawprobe

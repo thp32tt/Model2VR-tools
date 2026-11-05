@@ -566,11 +566,48 @@ m2vr::drawprobe::OriginalTargetSnapshot ReadPhysicalOriginalRtDepth(
     if(rt)rt->Release();
     return result;
 }
+// First unsampled original Draw after hooking, Reset or StateBlock Apply
+// must check all actually supported MRT slots, NOT assume 1..3 are empty.
+// COM interface refs from GetRenderTarget are released on every exit.
+m2vr::drawprobe::OriginalSecondaryRtSnapshot ReadPhysicalOriginalSecondaryRt(
+    IDirect3DDevice9* d) noexcept {
+    m2vr::drawprobe::OriginalSecondaryRtSnapshot result{};
+    if(!d)return result;
+    D3DCAPS9 caps{};
+    if(FAILED(d->GetDeviceCaps(&caps)) ||
+       caps.NumSimultaneousRTs<1u || caps.NumSimultaneousRTs>4u)
+        return result;
+    result.known=true;
+    for(DWORD slot=1u;slot<caps.NumSimultaneousRTs;++slot){
+        IDirect3DSurface9* surface=nullptr;
+        // Use the original function pointer if installed; an internal
+        // read-only query must not impersonate an original EXE GetRT call.
+        const HRESULT hr=g_get_render_target?
+            g_get_render_target(d,slot,&surface):
+            d->GetRenderTarget(slot,&surface);
+        if(hr==D3DERR_NOTFOUND && !surface)
+            continue; // genuine D3D9 unbound valid slot
+        if(SUCCEEDED(hr) && surface)
+            result.mask|=1u<<(slot-1u);
+        else result.known=false; // INVALIDCALL/device lost/partial read
+        if(surface)surface->Release();
+    }
+    return result;
+}
 void EnsurePhysicalOriginalRtDepth(IDirect3DDevice9* d) noexcept {
-    if(!g_original_target_draw_coverage.NeedsResolution())return;
+    const bool primary=g_original_target_draw_coverage.NeedsResolution();
+    const bool secondary=g_original_target_draw_coverage.NeedsSecondaryResolution();
+    if(!primary && !secondary)return; // cache per verified binding revision
     const auto revision=g_original_target_draw_coverage.Revision();
-    const auto actual=ReadPhysicalOriginalRtDepth(d);
-    g_original_target_draw_coverage.ResolveIfUnchanged(revision,actual);
+    if(primary){
+        const auto actual=ReadPhysicalOriginalRtDepth(d);
+        g_original_target_draw_coverage.ResolveIfUnchanged(revision,actual);
+    }
+    if(secondary){
+        const auto actual=ReadPhysicalOriginalSecondaryRt(d);
+        g_original_target_draw_coverage.ResolveSecondaryIfUnchanged(
+            revision,actual);
+    }
 }
 bool OriginalSceneStillOwnedAfterDraw(
     unsigned source_scene,bool source_scene_open) noexcept {

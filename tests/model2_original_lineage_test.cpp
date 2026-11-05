@@ -235,6 +235,15 @@ int main(){
     targets.ReopenAfterPhysicalPresentReturn();
     targets.RenderTargetBind(true,true,0u,true,main_depth);
     targets.DepthBind(true,true,main_depth);
+    assert(!targets.CanAttemptVerifiedWorldDraw());
+    // A clean original RT0+Z is NOT sufficient without real MRT slots.
+    auto missing_mrt=targets.EnterDraw();
+    targets.CompleteDraw(missing_mrt,true,true);
+    assert((targets.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kMrtUnresolved)!=0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    const auto mrt_revision=targets.Revision();
+    targets.ResolveSecondaryIfUnchanged(mrt_revision,{0u,true});
     assert(targets.CanAttemptVerifiedWorldDraw());
     for(unsigned family=0;family<4u;++family){
         (void)family;
@@ -335,6 +344,7 @@ int main(){
     binds.CompleteRenderTargetBind(clean_rt,true,true,0u,true,main_depth);
     auto clean_depth=binds.EnterBind();
     binds.CompleteDepthBind(clean_depth,true,true,main_depth);
+    binds.ResolveSecondaryIfUnchanged(binds.Revision(),{0u,true});
     assert(binds.CanAttemptVerifiedWorldDraw());
     auto pending_bind=binds.EnterBind();
     assert(!binds.CanAttemptVerifiedWorldDraw());
@@ -381,6 +391,7 @@ int main(){
     binds.CompleteRenderTargetBind(fresh_rt,true,true,0u,true,main_depth);
     auto fresh_z=binds.EnterBind();
     binds.CompleteDepthBind(fresh_z,true,true,main_depth);
+    binds.ResolveSecondaryIfUnchanged(binds.Revision(),{0u,true});
     assert(binds.CanAttemptVerifiedWorldDraw());
     assert(binds.FinishPresent().flags==0u);
     binds.ReopenAfterPhysicalPresentReturn();
@@ -388,6 +399,46 @@ int main(){
     binds.CompleteRenderTargetBind(failure_bind,true,false,0u,true,main_depth);
     assert((binds.FinishPresent().flags&
             OriginalPhysicalTargetDrawCoverage::kFailedBind)!=0u);
+    // Read-only initial snapshot sees original MRT1 without a SetRT
+    // intercepted in our process: cannot certify this as mono-world.
+    OriginalPhysicalTargetDrawCoverage untouched_mrt{};
+    untouched_mrt.RenderTargetBind(true,true,0u,true,main_depth);
+    untouched_mrt.DepthBind(true,true,main_depth);
+    auto mr=untouched_mrt.Revision();
+    untouched_mrt.ResolveSecondaryIfUnchanged(mr,{1u,true});
+    assert(!untouched_mrt.CanAttemptVerifiedWorldDraw());
+    auto mrt_real=untouched_mrt.EnterDraw();
+    untouched_mrt.CompleteDraw(mrt_real,true,true);
+    assert((untouched_mrt.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kMrtActive)!=0u);
+    untouched_mrt.ReopenAfterPhysicalPresentReturn();
+    // A real GetRT failure is UNKNOWN (rather than falsely no MRT);
+    // no repeat query inside the same revision, then recheck on SetRT.
+    OriginalPhysicalTargetDrawCoverage failed_get{};
+    failed_get.RenderTargetBind(true,true,0u,true,main_depth);
+    failed_get.DepthBind(true,true,main_depth);
+    failed_get.ResolveSecondaryIfUnchanged(failed_get.Revision(),{0u,false});
+    assert(!failed_get.NeedsSecondaryResolution());
+    assert(!failed_get.CanAttemptVerifiedWorldDraw());
+    auto notfound=failed_get.EnterDraw();
+    failed_get.CompleteDraw(notfound,true,true);
+    assert((failed_get.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kMrtUnresolved)!=0u);
+    failed_get.ReopenAfterPhysicalPresentReturn();
+    failed_get.RenderTargetBind(true,true,1u,false,main_depth);
+    assert(failed_get.NeedsSecondaryResolution());
+    failed_get.ResolveSecondaryIfUnchanged(failed_get.Revision(),{0u,true});
+    assert(failed_get.CanAttemptVerifiedWorldDraw());
+    // A read-only MRT query from a stale revision cannot undo newer COM.
+    failed_get.RenderTargetBind(true,true,1u,true,offscreen_depth);
+    failed_get.ResolveSecondaryIfUnchanged(
+        failed_get.Revision()-1u,{0u,true});
+    assert(!failed_get.CanAttemptVerifiedWorldDraw());
+    auto overlapping_active=failed_get.EnterDraw();
+    failed_get.CompleteDraw(overlapping_active,true,true);
+    assert((failed_get.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kMrtActive)!=0u);
+    failed_get.ReopenAfterPhysicalPresentReturn();
     OriginalDrawCallerInventory exact{};
     assert(exact.Count()==0u && !exact.Incomplete());
     assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);
