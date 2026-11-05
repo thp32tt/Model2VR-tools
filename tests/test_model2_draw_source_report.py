@@ -22,6 +22,48 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_native_original_capture_run_contiguous_physical_presents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"private_run.csv"
+            lo,hi=REPORT._original_caller_exact_bloom({0x1234})
+            common=[
+                ("model2_d3d9_original_draw_caller_first",
+                 1,0x1234,pack(1,1),0),
+                ("model2_d3d9_original_control_present_phase",
+                 1,0,pack(1,0),0),
+                ("model2_d3d9_original_all_family_caller_bloom",
+                 1,lo,hi,0),
+                ("model2_d3d9_original_caller_inventory",1,1,0,0),
+                ("model2_d3d9_original_capture_run",1,0x123456789abcdef0,0,0),
+                ("model2_d3d9_original_all_family_caller_bloom",
+                 2,lo,hi,0),
+                ("model2_d3d9_original_caller_inventory",2,1,0,0),
+                ("model2_d3d9_original_capture_run",2,0x123456789abcdef0,0,0),
+            ]
+            self.write_log(p,common)
+            got=REPORT.audit_csv(p)
+            self.assertEqual(got["original_capture_run"]["nonce_hex"],
+                             "0x123456789abcdef0")
+            self.assertEqual(got["original_capture_run"]["physical_present_count"],2)
+            old=common[:4]+common[5:7]
+            self.write_log(p,old)
+            self.assertIsNone(REPORT.audit_csv(p)["original_capture_run"])
+            for changed in (
+                ("model2_d3d9_original_capture_run",2,0xabcdef,0,0),
+                ("model2_d3d9_original_capture_run",3,0x123456789abcdef0,0,0),
+                ("model2_d3d9_original_capture_run",2,0,0,0),
+                ("model2_d3d9_original_capture_run",2,0x123456789abcdef0,1,0),
+            ):
+                with self.subTest(changed=changed):
+                    damaged=common.copy()
+                    damaged[-1]=changed
+                    self.write_log(p,damaged)
+                    with self.assertRaisesRegex(ValueError,"capture run provenance"):
+                        REPORT.audit_csv(p)
+            self.write_log(p,common[:-1])
+            with self.assertRaisesRegex(ValueError,"orphan original capture run"):
+                REPORT.audit_csv(p)
+
     def test_original_validate_device_multi_pass_cannot_claim_world(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"original_validate_device_private.csv"

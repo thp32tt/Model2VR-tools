@@ -536,6 +536,8 @@ def audit_csv(path):
     # Exact original physical Draw caller inventory, one append-only identity
     # per EXE RVA (including unsampled VB/UP). Never more than 4096 originals.
     original_exact_callers = set()
+    original_capture_nonce = None
+    last_capture_frame = 0
     last_exact_inventory_frame = 0
     exact_inventory_count = 0
     exact_inventory_flags = (0,0)
@@ -857,6 +859,24 @@ def audit_csv(path):
                 original_scene_failures.add(frame)
                 if len(original_scene_failures) > MAX_WITNESSES:
                     raise ValueError("original scene failures exceeded limit")
+                continue
+            if event == "model2_d3d9_original_capture_run":
+                try:
+                    frame, nonce, reserved1, reserved2 = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original capture run row") from exc
+                if (not 0 < frame <= 0xffffffff or
+                    frame != last_capture_frame + 1 or
+                    not 0 < nonce <= UINT64_MAX or
+                    reserved1 != 0 or reserved2 != 0 or
+                    (original_capture_nonce is not None and
+                     nonce != original_capture_nonce) or
+                    (last_exact_inventory_frame and
+                     last_exact_inventory_frame != frame)):
+                    raise ValueError("invalid/mixed original capture run provenance")
+                original_capture_nonce = nonce
+                last_capture_frame = frame
                 continue
             if event == "model2_d3d9_original_draw_caller_first":
                 try:
@@ -1718,6 +1738,9 @@ def audit_csv(path):
     # Only a complete consecutive physical Present stream can support a
     # cross-session NEGATIVE caller exclusion. An old CSV without this new
     # source is still readable but is NOT a complete negative control.
+    if last_capture_frame and (last_capture_frame!=last_exact_inventory_frame or
+        last_capture_frame!=last_bloom_frame):
+        raise ValueError("orphan original capture run without complete physical Present")
     if exact_inventory_count and (last_exact_inventory_frame!=last_bloom_frame or
         last_exact_inventory_frame<last_control_present):
         raise ValueError("orphan original exact Draw caller records")
@@ -1740,6 +1763,12 @@ def audit_csv(path):
     return {
         "schema": 1,
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
+        "original_capture_run": (
+            {"nonce_hex":f"0x{original_capture_nonce:016x}",
+             "first_present_frame":1,
+             "last_present_frame":last_capture_frame,
+             "physical_present_count":last_capture_frame}
+            if last_capture_frame else None),
         "original_all_family_exact_caller_inventory": (
             {"callers":[f"0x{value:08x}" for value in sorted(original_exact_callers)],
              "unique_caller_count":len(original_exact_callers),

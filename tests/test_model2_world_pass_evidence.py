@@ -1,4 +1,5 @@
 import copy
+import itertools
 import unittest
 from tools.model2_world_pass_evidence import (
     compare_sessions, CONTROL_TYPES, main, original_caller_bloom_bits)
@@ -52,6 +53,8 @@ def witness(cpu="0x004bb400", count=3):
     }
 
 
+_run_nonce_counter=itertools.count(1)
+
 def report(*sources):
     rvas={0x004f5000}
     for source in sources:
@@ -73,6 +76,11 @@ def report(*sources):
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
         "world_pass_proof": "NOT_ESTABLISHED",
         "hmd_runtime_validation": "UNTESTED",
+        "original_capture_run":{
+            "nonce_hex":f"0x{next(_run_nonce_counter):016x}",
+            "first_present_frame":1,"last_present_frame":8,
+            "physical_present_count":8,
+        },
         "original_all_family_exact_caller_inventory":{
             "callers":[f"0x{value:08x}" for value in sorted(rvas)],
             "unique_caller_count":len(rvas),
@@ -105,6 +113,39 @@ def controls(**overrides):
 
 
 class OriginalWorldPassEvidenceTest(unittest.TestCase):
+    def test_same_native_process_reused_under_different_capture_bytes_rejected(self):
+        race_a=report(witness())
+        race_b=report(witness())
+        race_b["original_capture_run"]=copy.deepcopy(
+            race_a["original_capture_run"])
+        # Even distinct source bytes, labels and paths cannot turn one real
+        # x86 emulator process into two independent race observations.
+        with self.assertRaisesRegex(ValueError,"independent original emulator"):
+            compare_sessions([race_a,race_b],controls())
+        race_a=report(witness())
+        control=report()
+        control["original_capture_run"]=copy.deepcopy(
+            race_a["original_capture_run"])
+        with self.assertRaisesRegex(ValueError,"independent original emulator"):
+            compare_sessions([race_a,report(witness())],
+                             controls(aux=control))
+
+    def test_missing_malformed_or_frame_mismatched_run_witness_is_not_proof(self):
+        for damaged in (
+            None,
+            {"nonce_hex":"0x0000000000000000","first_present_frame":1,
+             "last_present_frame":8,"physical_present_count":8},
+            {"nonce_hex":"0x0000000000000001","first_present_frame":2,
+             "last_present_frame":8,"physical_present_count":8},
+            {"nonce_hex":"0x0000000000000001","first_present_frame":1,
+             "last_present_frame":7,"physical_present_count":7},
+        ):
+            with self.subTest(damaged=damaged):
+                race=report(witness())
+                race["original_capture_run"]=damaged
+                with self.assertRaisesRegex(ValueError,"capture run identity"):
+                    compare_sessions([race,report(witness())],controls())
+
     def test_clear_failure_field_cannot_be_omitted_or_replayed(self):
         clean=witness()
         del clean["original_clear_failure_witnesses"]

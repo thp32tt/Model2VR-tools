@@ -31,6 +31,7 @@
 #include "d3d9_primitive_topology.hpp"
 #include "projected_up_world_source.hpp"
 #include <Windows.h>
+#include <bcrypt.h>
 #include <d3d9.h>
 #include <MinHook.h>
 #include <intrin.h>
@@ -478,6 +479,21 @@ std::atomic<std::uint64_t> g_original_draw_caller_bloom_lo{0u};
 std::atomic<std::uint64_t> g_original_draw_caller_bloom_hi{0u};
 std::atomic<bool> g_original_draw_caller_unknown{false};
 m2vr::drawprobe::OriginalDrawCallerInventory g_original_caller_inventory{};
+// Per-process original emulator run witness, NOT game-world authentication.
+// Windows CSPRNG supplies an unpredictable 64-bit identifier once per native
+// source process; a failed RNG leaves zero and the PRIVATE auditor fails closed.
+// No process ID, machine identity, memory address or original assets exported.
+std::uint64_t OriginalPrivateCaptureRunNonce() noexcept {
+    static const std::uint64_t nonce=[]() noexcept {
+        std::uint64_t value=0u;
+        if(BCryptGenRandom(nullptr,reinterpret_cast<PUCHAR>(&value),
+            static_cast<ULONG>(sizeof(value)),
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG)!=0)
+            return std::uint64_t{0u};
+        return value;
+    }();
+    return nonce;
+}
 // CallerRva is defined below, after the original-game module/image gate.
 std::uint32_t CallerRva(void* ret);
 void ObserveOriginalAllFamilyDrawCaller(void* origin,
@@ -3118,6 +3134,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         frame,g_original_caller_inventory.Count(),
         g_original_caller_inventory.Incomplete()?1u:0u,
         g_original_draw_caller_unknown.load(std::memory_order_acquire)?1u:0u);
+    // Unsampled, actual post-COM Present process boundary: all captured
+    // frames from one original run share the same nonzero random nonce.
+    // A fresh game process must have a distinct nonce for PRIVATE A/B controls.
+    m2vr::LogEvent("model2_d3d9_original_capture_run",
+        frame,OriginalPrivateCaptureRunNonce(),0u,0u);
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair

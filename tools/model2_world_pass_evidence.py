@@ -110,6 +110,25 @@ def _validate_report(report):
         report.get("hmd_runtime_validation") != "UNTESTED"
     ):
         raise ValueError("expected an unproven real-source Model2 report (schema 1)")
+    run=report.get("original_capture_run")
+    exact=report.get("original_all_family_exact_caller_inventory")
+    bloom=report.get("original_all_family_caller_bloom")
+    if (not isinstance(run,dict) or
+        set(run)!={"nonce_hex","first_present_frame","last_present_frame",
+                  "physical_present_count"} or
+        not isinstance(run["nonce_hex"],str) or
+        re.fullmatch(r"0x[0-9a-f]{16}",run["nonce_hex"]) is None or
+        int(run["nonce_hex"],16)==0 or
+        type(run["first_present_frame"]) is not int or
+        run["first_present_frame"]!=1 or
+        type(run["last_present_frame"]) is not int or
+        not 1<=run["last_present_frame"]<=0xffffffff or
+        type(run["physical_present_count"]) is not int or
+        run["physical_present_count"]!=run["last_present_frame"] or
+        not isinstance(exact,dict) or not isinstance(bloom,dict) or
+        any(record.get("physical_present_count")!=run["physical_present_count"]
+            for record in (exact,bloom))):
+        raise ValueError("missing or inconsistent original capture run identity")
     # An empty title/menu/sky/HUD/aux report from a crashed or unhooked
     # emulator must never count as a negative scene witness. The native
     # original post-COM Present event is independent of VB/IB sampling and
@@ -267,6 +286,11 @@ def compare_sessions(race_reports, nonrace_reports):
     race=[_validate_report(report) for report in race_reports]
     nonrace={label:_validate_report(nonrace_reports[label])
              for label in sorted(CONTROL_TYPES)}
+    run_nonces=[r["original_capture_run"]["nonce_hex"] for r in race_reports]
+    run_nonces += [nonrace_reports[label]["original_capture_run"]["nonce_hex"]
+                   for label in sorted(CONTROL_TYPES)]
+    if len(set(run_nonces)) != len(run_nonces):
+        raise ValueError("seven independent original emulator processes required")
     all_callers=set().union(*(set(r) for r in race))
     # Original game can call one EXE RVA with different primitive families.
     control_gpu={label:{caller for _,caller in sources}
