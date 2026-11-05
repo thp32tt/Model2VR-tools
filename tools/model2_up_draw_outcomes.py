@@ -248,6 +248,7 @@ def audit_csv(path):
                 "model2_d3d9_original_clear_failed",
                 "model2_d3d9_original_surface_failed",
                 "model2_d3d9_original_lineage_drift",
+                "model2_d3d9_original_stateblock_mutation",
             }):
                 continue
             try:
@@ -265,6 +266,18 @@ def audit_csv(path):
                         a0 not in failed_original_draw_frames):
                     raise ValueError("original Draw failure capacity exceeded")
                 failed_original_draw_frames.add(a0)
+                continue
+            if event == "model2_d3d9_original_stateblock_mutation":
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or
+                    a1 not in (1, 2) or
+                    not 0 < a2 <= 0xffffffff or
+                    not 0 <= a3 <= 0xffffffff):
+                    raise ValueError("invalid original stateblock mutation")
+                if len(failed_original_surface_frames) >= MAX_PENDING and (
+                        a0 not in failed_original_surface_frames):
+                    raise ValueError("original stateblock mutation capacity exceeded")
+                failed_original_surface_frames.add(a0)
                 continue
             if event in ("model2_d3d9_original_surface_failed",
                           "model2_d3d9_original_lineage_drift"):

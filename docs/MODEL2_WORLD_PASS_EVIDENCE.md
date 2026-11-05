@@ -1,5 +1,37 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Native original D3D9 StateBlock Apply source safety (2026-11-05)
+
+Primary original game D3D9 `CreateStateBlock` (vtable 59),
+`BeginStateBlock` (60), and `EndStateBlock` (61) are hooked with original
+HRESULTs preserved. Returned state block objects dynamically register the
+actual `IDirect3DStateBlock9::Apply` (vtable 5) handler. The original
+`Apply` is called exactly once. Its GetDevice-owned physical original
+source is checked; internal VR replay or unrelated device calls cannot
+assert game provenance.
+
+A successful `Apply` can change graphics state without calling the
+individual hooked `Set*` methods. Therefore **every genuine original
+StateBlock Apply**, whether its original HRESULT succeeds or fails, revokes
+CPU-world and speculative GPU binocular output for the physical Present.
+An unavailable/mismatched Apply observer remains sticky fail-closed for
+subsequent original frames, with original mono backbuffer fallback preserved.
+Physical frame rejection also prevents re-arming stale stereo later in that
+frame. Source-revision nonce gains an explicit `StateBlockApply` counter
+(20 total kinds), and sampled original Draw witnesses gain
+`model2_d3d9_source_stateblock_lineage` (only bounded revision integers).
+`model2_d3d9_original_stateblock_mutation` (frame, stage, caller RVA,
+original HRESULT) carries a fail-closed physical-frame audit record for
+authorized private comparison, without logging COM pointers or original
+game state bytes. The public tools' original VB/IB and UP auditors reject
+all candidate material/world Draws from those physical Presents.
+
+This source instrumentation does not identify World3D or certify Quest
+hardware stereoscopy. Original emulator COM/FFB/simulation remain intact.
+Original Daytona race sessions A/B and separate menu/HUD/sky/title/aux
+captures are still required to prove world geometry and camera calibration.
+
+
 ## Original texture/material and PS-constant Draw lineage (2026-11-05)
 
 The authentic primary-device Win32 D3D9 `SetPixelShaderConstantF` (109),

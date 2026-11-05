@@ -527,6 +527,20 @@ def audit_csv(path):
                 if len(original_draw_failures) > MAX_WITNESSES:
                     raise ValueError("original Draw failures exceeded limit")
                 continue
+            if event == "model2_d3d9_original_stateblock_mutation":
+                try:
+                    frame, stage, caller, result = (
+                        number(row[k]) for k in ("a0", "a1", "a2", "a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original stateblock mutation row") from exc
+                if (not 0 < frame <= 0xffffffff or stage not in (1, 2) or
+                        not 0 < caller <= 0xffffffff or
+                        not 0 <= result <= 0xffffffff):
+                    raise ValueError("invalid original stateblock mutation")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures) > MAX_WITNESSES:
+                    raise ValueError("original stateblock mutation capacity")
+                continue
             if event in ("model2_d3d9_original_surface_failed",
                          "model2_d3d9_original_lineage_drift"):
                 try:

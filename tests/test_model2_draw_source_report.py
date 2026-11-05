@@ -212,6 +212,20 @@ class SourceAuditTests(unittest.TestCase):
                     "model2_d3d9_original_lineage_drift",17,*bad),original_present])
                 with self.assertRaisesRegex(ValueError,"invalid original surface failure"):
                     REPORT.audit_csv(p)
+            for stage in (1, 2):
+                apply=("model2_d3d9_original_stateblock_mutation",17,
+                       stage,0x1234,0)
+                self.write_log(p,prefix+[apply,original_present])
+                blocked=REPORT.audit_csv(p)["sources"][0]
+                self.assertEqual(blocked["original_surface_failure_witnesses"],1)
+                self.assertEqual(blocked[
+                    "distinct_scene_attested_physically_presented_material_present_frame_count"],0)
+            for bad in ((0,1,0x1234,0),(17,3,0x1234,0),
+                        (17,1,0,0),(17,1,0x1234,0x100000000)):
+                event=("model2_d3d9_original_stateblock_mutation",*bad)
+                self.write_log(p,prefix+[event,original_present])
+                with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
+                    REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
                         (21,0x8876086C,0x4321),
                         (1,0,0x4321),

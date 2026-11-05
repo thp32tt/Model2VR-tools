@@ -302,6 +302,19 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"invalid original surface failure"):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_lineage_drift",7,*bad)])
+        for stage in (1,2):
+            blocked=self.projected()+[
+                event("model2_d3d9_original_stateblock_mutation",7,stage,0x4321,0),
+                event("model2_d3d9_original_present_result",7,0,1,0),
+            ]
+            result=self.report(blocked)
+            self.assertEqual(result["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",result["counts"])
+        for bad in ((7,0,0x4321,0),(7,3,0x4321,0),
+                    (7,1,0,0),(7,1,0x4321,0x100000000)):
+            with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_stateblock_mutation",*bad)])
         for bad in ((0,0x8876086C,0x4321),
                     (21,0x8876086C,0x4321),
                     (2,0,0x4321),
