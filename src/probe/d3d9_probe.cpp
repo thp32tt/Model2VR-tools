@@ -2976,7 +2976,6 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             original_scene_coverage.successful_untrusted,
             original_scene_coverage.failed_draws);
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
-    g_original_scene_draw_coverage.ReopenAfterPhysicalPresentAdvance();
     // An unobserved state-block Apply vtable stays unsafe across Reset and
     // Present. Keep the HMD on original mono, not stale speculative eyes.
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) &&
@@ -3166,6 +3165,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // the staged GameStereo pair only if the real source Present succeeded.
     TraceFirstOriginalPresentStage(startup_first_present,2u,frame);
     const HRESULT original_result=g_present(d,a,b,w,dirty);
+    // Original GPU Present is still a forbidden source-write window.
+    // Reopen only AFTER the actual COM returns; otherwise a second render
+    // thread could enter a new Scene/Draw while the prior Present executes.
+    g_original_scene_draw_coverage.ReopenAfterPhysicalPresentReturn();
     TraceFirstOriginalPresentStage(startup_first_present,3u,frame,
         static_cast<std::uint32_t>(original_result));
     const auto source_samples=g_original_source_result_samples.exchange(
