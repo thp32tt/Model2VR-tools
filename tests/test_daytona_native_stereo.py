@@ -216,6 +216,18 @@ class NativeStereoTest(unittest.TestCase):
         # No original VB/IB byte reads and no second original Draw call.
         self.assertNotIn("memcpy",hooks)
         self.assertNotIn("DrawPrimitive(",hooks)
+        lock=hooks.split("HRESULT STDMETHODCALLTYPE OriginalBufferLockHook(")[1].split(
+            "HRESULT STDMETHODCALLTYPE OriginalBufferUnlockHook(")[0]
+        unlock=hooks.split("HRESULT STDMETHODCALLTYPE OriginalBufferUnlockHook(")[1].split(
+            "void OriginalBufferCoverageUnknown(")[0]
+        self.assertEqual(lock.count("const HRESULT hr=original("),1)
+        self.assertEqual(unlock.count("const HRESULT hr=original("),1)
+        self.assertIn("return hr;",lock)
+        self.assertIn("return hr;",unlock)
+        self.assertIn("D3DLOCK",(
+            ROOT/"src/probe/original_d3d9_buffer_mutation.hpp").read_text("utf-8"))
+        workflow=(ROOT/".github/workflows/daytona-native-stereo.yml").read_text("utf-8")
+        self.assertIn("'src/probe/original_d3d9_*.inl'",workflow)
 
     def test_original_unmirrored_patch_process_vertices_are_fail_closed(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")

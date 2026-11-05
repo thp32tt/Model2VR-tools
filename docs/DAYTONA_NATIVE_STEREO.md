@@ -1,3 +1,34 @@
+## Original D3D9 bound vertex/index buffer content epoch (2026-11-05)
+
+The native x86 probe now observes **real original resource COM Lock (slot 11)
+and Unlock (slot 12)** after successful original primary-device `SetStreamSource`
+or `SetIndices` binds. Writable Lock (including DISCARD/NOOVERWRITE) can
+change game geometry without another Set* device call; the original COM runs
+exactly once with its original HRESULT, and the revision joins the physical
+Draw's 40-state source nonce. The actual VB/IB bytes, pointers, offsets,
+indices and private original game content are never logged or transmitted.
+
+If a successful writable original EXE-owned Lock occurs after speculative
+CPU/GPU eyes have begun, the incomplete current physical Present's stereo
+eyes are discarded before the game writes memory. A failed original Lock
+or Unlock also fails closed. Missing original buffer runtime Hook coverage
+is persistent across original Presents and Reset: no unverified stereo may
+be published, while the unchanged original game's mono/FFB and Win64
+pre-game virtual-screen behavior remain usable. Only unknown or already
+stale stereo sources are discarded; genuine COM/game simulation never
+runs twice.
+
+The local original VB and UP CSV source auditors accept
+`model2_d3d9_source_buffer_content_lineage` and reject malformed or late
+`model2_d3d9_original_buffer_mutation_rejected` /
+`model2_d3d9_original_buffer_hook_unobserved`. The existing
+`Analyze-OriginalUP-Present.py` in the matched release can read your
+private CSV locally. No automatic Daytona world authorization occurs:
+`world_pass_proof=NOT_ESTABLISHED`,
+`RUNTIME_VALIDATION=UNTESTED` pending two genuine racing A/B captures,
+separate menu/HUD/sky controls, full CPU projector and original physical
+Draw/Scene/Present proof plus Quest3/VDXR pose and calibration.
+
 ## Original D3D9 Set/MultiplyTransform private source audit (2026-11-05)
 
 The native 32-bit original emulator probe forwards the game's actual
