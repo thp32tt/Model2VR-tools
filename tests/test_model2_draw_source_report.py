@@ -47,6 +47,34 @@ class SourceAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"GPU Surface"):
                 REPORT.audit_csv(p)
 
+    def test_original_gpu_surface_mutation_rejects_stale_vb_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"private_gpu_mutation.csv"
+            rows=[
+                ("model2_d3d9_vb_present_frame",201,7,1,0),
+                ("model2_d3d9_vb_source",201,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",201,7,12,pack(0x1234,1)),
+                ("model2_d3d9_source_gpu_surface_lineage",201,7,3,0),
+                ("model2_d3d9_vb_original_result",201,0,0x1234,pack(7,1)),
+                ("model2_d3d9_original_present_result",7,0,1,0)]
+            self.write_log(p,rows)
+            baseline=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(baseline["original_surface_failure_witnesses"],0)
+            for method in range(1,5):
+                rejected=("model2_d3d9_original_gpu_surface_mutation_rejected",
+                          7,0x1234,12,method)
+                self.write_log(p,rows[:-1]+[rejected,rows[-1]])
+                result=REPORT.audit_csv(p)["sources"][0]
+                self.assertEqual(result["original_surface_failure_witnesses"],1)
+                self.assertEqual(result[
+                    "distinct_scene_attested_physically_presented_material_present_frame_count"],0)
+            for bad in ((0,0x1234,12,1),(7,0,12,1),
+                        (7,0x1234,10000001,1),(7,0x1234,12,5)):
+                rejected=("model2_d3d9_original_gpu_surface_mutation_rejected",*bad)
+                self.write_log(p,rows[:-1]+[rejected,rows[-1]])
+                with self.assertRaisesRegex(ValueError,"GPU Surface mutation"):
+                    REPORT.audit_csv(p)
+
     def test_unmirrored_patch_and_process_vertices_revoke_original_vb(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/"unmirrored.csv"

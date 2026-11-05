@@ -63,6 +63,27 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             self.report(self.projected()+[lineage,lineage,
                 event("model2_d3d9_original_present_result",7,0,1,0)])
 
+    def test_real_gpu_surface_mutation_rejects_stale_up_present(self):
+        baseline=self.projected()+[
+            event("model2_d3d9_original_present_result",7,0,1,0)]
+        self.assertEqual(self.report(baseline)["counts"][
+            "same_witness_cpu_camera_present_candidate"],1)
+        for method in (1,2,3,4):
+            rows=self.projected()+[
+                event("model2_d3d9_original_gpu_surface_mutation_rejected",
+                      7,0x4321,12,method),
+                event("model2_d3d9_original_present_result",7,0,1,0)]
+            got=self.report(rows)
+            self.assertEqual(got["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",
+                             got["counts"])
+        for invalid in ((0,0x4321,12,1),(7,0,12,1),
+                        (7,0x4321,10000001,1),(7,0x4321,12,5)):
+            with self.assertRaisesRegex(ValueError,"GPU Surface mutation"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_gpu_surface_mutation_rejected",
+                          *invalid)])
+
     def test_unmirrored_patch_and_processed_vb_fail_closed_same_up_present(self):
         good=self.report(self.projected()+[
             event("model2_d3d9_original_present_result",7,0,1,0)])

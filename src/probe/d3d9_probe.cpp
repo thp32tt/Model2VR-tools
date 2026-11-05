@@ -1960,17 +1960,19 @@ HRESULT STDMETHODCALLTYPE UpdateTextureHook(IDirect3DDevice9* d,
     if(!g_primary_device.Owns(d))
         return g_update_texture(d,source,destination);
     void* const origin=_ReturnAddress();
-    const HRESULT hr=g_update_texture(d,source,destination);
     const auto caller_rva=CallerRva(origin);
+    // Correctness repair: the original texture copy must not race an
+    // already staged XR eye; invalidate BEFORE the native GPU transfer.
+    if(caller_rva)Model2VR_ObserveOriginalD3D9TextureUpload(
+        g_present_count.load(std::memory_order_acquire)+1u,caller_rva,
+        g_original_frame_draw_ordinal.load(std::memory_order_acquire));
+    const HRESULT hr=g_update_texture(d,source,destination);
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,30u,caller_rva);
     if(caller_rva && SUCCEEDED(hr)){
         RecordOriginalLineageWrite(
             m2vr::drawprobe::OriginalLineageKind::TextureUpload,caller_rva,hr);
         LogOriginalD3D9MutationPhase(5u,caller_rva,hr);
-        Model2VR_ObserveOriginalD3D9TextureUpload(
-            g_present_count.load(std::memory_order_acquire)+1u,caller_rva,
-            g_original_frame_draw_ordinal.load(std::memory_order_acquire));
     }
     return hr;
 }
