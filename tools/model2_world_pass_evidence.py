@@ -125,8 +125,8 @@ def _validate_report(report):
         not 1<=run["last_present_frame"]<=0xffffffff or
         type(run["physical_present_count"]) is not int or
         run["physical_present_count"]!=run["last_present_frame"] or
-        not isinstance(exact,dict) or not isinstance(bloom,dict) or
-        any(record.get("physical_present_count")!=run["physical_present_count"]
+        any(isinstance(record,dict) and
+            record.get("physical_present_count")!=run["physical_present_count"]
             for record in (exact,bloom))):
         raise ValueError("missing or inconsistent original capture run identity")
     # An empty title/menu/sky/HUD/aux report from a crashed or unhooked

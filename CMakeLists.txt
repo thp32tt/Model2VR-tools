@@ -39,7 +39,9 @@ add_library(model2vr_probe SHARED
 target_include_directories(model2vr_probe PRIVATE src/probe)
 # The original Surface/Volume GetContainer path compares Windows SDK
 # Direct3D COM IIDs; their external GUID objects are defined in dxguid.
-target_link_libraries(model2vr_probe PRIVATE minhook dxguid bcrypt)
+target_link_libraries(model2vr_probe PRIVATE minhook dxguid)
+# Native per-process PRIVATE capture run nonce uses Windows CSPRNG.
+target_link_libraries(model2vr_probe PRIVATE bcrypt)
 target_compile_features(model2vr_probe PRIVATE cxx_std_20)
 target_compile_definitions(model2vr_probe PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
