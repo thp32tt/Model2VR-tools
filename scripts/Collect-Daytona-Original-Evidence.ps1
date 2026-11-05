@@ -94,28 +94,42 @@ foreach ($label in @("title","menu","sky","hud","aux")) {
   $argsForPython += @("--control",$label,$copies[$label])
 }
 $argsForPython += @("--output",(Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"))
-# External Python intentionally fails on synthetic/missing original evidence.
-# GitHub pwsh can promote a native nonzero exit code into a terminating error
-# before LASTEXITCODE is inspected. Preserve a local fail-closed message and
-# the archived private files, independent of the host shell preference.
-$previousNativePreference = $PSNativeCommandUseErrorActionPreference
-$previousErrorAction = $ErrorActionPreference
-$pythonExitCode = 0
+# Always launch Python through .NET ProcessStartInfo. The default GitHub
+# pwsh shell treats a native child exit 2 as a terminating pipeline error,
+# which otherwise interrupts a catchable FAIL-CLOSED result. A dedicated
+# child process also preserves spaces in user-owned PRIVATE capture paths.
+$pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+$launchArgs = @("-3") + $argsForPython
+if ($null -eq $pythonLauncher) {
+  $pythonLauncher = Get-Command python -ErrorAction SilentlyContinue
+  $launchArgs = $argsForPython
+}
+if ($null -eq $pythonLauncher) {
+  throw "Python 3 is required for local private source validation. Archive kept: $destination"
+}
+$startInfo = New-Object System.Diagnostics.ProcessStartInfo
+$startInfo.FileName = $pythonLauncher.Source
+$startInfo.UseShellExecute = $false
+$startInfo.RedirectStandardOutput = $true
+$startInfo.RedirectStandardError = $true
+# The arguments are executable filenames, fixed switches or .csv/.json
+# paths: Windows filenames cannot contain quotes and none end in slash.
+$startInfo.Arguments = (($launchArgs | ForEach-Object {
+  '"' + ([string]$_) + '"'
+}) -join ' ')
+$child = [System.Diagnostics.Process]::Start($startInfo)
+if ($null -eq $child) {
+  throw "Could not start Python 3 for local PRIVATE source audit."
+}
 try {
-  $PSNativeCommandUseErrorActionPreference = $false
-  $ErrorActionPreference = "Continue"
-  if (Get-Command py -ErrorAction SilentlyContinue) {
-    & py -3 @argsForPython
-    $pythonExitCode = $LASTEXITCODE
-  } elseif (Get-Command python -ErrorAction SilentlyContinue) {
-    & python @argsForPython
-    $pythonExitCode = $LASTEXITCODE
-  } else {
-    throw "Python 3 is required for local private source validation. Archive kept: $destination"
-  }
+  $childOutput = $child.StandardOutput.ReadToEnd()
+  $childError = $child.StandardError.ReadToEnd()
+  $child.WaitForExit()
+  if ($childOutput) { Write-Host $childOutput }
+  if ($childError) { Write-Warning $childError.Trim() }
+  $pythonExitCode = $child.ExitCode
 } finally {
-  $PSNativeCommandUseErrorActionPreference = $previousNativePreference
-  $ErrorActionPreference = $previousErrorAction
+  $child.Dispose()
 }
 if ($pythonExitCode -ne 0) {
   throw "Private source evidence FAIL-CLOSED. Archive kept for local inspection: $destination"
