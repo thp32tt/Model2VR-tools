@@ -38,7 +38,8 @@ class OriginalResourceResidencyTest(unittest.TestCase):
             self.assertIn("EnsureOriginalResourceResidencyObserved(",self.sources[path])
         h=self.sources["src/probe/original_d3d9_resource_residency_hooks.inl"]
         self.assertIn("kOriginalResourceHookSlots=12u",h)
-        self.assertIn("RollbackOriginalResourceHook(",h)
+        self.assertNotIn("MH_DisableHook(",h)
+        self.assertIn("Keep that safe passthrough installed",h)
         self.assertIn("OriginalResourceResidencyUnknown(",h)
         self.assertIn("vt[7]==vt[9]",h)
         self.assertIn("OriginalResourceTrampoline(",h)

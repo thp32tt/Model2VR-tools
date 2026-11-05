@@ -130,9 +130,7 @@ void STDMETHODCALLTYPE OriginalResourcePreLoadHook(IDirect3DResource9* resource)
 template<class Fn>
 bool EnsureResourceHookTarget(
     std::array<OriginalResourceHookTarget<Fn>,
-        kOriginalResourceHookSlots>& slots,void* target,void* detour,
-    bool& installed_new) {
-    installed_new=false;
+        kOriginalResourceHookSlots>& slots,void* target,void* detour) {
     for(const auto& item:slots)
         if(item.address==target)return item.original!=nullptr;
     for(auto& item:slots){
@@ -141,21 +139,9 @@ bool EnsureResourceHookTarget(
         // target publication. Any incoming detour waits for this slot.
         if(!Hook(target,detour,item.original))return false;
         item.address=target;
-        installed_new=true;
         return true;
     }
     return false;
-}
-template<class Fn>
-void RollbackOriginalResourceHook(
-    std::array<OriginalResourceHookTarget<Fn>,
-        kOriginalResourceHookSlots>& slots,void* target) {
-    for(auto& item:slots){
-        if(item.address!=target)continue;
-        MH_DisableHook(target);MH_RemoveHook(target);
-        item={};
-        return;
-    }
 }
 bool EnsureOriginalResourceResidencyObserved(
     IDirect3DResource9* resource,std::uint32_t caller_rva) {
@@ -165,21 +151,21 @@ bool EnsureOriginalResourceResidencyObserved(
         OriginalResourceResidencyUnknown(caller_rva);
         return false;
     }
-    bool priority_new=false,preload_new=false;
     bool complete=false;
     {
         std::lock_guard lock(g_original_resource_residency_mutex);
         const bool priority=EnsureResourceHookTarget(
             g_original_priority_targets,vt[7],
-            reinterpret_cast<void*>(&OriginalResourceSetPriorityHook),
-            priority_new);
+            reinterpret_cast<void*>(&OriginalResourceSetPriorityHook));
         const bool preload=priority && EnsureResourceHookTarget(
             g_original_preload_targets,vt[9],
-            reinterpret_cast<void*>(&OriginalResourcePreLoadHook),
-            preload_new);
+            reinterpret_cast<void*>(&OriginalResourcePreLoadHook));
         complete=priority && preload;
-        if(!complete && priority_new)
-            RollbackOriginalResourceHook(g_original_priority_targets,vt[7]);
+        // A priority hook may have started executing on another game
+        // thread as soon as MH_EnableHook returns. Never remove its
+        // trampoline while an in-flight COM method could be forwarding.
+        // Keep that safe passthrough installed and mark source UNPROVEN
+        // if the PreLoad hook cannot be armed (remaining XR always mono).
     }
     if(!complete)OriginalResourceResidencyUnknown(caller_rva);
     return complete;
