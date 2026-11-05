@@ -57,6 +57,8 @@ using SetTransformFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,D3DTRANSFORMSTATETYPE,const D3DMATRIX*);
 using SetVSConstantFFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,UINT,const float*,UINT);
+using SetViewportFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,const D3DVIEWPORT9*);
+using SetScissorFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,const RECT*);
 using ClearFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,DWORD,const D3DRECT*,DWORD,D3DCOLOR,float,DWORD);
 using PrimitiveFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,UINT);
@@ -81,6 +83,8 @@ SetRenderTargetFn g_set_render_target=nullptr;
 SetDepthStencilSurfaceFn g_set_depth_surface=nullptr;
 SetTransformFn g_set_transform=nullptr;
 SetVSConstantFFn g_set_vs_constant_f=nullptr;
+SetViewportFn g_set_viewport=nullptr;
+SetScissorFn g_set_scissor=nullptr;
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -100,6 +104,7 @@ std::array<std::atomic<unsigned>,4> g_original_mutation_samples{};
 std::array<std::atomic<unsigned>,2> g_original_target_bind_samples{};
 std::array<std::atomic<unsigned>,4> g_original_transform_samples{};
 std::atomic<unsigned> g_original_vs_constant_samples{0u};
+std::array<std::atomic<unsigned>,2> g_original_region_samples{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 // Physical original Draw order across all four API families, including
@@ -254,6 +259,63 @@ void LogOriginalD3D9TargetBindPhase(IDirect3DDevice9* d,
         (matching_size?1u<<17u:0u);
     m2vr::LogEvent("model2_d3d9_original_target_bind_phase",
         frame,caller_rva,(std::uint64_t{method}<<32u)|ordinal,
+        (std::uint64_t{scene}<<32u)|flags);
+}
+// Genuine original EXE-owned viewport/scissor source, not World3D proof.
+// Only relative, quantized RT0 geometry is emitted: no raw pixels/coordinates.
+void LogOriginalRegionPhase(IDirect3DDevice9* d,unsigned method,
+    std::uint32_t rva,std::int64_t x,std::int64_t y,
+    std::int64_t w,std::int64_t h)noexcept {
+    if(!d || !rva || method<1u || method>2u)return;
+    const auto frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    if(frame!=1u && frame%8u!=0u)return;
+    if(g_original_region_samples[method-1u].fetch_add(
+        1u,std::memory_order_relaxed)!=0u)return;
+    const auto draw=g_original_frame_draw_ordinal.load(std::memory_order_relaxed);
+    const auto scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
+    if(draw>10000000u || scene>100000u)return;
+    const bool open=g_original_scene_hooks_ready.load(std::memory_order_acquire) &&
+        !g_original_scene_poisoned.load(std::memory_order_acquire) &&
+        g_original_scene_open.load(std::memory_order_acquire) &&
+        g_original_scene_owner_thread.load(std::memory_order_acquire)==GetCurrentThreadId();
+    IDirect3DSurface9* target=nullptr;
+    IDirect3DSurface9* backbuffer=nullptr;
+    D3DSURFACE_DESC desc{};
+    unsigned tw=0u,th=0u,kind=0u;
+    if(SUCCEEDED(d->GetRenderTarget(0,&target)) && target){
+        if(SUCCEEDED(target->GetDesc(&desc))){tw=desc.Width;th=desc.Height;}
+        if(SUCCEEDED(d->GetBackBuffer(0,0,D3DBACKBUFFER_TYPE_MONO,
+                                      &backbuffer)) && backbuffer)
+            kind=target==backbuffer?1u:2u;
+    }
+    if(backbuffer)backbuffer->Release();
+    if(target)target->Release();
+    DWORD scissor=0;
+    const bool enabled=SUCCEEDED(d->GetRenderState(
+        D3DRS_SCISSORTESTENABLE,&scissor)) && scissor!=0u;
+    const bool known=tw!=0u && th!=0u;
+    const bool valid=known && w>0 && h>0;
+    const bool inside=valid && x>=0 && y>=0 &&
+        x+w<=static_cast<std::int64_t>(tw) &&
+        y+h<=static_cast<std::int64_t>(th);
+    const bool full=inside && x==0 && y==0 && w==tw && h==th;
+    auto bin=[](std::int64_t n,unsigned den)->std::uint32_t {
+        if(n<=0 || !den)return 0u;
+        if(static_cast<std::uint64_t>(n)>=den)return 31u;
+        return static_cast<std::uint32_t>(
+            (static_cast<std::uint64_t>(n)*31u+den/2u)/den);
+    };
+    std::uint32_t flags=(open?1u:0u)|(known?2u:0u)|
+        (valid?4u:0u)|(inside?8u:0u)|(full?16u:0u)|
+        (enabled?32u:0u)|((known && kind==1u)?64u:0u)|
+        ((known && kind==2u)?128u:0u);
+    if(valid)flags|=(bin(x,tw)<<8u)|(bin(y,th)<<13u)|
+                    (bin(w,tw)<<18u)|(bin(h,th)<<23u);
+    // a0=original Present; a1=original caller RVA;
+    // a2=(method<<32)|all-family Draw ordinal;
+    // a3=(scene ordinal<<32)|normalized region flags.
+    m2vr::LogEvent("model2_d3d9_original_region_phase",
+        frame,rva,(std::uint64_t{method}<<32u)|draw,
         (std::uint64_t{scene}<<32u)|flags);
 }
 void TrackFailedOriginalD3D9Clear(HRESULT hr,std::uint32_t flags,
@@ -1598,6 +1660,32 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
     }
     return hr;
 }
+// Original COM state writes execute exactly once. On failure, revoke both
+// verified CPU-world and speculative GPU-eye source for the physical Present.
+HRESULT STDMETHODCALLTYPE SetViewportHook(IDirect3DDevice9* d,
+                                           const D3DVIEWPORT9* vp){
+    if(!g_primary_device.Owns(d))return g_set_viewport(d,vp);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_viewport(d,vp);
+    const auto rva=CallerRva(caller);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,8u,rva);
+    else if(rva && SUCCEEDED(hr) && vp)
+        LogOriginalRegionPhase(d,1u,rva,vp->X,vp->Y,vp->Width,vp->Height);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetScissorRectHook(IDirect3DDevice9* d,
+                                             const RECT* rect){
+    if(!g_primary_device.Owns(d))return g_set_scissor(d,rect);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_scissor(d,rect);
+    const auto rva=CallerRva(caller);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,9u,rva);
+    else if(rva && SUCCEEDED(hr) && rect)
+        LogOriginalRegionPhase(d,2u,rva,rect->left,rect->top,
+            std::int64_t{rect->right}-rect->left,
+            std::int64_t{rect->bottom}-rect->top);
+    return hr;
+}
 // Every COM Present path must execute the original game's method exactly
 // once; a secondary device is excluded from all primary frame accounting.
 HRESULT CallOriginalPresentOnce(IDirect3DDevice9* d,CONST RECT* a,
@@ -1653,6 +1741,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(auto& counter:g_original_transform_samples)
         counter.store(0u,std::memory_order_relaxed);
     g_original_vs_constant_samples.store(0u,std::memory_order_relaxed);
+    for(auto& sample:g_original_region_samples)sample.store(0u,std::memory_order_relaxed);
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
@@ -1698,6 +1787,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     for(auto& counter:g_original_transform_samples)
         counter.store(0u,std::memory_order_relaxed);
     g_original_vs_constant_samples.store(0u,std::memory_order_relaxed);
+    for(auto& sample:g_original_region_samples)sample.store(0u,std::memory_order_relaxed);
     g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
@@ -1737,6 +1827,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         reinterpret_cast<void*>(&SetTransformHook),g_set_transform);
     const bool vs_constants=Hook(vtable[94],
         reinterpret_cast<void*>(&SetVSConstantFHook),g_set_vs_constant_f);
+    const bool viewport=Hook(vtable[47],reinterpret_cast<void*>(&SetViewportHook),g_set_viewport);
+    const bool scissor=Hook(vtable[75],reinterpret_cast<void*>(&SetScissorRectHook),g_set_scissor);
     // Scene boundary observation is optional: if either COM hook cannot
     // be installed, rollback BOTH and mark scene source unknown. This
     // must never prevent the normal original game/mono fallback path.
@@ -1750,7 +1842,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -1774,18 +1866,22 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(depth){MH_DisableHook(vtable[39]);MH_RemoveHook(vtable[39]);}
         if(transform){MH_DisableHook(vtable[44]);MH_RemoveHook(vtable[44]);}
         if(vs_constants){MH_DisableHook(vtable[94]);MH_RemoveHook(vtable[94]);}
+        if(viewport){MH_DisableHook(vtable[47]);MH_RemoveHook(vtable[47]);}
+        if(scissor){MH_DisableHook(vtable[75]);MH_RemoveHook(vtable[75]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_update_surface=nullptr;
         g_stretch_rect=nullptr;g_color_fill=nullptr;
         g_set_render_target=nullptr;g_set_depth_surface=nullptr;
         g_set_transform=nullptr;g_set_vs_constant_f=nullptr;
+        g_set_viewport=nullptr;g_set_scissor=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
                        update,stretch,fill,clear);
         m2vr::LogEvent("model2_d3d9_target_hook_rollback",rt,depth,0u,0u);
         m2vr::LogEvent("model2_d3d9_transform_hook_rollback",transform,vs_constants,0u,0u);
+        m2vr::LogEvent("model2_d3d9_region_hook_rollback",viewport,scissor,0u,0u);
         return false;
     }
     // Vtable methods are shared by D3D9 devices. Bind the real first
