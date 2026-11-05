@@ -163,7 +163,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("Model2VR_CurrentOriginalD3D9LineageNonce()",probe)
         self.assertIn("Model2VR_ArmVerifiedOriginalD3D9DrawWithLineage(",api)
         self.assertIn("Model2VR_ArmVerifiedOriginalD3D9DrawWithLineage(",bridge)
-        self.assertIn("expected_lineage_nonce!=Model2VR_CurrentOriginalD3D9LineageNonce()",bridge)
+        self.assertIn("Model2VR_CurrentOriginalD3D9LineageNonce()!=expected_lineage_nonce",bridge)
         self.assertIn("OriginalSourceFailure::OriginalLineageMismatch",bridge)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",bridge)
         self.assertIn("source_original_failed_=true;",gpu)
