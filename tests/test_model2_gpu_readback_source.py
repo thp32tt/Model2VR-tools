@@ -41,7 +41,7 @@ class OriginalGpuReadbackSourceTest(unittest.TestCase):
         self.assertIn('#include "original_d3d9_readback_hooks.inl"',self.device)
     def test_original_present_cpu_gpu_stale_rejection(self):
         self.assertIn("method<=71u",self.gate)
-        self.assertIn("method>70u",self.gpu)
+        self.assertIn("method>71u",self.gpu)
         self.assertIn("OriginalSourceFailure::OriginalTextureUploadAfterStereo",self.cpu)
         self.assertIn("g.source_epoch.Revoke(physical_present);",self.cpu)
         self.assertIn("m2vr::daytona::MarkOriginalTextureUploadAfterEyes()",self.cpu)
