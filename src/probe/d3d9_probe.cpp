@@ -91,6 +91,11 @@ using SurfaceLockRectFn=HRESULT (STDMETHODCALLTYPE*)(
 using SurfaceUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*);
 using SurfaceGetDCFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,HDC*);
 using SurfaceReleaseDCFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,HDC);
+using MipFilterFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DBaseTexture9*,D3DTEXTUREFILTERTYPE);
+using MipGenerateFn=void (STDMETHODCALLTYPE*)(IDirect3DBaseTexture9*);
+using TextureDirtyFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DTexture9*,const RECT*);
+using CubeDirtyFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DCubeTexture9*,D3DCUBEMAP_FACES,const RECT*);
+using VolumeDirtyFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DVolumeTexture9*,const D3DBOX*);
 using CubeGetSurfaceFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DCubeTexture9*,D3DCUBEMAP_FACES,UINT,IDirect3DSurface9**);
 using VolumeGetLevelFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -194,6 +199,15 @@ void* g_surface_get_dc_target=nullptr;
 void* g_surface_release_dc_target=nullptr;
 std::mutex g_texture_surface_hook_mutex;
 std::atomic<std::uint32_t> g_original_texture_surface_writes{0u};
+std::array<MipFilterFn,3> g_mip_filter{};
+std::array<MipGenerateFn,3> g_mip_generate{};
+std::array<void*,3> g_mip_filter_target{};
+std::array<void*,3> g_mip_generate_target{};
+std::array<void*,3> g_dirty_target{};
+TextureDirtyFn g_texture_dirty=nullptr;
+CubeDirtyFn g_cube_dirty=nullptr;
+VolumeDirtyFn g_volume_dirty=nullptr;
+std::mutex g_mip_mutex;
 CubeGetSurfaceFn g_cube_get_surface=nullptr;
 VolumeGetLevelFn g_volume_get_level=nullptr;
 VolumeLevelLockFn g_volume_level_lock=nullptr;
@@ -1566,6 +1580,8 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
             original_frame,w[29],w[40]);
         m2vr::LogEvent("model2_d3d9_source_texture_shape_lineage",witness,
             original_frame,(std::uint64_t{w[41]}<<32)|w[42],w[43]);
+        m2vr::LogEvent("model2_d3d9_source_texture_mip_lineage",witness,
+            original_frame,(std::uint64_t{w[44]}<<32)|w[45],w[46]);
         m2vr::LogEvent("model2_d3d9_source_palette_lineage",witness,
             original_frame,(std::uint64_t{w[30]}<<32)|w[31],0u);
         m2vr::LogEvent("model2_d3d9_source_raster_mode_lineage",witness,
@@ -2067,6 +2083,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 // camera/geometry nonce and reject stale partial OpenXR stereo eye frames.
 #include "original_d3d9_buffer_hooks.inl"
 #include "original_d3d9_texture_surface_hooks.inl"
+#include "original_d3d9_texture_mip_hooks.inl"
 #include "original_d3d9_texture_subresource_hooks.inl"
 #include "original_d3d9_texture_shapes_hooks.inl"
 #include "original_d3d9_texture_hooks.inl"

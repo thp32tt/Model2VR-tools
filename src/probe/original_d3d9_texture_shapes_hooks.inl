@@ -94,7 +94,8 @@ bool ObserveOriginalBoundShapeTexture(IDirect3DBaseTexture9* t,
             (g_cube_lock_rect && g_cube_unlock_rect && g_cube_get_surface):
             (g_volume_lock_box && g_volume_unlock_box && g_volume_get_level);
         if(complete && lock_target==vt[19] && unlock_target==vt[20] &&
-           getter_target==vt[18])return true;
+           getter_target==vt[18])
+            return ObserveOriginalBoundMipTexture(t,rva);
         OriginalTextureCoverageUnknown(rva);return false;
     }
     const bool h1=cube?
@@ -124,5 +125,5 @@ bool ObserveOriginalBoundShapeTexture(IDirect3DBaseTexture9* t,
     }
     getter_target=vt[18];
     lock_target=vt[19];unlock_target=vt[20];
-    return true;
+    return ObserveOriginalBoundMipTexture(t,rva);
 }

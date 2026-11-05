@@ -67,7 +67,8 @@ bool ObserveOriginalBoundTexture(IDirect3DBaseTexture9* texture,
            g_texture_lock_target==vt[19] &&
            g_texture_unlock_target==vt[20] &&
            g_texture_get_surface_level &&
-           g_texture_lock_rect && g_texture_unlock_rect)return true;
+           g_texture_lock_rect && g_texture_unlock_rect)
+            return ObserveOriginalBoundMipTexture(texture,caller_rva);
         OriginalTextureCoverageUnknown(caller_rva);return false;
     }
     if(!Hook(vt[19],reinterpret_cast<void*>(&OriginalTextureLockRectHook),
@@ -91,5 +92,5 @@ bool ObserveOriginalBoundTexture(IDirect3DBaseTexture9* texture,
     }
     g_texture_get_surface_level_target=vt[18];
     g_texture_lock_target=vt[19];g_texture_unlock_target=vt[20];
-    return true;
+    return ObserveOriginalBoundMipTexture(texture,caller_rva);
 }
