@@ -180,16 +180,31 @@ authenticate physical Quest stereoscopy.
 This is a **local, read-only private-evidence triage tool**, not an auto
 world/HUD classifier or permission to publish XR eye frames.
 
-Run on separately captured **actual original** Daytona race, race (second
-session), and title/menu/aux captures. Use the already installed passive
-probe's CSV files or its `tools/model2_draw_source_report.py` JSON output:
+Use **seven independently captured original sessions**: Daytona
+race A/B plus separately user-labelled title, menu, sky, HUD and auxiliary
+controls. The matched Win32+Win64 release now supplies
+`Collect-Daytona-Original-Evidence.cmd`, which archives newly produced
+local `logs/daytona_vr_startup_*.csv` files, rejects identical sessions
+and runs the complete fail-closed local original-source auditor. No
+private capture is uploaded, and user scene labels are not considered
+automatic scene authentication. Manual CLI equivalent:
 
 ```sh
 python tools/model2_world_pass_evidence.py \
   --race private/race_a.csv --race private/race_b.csv \
-  --nonrace private/title_menu.csv \
+  --control title private/title.csv \
+  --control menu private/menu.csv \
+  --control sky private/sky.csv \
+  --control hud private/hud.csv \
+  --control aux private/aux.csv \
   --output private/world_caller_candidates.json
 ```
+
+The latest original x86 source report requires consecutive physical
+Presents plus a full exact four-family Draw caller inventory for every
+negative-control session. A missing, repeated, overflowed or uncertain
+caller inventory cannot be treated as a complete non-race control.
+The previous `--nonrace` shortcut is obsolete and must not be used.
 
 It demands the *same original GPU Draw caller* in both race captures,
 at least two genuine Present frames of **same-witness** original
