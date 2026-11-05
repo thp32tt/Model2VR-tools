@@ -644,7 +644,8 @@ def audit_csv(path):
                         number(row[k]) for k in ("a0","a1","a2","a3"))
                 except (ValueError, TypeError) as exc:
                     raise ValueError("invalid original residency row") from exc
-                if (not 0 < frame <= 0xffffffff or caller > 0xffffffff or
+                if (not 0 < frame <= 0xffffffff or frame in physical_presents or
+                    caller > 0xffffffff or
                     ordinal > 10000000 or reason not in (1,2,3) or
                     (reason == 1 and caller == 0) or
                     (reason in (2,3) and (caller != 0 or ordinal != 0))):
