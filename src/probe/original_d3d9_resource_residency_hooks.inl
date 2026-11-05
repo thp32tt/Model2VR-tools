@@ -54,6 +54,10 @@ DWORD STDMETHODCALLTYPE OriginalResourceSetPriorityHook(
     const auto original=OriginalResourceTrampoline(
         g_original_priority_targets,vt?vt[7]:nullptr);
     if(!original)return 0u; // unreachable for an installed complete hook
+    // Internal eye surface/material setup is not an original EXE draw.
+    // Avoid reentering the GPU lock and poisoning the real source epoch.
+    if(m2vr::daytona::IsEyeReplayActive())
+        return original(resource,priority);
     void* const origin=_ReturnAddress();
     const bool primary=PrimaryOriginalResource(resource);
     const auto rva=primary?CallerRva(origin):0u;
@@ -74,6 +78,10 @@ void STDMETHODCALLTYPE OriginalResourcePreLoadHook(IDirect3DResource9* resource)
     const auto original=OriginalResourceTrampoline(
         g_original_preload_targets,vt?vt[9]:nullptr);
     if(!original)return; // unreachable for an installed complete hook
+    if(m2vr::daytona::IsEyeReplayActive()){
+        original(resource);
+        return;
+    }
     void* const origin=_ReturnAddress();
     const bool primary=PrimaryOriginalResource(resource);
     const auto rva=primary?CallerRva(origin):0u;
