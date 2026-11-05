@@ -438,7 +438,7 @@ class SourceAuditTests(unittest.TestCase):
                  0, 0x1234, pack(17, 1)),
             ]
             original_present=("model2_d3d9_original_present_result", 17, 0, 1, 0)
-            for method in range(1, 65):
+            for method in range(1, 68):
                 failure=("model2_d3d9_original_surface_failed",17,
                          method,0x8876086C,0x4321)
                 self.write_log(p,prefix+[failure,original_present])
@@ -528,7 +528,7 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
                     REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
-                        (65,0x8876086C,0x4321),
+                        (68,0x8876086C,0x4321),
                         (1,0,0x4321),
                         (2,0x8876086C,0)):
                 failure=("model2_d3d9_original_surface_failed",17,*bad)
