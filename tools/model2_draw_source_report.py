@@ -832,7 +832,7 @@ def audit_csv(path):
                     frame,hr,vb_pair,up_pair=(
                         number(row[k]) for k in ("a0","a1","a2","a3"))
                 except (ValueError,TypeError) as exc:
-                    raise ValueError("invalid original control Present row") from exc
+                    raise ValueError("invalid original control Present provenance") from exc
                 dp,dip=vb_pair>>32,vb_pair&0xffffffff
                 dpup,dipup=up_pair>>32,up_pair&0xffffffff
                 if (not 0<frame<=0xffffffff or
