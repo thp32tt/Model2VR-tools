@@ -1024,6 +1024,39 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
             physical_present,original_caller_rva,reason,0u);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// Authentic original D3D9 display-mode/GDI-dialog and gamma output are
+// physical presentation state, not verified camera/texture/World3D proof.
+// method 1=SetDialogBoxMode, 2=SetGammaRamp, 3=active original GDI-dialog
+// fallback at physical Present, 4=uncalibrated gamma at physical Present.
+// Caller/ordinal are nonzero only for actual original EXE-owned Set* calls.
+extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PresentationMutation(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int method){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || method<1u || method>4u ||
+       preceding_draw_ordinal>10000000u ||
+       (method<=2u && !original_caller_rva) ||
+       (method>=3u && (original_caller_rva || preceding_draw_ordinal)) ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool first=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.frame==physical_present && (g.active || g.pending_present)){
+            const auto prior=g_current_original_source_failure;
+            g_current_original_source_failure=
+                OriginalSourceFailure::OriginalPresentationStateUnproven;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=prior;
+        }
+        first=g.source_epoch.Revoke(physical_present);
+    }
+    // Local metadata only. A persistent display state is recorded once
+    // per actual Present to prevent a sampled VB/UP source appearing clean.
+    if(first)
+        m2vr::LogEvent("model2_d3d9_original_presentation_control_rejected",
+            physical_present,original_caller_rva,preceding_draw_ordinal,method);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Palette writes may change already drawn eye texels without a binding call.
 // They never alter the original emulator Draw or mono backbuffer.
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PaletteMutation(

@@ -53,6 +53,7 @@ int main() {
     CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalStateBlockUnknown)==21u);
     CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalInstancedStreamUnknown)==22u);
     CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalUnmirroredGeometry)==26u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalPresentationStateUnproven)==31u);
     {
         ScopedOriginalSourceDrawKind projected(OriginalSourceDrawKind::ProjectedPrimitiveUP);
         CHECK(!RejectOriginalSourceMaterial(OriginalSourceFailure::ProjectionPass));

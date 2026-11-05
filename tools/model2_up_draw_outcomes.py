@@ -285,6 +285,7 @@ def audit_csv(path):
                 "model2_d3d9_original_texture_upload_rejected",
                 "model2_d3d9_original_gpu_surface_mutation_rejected",
                 "model2_d3d9_original_swap_chain_source_rejected",
+                "model2_d3d9_original_presentation_control_rejected",
                 "model2_d3d9_original_buffer_mutation_rejected",
                 "model2_d3d9_original_buffer_hook_unobserved",
                 "model2_d3d9_original_palette_mutation_rejected",
@@ -374,6 +375,17 @@ def audit_csv(path):
                     raise ValueError("invalid original palette mutation rejection")
                 failed_original_surface_frames.add(a0)
                 continue
+            if event == "model2_d3d9_original_presentation_control_rejected":
+                if (not 0 < a0 <= 0xffffffff or a0 <= observed_present_frame or
+                    a1 > 0xffffffff or a2 > 10000000 or a3 not in (1,2,3,4)
+                    or (a3 in (1,2) and a1 == 0)
+                    or (a3 in (3,4) and (a1 != 0 or a2 != 0))):
+                    raise ValueError("invalid original presentation control rejection")
+                if len(failed_original_surface_frames)>=MAX_PENDING and (
+                    a0 not in failed_original_surface_frames):
+                    raise ValueError("original presentation control capacity")
+                failed_original_surface_frames.add(a0)
+                continue
             if event == "model2_d3d9_original_swap_chain_source_rejected":
                 if (not 0 < a0 <= 0xffffffff or a0 <= observed_present_frame or
                     a1 > 0xffffffff or a2 not in (1,2,3) or a3 != 0 or
@@ -436,7 +448,7 @@ def audit_csv(path):
                 else:
                     valid = (0 < a0 <= 0xffffffff and
                              a0 > observed_present_frame and
-                             1 <= a1 <= 69 and a2 <= 0xffffffff and
+                             1 <= a1 <= 70 and a2 <= 0xffffffff and
                              (a2 & 0x80000000) != 0 and
                              0 < a3 <= 0xffffffff)
                 if not valid:

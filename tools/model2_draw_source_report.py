@@ -623,6 +623,21 @@ def audit_csv(path):
                 if len(original_surface_failures)>MAX_WITNESSES:
                     raise ValueError("original palette mutation capacity")
                 continue
+            if event == "model2_d3d9_original_presentation_control_rejected":
+                try:
+                    frame, caller, ordinal, method = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original presentation control row") from exc
+                if (not 0 < frame <= 0xffffffff or caller > 0xffffffff or
+                    ordinal > 10000000 or method not in (1,2,3,4) or
+                    (method in (1,2) and caller == 0) or
+                    (method in (3,4) and (caller != 0 or ordinal != 0))):
+                    raise ValueError("invalid original presentation control rejection")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures)>MAX_WITNESSES:
+                    raise ValueError("original presentation control capacity")
+                continue
             if event == "model2_d3d9_original_swap_chain_source_rejected":
                 try:
                     frame, caller, reason, reserved = (
@@ -706,7 +721,7 @@ def audit_csv(path):
                              0 < caller <= 10000000)
                 else:
                     valid = (0 < frame <= 0xffffffff and
-                             1 <= method <= 69 and
+                             1 <= method <= 70 and
                              result <= 0xffffffff and
                              (result & 0x80000000) != 0 and
                              0 < caller <= 0xffffffff)
