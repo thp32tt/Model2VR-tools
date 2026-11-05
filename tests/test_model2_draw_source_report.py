@@ -31,7 +31,7 @@ class SourceAuditTests(unittest.TestCase):
                 ("model2_d3d9_source_draw_phase",201,17,12,pack(0x1234,1)),
                 ("model2_d3d9_vb_original_result",201,0,0x1234,pack(17,1)),
             ]
-            for caller,reason in ((0x4321,1),(0,2),(0x4321,2)):
+            for caller,reason in ((0x4321,1),(0,2),(0x4321,2),(0x4321,3)):
                 self.write_log(path,source+[
                     ("model2_d3d9_original_swap_chain_source_rejected",
                      17,caller,reason,0),
@@ -40,8 +40,8 @@ class SourceAuditTests(unittest.TestCase):
                 self.assertEqual(got["original_surface_failure_witnesses"],1)
                 self.assertFalse(got["world_pass_proven"])
             for values in ((0,0x4321,1,0),(17,0,1,0),
-                           (17,0x4321,0,0),(17,0x4321,3,0),
-                           (17,0x4321,1,1)):
+                           (17,0x4321,0,0),(17,0x4321,4,0),
+                           (17,0x4321,1,1),(17,0,3,0)):
                 self.write_log(path,source+[
                     ("model2_d3d9_original_swap_chain_source_rejected",*values)])
                 with self.assertRaisesRegex(ValueError,"SwapChain rejection"):

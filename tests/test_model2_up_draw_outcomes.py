@@ -68,7 +68,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             event("model2_d3d9_original_present_result",7,0,1,0)]
         self.assertEqual(self.report(baseline)["counts"][
             "same_witness_cpu_camera_present_candidate"],1)
-        for caller,reason in ((0x4321,1),(0,2),(0x4321,2)):
+        for caller,reason in ((0x4321,1),(0,2),(0x4321,2),(0x4321,3)):
             got=self.report(self.projected()+[
                 event("model2_d3d9_original_swap_chain_source_rejected",
                       7,caller,reason,0),
@@ -77,8 +77,8 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             self.assertNotIn("same_witness_cpu_camera_present_candidate",
                              got["counts"])
         for bad in ((0,0x4321,1,0),(7,0,1,0),
-                    (7,0x4321,0,0),(7,0x4321,3,0),
-                    (7,0x4321,1,1)):
+                    (7,0x4321,0,0),(7,0x4321,4,0),
+                    (7,0x4321,1,1),(7,0,3,0)):
             with self.assertRaisesRegex(ValueError,"SwapChain rejection"):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_swap_chain_source_rejected",
