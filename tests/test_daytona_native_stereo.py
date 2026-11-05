@@ -151,7 +151,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("vtable[42],reinterpret_cast<void*>(&EndSceneHook)", hooks)
         self.assertEqual(hooks.count("const HRESULT hr=g_begin_scene(d);"),1)
         self.assertEqual(hooks.count("const HRESULT hr=g_end_scene(d);"),1)
-        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),6)
+        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),8)
         self.assertEqual(hooks.count("TrackFailedOriginalD3D9Scene(hr,"),2)
         self.assertIn("g_original_scene_poisoned.store(true",hooks)
         self.assertEqual(hooks.count("g_original_scene_poisoned.store(false"),2)
