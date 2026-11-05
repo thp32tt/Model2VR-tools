@@ -151,7 +151,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("vtable[42],reinterpret_cast<void*>(&EndSceneHook)", hooks)
         self.assertEqual(hooks.count("const HRESULT hr=g_begin_scene(d);"),1)
         self.assertEqual(hooks.count("const HRESULT hr=g_end_scene(d);"),1)
-        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),8)
+        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),10)  # 8 original + 2 camera-state writers
         self.assertEqual(hooks.count("TrackFailedOriginalD3D9Scene(hr,"),2)
         self.assertIn("g_original_scene_poisoned.store(true",hooks)
         self.assertEqual(hooks.count("g_original_scene_poisoned.store(false"),2)
@@ -293,7 +293,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("&&fill&&rt&&depth",hooks)
         self.assertIn("model2_d3d9_original_target_bind_phase",hooks)
         self.assertIn("g_original_target_bind_samples",hooks)
-        self.assertIn("method>5u",gpu)
+        self.assertIn("method>7u",gpu)
         self.assertIn("model2_d3d9_target_hook_rollback",hooks)
 
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):
