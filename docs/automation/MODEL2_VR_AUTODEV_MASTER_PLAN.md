@@ -6,6 +6,7 @@ Updated: 2026-11-05 KST
 
 - Observe five authentic Win32 original-device calls: SetPixelShaderConstantF, SetTexture, SetTextureStageState, SetSamplerState, SetRenderState. Every successful original EXE write joins the physical original Draw's 19-state source nonce and bounded private-only evidence; original HRESULT, draw, mono and FFB unchanged.
 - Genuine state failures revoke speculative CPU/GPU eyes on that Present. No automatic World3D promotion; no shader constant values, textures, ROMs or private trace bytes committed publicly.
+- **Additional same-feature safety correction (score +0):** after the original D3D9 COM Draw returns, compare the captured 19-state lineage to a second real-source snapshot. Only a successfully forwarded authenticated independent CPU-eye Draw can trigger post-call stale-source revocation. If any intervening EXE state writer changed the camera, target, geometry or material state, revoke the entire physical Present's speculative CPU/GPU eyes and report bounded `model2_d3d9_original_lineage_drift`, without replaying or modifying actual original Draw/HRESULT. Private race-vs-control auditor also rejects all Draw candidates in that physical Present. This is a correction under the existing RUN_KEY, not a second score.
 - Physical Quest3/VDXR status remains `RUNTIME_VALIDATION=UNTESTED`. NEXT: two independent private race captures plus title/menu/sky/HUD controls, actual same-draw CPU projector/camera/geometry verification and HMD axes/meters-per-unit calibration.
 
 

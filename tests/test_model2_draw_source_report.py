@@ -201,6 +201,17 @@ class SourceAuditTests(unittest.TestCase):
                 self.write_log(p,prefix+[original_present])
                 self.assertEqual(REPORT.audit_csv(p)["sources"][0]
                                  ["original_surface_failure_witnesses"],0)
+            drift=("model2_d3d9_original_lineage_drift",17,1,0x1234,12)
+            self.write_log(p,prefix+[drift,original_present])
+            source=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(source["original_surface_failure_witnesses"],1)
+            self.assertEqual(
+                source["distinct_scene_attested_physically_presented_material_present_frame_count"],0)
+            for bad in ((5,0x1234,12),(1,0,12),(1,0x1234,0)):
+                self.write_log(p,prefix+[(
+                    "model2_d3d9_original_lineage_drift",17,*bad),original_present])
+                with self.assertRaisesRegex(ValueError,"invalid original surface failure"):
+                    REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
                         (21,0x8876086C,0x4321),
                         (1,0,0x4321),

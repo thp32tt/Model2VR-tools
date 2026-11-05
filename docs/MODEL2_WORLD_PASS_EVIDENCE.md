@@ -11,6 +11,13 @@ an intervening material mutation revokes previously armed stereo source.
 Failed original calls 16..20 discard CPU/GPU speculative stereo epochs,
 leaving original mono, Draw/Present, emulator logic and FFB unchanged.
 
+After authentic Draw returns, a second complete 19-state snapshot validates
+that independently rasterized CPU eyes were not built from a source that
+changed during the original Draw. The `model2_d3d9_original_lineage_drift`
+event invalidates the entire physical Present's CPU/GPU binocular candidates
+and private race-pass auditor evidence; the original COM HRESULT and mono
+remain intact. The post-call regression is part of this same feature.
+
 Sampled Draw logs record bounded `model2_d3d9_source_material_lineage`
 and `model2_d3d9_source_render_lineage` counters without any texture,
 shader constant, game pixel or original pointer data. This does not prove
