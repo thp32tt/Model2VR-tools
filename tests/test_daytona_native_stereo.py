@@ -154,6 +154,29 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,9u,rva)", (
             ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8"))
 
+    def test_strict_source_camera_lineage_matches_exact_physical_original_draw(self):
+        probe=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        api=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
+        guard=(ROOT/"src/probe/original_d3d9_authenticated_draw.hpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        self.assertIn("Model2VR_CurrentOriginalD3D9LineageNonce()",probe)
+        self.assertIn("Model2VR_ArmVerifiedOriginalD3D9DrawWithLineage(",api)
+        self.assertIn("Model2VR_ArmVerifiedOriginalD3D9DrawWithLineage(",bridge)
+        self.assertIn("expected_lineage_nonce!=Model2VR_CurrentOriginalD3D9LineageNonce()",bridge)
+        self.assertIn("OriginalSourceFailure::OriginalLineageMismatch",bridge)
+        self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",bridge)
+        self.assertIn("source_original_failed_=true;",gpu)
+        self.assertIn("model2_vr_gpu_original_lineage_mismatch",gpu)
+        self.assertIn("observed_lineage_nonce!=expected_.expected_lineage_nonce",guard)
+        self.assertIn("if(lineage_mismatch)*lineage_mismatch=true;",guard)
+        self.assertEqual(probe.count("const auto original_lineage=ReadOriginalLineage(source_frame);"),4)
+        self.assertEqual(probe.count("source_scene,source_scene_open,original_lineage,"),4)
+        self.assertEqual(probe.count("source_scene,source_scene_open,original_lineage);"),4)
+        self.assertIn("model2_d3d9_source_camera_lineage",probe)
+        self.assertIn("model2_d3d9_source_region_lineage",probe)
+        self.assertIn("g_original_lineage_writes",probe)
+
     def test_original_exe_scene_boundaries_are_optional_and_readonly(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         self.assertIn("using SceneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);", hooks)
