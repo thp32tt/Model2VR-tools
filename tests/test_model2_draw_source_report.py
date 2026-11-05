@@ -321,19 +321,19 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(good["original_texture_upload_lineage_witnesses"],1)
             shape_rows=list(rows)
             shape_rows.insert(5,("model2_d3d9_source_texture_shape_lineage",
-                                 501,17,pack(2,3),0))
+                                 501,17,pack(2,3),4))
             self.write_log(p,shape_rows)
             shape=REPORT.audit_csv(p)["sources"][0]
             self.assertEqual(shape["original_texture_shape_lineage_witnesses"],1)
-            for bad_shape in ((18,pack(2,3),0),
-                              (17,pack(1_000_001,3),0),(17,pack(2,3),1)):
+            for bad_shape in ((18,pack(2,3),4),
+                               (17,pack(1_000_001,3),4),(17,pack(2,3),1_000_001)):
                 altered=list(shape_rows)
                 altered[5]=("model2_d3d9_source_texture_shape_lineage",501,*bad_shape)
                 self.write_log(p,altered)
-                with self.assertRaisesRegex(ValueError,"cube/volume texture"):
+                with self.assertRaisesRegex(ValueError,"cube/volume/surface texture"):
                     REPORT.audit_csv(p)
             self.write_log(p,shape_rows[:6]+[shape_rows[5]]+shape_rows[6:])
-            with self.assertRaisesRegex(ValueError,"cube/volume texture"):
+            with self.assertRaisesRegex(ValueError,"cube/volume/surface texture"):
                 REPORT.audit_csv(p)
             self.write_log(p,rows)
             locked=list(rows)
@@ -378,7 +378,7 @@ class SourceAuditTests(unittest.TestCase):
                  0, 0x1234, pack(17, 1)),
             ]
             original_present=("model2_d3d9_original_present_result", 17, 0, 1, 0)
-            for method in range(1, 41):
+            for method in range(1, 52):
                 failure=("model2_d3d9_original_surface_failed",17,
                          method,0x8876086C,0x4321)
                 self.write_log(p,prefix+[failure,original_present])
@@ -468,7 +468,7 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
                     REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
-                        (47,0x8876086C,0x4321),
+                        (52,0x8876086C,0x4321),
                         (1,0,0x4321),
                         (2,0x8876086C,0)):
                 failure=("model2_d3d9_original_surface_failed",17,*bad)

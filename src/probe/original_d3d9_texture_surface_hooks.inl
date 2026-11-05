@@ -46,6 +46,7 @@ HRESULT STDMETHODCALLTYPE OriginalSurfaceGetDCHook(IDirect3DSurface9* surf,
     const auto rva=primary?CallerRva(caller):0u;
     if(!rva)return hr;
     if(FAILED(hr))TrackFailedOriginalD3D9Surface(hr,50u,rva);
+    else if(!dc || !*dc)OriginalTextureCoverageUnknown(rva);
     else {
         // A successful GDI DC can mutate the surface without D3D LockRect.
         RecordOriginalLineageWrite(

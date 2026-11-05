@@ -676,7 +676,7 @@ def audit_csv(path):
                              0 < caller <= 10000000)
                 else:
                     valid = (0 < frame <= 0xffffffff and
-                             1 <= method <= 46 and
+                             1 <= method <= 51 and
                              result <= 0xffffffff and
                              (result & 0x80000000) != 0 and
                              0 < caller <= 0xffffffff)
@@ -796,12 +796,13 @@ def audit_csv(path):
                     raise ValueError("invalid original buffer-content lineage")
                 fields["buffer_content_lineage"] = values
             elif event == "model2_d3d9_source_texture_shape_lineage":
-                frame, packed, reserved = values
-                revisions = halves(packed)
+                frame, packed, surface_revision = values
+                # Same physical original Draw: cube, volume and Surface writes.
+                revisions = halves(packed) + [surface_revision]
                 if (not 0 < frame <= 0xffffffff or
-                    any(n > 1_000_000 for n in revisions) or reserved != 0 or
+                    any(n > 1_000_000 for n in revisions) or
                     "texture_shape_lineage" in fields):
-                    raise ValueError("invalid original cube/volume texture Draw lineage")
+                    raise ValueError("invalid original cube/volume/surface texture Draw lineage")
                 fields["texture_shape_lineage"] = values
             elif event == "model2_d3d9_source_raster_mode_lineage":
                 frame, packed, npatch = values
@@ -1026,7 +1027,7 @@ def audit_csv(path):
         texture_shape = data.get("texture_shape_lineage")
         if texture_shape is not None:
             if texture_shape[0] != present_frame:
-                raise ValueError("cube/volume texture original Draw frame mismatch")
+                raise ValueError("cube/volume/surface texture original Draw frame mismatch")
             entry["original_texture_shape_lineage_witnesses"] += 1
         palette = data.get("palette_lineage")
         if palette is not None:
