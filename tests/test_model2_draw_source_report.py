@@ -422,7 +422,7 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
                     REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
-                        (36,0x8876086C,0x4321),
+                        (37,0x8876086C,0x4321),
                         (1,0,0x4321),
                         (2,0x8876086C,0)):
                 failure=("model2_d3d9_original_surface_failed",17,*bad)
