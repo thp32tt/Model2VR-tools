@@ -3050,6 +3050,17 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     if(source_samples)
         m2vr::LogEvent("model2_d3d9_original_present_result",frame,
             static_cast<std::uint32_t>(original_result),source_samples,0u);
+    // Every eighth physical original Present (and the first) supplies
+    // NEGATIVE-control coverage even when there are no sampled VB/IB
+    // witnesses. Title/menu/sky/HUD/aux may use only UP family Draws.
+    // This is genuine primary-device post-COM frame evidence, NOT a
+    // World3D signal: four family counts and HRESULT only, no game pixels,
+    // resource addresses, vertex data, GPU contents or emulation state.
+    if(frame==1u || frame%8u==0u)
+        m2vr::LogEvent("model2_d3d9_original_control_present_phase",
+            frame,static_cast<std::uint32_t>(original_result),
+            (std::uint64_t{dp}<<32u)|dip,
+            (std::uint64_t{dpup}<<32u)|dipup);
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair
