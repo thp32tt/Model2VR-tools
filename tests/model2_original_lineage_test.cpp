@@ -187,6 +187,18 @@ int main(){
     const auto recovered_frame=scene.FinishPresent(false,false,true);
     assert(recovered_frame.successful_in_scene==1u &&
            recovered_frame.flags==0u);
+    scene.ReopenAfterPhysicalPresentReturn();
+    const auto live_ticket=scene.EnterOperation();
+    // A ticket-less (capacity-rejected) operation must not consume the
+    // outstanding real original Draw's slot or misattribute its result.
+    scene.Draw(OriginalPhysicalSceneDrawCoverage::OperationTicket{0u},
+               true,true,true);
+    scene.Draw(live_ticket,true,true,true);
+    const auto saturated=scene.FinishPresent(false,false,true);
+    assert(saturated.successful_in_scene==1u &&
+           (saturated.flags&OriginalPhysicalSceneDrawCoverage::kOverflow)!=0u &&
+           (saturated.flags&OriginalPhysicalSceneDrawCoverage::kCrossPresent)==0u &&
+           (saturated.flags&OriginalPhysicalSceneDrawCoverage::kInFlightAtPresent)==0u);
     OriginalDrawCallerInventory exact{};
     assert(exact.Count()==0u && !exact.Incomplete());
     assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);
