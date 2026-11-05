@@ -2397,11 +2397,12 @@ HRESULT STDMETHODCALLTYPE SetRenderTargetHook(IDirect3DDevice9* d,DWORD slot,
     if(!g_primary_device.Owns(d))
         return g_set_render_target(d,slot,surface);
     void* const caller=_ReturnAddress();
+    const auto target_bind=g_original_target_draw_coverage.EnterBind();
     const HRESULT hr=g_set_render_target(d,slot,surface);
     const auto caller_rva=CallerRva(caller);
     // Observe the real post-COM RT0/depth; never replay the game Set* call.
-    g_original_target_draw_coverage.RenderTargetBind(
-        caller_rva!=0u,SUCCEEDED(hr),slot,surface!=nullptr,
+    g_original_target_draw_coverage.CompleteRenderTargetBind(
+        target_bind,caller_rva!=0u,SUCCEEDED(hr),slot,surface!=nullptr,
         (SUCCEEDED(hr) && slot==0u)?ReadPhysicalOriginalRtDepth(d):
             m2vr::drawprobe::OriginalTargetSnapshot{});
     if(caller_rva && FAILED(hr))
@@ -2417,10 +2418,11 @@ HRESULT STDMETHODCALLTYPE SetDepthStencilSurfaceHook(IDirect3DDevice9* d,
     if(!g_primary_device.Owns(d))
         return g_set_depth_surface(d,surface);
     void* const caller=_ReturnAddress();
+    const auto depth_bind=g_original_target_draw_coverage.EnterBind();
     const HRESULT hr=g_set_depth_surface(d,surface);
     const auto caller_rva=CallerRva(caller);
-    g_original_target_draw_coverage.DepthBind(
-        caller_rva!=0u,SUCCEEDED(hr),
+    g_original_target_draw_coverage.CompleteDepthBind(
+        depth_bind,caller_rva!=0u,SUCCEEDED(hr),
         SUCCEEDED(hr)?ReadPhysicalOriginalRtDepth(d):
             m2vr::drawprobe::OriginalTargetSnapshot{});
     if(caller_rva && FAILED(hr))

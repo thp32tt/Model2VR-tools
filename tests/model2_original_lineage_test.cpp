@@ -327,6 +327,67 @@ int main(){
     assert((foreign_result.flags&
             OriginalPhysicalTargetDrawCoverage::kForeignBind)!=0u);
     assert(foreign_result.RejectUnprovenStereoSource());
+    // Genuine original x86 SetRT/SetDepth are IN-FLIGHT source mutations.
+    // No eye raster may run during the real COM call, even when the old
+    // RT0/depth looked compatible before it entered.
+    OriginalPhysicalTargetDrawCoverage binds{};
+    auto clean_rt=binds.EnterBind();
+    binds.CompleteRenderTargetBind(clean_rt,true,true,0u,true,main_depth);
+    auto clean_depth=binds.EnterBind();
+    binds.CompleteDepthBind(clean_depth,true,true,main_depth);
+    assert(binds.CanAttemptVerifiedWorldDraw());
+    auto pending_bind=binds.EnterBind();
+    assert(!binds.CanAttemptVerifiedWorldDraw());
+    auto overlapping_bind_draw=binds.EnterDraw();
+    binds.CompleteDraw(overlapping_bind_draw,true,true);
+    auto bind_cut=binds.FinishPresent();
+    assert((bind_cut.flags&
+            OriginalPhysicalTargetDrawCoverage::kInFlight)!=0u);
+    assert((bind_cut.flags&
+            OriginalPhysicalTargetDrawCoverage::kTargetDrift)!=0u);
+    binds.ReopenAfterPhysicalPresentReturn();
+    binds.CompleteRenderTargetBind(pending_bind,true,true,0u,true,main_depth);
+    assert(!binds.CanAttemptVerifiedWorldDraw()); // old epoch cannot re-own
+    auto late_bind=binds.FinishPresent();
+    assert((late_bind.flags&
+            OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
+    // A bind that starts DURING the sealed physical COM Present is also
+    // invalid if it finally returns after Present has reopened.
+    auto sealed_bind=binds.EnterBind();
+    binds.ReopenAfterPhysicalPresentReturn();
+    binds.CompleteDepthBind(sealed_bind,true,true,main_depth);
+    assert(!binds.CanAttemptVerifiedWorldDraw());
+    assert((binds.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
+    binds.ReopenAfterPhysicalPresentReturn();
+    // Two concurrent original SETs cannot authenticate an out-of-order
+    // post-COM snapshot. The old ticket must not re-own the new RT0.
+    auto old_bind=binds.EnterBind();
+    auto new_bind=binds.EnterBind();
+    binds.CompleteRenderTargetBind(new_bind,true,true,0u,true,main_depth);
+    binds.CompleteRenderTargetBind(old_bind,true,true,0u,true,offscreen_depth);
+    assert(!binds.CanAttemptVerifiedWorldDraw());
+    assert((binds.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kTargetDrift)!=0u);
+    binds.ReopenAfterPhysicalPresentReturn();
+    // Reset never steals an old pending ticket nor launders its success.
+    auto reset_bind=binds.EnterBind();
+    binds.Reset();
+    binds.CompleteDepthBind(reset_bind,true,true,main_depth);
+    assert((binds.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
+    binds.ReopenAfterPhysicalPresentReturn();
+    auto fresh_rt=binds.EnterBind();
+    binds.CompleteRenderTargetBind(fresh_rt,true,true,0u,true,main_depth);
+    auto fresh_z=binds.EnterBind();
+    binds.CompleteDepthBind(fresh_z,true,true,main_depth);
+    assert(binds.CanAttemptVerifiedWorldDraw());
+    assert(binds.FinishPresent().flags==0u);
+    binds.ReopenAfterPhysicalPresentReturn();
+    auto failure_bind=binds.EnterBind();
+    binds.CompleteRenderTargetBind(failure_bind,true,false,0u,true,main_depth);
+    assert((binds.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kFailedBind)!=0u);
     OriginalDrawCallerInventory exact{};
     assert(exact.Count()==0u && !exact.Incomplete());
     assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);

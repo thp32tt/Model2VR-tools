@@ -76,45 +76,42 @@ public:
         state_=actual;
         resolved_=true;
     }
+    // SetRenderTarget/SetDepthStencilSurface run through actual original COM.
+    // A bind is an in-flight source WRITE, not a post-COM point observation.
+    struct BindToken {
+        std::uint64_t epoch=0u, revision=0u;
+        bool valid=false, started_sealed=false;
+    };
+    BindToken EnterBind() noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if(active_binds_>=kLimit){flags_|=kOverflow;return {};}
+        ++active_binds_;
+        if(sealed_)flags_|=kCrossPresent;
+        return {epoch_,revision_,true,sealed_};
+    }
+    // Direct observations remain for deterministic policy unit tests.
     void RenderTargetBind(bool exe_caller,bool succeeded,
                           std::uint32_t slot,bool nonnull,
                           OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        if(!exe_caller) {
-            flags_|=kForeignBind;
-            state_={};owned_target_=false;owned_depth_=false;
-            resolved_=false;++revision_;
-            return;
-        }
-        if(!succeeded){flags_|=kFailedBind;return;}
-        if(slot!=0u){
-            // Real SetRenderTarget(1..3) is persistent across Presents.
-            // Draws with simultaneous outputs are not verified by this
-            // single-RT0 CPU/GPU stereo source adapter.
-            if(slot<=3u){
-                const auto bit=1u<<(slot-1u);
-                if(nonnull)secondary_mask_|=bit;
-                else secondary_mask_&=~bit;
-            }else flags_|=kMrtActive;
-            ++revision_;
-            return;
-        }
-        state_=actual;resolved_=true;
-        owned_target_=actual.target!=OriginalPhysicalRtClass::Unknown;
-        // Changing RT0 does not prove original depth-surface ownership.
-        ++revision_;
+        RenderTargetBindCore(exe_caller,succeeded,slot,nonnull,actual);
     }
     void DepthBind(bool exe_caller,bool succeeded,
                    OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        if(!exe_caller) {
-            flags_|=kForeignBind;state_.depth=OriginalPhysicalDepthClass::Unknown;
-            owned_depth_=false;resolved_=false;++revision_;return;
-        }
-        if(!succeeded){flags_|=kFailedBind;return;}
-        state_=actual;resolved_=true;
-        owned_depth_=actual.depth!=OriginalPhysicalDepthClass::Unknown;
-        ++revision_;
+        DepthBindCore(exe_caller,succeeded,actual);
+    }
+    void CompleteRenderTargetBind(const BindToken& token,bool caller,
+                                  bool succeeded,std::uint32_t slot,
+                                  bool nonnull,OriginalTargetSnapshot actual) noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if(CompleteBind(token))
+            RenderTargetBindCore(caller,succeeded,slot,nonnull,actual);
+    }
+    void CompleteDepthBind(const BindToken& token,bool caller,
+                           bool succeeded,OriginalTargetSnapshot actual) noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if(CompleteBind(token))DepthBindCore(caller,succeeded,actual);
     }
     void InvalidateOpaqueStateBlock() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -127,7 +124,7 @@ public:
     // original hardware Draw ALWAYS runs and the mono path is unaffected.
     bool CanAttemptVerifiedWorldDraw() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        return !sealed_ && resolved_ && owned_target_ && owned_depth_ &&
+        return !sealed_ && active_binds_==0u && resolved_ && owned_target_ && owned_depth_ &&
             secondary_mask_==0u && flags_==0u &&
             state_.target!=OriginalPhysicalRtClass::Unknown &&
             state_.depth==OriginalPhysicalDepthClass::Compatible;
@@ -135,6 +132,7 @@ public:
     Token EnterDraw() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         if(secondary_mask_)flags_|=kMrtActive;
+        if(active_binds_)flags_|=kTargetDrift;
         Token result{epoch_,revision_,state_,owned_target_,owned_depth_,true};
         if(active_>=kLimit){
             flags_|=kOverflow;result.valid=false;return result;
@@ -173,7 +171,7 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         OriginalPhysicalTargetSummary result{backbuffer_,auxiliary_,
             unknown_,failed_,bad_depth_,flags_};
-        if(active_!=0u)result.flags|=kInFlight;
+        if(active_!=0u || active_binds_!=0u)result.flags|=kInFlight;
         backbuffer_=auxiliary_=unknown_=failed_=bad_depth_=flags_=0u;
         ++epoch_;
         sealed_=true;
@@ -193,10 +191,69 @@ public:
         secondary_mask_=0u;
         backbuffer_=auxiliary_=unknown_=failed_=bad_depth_=flags_=0u;
         sealed_=false;
+        // Keep active_ AND active_binds_: late original COM operations
+        // must still be consumed without granting stale next-frame ownership.
         // Keep active_: late original COM operations must still be consumed
         // as crossed-epoch failures, never credited to the next game frame.
     }
 private:
+    void InvalidateOwnedBinding() noexcept {
+        state_={};owned_target_=owned_depth_=false;
+        resolved_=false;++revision_;
+    }
+    bool CompleteBind(const BindToken& token) noexcept {
+        if(!token.valid){flags_|=kOverflow;InvalidateOwnedBinding();return false;}
+        if(!active_binds_){flags_|=kCrossPresent;InvalidateOwnedBinding();return false;}
+        --active_binds_;
+        // A SET that straddles the physical Present cut, starts in its
+        // sealed COM window, or races another binding write cannot lend
+        // post-COM target/depth ownership to speculative OpenXR eyes.
+        if(token.epoch!=epoch_ || token.started_sealed || sealed_){
+            flags_|=kCrossPresent;InvalidateOwnedBinding();return false;
+        }
+        if(token.revision!=revision_){
+            flags_|=kTargetDrift;InvalidateOwnedBinding();return false;
+        }
+        return true;
+    }
+    void RenderTargetBindCore(bool exe_caller,bool succeeded,
+                          std::uint32_t slot,bool nonnull,
+                          OriginalTargetSnapshot actual) noexcept {
+        if(!exe_caller) {
+            flags_|=kForeignBind;
+            state_={};owned_target_=false;owned_depth_=false;
+            resolved_=false;++revision_;
+            return;
+        }
+        if(!succeeded){flags_|=kFailedBind;return;}
+        if(slot!=0u){
+            // Real SetRenderTarget(1..3) is persistent across Presents.
+            // Draws with simultaneous outputs are not verified by this
+            // single-RT0 CPU/GPU stereo source adapter.
+            if(slot<=3u){
+                const auto bit=1u<<(slot-1u);
+                if(nonnull)secondary_mask_|=bit;
+                else secondary_mask_&=~bit;
+            }else flags_|=kMrtActive;
+            ++revision_;
+            return;
+        }
+        state_=actual;resolved_=true;
+        owned_target_=actual.target!=OriginalPhysicalRtClass::Unknown;
+        // Changing RT0 does not prove original depth-surface ownership.
+        ++revision_;
+    }
+    void DepthBindCore(bool exe_caller,bool succeeded,
+                   OriginalTargetSnapshot actual) noexcept {
+        if(!exe_caller) {
+            flags_|=kForeignBind;state_.depth=OriginalPhysicalDepthClass::Unknown;
+            owned_depth_=false;resolved_=false;++revision_;return;
+        }
+        if(!succeeded){flags_|=kFailedBind;return;}
+        state_=actual;resolved_=true;
+        owned_depth_=actual.depth!=OriginalPhysicalDepthClass::Unknown;
+        ++revision_;
+    }
     void Increment(std::uint32_t& value) noexcept {
         if(value==kLimit)flags_|=kOverflow;
         else ++value;
@@ -204,7 +261,7 @@ private:
     std::mutex mutex_;
     OriginalTargetSnapshot state_{};
     std::uint64_t epoch_=1u,revision_=1u;
-    std::uint32_t secondary_mask_=0u,active_=0u,backbuffer_=0u,auxiliary_=0u,
+    std::uint32_t secondary_mask_=0u,active_=0u,active_binds_=0u,backbuffer_=0u,auxiliary_=0u,
         unknown_=0u,failed_=0u,bad_depth_=0u,flags_=0u;
     bool owned_target_=false, owned_depth_=false, sealed_=false, resolved_=false;
 };
