@@ -4,6 +4,13 @@
 #include <limits>
 using namespace m2vr;
 int main(){
+    static_assert(menuray::PickHand(false,false,true,true)==-1);
+    static_assert(menuray::PickHand(true,false,true,false)==0);
+    static_assert(menuray::PickHand(false,true,false,true)==1);
+    static_assert(menuray::PickHand(true,true,true,false)==0);
+    static_assert(menuray::PickHand(true,true,false,true)==1);
+    static_assert(menuray::PickHand(true,true,true,true)==1);
+    static_assert(menuray::PickHand(true,true,false,false)==1);
     monoquad::Placement screen{};
     screen.position={0.f,0.f,-2.f};
     screen.orientation={0.f,0.f,0.f,1.f};

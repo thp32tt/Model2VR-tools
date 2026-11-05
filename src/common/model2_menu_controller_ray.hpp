@@ -11,6 +11,16 @@ struct Ray {
     monoquad::Vec3 origin{};
     monoquad::Quat orientation{};
 };
+// Match each trigger to ITS OWN tracked ray. A left-trigger selection must
+// never be stolen by an idle right-hand hover (or vice versa). Right hand
+// wins ties only if both hands actually click in the same XR sync.
+constexpr int PickHand(bool left_hit,bool right_hit,
+                       bool left_click,bool right_click) noexcept {
+    if(right_hit && right_click)return 1;
+    if(left_hit && left_click)return 0;
+    if(right_hit)return 1;
+    return left_hit?0:-1;
+}
 struct Hit {
     bool valid=false;
     std::uint32_t texture_x=0,texture_y=0;

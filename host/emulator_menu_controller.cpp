@@ -133,9 +133,10 @@ void EmulatorMenuController::Poll(
     const auto width=rect.right-rect.left;
     const auto height=rect.bottom-rect.top;
     if(width<160 || height<100 || width>4096 || height>4096)return;
-    // Prefer right hand for pointing, but let left hand work alone too.
-    // No synthetic click is generated without fresh tracked aim *and*
-    // a rising button transition on the same active controller.
+    // Prefer right-hand hover, but accept a left-hand trigger when both
+    // hands intersect the quad. Every click uses its OWN tracked ray.
+    std::array<menuray::Hit,2> hits{};
+    std::array<bool,2> click_edges{false,false};
     for(int hand=1;hand>=0;--hand){
         XrActionStateGetInfo state_get{XR_TYPE_ACTION_STATE_GET_INFO};
         state_get.action=aim_;
@@ -162,20 +163,26 @@ void EmulatorMenuController::Poll(
             static_cast<std::uint32_t>(height),
             transport::kWidth,transport::kHeight);
         if(!hit.valid)continue;
-        ray_on_menu_=true;
-        capture.SetControllerReticle(true,hit.texture_x,hit.texture_y);
+        hits[hand]=hit;
         state_get.action=select_;
         XrActionStateBoolean button{XR_TYPE_ACTION_STATE_BOOLEAN};
-        if(XR_SUCCEEDED(xrGetActionStateBoolean(session,&state_get,&button)) &&
-           button.isActive && button.currentState && button.changedSinceLastSync){
-            const bool sent=capture.DeliverControllerClick(pid,hit.window_x,hit.window_y);
-            std::cout<<"Model2VR XR emulator menu click: "
-                     <<(sent?"SENT":"BLOCKED_FOREGROUND_OR_INJECTION")
-                     <<" hand="<<(hand?"right":"left")
-                     <<" window_x="<<hit.window_x
-                     <<" window_y="<<hit.window_y<<"\n";
-        }
-        break;
+        click_edges[hand]=
+            XR_SUCCEEDED(xrGetActionStateBoolean(session,&state_get,&button)) &&
+            button.isActive && button.currentState && button.changedSinceLastSync;
+    }
+    const int hand=menuray::PickHand(
+        hits[0].valid,hits[1].valid,click_edges[0],click_edges[1]);
+    if(hand<0)return;
+    ray_on_menu_=true;
+    const auto& hit=hits[hand];
+    capture.SetControllerReticle(true,hit.texture_x,hit.texture_y);
+    if(click_edges[hand]){
+        const bool sent=capture.DeliverControllerClick(pid,hit.window_x,hit.window_y);
+        std::cout<<"Model2VR XR emulator menu click: "
+                 <<(sent?"SENT":"BLOCKED_FOREGROUND_OR_INJECTION")
+                 <<" hand="<<(hand?"right":"left")
+                 <<" window_x="<<hit.window_x
+                 <<" window_y="<<hit.window_y<<"\n";
     }
 }
 } // namespace m2vr::host

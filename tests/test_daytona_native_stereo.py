@@ -345,6 +345,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("xrSyncActions(session,&sync)",controller)
         self.assertIn("xrLocateSpace(aim_spaces_[hand],local_space",controller)
         self.assertIn("button.changedSinceLastSync",controller)
+        self.assertIn("menuray::PickHand(",controller)
+        self.assertIn("click_edges[0],click_edges[1]",controller)
         self.assertIn("if(!menu_visible || !capture.Ready()",controller)
         self.assertIn("GetForegroundWindow()!=window_",capture)
         self.assertIn("WindowFromPoint(target_point)",capture)
