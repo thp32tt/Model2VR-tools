@@ -144,6 +144,16 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(hooks.count("RecordOriginalSourceResult(witness,hr,caller,"),4)
         self.assertIn("const HRESULT original_result=g_present(d,a,b,w,dirty);",hooks)
 
+    def test_failed_original_viewport_scissor_revoke_gpu_eyes(self):
+        source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        header=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
+        self.assertIn("method>9u", source)
+        self.assertIn("method<=9u", header)
+        self.assertIn("TrackFailedOriginalD3D9Surface(hr,8u,rva)", (
+            ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8"))
+        self.assertIn("TrackFailedOriginalD3D9Surface(hr,9u,rva)", (
+            ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8"))
+
     def test_original_exe_scene_boundaries_are_optional_and_readonly(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         self.assertIn("using SceneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);", hooks)
