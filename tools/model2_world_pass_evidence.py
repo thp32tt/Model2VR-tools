@@ -29,6 +29,24 @@ def _validate_report(report):
         report.get("hmd_runtime_validation") != "UNTESTED"
     ):
         raise ValueError("expected an unproven real-source Model2 report (schema 1)")
+    # An empty title/menu/sky/HUD/aux report from a crashed or unhooked
+    # emulator must never count as a negative scene witness. The native
+    # original post-COM Present event is independent of VB/IB sampling and
+    # includes real primitive counts for ALL four Draw families.
+    sampled=report.get("original_control_present_sample_count")
+    succeeded=report.get("original_control_successful_present_count")
+    drawn=report.get("original_control_successful_drawn_present_count")
+    families=report.get("original_control_four_family_draw_totals")
+    expected={"DrawPrimitive","DrawIndexedPrimitive",
+              "DrawPrimitiveUP","DrawIndexedPrimitiveUP"}
+    if (any(type(value) is not int or value<1 or value>MAX_SOURCES
+            for value in (sampled,succeeded,drawn)) or
+        not drawn<=succeeded<=sampled or
+        not isinstance(families,dict) or set(families)!=expected or
+        any(type(v) is not int or v<0 or v>MAX_SOURCES*10000000
+            for v in families.values()) or
+        not any(families.values())):
+        raise ValueError("missing authenticated original physical control Present")
     sources = report.get("sources")
     if not isinstance(sources, list) or len(sources) > MAX_SOURCES:
         raise ValueError("invalid bounded source list")
