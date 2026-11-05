@@ -31,14 +31,15 @@ namespace m2vr::vrbridge {
 // 67=CreateOffscreenPlainSurface (pre-first-use Surface sources);
 // 68=GetRenderTargetData, 69=GetFrontBufferData (GPU-to-CPU Surface copies):
 // 70=original SetDialogBoxMode (COM 20) failure; SetGammaRamp (21) is void.
+// 71=original SetCursorProperties (COM 10) failure; COM 11/12 return void/BOOL.
 // original source-state and resource operation failures.
 inline constexpr bool IsFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits)noexcept {
-    return method>=1u && method<=70u && (result_bits&0x80000000u)!=0u;
+    return method>=1u && method<=71u && (result_bits&0x80000000u)!=0u;
 }
 inline constexpr std::uint32_t FailedOriginalD3D9SurfaceSourceKind(
     std::uint32_t method)noexcept {
     // Separate from Draw 17..20 and Clear 21.
-    return method>=1u && method<=70u?21u+method:0u;
+    return method>=1u && method<=71u?21u+method:0u;
 }
 } // namespace m2vr::vrbridge
