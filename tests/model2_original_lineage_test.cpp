@@ -60,6 +60,25 @@ int main(){
     static_assert(static_cast<unsigned>(OriginalLineageKind::ResourcePreLoad)==58u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ResourceSetPrivateData)==59u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ResourceFreePrivateData)==60u);
+    // A genuine primary original Resource9 metadata update cannot retain
+    // a previous same-physical-Present CPU/GPU world source nonce.
+    OriginalLineageStamp private_before{};
+    private_before.physical_present=97u;
+    private_before.successful_writes[static_cast<std::size_t>(
+        OriginalLineageKind::View)]=1u;
+    assert(OriginalLineageUsable(private_before));
+    auto private_after_set=private_before;
+    private_after_set.successful_writes[static_cast<std::size_t>(
+        OriginalLineageKind::ResourceSetPrivateData)]=1u;
+    assert(!SameOriginalLineage(private_before,private_after_set));
+    assert(OriginalLineageNonce(private_before)!=
+           OriginalLineageNonce(private_after_set));
+    auto private_after_free=private_after_set;
+    private_after_free.successful_writes[static_cast<std::size_t>(
+        OriginalLineageKind::ResourceFreePrivateData)]=1u;
+    assert(!SameOriginalLineage(private_after_set,private_after_free));
+    assert(OriginalLineageNonce(private_after_set)!=
+           OriginalLineageNonce(private_after_free));
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceDialogBoxMode)==49u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceGammaRamp)==50u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceCursorProperties)==51u);
