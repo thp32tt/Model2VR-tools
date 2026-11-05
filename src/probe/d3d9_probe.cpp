@@ -12,6 +12,7 @@
 #include "original_d3d9_draw_result_gate.hpp"
 #include "original_d3d9_clear_result_gate.hpp"
 #include "original_d3d9_surface_result_gate.hpp"
+#include "original_d3d9_lineage.hpp"
 #include "original_d3d9_authenticated_draw.hpp"
 #include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
@@ -105,6 +106,10 @@ std::array<std::atomic<unsigned>,2> g_original_target_bind_samples{};
 std::array<std::atomic<unsigned>,4> g_original_transform_samples{};
 std::atomic<unsigned> g_original_vs_constant_samples{0u};
 std::array<std::atomic<unsigned>,2> g_original_region_samples{};
+// Monotonic state-write revisions per PHYSICAL original source Present.
+// Secondary devices and non-EXE renderer/mirror callbacks never advance.
+std::array<std::atomic<std::uint32_t>,m2vr::drawprobe::kOriginalLineageKinds>
+    g_original_lineage_writes{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 // Physical original Draw order across all four API families, including
@@ -322,6 +327,26 @@ void LogOriginalRegionPhase(IDirect3DDevice9* d,unsigned method,
     m2vr::LogEvent("model2_d3d9_original_region_phase",
         frame,rva,(std::uint64_t{method}<<32u)|draw,
         (std::uint64_t{scene}<<32u)|flags);
+}
+m2vr::drawprobe::OriginalLineageStamp ReadOriginalLineage(
+    std::uint64_t physical_frame)noexcept{
+    m2vr::drawprobe::OriginalLineageStamp stamp{};
+    stamp.physical_present=physical_frame;
+    for(std::size_t i=0;i<stamp.successful_writes.size();++i)
+        stamp.successful_writes[i]=g_original_lineage_writes[i].load(
+            std::memory_order_acquire);
+    if(g_present_count.load(std::memory_order_acquire)+1u!=physical_frame)
+        return {}; // concurrent physical original Present, unknown.
+    return stamp;
+}
+void RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind kind,
+                                std::uint32_t rva,HRESULT hr)noexcept {
+    if(!rva || FAILED(hr))return;
+    auto& counter=g_original_lineage_writes[static_cast<std::size_t>(kind)];
+    auto old=counter.load(std::memory_order_relaxed);
+    while(old<=m2vr::drawprobe::kMaxLineageWritesPerPresent &&
+          !counter.compare_exchange_weak(old,old+1u,
+              std::memory_order_acq_rel,std::memory_order_relaxed)){}
 }
 void TrackFailedOriginalD3D9Clear(HRESULT hr,std::uint32_t flags,
                                   std::uint32_t caller_rva) noexcept {
@@ -1588,6 +1613,8 @@ HRESULT STDMETHODCALLTYPE SetRenderTargetHook(IDirect3DDevice9* d,DWORD slot,
         TrackFailedOriginalD3D9Surface(hr,4u,caller_rva);
     else if(SUCCEEDED(hr))
         LogOriginalD3D9TargetBindPhase(d,1u,caller_rva,slot,surface,hr);
+    RecordOriginalLineageWrite(
+        m2vr::drawprobe::OriginalLineageKind::RenderTarget,caller_rva,hr);
     return hr;
 }
 HRESULT STDMETHODCALLTYPE SetDepthStencilSurfaceHook(IDirect3DDevice9* d,
@@ -1601,6 +1628,8 @@ HRESULT STDMETHODCALLTYPE SetDepthStencilSurfaceHook(IDirect3DDevice9* d,
         TrackFailedOriginalD3D9Surface(hr,5u,caller_rva);
     else if(SUCCEEDED(hr))
         LogOriginalD3D9TargetBindPhase(d,2u,caller_rva,0u,surface,hr);
+    RecordOriginalLineageWrite(
+        m2vr::drawprobe::OriginalLineageKind::DepthSurface,caller_rva,hr);
     return hr;
 }
 // Passive original-game transform provenance; no matrix contents are logged.
@@ -1612,6 +1641,13 @@ HRESULT STDMETHODCALLTYPE SetTransformHook(IDirect3DDevice9* d,
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,6u,rva);
     if(!rva || FAILED(hr))return hr;
+    if(state==D3DTS_VIEW || state==D3DTS_PROJECTION ||
+       (static_cast<unsigned>(state)>=256u &&
+        static_cast<unsigned>(state)<=511u))
+        RecordOriginalLineageWrite(
+            state==D3DTS_VIEW?m2vr::drawprobe::OriginalLineageKind::View:
+            state==D3DTS_PROJECTION?m2vr::drawprobe::OriginalLineageKind::Projection:
+            m2vr::drawprobe::OriginalLineageKind::World,rva,hr);
     const auto kind=state==D3DTS_VIEW?1u:
         state==D3DTS_PROJECTION?2u:
         (static_cast<unsigned>(state)>=256u &&
@@ -1647,6 +1683,8 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,7u,rva);
     if(!rva || FAILED(hr) || start>=256u || count==0u ||
        count>256u || start+count>256u)return hr;
+    RecordOriginalLineageWrite(
+        m2vr::drawprobe::OriginalLineageKind::VertexConstants,rva,hr);
     const auto frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto ordinal=g_original_frame_draw_ordinal.load(std::memory_order_relaxed);
     const auto scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
@@ -1676,6 +1714,8 @@ HRESULT STDMETHODCALLTYPE SetViewportHook(IDirect3DDevice9* d,
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,8u,rva);
     else if(rva && SUCCEEDED(hr) && vp)
         LogOriginalRegionPhase(d,1u,rva,vp->X,vp->Y,vp->Width,vp->Height);
+    RecordOriginalLineageWrite(
+        m2vr::drawprobe::OriginalLineageKind::Viewport,rva,hr);
     return hr;
 }
 HRESULT STDMETHODCALLTYPE SetScissorRectHook(IDirect3DDevice9* d,
@@ -1689,6 +1729,8 @@ HRESULT STDMETHODCALLTYPE SetScissorRectHook(IDirect3DDevice9* d,
         LogOriginalRegionPhase(d,2u,rva,rect->left,rect->top,
             std::int64_t{rect->right}-rect->left,
             std::int64_t{rect->bottom}-rect->top);
+    RecordOriginalLineageWrite(
+        m2vr::drawprobe::OriginalLineageKind::Scissor,rva,hr);
     return hr;
 }
 // Every COM Present path must execute the original game's method exactly
@@ -1713,6 +1755,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
+    for(auto& revision:g_original_lineage_writes)
+        revision.store(0u,std::memory_order_release);
     // Native replay must also drain the *original* source-family counters.
     // Previously these only reset in passive 2D mode, so a long VR session
     // accumulated lifetime totals instead of per-Present evidence.
@@ -1793,6 +1837,8 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         counter.store(0u,std::memory_order_relaxed);
     g_original_vs_constant_samples.store(0u,std::memory_order_relaxed);
     for(auto& sample:g_original_region_samples)sample.store(0u,std::memory_order_relaxed);
+    for(auto& revision:g_original_lineage_writes)
+        revision.store(0u,std::memory_order_release);
     g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
@@ -1969,6 +2015,15 @@ Model2VR_NextOriginalD3D9PresentFrameId(){
         g_present_count.load(std::memory_order_relaxed),
         g_device_installed.load(std::memory_order_acquire),
         g_native_stereo);
+}
+
+// Read-only current-Present state checksum, on the authentic original game
+// scene owner thread only. Does not grant World3D or stereo by itself.
+extern "C" __declspec(dllexport) unsigned long long __stdcall
+Model2VR_CurrentOriginalD3D9LineageNonce(){
+    if(!Model2VR_CurrentOriginalD3D9SceneOrdinal())return 0u;
+    return m2vr::drawprobe::OriginalLineageNonce(ReadOriginalLineage(
+        Model2VR_NextOriginalD3D9PresentFrameId()));
 }
 
 namespace m2vr {
