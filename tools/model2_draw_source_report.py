@@ -551,6 +551,13 @@ def audit_csv(path):
     scene_frame_trusted = bytearray()
     scene_flagged_frame_count = 0
     scene_trusted_drawn_frame_count = 0
+    # Unsampled original RT0/depth provenance for EVERY physical Present.
+    # No COM surface identity, size, pixels or private matrices retained.
+    last_scene_draw_total = 0
+    last_target_coverage_frame = 0
+    target_coverage_totals = Counter()
+    target_flagged_frames = 0
+    target_valid_backbuffer_frames = 0
     last_exact_inventory_frame = 0
     exact_inventory_count = 0
     exact_inventory_flags = (0,0)
@@ -904,7 +911,40 @@ def audit_csv(path):
                     scene_flagged_frame_count+=1
                 elif trusted:
                     scene_trusted_drawn_frame_count+=1
+                last_scene_draw_total=inside+untrusted+failed
                 last_scene_coverage_frame=frame
+                continue
+            if event == "model2_d3d9_original_draw_target_coverage":
+                try:
+                    frame,pair,results,tail=(
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original physical target Draw coverage") from exc
+                backbuffer,auxiliary=halves(pair)
+                unknown,failed=halves(results)
+                bad_depth,flags=halves(tail)
+                total=backbuffer+auxiliary+unknown+failed
+                if (not 0<frame<=0xffffffff or
+                    frame!=last_target_coverage_frame+1 or
+                    frame!=last_scene_coverage_frame or
+                    (last_capture_frame and last_capture_frame!=frame) or
+                    any(n>10000000 for n in
+                        (backbuffer,auxiliary,unknown,failed,bad_depth)) or
+                    flags>511 or total>10000000 or
+                    bad_depth>backbuffer+auxiliary+unknown or
+                    bool(flags&8)!=bool(bad_depth) or
+                    (total!=last_scene_draw_total and not flags&256)):
+                    raise ValueError("invalid original physical target Draw coverage")
+                for key,value in (
+                    ("backbuffer",backbuffer),("auxiliary",auxiliary),
+                    ("unknown",unknown),("failed",failed),
+                    ("incompatible_depth",bad_depth)):
+                    target_coverage_totals[key]+=value
+                if flags!=0 or unknown or failed or bad_depth:
+                    target_flagged_frames+=1
+                elif backbuffer:
+                    target_valid_backbuffer_frames+=1
+                last_target_coverage_frame=frame
                 continue
             if event == "model2_d3d9_original_capture_run":
                 try:
@@ -1800,6 +1840,10 @@ def audit_csv(path):
         last_scene_coverage_frame!=last_exact_inventory_frame or
         last_scene_coverage_frame!=last_bloom_frame):
         raise ValueError("orphan original physical Scene/Draw evidence")
+    if last_target_coverage_frame and (
+        last_target_coverage_frame!=last_scene_coverage_frame or
+        (last_capture_frame and last_target_coverage_frame!=last_capture_frame)):
+        raise ValueError("orphan original physical RT0/Depth Draw evidence")
     if last_capture_frame and (last_capture_frame!=last_exact_inventory_frame or
         last_capture_frame!=last_bloom_frame):
         raise ValueError("orphan original capture run without complete physical Present")
@@ -1848,6 +1892,24 @@ def audit_csv(path):
                  scene_coverage_totals["untrusted"]==0 and
                  scene_coverage_totals["failed"]==0)}
             if last_scene_coverage_frame else None),
+        "original_physical_draw_target_coverage": (
+            {"physical_present_count":last_target_coverage_frame,
+             "first_present_frame":1,
+             "last_present_frame":last_target_coverage_frame,
+             "original_backbuffer_draw_count":target_coverage_totals["backbuffer"],
+             "original_auxiliary_draw_count":target_coverage_totals["auxiliary"],
+             "original_unknown_target_draw_count":target_coverage_totals["unknown"],
+             "original_failed_draw_count":target_coverage_totals["failed"],
+             "original_incompatible_depth_draw_count":
+                 target_coverage_totals["incompatible_depth"],
+             "flagged_present_count":target_flagged_frames,
+             "trusted_backbuffer_present_count":target_valid_backbuffer_frames,
+             "all_original_draw_targets_trusted":bool(
+                 target_flagged_frames==0 and
+                 target_coverage_totals["unknown"]==0 and
+                 target_coverage_totals["failed"]==0 and
+                 target_coverage_totals["incompatible_depth"]==0)}
+            if last_target_coverage_frame else None),
         "original_capture_run": (
             {"nonce_hex":f"0x{original_capture_nonce:016x}",
              "first_present_frame":1,
