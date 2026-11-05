@@ -424,7 +424,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("model2_d3d9_source_render_lineage",hooks)
         self.assertIn("method>69u",gpu)
         self.assertIn("method<=69u",gate)
-        self.assertIn("&&ps_constants&&texture&&texture_stage&&sampler&&render_state",hooks)
+        self.assertIn("&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state",hooks)
 
     def test_original_exe_scene_boundaries_are_optional_and_readonly(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
@@ -773,6 +773,39 @@ class NativeStereoTest(unittest.TestCase):
         self.assertNotIn("DrawPrimitive(",hooks)
         self.assertNotIn("SetRenderTarget(",hooks)
         self.assertNotIn("UpdateSurface(",hooks)
+
+    def test_primary_original_getter_aliases_preserve_abi_and_hook_cpu_writes(self):
+        native=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        hook=(ROOT/"src/probe/original_d3d9_resource_get_hooks.inl").read_text("utf-8")
+        self.assertIn('#include "original_d3d9_resource_get_hooks.inl"',native)
+        self.assertIn("model2_d3d9_original_resource_getter_counts",native)
+        self.assertIn("&&stream_source&&get_stream&&indices&&get_indices",native)
+        self.assertIn("&&ps_constants&&texture&&get_texture&&texture_stage",native)
+        for name,forward,slot,observer,ordinal in (
+            ("OriginalGetTextureHook","g_get_texture(",66,
+             "ObserveOriginalBoundTexture(*out,rva)",0),
+            ("OriginalGetStreamSourceHook","g_get_stream_source(",101,
+             "ObserveOriginalBoundBuffer(*out,1u,rva)",1),
+            ("OriginalGetIndicesHook","g_get_indices(",105,
+             "ObserveOriginalBoundBuffer(*out,2u,rva)",2)):
+            body=hook.split("HRESULT STDMETHODCALLTYPE "+name+"(")[1].split(
+                "\nHRESULT STDMETHODCALLTYPE ",1)[0]
+            self.assertEqual(body.count("const HRESULT hr="+forward),1)
+            self.assertIn("const bool primary=g_primary_device.Owns(d)",body)
+            self.assertIn(f"g_original_resource_getters[{ordinal}].fetch_add(",body)
+            self.assertIn("if(rva && SUCCEEDED(hr))",body)
+            self.assertIn("else if(*out)"+observer+";",body)
+            self.assertNotIn("TrackFailedOriginalD3D9Surface(",body)
+            self.assertIn("return hr;",body)
+            self.assertIn(f"Hook(vtable[{slot}]",native)
+            self.assertIn(f"MH_RemoveHook(vtable[{slot}]);",native)
+        self.assertIn("g_original_resource_getters[i].exchange(",native)
+        self.assertIn("for(auto& count:g_original_resource_getters)",native)
+        self.assertIn("g_get_texture=nullptr;",native)
+        self.assertIn("g_get_stream_source=nullptr;",native)
+        self.assertIn("g_get_indices=nullptr;",native)
+        for banned in ("memcpy(","fwrite(","DrawPrimitive(","LogEvent("):
+            self.assertNotIn(banned,hook)
 
     def test_original_create_buffers_before_binding_preserves_game_and_stereo_provenance(self):
         probe=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
