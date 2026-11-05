@@ -15,11 +15,11 @@ FetchContent_Declare(openxr
  GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(openxr)
-add_executable(Model2VROpenXRHost main.cpp xr_session.cpp xr_frame.cpp)
+add_executable(Model2VROpenXRHost main.cpp xr_session.cpp xr_frame.cpp emulator_window_capture.cpp)
 target_compile_features(Model2VROpenXRHost PRIVATE cxx_std_20)
 target_compile_definitions(Model2VROpenXRHost PRIVATE
  XR_USE_PLATFORM_WIN32 XR_USE_GRAPHICS_API_D3D11 NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(Model2VROpenXRHost PRIVATE OpenXR::openxr_loader d3d11 dxgi user32)
+target_link_libraries(Model2VROpenXRHost PRIVATE OpenXR::openxr_loader d3d11 dxgi user32 gdi32)
 if(MSVC)
  target_compile_options(Model2VROpenXRHost PRIVATE /W4 /EHsc /permissive-)
 endif()
@@ -147,3 +147,11 @@ add_executable(daytona_host_pixel_format_x64_test
 target_compile_features(daytona_host_pixel_format_x64_test PRIVATE cxx_std_20)
 add_test(NAME daytona_host_rgba_bgra_swapchain_x64
          COMMAND daytona_host_pixel_format_x64_test)
+
+# Desktop emulator menu/ROM dialog video is always flat OpenXR quad,
+# never a fabricated original D3D9 verified stereo source.
+add_executable(model2_emulator_window_policy_x64_test
+    ../tests/model2_emulator_window_policy_test.cpp)
+target_compile_features(model2_emulator_window_policy_x64_test PRIVATE cxx_std_20)
+add_test(NAME model2_emulator_menu_2d_pre_game_policy_x64
+         COMMAND model2_emulator_window_policy_x64_test)
