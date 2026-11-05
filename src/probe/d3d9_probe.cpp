@@ -54,6 +54,11 @@ using OriginalSwapChainGetFrontBufferDataFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DSwapChain9*,IDirect3DSurface9*);
 using OriginalSwapChainGetBackBufferFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DSwapChain9*,UINT,D3DBACKBUFFER_TYPE,IDirect3DSurface9**);
+using CreateQueryFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,D3DQUERYTYPE,IDirect3DQuery9**);
+using OriginalQueryIssueFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DQuery9*,DWORD);
+using OriginalQueryGetDataFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DQuery9*,void*,DWORD,DWORD);
 using SetCursorPropertiesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,UINT,IDirect3DSurface9*);
 using SetCursorPositionFn=void (STDMETHODCALLTYPE*)(IDirect3DDevice9*,int,int,DWORD);
 using ShowCursorFn=BOOL (STDMETHODCALLTYPE*)(IDirect3DDevice9*,BOOL);
@@ -216,6 +221,15 @@ std::atomic<bool> g_original_dialog_box_active{false};
 std::atomic<bool> g_original_gamma_unproven{false};
 std::atomic<bool> g_original_external_presentation_unproven{false};
 std::array<std::atomic<std::uint32_t>,2> g_original_presentation_controls{};
+CreateQueryFn g_create_query=nullptr;
+OriginalQueryIssueFn g_original_query_issue=nullptr;
+OriginalQueryGetDataFn g_original_query_get_data=nullptr;
+void* g_original_query_issue_target=nullptr;
+void* g_original_query_get_data_target=nullptr;
+std::mutex g_original_query_hook_mutex;
+std::atomic<bool> g_original_query_source_unproven{false};
+std::atomic<std::uint64_t> g_original_query_rejected_present{0u};
+std::array<std::atomic<std::uint32_t>,4> g_original_query_calls{};
 CreateAdditionalSwapChainFn g_create_additional_swap_chain=nullptr;
 GetSwapChainFn g_get_swap_chain=nullptr;
 OriginalSwapChainPresentFn g_original_swap_chain_present=nullptr;
@@ -452,6 +466,9 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9ActiveInstancing(
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
     unsigned long long physical_present,unsigned int original_caller_rva,
     unsigned int reason);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9QueryUse(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int reason);
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9BufferMutation(
     unsigned long long physical_present,unsigned int caller_rva,
     unsigned long long ordinal,unsigned int family);
@@ -2278,6 +2295,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 #include "original_d3d9_surface_get_hooks.inl"
 #include "original_d3d9_resource_get_hooks.inl"
 #include "original_d3d9_swap_chain_hooks.inl"
+#include "original_d3d9_query_hooks.inl"
 #include "original_d3d9_presentation_hooks.inl"
 #include "original_d3d9_cursor_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
@@ -2707,6 +2725,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     if(g_original_cursor_visible.load(std::memory_order_acquire) ||
        g_original_cursor_unknown.load(std::memory_order_acquire))
         BeforeOriginalPresentationControl(0u,9u);
+    if(g_original_query_source_unproven.load(std::memory_order_acquire))
+        OriginalQuerySourceBoundary(0u,3u);
     if(g_original_dialog_box_active.load(std::memory_order_acquire))
         BeforeOriginalPresentationControl(0u,3u);
     if(g_original_gamma_unproven.load(std::memory_order_acquire))
@@ -2778,6 +2798,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(std::size_t i=0;i<surface_creates.size();++i)
         surface_creates[i]=g_original_surface_creates[i].exchange(
             0u,std::memory_order_relaxed);
+    std::array<std::uint32_t,4> original_query_calls{};
+    for(std::size_t i=0;i<original_query_calls.size();++i)
+        original_query_calls[i]=g_original_query_calls[i].exchange(
+            0u,std::memory_order_relaxed);
     std::array<std::uint32_t,3> original_cursor_controls{};
     for(std::size_t i=0;i<original_cursor_controls.size();++i)
         original_cursor_controls[i]=g_original_cursor_controls[i].exchange(
@@ -2845,6 +2869,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             (g_original_dialog_box_active.load(std::memory_order_acquire)?1u:0u)|
             (g_original_gamma_unproven.load(std::memory_order_acquire)?2u:0u)|
             (g_original_external_presentation_unproven.load(std::memory_order_acquire)?4u:0u));
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_query_counts",frame,
+            (std::uint64_t{original_query_calls[0]}<<32u)|original_query_calls[1],
+            (std::uint64_t{original_query_calls[2]}<<32u)|original_query_calls[3],
+            g_original_query_source_unproven.load(std::memory_order_acquire)?1u:0u);
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_cursor_control_counts",frame,
             (std::uint64_t{original_cursor_controls[0]}<<32u)|original_cursor_controls[1],
@@ -2989,6 +3018,9 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         count.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_cursor_controls)
         count.store(0u,std::memory_order_relaxed);
+    for(auto& count:g_original_query_calls)
+        count.store(0u,std::memory_order_relaxed);
+    // Unknown original Query coverage persists across genuine Reset.
     // Reset alone does not establish a calibrated HMD gamma or clear a
     // confirmed original dialog mode; retain both fail-closed guards.
     g_original_swap_chain_readbacks.store(0u,std::memory_order_relaxed);
@@ -3047,6 +3079,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_create_additional_swap_chain);
     const bool get_swap_chain=Hook(vtable[14],
         reinterpret_cast<void*>(&OriginalGetSwapChainHook),g_get_swap_chain);
+    const bool create_query=Hook(vtable[118],
+        reinterpret_cast<void*>(&OriginalCreateQueryHook),g_create_query);
     const bool dp=Hook(vtable[81],reinterpret_cast<void*>(&DrawHook),g_draw);
     const bool di=Hook(vtable[82],reinterpret_cast<void*>(&IndexedHook),g_draw_indexed);
     const bool du=Hook(vtable[83],reinterpret_cast<void*>(&DrawUPHook),g_draw_up);
@@ -3165,7 +3199,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&cursor_image&&cursor_position&&cursor_visibility&&dialog&&gamma&&create_swap_chain&&get_swap_chain&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
+    if(!(p&&cursor_image&&cursor_position&&cursor_visibility&&dialog&&gamma&&create_swap_chain&&get_swap_chain&&create_query&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -3176,6 +3210,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(gamma){MH_DisableHook(vtable[21]);MH_RemoveHook(vtable[21]);}
         if(create_swap_chain){MH_DisableHook(vtable[13]);MH_RemoveHook(vtable[13]);}
         if(get_swap_chain){MH_DisableHook(vtable[14]);MH_RemoveHook(vtable[14]);}
+        if(create_query){MH_DisableHook(vtable[118]);MH_RemoveHook(vtable[118]);}
         if(dp){MH_DisableHook(vtable[81]);MH_RemoveHook(vtable[81]);}
         if(di){MH_DisableHook(vtable[82]);MH_RemoveHook(vtable[82]);}
         if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
@@ -3253,6 +3288,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_original_show_cursor=nullptr;
         g_original_set_dialog_box_mode=nullptr;g_original_set_gamma_ramp=nullptr;
         g_create_additional_swap_chain=nullptr;g_get_swap_chain=nullptr;
+        g_create_query=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_create_vertex_buffer=nullptr;g_create_index_buffer=nullptr;
         g_create_texture=nullptr;g_create_volume_texture=nullptr;
