@@ -727,7 +727,7 @@ class NativeStereoTest(unittest.TestCase):
             self.assertIn("return hr;",body)
             self.assertIn(f"Hook(vtable[{slot}]",probe)
             self.assertIn(f"MH_DisableHook(vtable[{slot}]);MH_RemoveHook(vtable[{slot}]);",probe)
-        self.assertIn("&&make_tex&&make_volume&&make_cube&&update",probe)
+        self.assertIn("&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&update",probe)
         self.assertIn("g_create_texture=nullptr;g_create_volume_texture=nullptr;",probe)
         self.assertIn("g_create_cube_texture=nullptr;",probe)
         self.assertIn("method<=64u",(
