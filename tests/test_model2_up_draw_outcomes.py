@@ -277,7 +277,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(recovered["counts"]["original_source_draw_and_present_succeeded"],1)
 
     def test_real_original_surface_failure_blocks_same_witness_up(self):
-        for method in (1,2,3):
+        for method in range(1,21):
             events=self.projected()+[
                 event("model2_d3d9_original_surface_failed",
                       7,method,0x8876086C,0x4321),
@@ -292,7 +292,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             self.assertEqual(
                 recovered["counts"]["same_witness_cpu_camera_present_candidate"],1)
         for bad in ((0,0x8876086C,0x4321),
-                    (4,0x8876086C,0x4321),
+                    (21,0x8876086C,0x4321),
                     (2,0,0x4321),
                     (3,0x8876086C,0)):
             events=self.projected()+[
