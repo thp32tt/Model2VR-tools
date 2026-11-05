@@ -64,6 +64,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_model2_up_draw_outcomes.py -v
       - name: Validate original transform and VS-camera write evidence
         run: python -m unittest discover -s tests -p test_model2_camera_state_phase.py -v
+      - name: Audit authentic original GPU-to-CPU Surface readback source
+        run: python -m unittest discover -s tests -p test_model2_gpu_readback_source.py -v
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
       - name: Build original game hook/loader

@@ -408,7 +408,7 @@ def audit_csv(path):
                 else:
                     valid = (0 < a0 <= 0xffffffff and
                              a0 > observed_present_frame and
-                             1 <= a1 <= 46 and a2 <= 0xffffffff and
+                             1 <= a1 <= 69 and a2 <= 0xffffffff and
                              (a2 & 0x80000000) != 0 and
                              0 < a3 <= 0xffffffff)
                 if not valid:

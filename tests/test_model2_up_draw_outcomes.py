@@ -420,7 +420,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(mismatched["counts"]["source_identity_or_frame_mismatch"],1)
 
     def test_real_original_surface_failure_blocks_same_witness_up(self):
-        for method in range(1,47):
+        for method in range(1,70):
             events=self.projected()+[
                 event("model2_d3d9_original_surface_failed",
                       7,method,0x8876086C,0x4321),

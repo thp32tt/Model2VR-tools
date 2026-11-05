@@ -25,9 +25,17 @@ class RealOriginalMutationPhaseTest(unittest.TestCase):
         self.assertEqual(got["phase_counts"]["pre_draw"],1)
         self.assertFalse(got["adapter_auto_enable"])
         self.assertTrue(all(not x["world_authorized"] for x in got["samples"]))
+    def test_gpu_readback_phase_auditor_tracks_without_authorization(self):
+        result=self.inspect([self.witness(frame=8,method=6),
+                             self.witness(frame=16,method=7)])
+        self.assertEqual(result["method_counts"]["GetRenderTargetData"],1)
+        self.assertEqual(result["method_counts"]["GetFrontBufferData"],1)
+        self.assertFalse(result["adapter_auto_enable"])
+        self.assertTrue(all(not x["world_authorized"] for x in result["samples"]))
+
     def test_invalid_phase_and_replay_rejected(self):
         for row in (self.witness(frame=7),self.witness(method=0),
-                    self.witness(method=6),self.witness(caller=0),
+                    self.witness(method=8),self.witness(caller=0),
                     self.witness(scene=0,active=1),self.witness(active=2),
                     self.witness(draw=10_000_001),self.witness(scene=100_001)):
             with self.subTest(row=row):

@@ -438,7 +438,7 @@ class SourceAuditTests(unittest.TestCase):
                  0, 0x1234, pack(17, 1)),
             ]
             original_present=("model2_d3d9_original_present_result", 17, 0, 1, 0)
-            for method in range(1, 68):
+            for method in range(1, 70):
                 failure=("model2_d3d9_original_surface_failed",17,
                          method,0x8876086C,0x4321)
                 self.write_log(p,prefix+[failure,original_present])

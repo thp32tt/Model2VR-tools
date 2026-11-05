@@ -11,7 +11,7 @@ from pathlib import Path
 EVENT="model2_d3d9_original_mutation_phase"
 BIND_EVENT="model2_d3d9_original_target_bind_phase"
 METHOD={1:"Clear",2:"UpdateSurface",3:"StretchRect",4:"ColorFill",
-        5:"UpdateTexture"}
+        5:"UpdateTexture",6:"GetRenderTargetData",7:"GetFrontBufferData"}
 BIND_METHOD={1:"SetRenderTarget",2:"SetDepthStencilSurface"}
 def number(s):
     text=str(s).strip()
