@@ -54,10 +54,12 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==59);
+    static_assert(kOriginalLineageKinds==61);
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceEvictManagedResources)==56u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ResourceSetPriority)==57u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ResourcePreLoad)==58u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::ResourceSetPrivateData)==59u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::ResourceFreePrivateData)==60u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceDialogBoxMode)==49u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceGammaRamp)==50u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceCursorProperties)==51u);

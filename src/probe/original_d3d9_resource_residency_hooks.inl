@@ -208,6 +208,12 @@ bool EnsureOriginalResourceResidencyObserved(
         // Keep that safe passthrough installed and mark source UNPROVEN
         // if the PreLoad hook cannot be armed (remaining XR always mono).
     }
-    if(!complete)OriginalResourceResidencyUnknown(caller_rva);
-    return complete;
+    // Metadata changes can invalidate a resource alias after a Draw.
+    // Keep already installed residency hooks alive if this second family
+    // cannot be installed; fail closed rather than removing trampolines.
+    const bool private_data=EnsureOriginalResourcePrivateDataObserved(
+        resource,caller_rva);
+    if(!complete || !private_data)
+        OriginalResourceResidencyUnknown(caller_rva);
+    return complete && private_data;
 }
