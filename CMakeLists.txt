@@ -139,6 +139,13 @@ add_test(NAME model2_original_source_frame_rejection
          COMMAND model2_original_source_epoch_test)
 # Four physical original D3D9 Draw HRESULTs must revoke an independently
 # authenticated CPU eye pair before matching original Present.
+# A failed genuine original Clear must revoke same-Present world stereo.
+add_executable(model2_original_d3d9_clear_result_test
+    tests/original_d3d9_clear_result_gate_test.cpp)
+target_compile_features(model2_original_d3d9_clear_result_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_d3d9_failed_clear_revocation
+         COMMAND model2_original_d3d9_clear_result_test)
+
 add_executable(model2_original_d3d9_draw_result_test
     tests/original_d3d9_draw_result_gate_test.cpp)
 target_compile_features(model2_original_d3d9_draw_result_test PRIVATE cxx_std_20)

@@ -151,7 +151,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("vtable[42],reinterpret_cast<void*>(&EndSceneHook)", hooks)
         self.assertEqual(hooks.count("const HRESULT hr=g_begin_scene(d);"),1)
         self.assertEqual(hooks.count("const HRESULT hr=g_end_scene(d);"),1)
-        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),2)
+        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),3)
         self.assertEqual(hooks.count("TrackFailedOriginalD3D9Scene(hr,"),2)
         self.assertIn("g_original_scene_poisoned.store(true",hooks)
         self.assertEqual(hooks.count("g_original_scene_poisoned.store(false"),2)
@@ -207,6 +207,33 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("g_original_scene_open.store(false", hooks)
         self.assertEqual(hooks.count("source_scene=g_original_scene_ordinal.load("),4)
         self.assertEqual(hooks.count("source_scene,source_scene_open);"),4)
+
+    def test_failed_original_clear_is_single_call_cpu_gpu_epoch_poison(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        api=(ROOT/"src/probe/daytona_native_stereo.hpp").read_text("utf-8")
+        cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        epoch=(ROOT/"src/probe/verified_world_source_epoch.hpp").read_text("utf-8")
+        self.assertIn("const bool clear=Hook(",hooks)
+        self.assertNotIn("const bool clear=!g_native_stereo ||",hooks)
+        clear=hooks.split("HRESULT STDMETHODCALLTYPE ClearHook(")[1].split(
+            "HRESULT STDMETHODCALLTYPE UpdateSurfaceHook(")[0]
+        self.assertEqual(clear.count("const HRESULT hr=g_clear("),1)
+        self.assertIn("const auto caller_rva=CallerRva(caller);",clear)
+        self.assertIn("if(caller_rva && FAILED(hr))",clear)
+        self.assertIn("TrackFailedOriginalD3D9Clear(hr,flags,caller_rva)",clear)
+        self.assertIn("else if(SUCCEEDED(hr) && g_native_stereo)",clear)
+        self.assertIn("Model2VR_RejectFailedOriginalD3D9Clear(",hooks)
+        self.assertIn("m2vr::daytona::MarkFailedOriginalClear(",hooks)
+        self.assertIn("model2_d3d9_original_clear_failed",hooks)
+        self.assertIn("MarkFailedOriginalClear",api)
+        self.assertIn("model2_vr_gpu_original_clear_failed",gpu)
+        self.assertIn("OriginalClearFailed=18u",epoch)
+        clear_reject=cpu.split("Model2VR_RejectFailedOriginalD3D9Clear(")[1].split(
+            "Model2VR_DiscardPendingWorldOnReset()")[0]
+        self.assertIn("if(failed_present)g.source_epoch.Revoke(failed_present)",clear_reject)
+        self.assertIn("OriginalSourceFailure::OriginalClearFailed",clear_reject)
+        self.assertIn("g.Reject(FailedOriginalD3D9ClearSourceKind())",clear_reject)
 
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):
         workflow=(ROOT/".github/workflows/daytona-native-stereo.yml").read_text("utf-8")

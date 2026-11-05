@@ -10,6 +10,7 @@
 #include "d3d9_primary_device_owner.hpp"
 #include "verified_world_present_gate.hpp"
 #include "original_d3d9_draw_result_gate.hpp"
+#include "original_d3d9_clear_result_gate.hpp"
 #include "original_d3d9_authenticated_draw.hpp"
 #include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
@@ -113,6 +114,9 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Draw(
 extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Scene(
     std::uint32_t transition,std::uint32_t result_bits,
     std::uint32_t caller_rva);
+extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Clear(
+    std::uint32_t flags,std::uint32_t result_bits,
+    std::uint32_t caller_rva);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -151,6 +155,22 @@ void TrackFailedOriginalD3D9Scene(HRESULT hr,std::uint32_t transition,
     if(g_native_stereo)
         m2vr::daytona::MarkFailedOriginalScene(
             transition,static_cast<std::uint32_t>(hr));
+}
+void TrackFailedOriginalD3D9Clear(HRESULT hr,std::uint32_t flags,
+                                  std::uint32_t caller_rva) noexcept {
+    if(!m2vr::vrbridge::IsFailedOriginalD3D9Clear(
+           static_cast<std::uint32_t>(hr)) || !caller_rva)return;
+    g_original_scene_poisoned.store(true,std::memory_order_release);
+    g_original_scene_open.store(false,std::memory_order_release);
+    g_original_scene_owner_thread.store(0u,std::memory_order_release);
+    m2vr::LogEvent("model2_d3d9_original_clear_failed",
+        g_present_count.load(std::memory_order_relaxed)+1u,
+        flags,static_cast<std::uint32_t>(hr),caller_rva);
+    Model2VR_RejectFailedOriginalD3D9Clear(
+        flags,static_cast<std::uint32_t>(hr),caller_rva);
+    if(g_native_stereo)
+        m2vr::daytona::MarkFailedOriginalClear(
+            flags,static_cast<std::uint32_t>(hr));
 }
 HRESULT TrackOriginalD3D9DrawResult(HRESULT hr,std::uint32_t family,
                                     void* caller,IDirect3DDevice9* device) noexcept {
@@ -1308,9 +1328,14 @@ HRESULT STDMETHODCALLTYPE EndSceneHook(IDirect3DDevice9* d){
 HRESULT STDMETHODCALLTYPE ClearHook(IDirect3DDevice9* d,DWORD count,
                                    const D3DRECT* rects,DWORD flags,
                                    D3DCOLOR color,float z,DWORD stencil){
-    if(!g_primary_device.Owns(d))return g_clear(d,count,rects,flags,color,z,stencil);
+    if(!g_primary_device.Owns(d))
+        return g_clear(d,count,rects,flags,color,z,stencil);
+    void* const caller=_ReturnAddress();
     const HRESULT hr=g_clear(d,count,rects,flags,color,z,stencil);
-    if(SUCCEEDED(hr) && g_native_stereo)
+    const auto caller_rva=CallerRva(caller);
+    if(caller_rva && FAILED(hr))
+        TrackFailedOriginalD3D9Clear(hr,flags,caller_rva);
+    else if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorClear(d,count,rects,flags,color,z,stencil,g_clear);
     return hr;
 }
@@ -1451,8 +1476,8 @@ bool HookDevice(IDirect3DDevice9* dev){
     // Always discard its pending eye pair on original device Reset.
     const bool reset=Hook(
         vtable[16],reinterpret_cast<void*>(&ResetHook),g_reset);
-    const bool clear=!g_native_stereo ||
-        Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear);
+    // Always observe real source Clear HRESULTs, including CPU-only mode.
+    const bool clear=Hook(vtable[43],reinterpret_cast<void*>(&ClearHook),g_clear);
     const bool update=!g_native_stereo ||
         Hook(vtable[30],reinterpret_cast<void*>(&UpdateSurfaceHook),g_update_surface);
     const bool stretch=!g_native_stereo ||

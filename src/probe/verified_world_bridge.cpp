@@ -9,6 +9,7 @@
 #include "verified_world_present_gate.hpp"
 #include "verified_world_source_epoch.hpp"
 #include "original_d3d9_draw_result_gate.hpp"
+#include "original_d3d9_clear_result_gate.hpp"
 #include "verified_world_source_result.hpp"
 #include "verified_world_projection_epoch.hpp"
 #include "original_d3d9_authenticated_draw.hpp"
@@ -772,6 +773,28 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Scene(
         // No game texture bytes or world transforms are recorded.
         m2vr::LogEvent("model2_vr_cpu_world_original_scene_failed",
             rejected_frame,transition,result_bits,original_caller_rva);
+    }
+    if(failed_present)g.source_epoch.Revoke(failed_present);
+}
+// A real original EXE-owned failed Clear poisons the entire physical
+// Present even before CPU-world Begin or after the last successful Draw.
+extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Clear(
+    std::uint32_t flags,std::uint32_t result_bits,
+    std::uint32_t original_caller_rva){
+    using namespace m2vr::vrbridge;
+    if(!IsFailedOriginalD3D9Clear(result_bits) || !original_caller_rva)return;
+    const auto failed_present=Model2VR_NextOriginalD3D9PresentFrameId();
+    std::scoped_lock lock(g.mutex);
+    const bool owned=g.owner==GetCurrentThreadId() &&
+                     (g.active || g.pending_present);
+    const auto rejected_frame=g.frame;
+    if(owned){
+        const auto previous=g_current_original_source_failure;
+        g_current_original_source_failure=OriginalSourceFailure::OriginalClearFailed;
+        g.Reject(FailedOriginalD3D9ClearSourceKind());
+        g_current_original_source_failure=previous;
+        m2vr::LogEvent("model2_vr_cpu_world_original_clear_failed",
+            rejected_frame,flags,result_bits,original_caller_rva);
     }
     if(failed_present)g.source_epoch.Revoke(failed_present);
 }

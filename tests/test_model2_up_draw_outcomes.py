@@ -253,6 +253,29 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(
             got["counts"]["same_witness_cpu_camera_present_candidate"], 1)
 
+    def test_failed_original_clear_is_physical_frame_poison_even_after_draw(self):
+        events=self.projected() + [
+            event("model2_d3d9_original_clear_failed",7,
+                  3,0x8876086C,0x4321),
+            event("model2_d3d9_original_present_result",7,0,1,0),
+        ]
+        got=self.report(events)
+        self.assertEqual(got["counts"]["original_clear_failed"],1)
+        self.assertNotIn("same_witness_cpu_camera_present_candidate",got["counts"])
+        self.assertFalse(got["physically_presented_same_witness_camera_callers"])
+        bad=list(events)
+        bad[-2]=event("model2_d3d9_original_clear_failed",7,3,0,0x4321)
+        with self.assertRaisesRegex(ValueError,"invalid original Clear failure"):
+            self.report(bad)
+        bad[-2]=event("model2_d3d9_original_clear_failed",7,
+                      3,0x8876086C,0)
+        with self.assertRaisesRegex(ValueError,"invalid original Clear failure"):
+            self.report(bad)
+        recovered=self.report(events+self.projected(witness=22,frame=8)+[
+            event("model2_d3d9_original_present_result",8,0,1,0)])
+        self.assertEqual(recovered["counts"]["original_clear_failed"],1)
+        self.assertEqual(recovered["counts"]["original_source_draw_and_present_succeeded"],1)
+
     def test_missing_or_inactive_original_scene_cannot_claim_camera(self):
         original = self.projected()
         got = self.report([e for e in original

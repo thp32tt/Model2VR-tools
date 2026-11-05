@@ -97,6 +97,17 @@ public:
         m2vr::LogEvent("model2_vr_gpu_original_scene_failed",
             transition,original_hresult,scene_draws_,mirrored_draws_);
     }
+    void MarkFailedOriginalClear(std::uint32_t flags,
+                                 std::uint32_t original_hresult)noexcept{
+        if(!(original_hresult&0x80000000u))return;
+        std::lock_guard lock(mu_);
+        if(!enabled_ || source_original_failed_)return;
+        // Do not reuse a partially cleared independent stereo eye.
+        // The original backbuffer is still eligible for tagged mono.
+        source_original_failed_=true;
+        m2vr::LogEvent("model2_vr_gpu_original_clear_failed",
+            flags,original_hresult,scene_draws_,mirrored_clears_);
+    }
     void MarkFailedOriginalDraw(std::uint32_t family,
                                 std::uint32_t original_hresult)noexcept{
         if(family<1u || family>4u || !(original_hresult&0x80000000u))return;
@@ -1215,6 +1226,10 @@ void MirrorIndexedUP(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
                      OriginalDrawIndexedUP original)noexcept{
     try{g_eye.IndexedUP(d,p,min,num,count,indices,format,vertices,stride,original);}
     catch(...){g_eye.ResetExternal();}
+}
+void MarkFailedOriginalClear(std::uint32_t flags,
+                             std::uint32_t original_hresult)noexcept{
+    g_eye.MarkFailedOriginalClear(flags,original_hresult);
 }
 void MirrorClear(IDirect3DDevice9* d,DWORD count,const D3DRECT* rects,
                  DWORD flags,D3DCOLOR color,float z,DWORD stencil,
