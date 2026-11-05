@@ -499,7 +499,7 @@ def audit_csv(path):
                         raise ValueError("invalid original UP palette lineage")
                     once(rec,key,(a1,a2,a3),a0)
                 elif key == "raster_mode_lineage":
-                    revisions = halves(a2) + [a3]
+                    revisions = halves(a2) + (a3,)
                     if (not 0 < a1 <= 0xffffffff or
                         a1 <= observed_present_frame or
                         any(n > 1_000_000 for n in revisions) or key in rec):

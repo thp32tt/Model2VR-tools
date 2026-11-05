@@ -438,7 +438,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_stateblock_mutation",*bad)])
         for bad in ((0,0x8876086C,0x4321),
-                    (33,0x8876086C,0x4321),
+                    (36,0x8876086C,0x4321),
                     (2,0,0x4321),
                     (3,0x8876086C,0)):
             events=self.projected()+[

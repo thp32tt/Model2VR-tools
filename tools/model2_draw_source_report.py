@@ -740,7 +740,7 @@ def audit_csv(path):
                 fields["palette_lineage"] = values
             elif event == "model2_d3d9_source_raster_mode_lineage":
                 frame, packed, npatch = values
-                revisions = halves(packed) + [npatch]
+                revisions = halves(packed) + (npatch,)
                 if (not 0 < frame <= 0xffffffff or
                     any(n > 1_000_000 for n in revisions) or
                     "raster_mode_lineage" in fields):
