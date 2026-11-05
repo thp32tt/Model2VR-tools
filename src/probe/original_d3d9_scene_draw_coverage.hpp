@@ -7,6 +7,17 @@
 #include <cstdint>
 
 namespace m2vr::drawprobe {
+// The original Draw can recursively run emulator hooks or allow another
+// thread to end/change Scene while it executes. A scene merely open at Draw
+// ENTRY is not proof that it still belongs to that Draw at COM return.
+constexpr bool OriginalDrawRetainedSourceScene(
+    bool entered_owned,bool exited_owned,bool not_poisoned,
+    std::uint32_t entry_ordinal,std::uint32_t exit_ordinal,
+    bool same_original_thread) noexcept {
+    return entered_owned && exited_owned && not_poisoned &&
+        entry_ordinal!=0u && entry_ordinal==exit_ordinal &&
+        same_original_thread;
+}
 struct OriginalPhysicalSceneDrawSummary {
     std::uint32_t begins=0u, ends=0u;
     std::uint32_t successful_in_scene=0u;

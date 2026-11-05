@@ -530,6 +530,18 @@ std::atomic<bool> g_original_scene_poisoned{false};
 std::atomic<DWORD> g_original_scene_owner_thread{0u};
 std::atomic<bool> g_original_scene_hooks_ready{false};
 m2vr::drawprobe::OriginalPhysicalSceneDrawCoverage g_original_scene_draw_coverage{};
+bool OriginalSceneStillOwnedAfterDraw(
+    unsigned source_scene,bool source_scene_open) noexcept {
+    return m2vr::drawprobe::OriginalDrawRetainedSourceScene(
+        source_scene_open,
+        g_original_scene_open.load(std::memory_order_acquire),
+        !g_original_scene_poisoned.load(std::memory_order_acquire),
+        source_scene,
+        g_original_scene_ordinal.load(std::memory_order_acquire),
+        g_original_scene_owner_thread.load(std::memory_order_acquire)==
+            GetCurrentThreadId()) &&
+        g_original_scene_hooks_ready.load(std::memory_order_acquire);
+}
 std::atomic<std::uint64_t> g_witness_serial{0};
 // Only frames containing a real sampled original VB/IB Draw receive a
 // matching physical original Present outcome. No per-Draw GPU readback.
@@ -1941,8 +1953,8 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,1u,CallerRva(caller));
     g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
-        source_scene_open && !g_original_scene_poisoned.load(std::memory_order_acquire) &&
-        g_original_scene_hooks_ready.load(std::memory_order_acquire),SUCCEEDED(hr));
+        OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
+        SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,1u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -1994,8 +2006,8 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,2u,CallerRva(caller));
     g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
-        source_scene_open && !g_original_scene_poisoned.load(std::memory_order_acquire) &&
-        g_original_scene_hooks_ready.load(std::memory_order_acquire),SUCCEEDED(hr));
+        OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
+        SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,2u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -2047,8 +2059,8 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,3u,CallerRva(caller));
     g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
-        source_scene_open && !g_original_scene_poisoned.load(std::memory_order_acquire) &&
-        g_original_scene_hooks_ready.load(std::memory_order_acquire),SUCCEEDED(hr));
+        OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
+        SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,3u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -2102,8 +2114,8 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,4u,CallerRva(caller));
     g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
-        source_scene_open && !g_original_scene_poisoned.load(std::memory_order_acquire) &&
-        g_original_scene_hooks_ready.load(std::memory_order_acquire),SUCCEEDED(hr));
+        OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
+        SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,4u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);

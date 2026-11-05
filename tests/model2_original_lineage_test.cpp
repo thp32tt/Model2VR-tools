@@ -73,6 +73,18 @@ int main(){
     // bloom oracle; long sessions retain independent caller identities.
     // Real post-COM BeginScene/Draw/EndScene gate across all four original
     // families. No source counts are inferred from sampled VB/UP vertices.
+    static_assert(OriginalDrawRetainedSourceScene(
+        true,true,true,4u,4u,true));
+    static_assert(!OriginalDrawRetainedSourceScene(
+        true,false,true,4u,4u,true)); // scene closed during COM
+    static_assert(!OriginalDrawRetainedSourceScene(
+        true,true,true,4u,5u,true)); // BeginScene epoch changed
+    static_assert(!OriginalDrawRetainedSourceScene(
+        true,true,true,4u,4u,false)); // another render thread
+    static_assert(!OriginalDrawRetainedSourceScene(
+        true,true,false,4u,4u,true)); // original failed Scene
+    static_assert(!OriginalDrawRetainedSourceScene(
+        false,true,true,4u,4u,true)); // scene opened during Draw
     OriginalPhysicalSceneDrawCoverage scene{};
     scene.Begin(true,true);
     scene.Draw(true,true,true); // primary DrawPrimitive COM succeeded
