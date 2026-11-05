@@ -17,15 +17,16 @@ namespace m2vr::vrbridge {
 // 31=SetPaletteEntries (71), 32=SetCurrentTexturePalette (73),
 // 33=SetClipStatus (62), 34=SetSoftwareVertexProcessing (77),
 // 35=SetNPatchMode (79), 36=MultiplyTransform (46),
-// 37/38=original VB/IB Lock (COM 11), 39/40=original VB/IB Unlock (COM 12):
+// 37/38=VB/IB Lock (COM 11), 39/40=VB/IB Unlock (COM 12),
+// 41/42=2D Texture LockRect/UnlockRect (COM 19/20):
 // original source-state and resource operation failures.
 inline constexpr bool IsFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits)noexcept {
-    return method>=1u && method<=40u && (result_bits&0x80000000u)!=0u;
+    return method>=1u && method<=42u && (result_bits&0x80000000u)!=0u;
 }
 inline constexpr std::uint32_t FailedOriginalD3D9SurfaceSourceKind(
     std::uint32_t method)noexcept {
     // Separate from Draw 17..20 and Clear 21.
-    return method>=1u && method<=40u?21u+method:0u;
+    return method>=1u && method<=42u?21u+method:0u;
 }
 } // namespace m2vr::vrbridge

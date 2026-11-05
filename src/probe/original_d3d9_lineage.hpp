@@ -20,9 +20,10 @@ enum class OriginalLineageKind : std::uint32_t {
     ClipPlane=28, TextureUpload=29, PaletteEntries=30, CurrentPalette=31,
     ClipStatus=32, SoftwareVertexProcessing=33, NPatchMode=34,
     ProcessVertices=35, TextureTransform=36, OtherTransform=37,
-    VertexBufferContent=38, IndexBufferContent=39
+    VertexBufferContent=38, IndexBufferContent=39,
+    TextureLockContent=40
 };
-inline constexpr std::size_t kOriginalLineageKinds=40;
+inline constexpr std::size_t kOriginalLineageKinds=41;
 inline constexpr std::uint32_t kMaxLineageWritesPerPresent=1000000u;
 struct OriginalLineageStamp {
     std::uint64_t physical_present=0;

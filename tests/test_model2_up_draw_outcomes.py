@@ -382,6 +382,10 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         good=self.report(self.projected()+[
             evidence,event("model2_d3d9_original_present_result",7,0,1,0)])
         self.assertEqual(good["counts"]["original_texture_upload_lineage_witness"],1)
+        locked=event("model2_d3d9_source_texture_upload_lineage",21,7,3,2)
+        accepted=self.report(self.projected()+[locked,
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(accepted["counts"]["original_texture_upload_lineage_witness"],1)
         self.assertEqual(good["counts"]["same_witness_cpu_camera_present_candidate"],1)
         rejected=event("model2_d3d9_original_texture_upload_rejected",7,0x4321,12,0)
         blocked=self.report(self.projected()+[
@@ -393,7 +397,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"texture upload"):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_texture_upload_rejected",*bad)])
-        for bad in ((0,3,0),(7,1000001,0),(7,3,1)):
+        for bad in ((0,3,0),(7,1000001,0),(7,3,1000001)):
             with self.assertRaisesRegex(ValueError,"texture upload"):
                 self.report(self.projected()+[
                     event("model2_d3d9_source_texture_upload_lineage",21,*bad)])
@@ -405,7 +409,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(mismatched["counts"]["source_identity_or_frame_mismatch"],1)
 
     def test_real_original_surface_failure_blocks_same_witness_up(self):
-        for method in range(1,41):
+        for method in range(1,43):
             events=self.projected()+[
                 event("model2_d3d9_original_surface_failed",
                       7,method,0x8876086C,0x4321),

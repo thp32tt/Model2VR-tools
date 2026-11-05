@@ -31,12 +31,13 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==40);
+    static_assert(kOriginalLineageKinds==41);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ProcessVertices)==35u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::TextureTransform)==36u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::OtherTransform)==37u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::VertexBufferContent)==38u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::IndexBufferContent)==39u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::TextureLockContent)==40u);
     OriginalBoundWriteLocks active{};
     assert(!active.HasOutstandingWrites());
     assert(active.Begin(reinterpret_cast<const void*>(0x1234)));

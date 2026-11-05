@@ -403,7 +403,7 @@ def audit_csv(path):
                 else:
                     valid = (0 < a0 <= 0xffffffff and
                              a0 > observed_present_frame and
-                             1 <= a1 <= 40 and a2 <= 0xffffffff and
+                             1 <= a1 <= 42 and a2 <= 0xffffffff and
                              (a2 & 0x80000000) != 0 and
                              0 < a3 <= 0xffffffff)
                 if not valid:
@@ -526,7 +526,7 @@ def audit_csv(path):
                 elif key == "texture_upload_lineage":
                     if (not 0 < a1 <= 0xffffffff or
                         a1 <= observed_present_frame or
-                        a2 > 1_000_000 or a3 != 0 or key in rec):
+                        a2 > 1_000_000 or a3 > 1_000_000 or key in rec):
                         raise ValueError("invalid original UP texture upload lineage")
                     once(rec,key,(a1,a2,a3),a0)
                 elif key == "palette_lineage":

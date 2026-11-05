@@ -319,6 +319,11 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p,rows)
             good=REPORT.audit_csv(p)["sources"][0]
             self.assertEqual(good["original_texture_upload_lineage_witnesses"],1)
+            locked=list(rows)
+            locked[4]=("model2_d3d9_source_texture_upload_lineage",501,17,3,2)
+            self.write_log(p,locked)
+            self.assertEqual(REPORT.audit_csv(p)["sources"][0]["original_texture_upload_lineage_witnesses"],1)
+            self.write_log(p,rows)
             self.assertEqual(good["original_surface_failure_witnesses"],0)
             rejection=("model2_d3d9_original_texture_upload_rejected",17,0x1234,12,0)
             self.write_log(p,rows[:-1]+[rejection,rows[-1]])
@@ -332,7 +337,7 @@ class SourceAuditTests(unittest.TestCase):
                     ("model2_d3d9_original_texture_upload_rejected",*bad),rows[-1]])
                 with self.assertRaisesRegex(ValueError,"texture upload"):
                     REPORT.audit_csv(p)
-            for bad in ((18,3,0),(17,1000001,0),(17,1,1)):
+            for bad in ((18,3,0),(17,1000001,0),(17,1,1000001)):
                 changed=list(rows)
                 changed[4]=("model2_d3d9_source_texture_upload_lineage",501,*bad)
                 self.write_log(p,changed)

@@ -675,7 +675,7 @@ def audit_csv(path):
                              0 < caller <= 10000000)
                 else:
                     valid = (0 < frame <= 0xffffffff and
-                             1 <= method <= 40 and
+                             1 <= method <= 42 and
                              result <= 0xffffffff and
                              (result & 0x80000000) != 0 and
                              0 < caller <= 0xffffffff)
@@ -774,7 +774,7 @@ def audit_csv(path):
             elif event == "model2_d3d9_source_texture_upload_lineage":
                 frame,revision,reserved = values
                 if (not 0 < frame <= 0xffffffff or
-                    revision > 1_000_000 or reserved != 0 or
+                    revision > 1_000_000 or reserved > 1_000_000 or
                     "texture_upload_lineage" in fields):
                     raise ValueError("invalid original texture upload Draw lineage")
                 fields["texture_upload_lineage"] = values
