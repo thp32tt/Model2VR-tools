@@ -86,6 +86,18 @@ def report(*sources):
             "trusted_scene_drawn_present_count":3,
             "all_original_scene_draws_trusted":True,
         },
+        "original_physical_draw_target_coverage":{
+            "physical_present_count":8,"first_present_frame":1,
+            "last_present_frame":8,
+            "original_backbuffer_draw_count":9,
+            "original_auxiliary_draw_count":0,
+            "original_unknown_target_draw_count":0,
+            "original_failed_draw_count":0,
+            "original_incompatible_depth_draw_count":0,
+            "flagged_present_count":0,
+            "trusted_backbuffer_present_count":3,
+            "all_original_draw_targets_trusted":True,
+        },
         "original_capture_run":{
             "nonce_hex":f"0x{next(_run_nonce_counter):016x}",
             "first_present_frame":1,"last_present_frame":8,
@@ -134,6 +146,50 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             "distinct_scene_attested_physically_presented_material_present_frame_count"]=4
         with self.assertRaisesRegex(ValueError,"per-caller Scene/Draw"):
             compare_sessions([race,report(witness())],controls())
+
+    def test_original_rt0_depth_all_family_source_required_for_seven_sessions(self):
+        # New original producer always emits physical RT0/depth evidence,
+        # including unsampled UP families. Missing/altered reports cannot
+        # inherit source RT data from an old successful Scene record.
+        for field,bad in (
+            ("original_physical_draw_target_coverage",None),
+            ("physical_present_count",7),
+            ("original_backbuffer_draw_count",10),
+            ("original_unknown_target_draw_count",10),
+            ("trusted_backbuffer_present_count",9),
+            ("all_original_draw_targets_trusted",1),
+        ):
+            with self.subTest(field=field):
+                race=report(witness())
+                if field=="original_physical_draw_target_coverage":
+                    del race[field]
+                else:
+                    race["original_physical_draw_target_coverage"][field]=bad
+                with self.assertRaisesRegex(
+                    ValueError,"physical RT0/depth Draw coverage"):
+                    compare_sessions([race,report(witness())],controls())
+        race_a=report(witness())
+        race_b=report(witness())
+        race_b["original_physical_draw_target_coverage"][
+            "all_original_draw_targets_trusted"]=False
+        race_b["original_physical_draw_target_coverage"][
+            "flagged_present_count"]=1
+        result=compare_sessions([race_a,race_b],controls())
+        self.assertEqual(result["candidates"],[])
+        self.assertTrue(any(v["reason"]==
+            "race_original_rt0_depth_draw_provenance_untrusted"
+            for v in result["rejected"]))
+        # Authentic 2D controls are not rejected just because they have
+        # no compatible depth or source-owned World3D RT.
+        menu=report()
+        menu["original_physical_draw_target_coverage"][
+            "flagged_present_count"]=1
+        menu["original_physical_draw_target_coverage"][
+            "all_original_draw_targets_trusted"]=False
+        completed=compare_sessions(
+            [report(witness()),report(witness())],controls(menu=menu))
+        self.assertTrue(completed["complete_negative_controls"])
+        self.assertFalse(completed["adapter_auto_enable"])
 
     def test_original_unsampled_scene_draw_controls_required_for_all_seven(self):
         for field,bad in (
