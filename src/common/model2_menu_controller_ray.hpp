@@ -37,7 +37,7 @@ inline Hit Intersect(const Ray& ray,const monoquad::Placement& quad,
        quad.width<0.5f || quad.width>4.f ||
        quad.height<0.5f || quad.height>4.f ||
        window_width<160u || window_height<100u ||
-       window_width>4096u || window_height>4096u)return {};
+       window_width>8192u || window_height>8192u)return {};
     const auto fit=desktopmenu::Fit(window_width,window_height,tex_width,tex_height);
     if(!fit.Valid())return {};
     auto ray_q=ray.orientation,quad_q=quad.orientation;

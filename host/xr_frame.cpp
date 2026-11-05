@@ -350,8 +350,9 @@ void XrApp::draw_frame(XrTime display_time){
         eye_frame_.frame_id==frame_gate_.id() &&
         transport::ValidEyePayload(eye_frame_.kind,
             eye_frame_.eyes[0].size(),eye_frame_.eyes[1].size());
-    // Before a ROM/game first Present, x86 D3D9 stereo transport is absent.
-    // Show the real emulator's Win32 menu instead of colored diagnostics.
+    // Before the first genuine Daytona Present, show the ENTIRE Windows
+    // virtual desktop (all monitors, menus/taskbar and real mouse cursor).
+    // Never zoom/crop to the smaller windowed emulator HWND.
     // A genuine, live original-game stereo/mono frame always takes priority.
     // Diagnostic transport is NOT game content and cannot hide a real menu.
     const bool game_picture=usable && (
@@ -396,15 +397,15 @@ void XrApp::draw_frame(XrTime display_time){
             }
         }else mono_anchor_warning_=false;
     }
-    // Action synchronization runs while XR is focused, but the controller
-    // ray/click can address ONLY the foreground Win32 emulator menu source.
+    // The image spans Windows desktop; however controller clicks still
+    // address ONLY foreground emulator-owned pixels, never other apps.
     // The original game mono and verified native stereo never receive input.
     menu_controller_.Poll(session_,local_space_,display_time,
         xr_session_focused_,menu_quad && flat_quad,source_pid_,
         mono_quad_anchor_.Get(),emulator_window_capture_);
     if(menu_quad!=emulator_window_on_quad_){
         emulator_window_on_quad_=menu_quad;
-        std::cout<<"Model2VR XR pre-game emulator 2D quad: "
+        std::cout<<"Model2VR XR pre-game Windows desktop 2D quad: "
                  <<(menu_quad?"VISIBLE":"HIDDEN")
                  <<" emulator_pid="<<source_pid_
                  <<" capture_serial="<<emulator_window_capture_.Serial()

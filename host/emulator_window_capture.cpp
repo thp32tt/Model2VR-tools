@@ -1,4 +1,5 @@
 #include "emulator_window_capture.hpp"
+#include "../src/common/win32_desktop_capture.hpp"
 #include "../src/common/model2_emulator_window_policy.hpp"
 #include "../src/common/stereo_frame_ipc.h"
 #include <algorithm>
@@ -44,44 +45,34 @@ HWND FindEmulatorWindow(std::uint32_t pid){
 } // namespace
 
 bool EmulatorWindowCapture::Update(std::uint32_t emulator_pid){
+    if(!emulator_pid){Invalidate();return false;}
+    const auto desktop=desktopmenu::CurrentVirtualDesktop();
+    if(!desktop.Valid()){Invalidate();return false;}
+    // Keep a PID-authenticated HWND ONLY for optional Quest controller
+    // clicking. Desktop capture must remain visible even if the emulator
+    // has not created its first window or a ROM dialog is in front.
     const HWND selected=FindEmulatorWindow(emulator_pid);
-    if(!selected){
-        Invalidate();
-        return false;
-    }
     const auto now=GetTickCount64();
-    if(selected==window_ && now<next_capture_ms_)
-        return ready_;
+    if(selected==window_ && desktop.left==source_bounds_.left &&
+       desktop.top==source_bounds_.top &&
+       desktop.width==source_bounds_.width &&
+       desktop.height==source_bounds_.height &&
+       now<next_capture_ms_)return ready_;
     window_=selected;
+    source_bounds_=desktop;
     ready_=false;
-    // Do not perform a cross-process desktop capture at 90/120 Hz; 10 fps
-    // is sufficient to read emulator menu and ROM selection dialogs.
-    next_capture_ms_=now+100u;
-    if(!Capture(selected))return false;
+    next_capture_ms_=now+100u; // 10fps UI/desktop, never 90Hz CPU readback.
+    if(!Capture(desktop))return false;
     ready_=true;
     ++serial_;
     if(!serial_)++serial_;
     return true;
 }
-bool EmulatorWindowCapture::Capture(HWND hwnd){
-    RECT rect{};
-    if(!GetWindowRect(hwnd,&rect))return false;
-    const auto sw=rect.right-rect.left,sh=rect.bottom-rect.top;
-    if(sw<160 || sh<100 || sw>4096 || sh>4096)return false;
-    const auto dest=desktopmenu::Fit(static_cast<std::uint32_t>(sw),
-        static_cast<std::uint32_t>(sh),transport::kWidth,transport::kHeight);
-    if(!dest.Valid())return false;
-    // Capture the *whole* Win32 HWND, not its client-only D3D surface.
-    // File/Open-ROM menu bar and title must appear before a game exists.
-    // When it is in the foreground, the desktop DC includes visible native
-    // popup menus too; otherwise use the window DC (without forcing focus).
-    const HWND foreground=GetForegroundWindow();
-    const bool from_desktop=hwnd==foreground;
-    const HWND dc_owner=from_desktop?nullptr:hwnd;
-    HDC source=from_desktop?GetDC(nullptr):GetWindowDC(hwnd);
+bool EmulatorWindowCapture::Capture(desktopmenu::DesktopBounds desktop){
+    HDC source=GetDC(nullptr);
     if(!source)return false;
     HDC target=CreateCompatibleDC(source);
-    if(!target){ReleaseDC(dc_owner,source);return false;}
+    if(!target){ReleaseDC(nullptr,source);return false;}
     BITMAPINFO bitmap_info{};
     bitmap_info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
     bitmap_info.bmiHeader.biWidth=static_cast<LONG>(transport::kWidth);
@@ -94,65 +85,31 @@ bool EmulatorWindowCapture::Capture(HWND hwnd){
                                     &bits,nullptr,0);
     if(!bitmap || !bits){
         if(bitmap)DeleteObject(bitmap);
-        DeleteDC(target);ReleaseDC(dc_owner,source);
+        DeleteDC(target);ReleaseDC(nullptr,source);
         return false;
     }
-    const auto old=SelectObject(target,bitmap);
-    if(!old || old==HGDI_ERROR){
+    const HGDIOBJ previous=SelectObject(target,bitmap);
+    if(!previous || previous==HGDI_ERROR){
         DeleteObject(bitmap);DeleteDC(target);
-        ReleaseDC(dc_owner,source);return false;
+        ReleaseDC(nullptr,source);return false;
     }
-    // BI_RGB top-down pixels are 32-bit BGRA on little-endian Windows;
-    // prefill opaque black letterboxing and convert to transport RGBA8.
-    std::memset(bits,0,transport::kBytesPerEye);
-    SetStretchBltMode(target,COLORONCOLOR);
-    const BOOL drawn=StretchBlt(target,
-        static_cast<int>(dest.x),static_cast<int>(dest.y),
-        static_cast<int>(dest.width),static_cast<int>(dest.height),
-        source,from_desktop?rect.left:0,from_desktop?rect.top:0,
-        sw,sh,SRCCOPY);
-    // BitBlt does NOT normally include the software cursor. Blend the
-    // user's genuine Win32 cursor onto the virtual menu while this exact
-    // emulator HWND owns foreground focus; do NOT impersonate a Quest
-    // controller pointer, inject clicks or change emulator window focus.
-    if(drawn && from_desktop){
-        CURSORINFO cursor{};
-        cursor.cbSize=sizeof(cursor);
-        if(GetCursorInfo(&cursor) &&
-           (cursor.flags&CURSOR_SHOWING)!=0 && cursor.hCursor){
-            ICONINFO icon{};
-            if(GetIconInfo(cursor.hCursor,&icon)){
-                const auto pointer=desktopmenu::PlacePointer(
-                    cursor.ptScreenPos.x,cursor.ptScreenPos.y,
-                    rect.left,rect.top,
-                    static_cast<std::uint32_t>(sw),
-                    static_cast<std::uint32_t>(sh),dest,
-                    static_cast<std::uint32_t>(GetSystemMetrics(SM_CXCURSOR)),
-                    static_cast<std::uint32_t>(GetSystemMetrics(SM_CYCURSOR)),
-                    icon.xHotspot,icon.yHotspot);
-                if(pointer.Valid())
-                    DrawIconEx(target,pointer.x,pointer.y,cursor.hCursor,
-                        static_cast<int>(pointer.width),
-                        static_cast<int>(pointer.height),
-                        0,nullptr,DI_NORMAL);
-                if(icon.hbmMask)DeleteObject(icon.hbmMask);
-                if(icon.hbmColor)DeleteObject(icon.hbmColor);
-            }
-        }
-    }
-    // Controller aim lives in the HMD screenshot only; unlike a PC cursor
-    // it never warps the desktop mouse until an explicit select press.
+    // Whole Windows desktop + highlighted real cursor, including when
+    // the cursor lies OUTSIDE the small windowed emulator HWND.
+    const bool drawn=desktopmenu::CaptureDesktopFrame(
+        target,source,desktop,transport::kWidth,transport::kHeight);
+    // Quest controller reticle is XR-only and never warps the PC cursor
+    // unless the trigger targets a foreground emulator-owned pixel.
     if(drawn && reticle_visible_ &&
        reticle_x_<transport::kWidth && reticle_y_<transport::kHeight){
         HPEN pen=CreatePen(PS_SOLID,2,RGB(0,255,255));
         if(pen){
-            HGDIOBJ previous=SelectObject(target,pen);
-            if(previous && previous!=HGDI_ERROR){
+            HGDIOBJ oldpen=SelectObject(target,pen);
+            if(oldpen && oldpen!=HGDI_ERROR){
                 const int x=static_cast<int>(reticle_x_);
                 const int y=static_cast<int>(reticle_y_);
                 MoveToEx(target,x-10,y,nullptr);LineTo(target,x+11,y);
                 MoveToEx(target,x,y-10,nullptr);LineTo(target,x,y+11);
-                SelectObject(target,previous);
+                SelectObject(target,oldpen);
             }
             DeleteObject(pen);
         }
@@ -167,14 +124,14 @@ bool EmulatorWindowCapture::Capture(HWND hwnd){
             rgba_[i+3u]=255u;
         }
     }
-    SelectObject(target,old);
+    SelectObject(target,previous);
     DeleteObject(bitmap);
     DeleteDC(target);
-    ReleaseDC(dc_owner,source);
-    return drawn!=0;
+    ReleaseDC(nullptr,source);
+    return drawn;
 }
 bool EmulatorWindowCapture::DeliverControllerClick(
-    std::uint32_t pid,std::uint32_t window_x,std::uint32_t window_y){
+    std::uint32_t pid,std::uint32_t desktop_x,std::uint32_t desktop_y){
     if(!ready_ || !window_ || !pid ||
        GetForegroundWindow()!=window_ ||
        !IsWindow(window_) || !IsWindowVisible(window_) || IsIconic(window_))
@@ -184,17 +141,16 @@ bool EmulatorWindowCapture::DeliverControllerClick(
     if(owner!=static_cast<DWORD>(pid))return false;
     RECT rect{};
     if(!GetWindowRect(window_,&rect))return false;
-    const auto width=rect.right-rect.left;
-    const auto height=rect.bottom-rect.top;
-    if(width<160 || height<100 || width>4096 || height>4096 ||
-       window_x>=static_cast<std::uint32_t>(width) ||
-       window_y>=static_cast<std::uint32_t>(height))return false;
-    // A topmost overlay or foreign HWND can cover part of the emulator
-    // despite correct foreground focus. Never inject at that screen point.
-    const POINT target_point{
-        rect.left+static_cast<int>(window_x),
-        rect.top+static_cast<int>(window_y)
-    };
+    // The Quest ray is now relative to the ENTIRE virtual desktop,
+    // not the top-left of the small emulator window. Preserve the signed
+    // multi-monitor origin and refuse clicks outside the emulator HWND.
+    const auto mapped=desktopmenu::MapDesktopPoint(
+        source_bounds_,desktop_x,desktop_y);
+    if(!mapped.valid)return false;
+    const POINT target_point{mapped.x,mapped.y};
+    if(!PtInRect(&rect,target_point))return false;
+    // A topmost overlay or foreign HWND can cover this screen pixel.
+    // Never send input to any unrelated app, taskbar or desktop icon.
     DWORD point_pid=0;
     const HWND point_hwnd=WindowFromPoint(target_point);
     if(!point_hwnd || !IsWindow(point_hwnd))return false;

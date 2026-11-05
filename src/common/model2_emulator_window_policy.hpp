@@ -2,7 +2,35 @@
 // Desktop Model 2 menu is a visual 2D source, never verified game stereo.
 // Independent of Windows, OpenXR and game/ROM content for regression tests.
 #include <cstdint>
+#include <limits>
 namespace m2vr::desktopmenu {
+// A virtual Windows desktop can span monitors LEFT/ABOVE the primary.
+ // All screenshot and Quest ray/click coordinates must share this origin.
+struct DesktopBounds {
+    std::int32_t left=0,top=0;
+    std::uint32_t width=0,height=0;
+    constexpr bool Valid()const noexcept {
+        return width>=160u && height>=100u &&
+               width<=8192u && height<=8192u;
+    }
+};
+struct ScreenPoint {
+    std::int32_t x=0,y=0;
+    bool valid=false;
+};
+constexpr ScreenPoint MapDesktopPoint(DesktopBounds desktop,
+                                      std::uint32_t source_x,
+                                      std::uint32_t source_y) noexcept {
+    if(!desktop.Valid() || source_x>=desktop.width ||
+       source_y>=desktop.height)return {};
+    const auto x=std::int64_t(desktop.left)+source_x;
+    const auto y=std::int64_t(desktop.top)+source_y;
+    if(x>std::numeric_limits<std::int32_t>::max() ||
+       y>std::numeric_limits<std::int32_t>::max() ||
+       x<std::numeric_limits<std::int32_t>::min() ||
+       y<std::numeric_limits<std::int32_t>::min())return {};
+    return {static_cast<std::int32_t>(x),static_cast<std::int32_t>(y),true};
+}
 struct Letterbox {
     std::uint32_t x=0, y=0, width=0, height=0;
     constexpr bool Valid()const noexcept{return width!=0u && height!=0u;}

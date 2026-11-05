@@ -141,11 +141,10 @@ void EmulatorMenuController::Poll(
     sync.activeActionSets=&set;
     if(XR_FAILED(xrSyncActions(session,&sync)))return;
     if(!menu_visible || !capture.Ready() || !pid || !capture.Window())return;
-    RECT rect{};
-    if(!GetWindowRect(capture.Window(),&rect))return;
-    const auto width=rect.right-rect.left;
-    const auto height=rect.bottom-rect.top;
-    if(width<160 || height<100 || width>4096 || height>4096)return;
+    const auto desktop=capture.SourceBounds();
+    if(!desktop.Valid())return;
+    const auto width=desktop.width;
+    const auto height=desktop.height;
     // Prefer right-hand hover, but accept a left-hand trigger when both
     // hands intersect the quad. Every click uses its OWN tracked ray.
     std::array<menuray::Hit,2> hits{};
@@ -194,8 +193,8 @@ void EmulatorMenuController::Poll(
         std::cout<<"Model2VR XR emulator menu click: "
                  <<(sent?"SENT":"BLOCKED_FOREGROUND_OR_INJECTION")
                  <<" hand="<<(hand?"right":"left")
-                 <<" window_x="<<hit.window_x
-                 <<" window_y="<<hit.window_y<<"\n";
+                 <<" desktop_x="<<hit.window_x
+                 <<" desktop_y="<<hit.window_y<<"\n";
     }
 }
 } // namespace m2vr::host

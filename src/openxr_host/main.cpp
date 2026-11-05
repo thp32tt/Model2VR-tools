@@ -3,6 +3,7 @@
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 #include <algorithm>
+#include "../common/win32_desktop_capture.hpp"
 #include <cmath>
 #include <cstring>
 #include <cwctype>
@@ -64,20 +65,13 @@ struct Capture {
         if(screen)ReleaseDC(nullptr,screen);
     }
     bool Grab(HWND hwnd)const{
-        if(!IsWindow(hwnd)||IsIconic(hwnd)||!IsWindowVisible(hwnd))return false;
-        RECT rc{};
-        if(!GetClientRect(hwnd,&rc))return false;
-        const int sw=rc.right-rc.left,sh=rc.bottom-rc.top;
-        if(sw<1||sh<1)return false;
-        POINT pt{0,0};
-        if(!ClientToScreen(hwnd,&pt))return false;
-        RECT full{0,0,w,h};
-        FillRect(dc,&full,static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-        const double scale=std::min(double(w)/sw,double(h)/sh);
-        const int dw=std::max(1,int(sw*scale)),dh=std::max(1,int(sh*scale));
-        SetStretchBltMode(dc,COLORONCOLOR);
-        return StretchBlt(dc,(w-dw)/2,(h-dh)/2,dw,dh,
-                          screen,pt.x,pt.y,sw,sh,SRCCOPY)!=FALSE;
+        (void)hwnd; // PID/window selection is a launch condition, not crop.
+        // Show Windows taskbar, popup dialogs and the REAL mouse cursor
+        // at startup, even when Model 2 itself runs in a tiny window.
+        return m2vr::desktopmenu::CaptureDesktopFrame(
+            dc,screen,m2vr::desktopmenu::CurrentVirtualDesktop(),
+            static_cast<std::uint32_t>(w),
+            static_cast<std::uint32_t>(h));
     }
 };
 // Prefer the actual emulator PID over a guessed title. Some Model 2 builds
