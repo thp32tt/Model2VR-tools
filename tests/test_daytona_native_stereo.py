@@ -519,6 +519,34 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("OriginalSourceFailure::OriginalClearFailed",clear_reject)
         self.assertIn("g.Reject(FailedOriginalD3D9ClearSourceKind())",clear_reject)
 
+    def test_original_bound_texture_lock_source_epoch_is_fail_closed(self):
+        native=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        hooks=(ROOT/"src/probe/original_d3d9_texture_hooks.inl").read_text("utf-8")
+        lineage=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
+        self.assertIn("TextureLockContent=40",lineage)
+        self.assertIn("ObserveOriginalBoundTexture(texture,rva)",native)
+        self.assertIn("original_d3d9_texture_hooks.inl",native)
+        self.assertIn("g_original_texture_write_locks.HasOutstandingWrites()",native)
+        self.assertIn("g_texture_hook_unknown.load",native)
+        self.assertIn("OriginalTextureCoverageUnknown(0u)",native)
+        self.assertIn("w[29],w[40]",native)
+        self.assertIn("g_original_texture_write_locks.AfterSuccessfulDeviceReset()",native)
+        self.assertIn("vt[19]",hooks)
+        self.assertIn("vt[20]",hooks)
+        self.assertIn("TrackFailedOriginalD3D9Surface(hr,41u,rva)",hooks)
+        self.assertIn("TrackFailedOriginalD3D9Surface(hr,42u,rva)",hooks)
+        self.assertIn("OriginalLineageKind::TextureLockContent",hooks)
+        self.assertIn("Model2VR_ObserveOriginalD3D9TextureUpload(",hooks)
+        self.assertIn("g_original_texture_write_locks.Begin(texture)",hooks)
+        self.assertIn("g_original_texture_write_locks.SuccessfulUnlock(texture)",hooks)
+        lock=hooks.split("HRESULT STDMETHODCALLTYPE OriginalTextureLockRectHook(")[1].split(
+            "HRESULT STDMETHODCALLTYPE OriginalTextureUnlockRectHook(")[0]
+        unlock=hooks.split("HRESULT STDMETHODCALLTYPE OriginalTextureUnlockRectHook(")[1].split(
+            "bool ObserveOriginalBoundTexture(")[0]
+        self.assertEqual(lock.count("const HRESULT hr=g_texture_lock_rect("),1)
+        self.assertEqual(unlock.count("const HRESULT hr=g_texture_unlock_rect("),1)
+        self.assertNotIn("memcpy",hooks)
+
     def test_original_update_texture_is_single_call_and_revokes_stale_eyes(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
