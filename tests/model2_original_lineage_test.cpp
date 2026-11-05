@@ -1,8 +1,16 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
+#include "../src/probe/original_d3d9_stateblock_audit.hpp"
 #include "../src/probe/original_d3d9_authenticated_draw.hpp"
 #include <cassert>
 int main(){
     using namespace m2vr::drawprobe;
+    OriginalStateBlockAuditOncePerPresent audit{};
+    assert(!audit.Claim(0u));
+    assert(audit.Claim(77u));
+    assert(!audit.Claim(77u));
+    assert(!audit.Claim(76u));
+    assert(audit.Claim(78u));
+    assert(!audit.Claim(77u));
     static_assert(kOriginalLineageKinds==20);
     OriginalLineageStamp initial{77,{}};
     assert(!OriginalLineageUsable(initial));

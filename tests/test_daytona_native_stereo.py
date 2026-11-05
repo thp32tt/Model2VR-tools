@@ -226,6 +226,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("RecordOriginalLineageWrite(\n            m2vr::drawprobe::OriginalLineageKind::StateBlockApply",hooks)
         self.assertIn("model2_d3d9_source_stateblock_lineage",hooks)
         self.assertIn("g.source_epoch.Revoke(physical_present);",bridge)
+        self.assertIn("g_stateblock_audit.Claim(physical_present)",bridge)
+        self.assertIn("original_d3d9_stateblock_audit.hpp",bridge)
         self.assertIn("Model2VR_RejectOriginalD3D9StateBlockMutation(",api)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",bridge)
         self.assertIn("MH_RemoveHook(vtable[59]);",hooks)

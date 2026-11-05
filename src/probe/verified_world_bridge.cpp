@@ -14,6 +14,7 @@
 #include "verified_world_source_result.hpp"
 #include "verified_world_projection_epoch.hpp"
 #include "original_d3d9_authenticated_draw.hpp"
+#include "original_d3d9_stateblock_audit.hpp"
 #include "daytona_native_stereo.hpp"
 #include "../common/daytona_producer_health.hpp"
 #include "logger.h"
@@ -78,6 +79,7 @@ struct Bridge {
     }
 };
 Bridge g;
+m2vr::drawprobe::OriginalStateBlockAuditOncePerPresent g_stateblock_audit;
 // Called under the only verified CPU-world bridge mutex. Source lifetime
 // failures must revoke the original Present frame, not just discard its
 // pixels; otherwise another Begin/End could retry the same invalid frame.
@@ -927,8 +929,9 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
     }
     // Public-safe witness: physical frame, stage, original EXE caller RVA,
     // original HRESULT (zero means observer setup failed). No COM pointers.
-    m2vr::LogEvent("model2_d3d9_original_stateblock_mutation",
-        physical_present,stage,original_caller_rva,original_hresult);
+    if(g_stateblock_audit.Claim(physical_present))
+        m2vr::LogEvent("model2_d3d9_original_stateblock_mutation",
+            physical_present,stage,original_caller_rva,original_hresult);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){

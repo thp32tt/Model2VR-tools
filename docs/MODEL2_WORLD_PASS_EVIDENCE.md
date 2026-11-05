@@ -21,7 +21,8 @@ frame. Source-revision nonce gains an explicit `StateBlockApply` counter
 (20 total kinds), and sampled original Draw witnesses gain
 `model2_d3d9_source_stateblock_lineage` (only bounded revision integers).
 `model2_d3d9_original_stateblock_mutation` (frame, stage, caller RVA,
-original HRESULT) carries a fail-closed physical-frame audit record for
+original HRESULT) carries one bounded fail-closed physical-frame audit record
+per original Present (while **every** Apply still revokes the frame) for
 authorized private comparison, without logging COM pointers or original
 game state bytes. The public tools' original VB/IB and UP auditors reject
 all candidate material/world Draws from those physical Presents.
