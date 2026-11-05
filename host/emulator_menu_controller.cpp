@@ -78,12 +78,23 @@ bool EmulatorMenuController::Initialize(XrInstance instance,XrSession session){
     }
     // Oculus/Meta Touch (Quest 3, VDXR) and KHR simple-controller fallback.
     // A given runtime is allowed to reject unsupported profiles.
-    const bool touch=Suggest(instance,aim_,select_,
+    const bool touch_trigger=Suggest(instance,aim_,select_,
         "/interaction_profiles/oculus/touch_controller",
         "/user/hand/left/input/aim/pose",
         "/user/hand/right/input/aim/pose",
         "/user/hand/left/input/trigger/value",
         "/user/hand/right/input/trigger/value");
+    // Some runtimes reject an analog trigger-to-boolean binding. Preserve
+    // usable HMD menu selection with Touch X(left)/A(right) click inputs.
+    // Never replace a successfully installed trigger mapping.
+    const bool touch_button_fallback=!touch_trigger &&
+        Suggest(instance,aim_,select_,
+        "/interaction_profiles/oculus/touch_controller",
+        "/user/hand/left/input/aim/pose",
+        "/user/hand/right/input/aim/pose",
+        "/user/hand/left/input/x/click",
+        "/user/hand/right/input/a/click");
+    const bool touch=touch_trigger || touch_button_fallback;
     const bool simple=Suggest(instance,aim_,select_,
         "/interaction_profiles/khr/simple_controller",
         "/user/hand/left/input/aim/pose",
@@ -96,7 +107,9 @@ bool EmulatorMenuController::Initialize(XrInstance instance,XrSession session){
     if(XR_FAILED(xrAttachSessionActionSets(session,&attach))){Shutdown();return false;}
     active_=true;
     std::cout<<"Model2VR XR desktop menu ray: ENABLED touch="
-             <<touch<<" simple="<<simple
+             <<touch<<" touch_trigger="<<touch_trigger
+             <<" touch_button_fallback="<<touch_button_fallback
+             <<" simple="<<simple
              <<" (only foreground emulator HWND, never gameplay)\n";
     return true;
 }
