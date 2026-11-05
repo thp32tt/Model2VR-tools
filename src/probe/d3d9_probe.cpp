@@ -15,6 +15,7 @@
 #include "original_d3d9_lineage.hpp"
 #include "original_d3d9_control_present.hpp"
 #include "original_d3d9_scene_draw_coverage.hpp"
+#include "original_d3d9_draw_target_coverage.hpp"
 #include "original_d3d9_caller_bloom.hpp"
 #include "original_d3d9_caller_inventory.hpp"
 #include "original_d3d9_validation_policy.hpp"
@@ -530,6 +531,43 @@ std::atomic<bool> g_original_scene_poisoned{false};
 std::atomic<DWORD> g_original_scene_owner_thread{0u};
 std::atomic<bool> g_original_scene_hooks_ready{false};
 m2vr::drawprobe::OriginalPhysicalSceneDrawCoverage g_original_scene_draw_coverage{};
+m2vr::drawprobe::OriginalPhysicalTargetDrawCoverage g_original_target_draw_coverage{};
+// Read-only COM binding identities and descriptors, NEVER original texels.
+// No source surface pointer is serialized, exported or retained after call.
+m2vr::drawprobe::OriginalTargetSnapshot ReadPhysicalOriginalRtDepth(
+    IDirect3DDevice9* d) noexcept {
+    using namespace m2vr::drawprobe;
+    OriginalTargetSnapshot result{};
+    if(!d)return result;
+    IDirect3DSurface9* rt=nullptr;
+    IDirect3DSurface9* back=nullptr;
+    IDirect3DSurface9* depth=nullptr;
+    if(SUCCEEDED(d->GetRenderTarget(0u,&rt)) && rt){
+        if(SUCCEEDED(d->GetBackBuffer(0u,0u,D3DBACKBUFFER_TYPE_MONO,
+                                      &back)) && back)
+            result.target=(rt==back)?OriginalPhysicalRtClass::Backbuffer:
+                OriginalPhysicalRtClass::Auxiliary;
+        if(SUCCEEDED(d->GetDepthStencilSurface(&depth)) && depth){
+            D3DSURFACE_DESC rt_desc{},depth_desc{};
+            const bool known=SUCCEEDED(rt->GetDesc(&rt_desc)) &&
+                SUCCEEDED(depth->GetDesc(&depth_desc));
+            if(known)result.depth=(rt_desc.Width==depth_desc.Width &&
+                rt_desc.Height==depth_desc.Height)?
+                OriginalPhysicalDepthClass::Compatible:
+                OriginalPhysicalDepthClass::Incompatible;
+        }else result.depth=OriginalPhysicalDepthClass::Incompatible;
+    }
+    if(depth)depth->Release();
+    if(back)back->Release();
+    if(rt)rt->Release();
+    return result;
+}
+void EnsurePhysicalOriginalRtDepth(IDirect3DDevice9* d) noexcept {
+    if(!g_original_target_draw_coverage.NeedsResolution())return;
+    const auto revision=g_original_target_draw_coverage.Revision();
+    const auto actual=ReadPhysicalOriginalRtDepth(d);
+    g_original_target_draw_coverage.ResolveIfUnchanged(revision,actual);
+}
 bool OriginalSceneStillOwnedAfterDraw(
     unsigned source_scene,bool source_scene_open) noexcept {
     return m2vr::drawprobe::OriginalDrawRetainedSourceScene(
@@ -570,6 +608,8 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Clear(
 extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits,
     std::uint32_t caller_rva);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9TargetDrawCoverage(
+    unsigned long long,unsigned int,unsigned int,unsigned int);
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
     unsigned long long physical_present,unsigned int stage,
     unsigned int original_caller_rva,unsigned int original_hresult);
@@ -1921,6 +1961,8 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
             g_draw(d,p,start,count),1u,caller,d);
     g_draws.fetch_add(1,std::memory_order_relaxed);
     const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
+    EnsurePhysicalOriginalRtDepth(d);
+    const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -1953,6 +1995,8 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,1u,CallerRva(caller));
+    g_original_target_draw_coverage.CompleteDraw(original_target_ticket,
+        CallerRva(caller)!=0u,SUCCEEDED(hr));
     g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
         OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
         SUCCEEDED(hr));
@@ -1975,6 +2019,8 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
             g_draw_indexed(d,p,base,min,num,start,count),2u,caller,d);
     g_indexed.fetch_add(1,std::memory_order_relaxed);
     const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
+    EnsurePhysicalOriginalRtDepth(d);
+    const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2007,6 +2053,8 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,2u,CallerRva(caller));
+    g_original_target_draw_coverage.CompleteDraw(original_target_ticket,
+        CallerRva(caller)!=0u,SUCCEEDED(hr));
     g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
         OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
         SUCCEEDED(hr));
@@ -2029,6 +2077,8 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
             g_draw_up(d,p,count,verts,stride),3u,caller,d);
     g_up.fetch_add(1,std::memory_order_relaxed);
     const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
+    EnsurePhysicalOriginalRtDepth(d);
+    const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2061,6 +2111,8 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,3u,CallerRva(caller));
+    g_original_target_draw_coverage.CompleteDraw(original_target_ticket,
+        CallerRva(caller)!=0u,SUCCEEDED(hr));
     g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
         OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
         SUCCEEDED(hr));
@@ -2083,6 +2135,8 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
             g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller,d);
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
     const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
+    EnsurePhysicalOriginalRtDepth(d);
+    const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2117,6 +2171,8 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,4u,CallerRva(caller));
+    g_original_target_draw_coverage.CompleteDraw(original_target_ticket,
+        CallerRva(caller)!=0u,SUCCEEDED(hr));
     g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
         OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
         SUCCEEDED(hr));
@@ -2338,6 +2394,11 @@ HRESULT STDMETHODCALLTYPE SetRenderTargetHook(IDirect3DDevice9* d,DWORD slot,
     void* const caller=_ReturnAddress();
     const HRESULT hr=g_set_render_target(d,slot,surface);
     const auto caller_rva=CallerRva(caller);
+    // Observe the real post-COM RT0/depth; never replay the game Set* call.
+    g_original_target_draw_coverage.RenderTargetBind(
+        caller_rva!=0u,SUCCEEDED(hr),slot==0u,
+        (SUCCEEDED(hr) && slot==0u)?ReadPhysicalOriginalRtDepth(d):
+            m2vr::drawprobe::OriginalTargetSnapshot{});
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,4u,caller_rva);
     else if(SUCCEEDED(hr))
@@ -2353,6 +2414,10 @@ HRESULT STDMETHODCALLTYPE SetDepthStencilSurfaceHook(IDirect3DDevice9* d,
     void* const caller=_ReturnAddress();
     const HRESULT hr=g_set_depth_surface(d,surface);
     const auto caller_rva=CallerRva(caller);
+    g_original_target_draw_coverage.DepthBind(
+        caller_rva!=0u,SUCCEEDED(hr),
+        SUCCEEDED(hr)?ReadPhysicalOriginalRtDepth(d):
+            m2vr::drawprobe::OriginalTargetSnapshot{});
     if(caller_rva && FAILED(hr))
         TrackFailedOriginalD3D9Surface(hr,5u,caller_rva);
     else if(SUCCEEDED(hr))
@@ -2967,6 +3032,17 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         g_original_scene_open.load(std::memory_order_acquire),
         g_original_scene_poisoned.load(std::memory_order_acquire),
         g_original_scene_hooks_ready.load(std::memory_order_acquire));
+    // RT0/depth evidence is bound to this very SAME physical original
+    // Scene/Draw epoch, not a sampled frame or an inferred world owner.
+    auto original_target_coverage=g_original_target_draw_coverage.FinishPresent();
+    if(original_target_coverage.TotalDraws()!=original_scene_coverage.TotalDraws())
+        original_target_coverage.flags|=
+            m2vr::drawprobe::OriginalPhysicalTargetDrawCoverage::kCountMismatch;
+    if(original_target_coverage.RejectUnprovenStereoSource())
+        Model2VR_RejectOriginalD3D9TargetDrawCoverage(
+            scene_source_frame,original_target_coverage.flags,
+            original_target_coverage.unknown,
+            original_target_coverage.incompatible_depth);
     // Real game source frame is no longer fully Scene-owned. Revoke BOTH
     // partially prepared CPU and GPU eyes before physical COM Present.
     // Never change the source D3D9 call, displayed mono or game input/FFB.
@@ -3169,6 +3245,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Reopen only AFTER the actual COM returns; otherwise a second render
     // thread could enter a new Scene/Draw while the prior Present executes.
     g_original_scene_draw_coverage.ReopenAfterPhysicalPresentReturn();
+    g_original_target_draw_coverage.ReopenAfterPhysicalPresentReturn();
     TraceFirstOriginalPresentStage(startup_first_present,3u,frame,
         static_cast<std::uint32_t>(original_result));
     const auto source_samples=g_original_source_result_samples.exchange(
@@ -3220,6 +3297,15 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             original_scene_coverage.successful_untrusted,
         (std::uint64_t{original_scene_coverage.failed_draws}<<32u)|
             original_scene_coverage.flags);
+    // Continuous source RT identity class and depth validity per Present.
+    m2vr::LogEvent("model2_d3d9_original_draw_target_coverage",
+        frame,
+        (std::uint64_t{original_target_coverage.backbuffer}<<32u)|
+            original_target_coverage.auxiliary,
+        (std::uint64_t{original_target_coverage.unknown}<<32u)|
+            original_target_coverage.failed,
+        (std::uint64_t{original_target_coverage.incompatible_depth}<<32u)|
+            original_target_coverage.flags);
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair
@@ -3299,6 +3385,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
     g_original_scene_draw_coverage.Reset();
+    g_original_target_draw_coverage.Reset();
     m2vr::drawprobe::NextProjectDrawEpoch();
     Model2VR_DiscardPendingWorldOnReset();
     if(g_native_stereo)m2vr::daytona::ResetResources();
