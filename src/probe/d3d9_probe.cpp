@@ -54,6 +54,9 @@ using OriginalSwapChainGetFrontBufferDataFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DSwapChain9*,IDirect3DSurface9*);
 using OriginalSwapChainGetBackBufferFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DSwapChain9*,UINT,D3DBACKBUFFER_TYPE,IDirect3DSurface9**);
+using SetCursorPropertiesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,UINT,IDirect3DSurface9*);
+using SetCursorPositionFn=void (STDMETHODCALLTYPE*)(IDirect3DDevice9*,int,int,DWORD);
+using ShowCursorFn=BOOL (STDMETHODCALLTYPE*)(IDirect3DDevice9*,BOOL);
 using SetDialogBoxModeFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,BOOL);
 using SetGammaRampFn=void (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,DWORD,const D3DGAMMARAMP*);
 using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -200,6 +203,13 @@ using IndexedUPFn=HRESULT (STDMETHODCALLTYPE*)(
 Create9Fn g_create9=nullptr;
 CreateDeviceFn g_create_device=nullptr;
 PresentFn g_present=nullptr;
+SetCursorPropertiesFn g_original_set_cursor_properties=nullptr;
+SetCursorPositionFn g_original_set_cursor_position=nullptr;
+ShowCursorFn g_original_show_cursor=nullptr;
+std::atomic<bool> g_original_cursor_visibility_known{false};
+std::atomic<bool> g_original_cursor_visible{false};
+std::atomic<bool> g_original_cursor_unknown{false};
+std::array<std::atomic<std::uint32_t>,3> g_original_cursor_controls{};
 SetDialogBoxModeFn g_original_set_dialog_box_mode=nullptr;
 SetGammaRampFn g_original_set_gamma_ramp=nullptr;
 std::atomic<bool> g_original_dialog_box_active{false};
@@ -2269,6 +2279,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 #include "original_d3d9_resource_get_hooks.inl"
 #include "original_d3d9_swap_chain_hooks.inl"
 #include "original_d3d9_presentation_hooks.inl"
+#include "original_d3d9_cursor_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
 // preserved, while failures poison only speculative binocular output.
 HRESULT STDMETHODCALLTYPE SetStreamSourceHook(IDirect3DDevice9* d,UINT stream,IDirect3DVertexBuffer9* buffer,UINT offset,UINT stride){
@@ -2692,6 +2703,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     }
     // Original dialogue overlay and device gamma can change actual displayed
     // content without another Draw; never reuse unverified eye surfaces.
+    // Hardware/GDI/emulated cursor output is not authenticated XR eye content.
+    if(g_original_cursor_visible.load(std::memory_order_acquire) ||
+       g_original_cursor_unknown.load(std::memory_order_acquire))
+        BeforeOriginalPresentationControl(0u,9u);
     if(g_original_dialog_box_active.load(std::memory_order_acquire))
         BeforeOriginalPresentationControl(0u,3u);
     if(g_original_gamma_unproven.load(std::memory_order_acquire))
@@ -2763,6 +2778,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(std::size_t i=0;i<surface_creates.size();++i)
         surface_creates[i]=g_original_surface_creates[i].exchange(
             0u,std::memory_order_relaxed);
+    std::array<std::uint32_t,3> original_cursor_controls{};
+    for(std::size_t i=0;i<original_cursor_controls.size();++i)
+        original_cursor_controls[i]=g_original_cursor_controls[i].exchange(
+            0u,std::memory_order_relaxed);
     std::array<std::uint32_t,2> original_presentation_controls{};
     for(std::size_t i=0;i<original_presentation_controls.size();++i)
         original_presentation_controls[i]=g_original_presentation_controls[i].exchange(
@@ -2826,6 +2845,13 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             (g_original_dialog_box_active.load(std::memory_order_acquire)?1u:0u)|
             (g_original_gamma_unproven.load(std::memory_order_acquire)?2u:0u)|
             (g_original_external_presentation_unproven.load(std::memory_order_acquire)?4u:0u));
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_cursor_control_counts",frame,
+            (std::uint64_t{original_cursor_controls[0]}<<32u)|original_cursor_controls[1],
+            original_cursor_controls[2],
+            (g_original_cursor_visibility_known.load(std::memory_order_acquire)?1u:0u)|
+            (g_original_cursor_visible.load(std::memory_order_acquire)?2u:0u)|
+            (g_original_cursor_unknown.load(std::memory_order_acquire)?4u:0u));
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_swap_chain_counts",frame,
             (std::uint64_t{original_swap_chain_calls[0]}<<32u)|original_swap_chain_calls[1],
@@ -2961,6 +2987,8 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         count.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_presentation_controls)
         count.store(0u,std::memory_order_relaxed);
+    for(auto& count:g_original_cursor_controls)
+        count.store(0u,std::memory_order_relaxed);
     // Reset alone does not establish a calibrated HMD gamma or clear a
     // confirmed original dialog mode; retain both fail-closed guards.
     g_original_swap_chain_readbacks.store(0u,std::memory_order_relaxed);
@@ -2987,6 +3015,13 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         g_unmirrored_geometry_state.AfterSuccessfulDeviceReset();
         g_original_bound_write_locks.AfterSuccessfulDeviceReset();
         g_original_texture_write_locks.AfterSuccessfulDeviceReset();
+        // D3D9 cursor image is lost on successful Reset; old visibility
+        // must not be assumed equivalent to the XR host cursor state.
+        const bool unsafe=g_original_cursor_visible.load(std::memory_order_acquire) ||
+            g_original_cursor_unknown.load(std::memory_order_acquire);
+        g_original_cursor_visibility_known.store(false,std::memory_order_release);
+        g_original_cursor_visible.store(false,std::memory_order_release);
+        g_original_cursor_unknown.store(unsafe,std::memory_order_release);
     }
     return result;
 }
@@ -2997,6 +3032,12 @@ bool HookDevice(IDirect3DDevice9* dev){
     // COM IDirect3DDevice9 method slots per d3d9.h (IUnknown included).
     auto** vtable=*reinterpret_cast<void***>(dev);
     const bool p=Hook(vtable[17],reinterpret_cast<void*>(&PresentHook),g_present);
+    const bool cursor_image=Hook(vtable[10],
+        reinterpret_cast<void*>(&OriginalSetCursorPropertiesHook),g_original_set_cursor_properties);
+    const bool cursor_position=Hook(vtable[11],
+        reinterpret_cast<void*>(&OriginalSetCursorPositionHook),g_original_set_cursor_position);
+    const bool cursor_visibility=Hook(vtable[12],
+        reinterpret_cast<void*>(&OriginalShowCursorHook),g_original_show_cursor);
     const bool dialog=Hook(vtable[20],
         reinterpret_cast<void*>(&OriginalSetDialogBoxModeHook),g_original_set_dialog_box_mode);
     const bool gamma=Hook(vtable[21],
@@ -3124,10 +3165,13 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dialog&&gamma&&create_swap_chain&&get_swap_chain&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
+    if(!(p&&cursor_image&&cursor_position&&cursor_visibility&&dialog&&gamma&&create_swap_chain&&get_swap_chain&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
+        if(cursor_image){MH_DisableHook(vtable[10]);MH_RemoveHook(vtable[10]);}
+        if(cursor_position){MH_DisableHook(vtable[11]);MH_RemoveHook(vtable[11]);}
+        if(cursor_visibility){MH_DisableHook(vtable[12]);MH_RemoveHook(vtable[12]);}
         if(dialog){MH_DisableHook(vtable[20]);MH_RemoveHook(vtable[20]);}
         if(gamma){MH_DisableHook(vtable[21]);MH_RemoveHook(vtable[21]);}
         if(create_swap_chain){MH_DisableHook(vtable[13]);MH_RemoveHook(vtable[13]);}
@@ -3205,6 +3249,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(begin_block){MH_DisableHook(vtable[60]);MH_RemoveHook(vtable[60]);}
         if(end_block){MH_DisableHook(vtable[61]);MH_RemoveHook(vtable[61]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
+        g_original_set_cursor_properties=nullptr;g_original_set_cursor_position=nullptr;
+        g_original_show_cursor=nullptr;
         g_original_set_dialog_box_mode=nullptr;g_original_set_gamma_ramp=nullptr;
         g_create_additional_swap_chain=nullptr;g_get_swap_chain=nullptr;
         g_reset=nullptr;g_clear=nullptr;
