@@ -58,8 +58,11 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             event("model2_d3d9_original_raster_mode_unsupported",7,2,0,0),
             event("model2_d3d9_original_present_result",7,0,1,0)])
         self.assertEqual(blocked["counts"]["original_surface_failed"],1)
-        for bad in ((8,pack(1,2),3),(7,pack(1000001,2),3),
-                    (7,pack(1,2),1000001)):
+        wrong_frame=self.report(self.projected()+[
+            event("model2_d3d9_source_raster_mode_lineage",21,8,pack(1,2),3),
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(wrong_frame["counts"]["source_identity_or_frame_mismatch"],1)
+        for bad in ((7,pack(1000001,2),3),(7,pack(1,2),1000001)):
             with self.assertRaisesRegex(ValueError,"raster-mode"):
                 self.report(self.projected()+[
                     event("model2_d3d9_source_raster_mode_lineage",21,*bad),
