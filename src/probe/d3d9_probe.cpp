@@ -2934,7 +2934,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     if(active_freq)
         Model2VR_RejectOriginalD3D9ActiveInstancing(
             g_present_count.load(std::memory_order_acquire)+1u,active_freq);
-    const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
+    // NextOriginalD3D9PresentFrameId() is defined as the current Present
+    // counter + 1. Revoke incomplete source stereo BEFORE incrementing that
+    // counter, or the bridge would silently reject a wrong-frame request.
+    const unsigned scene_source_frame=
+        g_present_count.load(std::memory_order_acquire)+1u;
     // Cut the physical ORIGINAL Scene/Draw epoch BEFORE resetting its source
     // scene/Draw counters. The genuine Present executes exactly once below.
     const auto original_scene_coverage=g_original_scene_draw_coverage.FinishPresent(
@@ -2946,9 +2950,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // Never change the source D3D9 call, displayed mono or game input/FFB.
     if(original_scene_coverage.RejectUnprovenStereoSource())
         Model2VR_RejectOriginalD3D9SceneDrawCoverage(
-            frame,original_scene_coverage.flags,
+            scene_source_frame,original_scene_coverage.flags,
             original_scene_coverage.successful_untrusted,
             original_scene_coverage.failed_draws);
+    const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
     // An unobserved state-block Apply vtable stays unsafe across Reset and
     // Present. Keep the HMD on original mono, not stale speculative eyes.
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) &&
