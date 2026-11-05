@@ -21,6 +21,46 @@ MIN_PRESENTS = 2
 MAX_SOURCES = 100_000
 CONTROL_TYPES = frozenset(("title", "menu", "sky", "hud", "aux"))
 
+def _mix_original_caller(rva):
+    # Exact unsigned-32 arithmetic from the physical x86 Draw observer.
+    value = (rva ^ (rva >> 16)) & 0xffffffff
+    value = (value * 0x7feb352d) & 0xffffffff
+    value ^= value >> 15
+    value = (value * 0x846ca68b) & 0xffffffff
+    return (value ^ (value >> 16)) & 0xffffffff
+
+def original_caller_bloom_bits(caller):
+    if not 0 < caller <= 0xffffffff:
+        return 0, 0
+    return (1 << (_mix_original_caller(caller) & 63),
+            1 << (_mix_original_caller(caller ^ 0x9e3779b9) & 63))
+
+def _control_bloom(report):
+    record=report.get("original_all_family_caller_bloom")
+    if not isinstance(record,dict) or set(record)!={
+        "lane0","lane1","unknown_caller","first_present_frame",
+        "last_present_frame","physical_present_count"}:
+        raise ValueError("missing complete original all-family Draw caller control")
+    lo,hi=record["lane0"],record["lane1"]
+    count=record["physical_present_count"]
+    last=record["last_present_frame"]
+    if (type(lo) is not int or type(hi) is not int or
+        not 0 <= lo <= 0xffffffffffffffff or
+        not 0 <= hi <= 0xffffffffffffffff or
+        type(record["unknown_caller"]) is not bool or
+        record["unknown_caller"] or
+        type(count) is not int or
+        type(last) is not int or
+        record["first_present_frame"] != 1 or
+        not 1 <= count == last <= 0xffffffff or
+        not (lo and hi)):
+        raise ValueError("incomplete or unknown original all-family Draw caller control")
+    return lo,hi
+
+def _bloom_might_contain(bloom, caller):
+    lo,hi=original_caller_bloom_bits(int(caller,16))
+    return bool(lo and hi and bloom[0]&lo and bloom[1]&hi)
+
 
 def _validate_report(report):
     if not isinstance(report, dict) or type(report.get("schema")) is not int or report["schema"] != 1 or (
@@ -192,6 +232,11 @@ def compare_sessions(race_reports, nonrace_reports):
                  for label,sources in nonrace.items()}
     control_cpu={label:_control_projector_callers(sources)
                  for label,sources in nonrace.items()}
+    # The sampled VB caller list misses original UP-only control phases.
+    # Cross-check a cumulative unsampled four-family ORIGINAL x86 Draw
+    # signature for EVERY distinct private control before any candidate.
+    control_blooms={label:_control_bloom(nonrace_reports[label])
+                    for label in sorted(CONTROL_TYPES)}
     candidates=[]
     rejected=[]
     for family,caller in sorted(all_callers):
@@ -201,6 +246,9 @@ def compare_sessions(race_reports, nonrace_reports):
             reason="unknown_gpu_caller"
         elif any(caller in rv_as for rv_as in control_gpu.values()):
             reason="caller_also_used_outside_race"
+        elif any(_bloom_might_contain(bloom,caller)
+                 for bloom in control_blooms.values()):
+            reason="caller_signature_used_outside_race"
         elif any(key not in session for session in race):
             reason="missing_in_race_capture"
         elif any(not _enough_original_source(session[key]) for session in race):

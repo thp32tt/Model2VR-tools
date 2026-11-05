@@ -476,6 +476,8 @@ std::atomic<std::uint64_t> g_original_frame_draw_ordinal{0u};
 std::atomic<std::uint64_t> g_original_draw_caller_bloom_lo{0u};
 std::atomic<std::uint64_t> g_original_draw_caller_bloom_hi{0u};
 std::atomic<bool> g_original_draw_caller_unknown{false};
+// CallerRva is defined below, after the original-game module/image gate.
+std::uint32_t CallerRva(void* ret);
 void ObserveOriginalAllFamilyDrawCaller(void* origin) noexcept {
     const auto rva=CallerRva(origin);
     if(!rva){

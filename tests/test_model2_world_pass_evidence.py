@@ -1,6 +1,7 @@
 import copy
 import unittest
-from tools.model2_world_pass_evidence import compare_sessions, CONTROL_TYPES, main
+from tools.model2_world_pass_evidence import (
+    compare_sessions, CONTROL_TYPES, main, original_caller_bloom_bits)
 from contextlib import redirect_stderr
 from pathlib import Path
 import io
@@ -57,6 +58,14 @@ def report(*sources):
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
         "world_pass_proof": "NOT_ESTABLISHED",
         "hmd_runtime_validation": "UNTESTED",
+        "original_all_family_caller_bloom":{
+            "lane0":original_caller_bloom_bits(0x004f5000)[0],
+            "lane1":original_caller_bloom_bits(0x004f5000)[1],
+            "unknown_caller":False,
+            "first_present_frame":1,
+            "last_present_frame":8,
+            "physical_present_count":8,
+        },
         "original_control_present_sample_count":3,
         "original_control_successful_present_count":3,
         "original_control_successful_drawn_present_count":3,
@@ -224,6 +233,37 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             compare_sessions([report(witness(), witness()), report(witness())],
                              controls())
 
+
+    def test_up_only_negative_control_catches_reused_race_caller(self):
+        # No sampled VB/IB source in HUD: only real unsampled UP Draws
+        # contributed to the monotonic native all-family caller signature.
+        hud=report()
+        caller=0x004a1234
+        lo,hi=original_caller_bloom_bits(caller)
+        hud["original_all_family_caller_bloom"].update(
+            lane0=lo,lane1=hi)
+        hud["original_control_four_family_draw_totals"]={
+            "DrawPrimitive":0,"DrawIndexedPrimitive":0,
+            "DrawPrimitiveUP":5,"DrawIndexedPrimitiveUP":4}
+        got=compare_sessions([report(witness()),report(witness())],
+                             controls(hud=hud))
+        self.assertEqual(got["candidates"],[])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "caller_signature_used_outside_race")
+
+    def test_missing_or_unknown_bloom_does_not_claim_complete_controls(self):
+        for mutation in (
+            None, {"unknown_caller":True},
+            {"lane0":0}, {"physical_present_count":7},
+        ):
+            control=report()
+            if mutation is None:
+                del control["original_all_family_caller_bloom"]
+            else:
+                control["original_all_family_caller_bloom"].update(mutation)
+            with self.assertRaisesRegex(ValueError,"all-family"):
+                compare_sessions([report(witness()),report(witness())],
+                                 controls(aux=control))
 
     def test_original_gpu_caller_reused_with_different_primitive_family(self):
         original=witness()

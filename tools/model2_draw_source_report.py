@@ -508,6 +508,14 @@ def audit_csv(path):
     # Independently sampled genuine primary Present even without VB witnesses.
     original_control_presents = {}
     last_control_present = 0
+    # Every actual original primary Present carries a cumulative, two-lane
+    # hash of ALL four physical Draw callers, not just sampled VB/IB or UP.
+    # This never proves a game World3D caller. Missing/modified records
+    # cannot masquerade as complete title/menu/sky/HUD/aux controls.
+    original_all_family_bloom = None
+    last_bloom_frame = 0
+    bloom_count = 0
+    observed_control_bloom_frames = set()
     original_scene_failures = set()
     original_draw_failures = set()
     original_clear_failures = set()
@@ -826,6 +834,27 @@ def audit_csv(path):
                 original_scene_failures.add(frame)
                 if len(original_scene_failures) > MAX_WITNESSES:
                     raise ValueError("original scene failures exceeded limit")
+                continue
+            if event == "model2_d3d9_original_all_family_caller_bloom":
+                try:
+                    frame, lo, hi, unknown = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError,TypeError) as exc:
+                    raise ValueError("invalid all-family caller bloom") from exc
+                if (not 0 < frame <= 0xffffffff or
+                    (last_bloom_frame and frame != last_bloom_frame + 1) or
+                    (not last_bloom_frame and frame != 1) or
+                    unknown not in (0,1) or
+                    (original_all_family_bloom is not None and (
+                        (lo & original_all_family_bloom[0]) != original_all_family_bloom[0] or
+                        (hi & original_all_family_bloom[1]) != original_all_family_bloom[1] or
+                        unknown < original_all_family_bloom[2]))):
+                    raise ValueError("non-monotonic original caller bloom")
+                original_all_family_bloom = (lo,hi,unknown)
+                last_bloom_frame = frame
+                bloom_count += 1
+                if frame in original_control_presents:
+                    observed_control_bloom_frames.add(frame)
                 continue
             if event == "model2_d3d9_original_control_present_phase":
                 try:
@@ -1627,6 +1656,16 @@ def audit_csv(path):
     for frame,values in original_control_presents.items():
         if frame in physical_presents and physical_presents[frame]!=values[0]:
             raise ValueError("conflicting physical original control Present")
+    # Only a complete consecutive physical Present stream can support a
+    # cross-session NEGATIVE caller exclusion. An old CSV without this new
+    # source is still readable but is NOT a complete negative control.
+    if original_all_family_bloom is not None:
+        if (set(original_control_presents) != observed_control_bloom_frames or
+            last_bloom_frame < last_control_present or
+            (any(sum(values[1:])>0 for values in original_control_presents.values()) and
+             not (original_all_family_bloom[0] or original_all_family_bloom[1]
+                  or original_all_family_bloom[2]))):
+            raise ValueError("incomplete original all-family caller bloom")
     successful_controls=[
         values for values in original_control_presents.values()
         if values[0]&0x80000000==0]
@@ -1635,6 +1674,14 @@ def audit_csv(path):
     return {
         "schema": 1,
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
+        "original_all_family_caller_bloom": (
+            {"lane0":original_all_family_bloom[0],
+             "lane1":original_all_family_bloom[1],
+             "unknown_caller":bool(original_all_family_bloom[2]),
+             "first_present_frame":1,
+             "last_present_frame":last_bloom_frame,
+             "physical_present_count":bloom_count}
+            if original_all_family_bloom is not None else None),
         "original_control_present_sample_count":len(original_control_presents),
         "original_control_successful_present_count":len(successful_controls),
         "original_control_successful_drawn_present_count":len(drawn_controls),
