@@ -1,5 +1,6 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
 #include "../src/probe/original_d3d9_control_present.hpp"
+#include "../src/probe/original_d3d9_caller_bloom.hpp"
 #include "../src/probe/original_d3d9_validation_policy.hpp"
 #include "../src/probe/original_d3d9_resource_owner.hpp"
 #include "../src/probe/original_d3d9_buffer_mutation.hpp"
@@ -55,6 +56,17 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
+    // Independent four-family physical Draw fingerprint rejects a caller
+    // reused by an UP-only control even without sampled UP vertex evidence.
+    static_assert(!OriginalDrawCallerCouldBeInBloom({},0x004a1234u));
+    constexpr auto caller_bits=OriginalDrawCallerBits(0x004a1234u);
+    static_assert(caller_bits.lane0 && caller_bits.lane1);
+    static_assert(OriginalDrawCallerCouldBeInBloom(caller_bits,0x004a1234u));
+    static_assert(!OriginalDrawCallerCouldBeInBloom(caller_bits,0u));
+    constexpr auto second_bits=OriginalDrawCallerBits(0x004bb400u);
+    static_assert(OriginalDrawCallerCouldBeInBloom(
+        {caller_bits.lane0|second_bits.lane0,
+         caller_bits.lane1|second_bits.lane1},0x004bb400u));
     static_assert(kOriginalLineageKinds==61);
     static_assert(OriginalControlPresentSample(1u,0u,0u,0u,0u));
     static_assert(OriginalControlPresentSample(8u,100u,5u,21u,8u));

@@ -14,6 +14,7 @@
 #include "original_d3d9_surface_result_gate.hpp"
 #include "original_d3d9_lineage.hpp"
 #include "original_d3d9_control_present.hpp"
+#include "original_d3d9_caller_bloom.hpp"
 #include "original_d3d9_validation_policy.hpp"
 #include "original_d3d9_resource_owner.hpp"
 #include "original_d3d9_transform_lineage.hpp"
@@ -469,6 +470,24 @@ void TraceFirstOriginalPresentStage(bool selected,unsigned stage,
 // Physical original Draw order across all four API families, including
 // unsampled commands. Never inferred from per-family sample cadence.
 std::atomic<std::uint64_t> g_original_frame_draw_ordinal{0u};
+// Monotonic original EXE caller signatures across ALL four real Draw families.
+// Never reset at a Present: a 1-in-1024 source sample could otherwise miss
+// an UP-only title/sky/HUD caller reused by a supposedly race-only adapter.
+std::atomic<std::uint64_t> g_original_draw_caller_bloom_lo{0u};
+std::atomic<std::uint64_t> g_original_draw_caller_bloom_hi{0u};
+std::atomic<bool> g_original_draw_caller_unknown{false};
+void ObserveOriginalAllFamilyDrawCaller(void* origin) noexcept {
+    const auto rva=CallerRva(origin);
+    if(!rva){
+        g_original_draw_caller_unknown.store(true,std::memory_order_release);
+        return;
+    }
+    const auto bits=m2vr::drawprobe::OriginalDrawCallerBits(rva);
+    g_original_draw_caller_bloom_lo.fetch_or(
+        bits.lane0,std::memory_order_relaxed);
+    g_original_draw_caller_bloom_hi.fetch_or(
+        bits.lane1,std::memory_order_relaxed);
+}
 // Optional successful original BeginScene/EndScene provenance, never a
 // substitute for independently authenticated race-world/HUD ownership.
 std::atomic<unsigned> g_original_scene_ordinal{0u};
@@ -1859,6 +1878,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    ObserveOriginalAllFamilyDrawCaller(caller);
     const bool startup_first_draw=TraceFirstOriginalDrawEntry(1u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
@@ -1908,6 +1928,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    ObserveOriginalAllFamilyDrawCaller(caller);
     const bool startup_first_draw=TraceFirstOriginalDrawEntry(2u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
@@ -1957,6 +1978,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    ObserveOriginalAllFamilyDrawCaller(caller);
     const bool startup_first_draw=TraceFirstOriginalDrawEntry(3u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
@@ -2006,6 +2028,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    ObserveOriginalAllFamilyDrawCaller(caller);
     const bool startup_first_draw=TraceFirstOriginalDrawEntry(4u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
@@ -3063,6 +3086,16 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             frame,static_cast<std::uint32_t>(original_result),
             m2vr::drawprobe::OriginalControlPresentPair(dp,dip),
             m2vr::drawprobe::OriginalControlPresentPair(dpup,dipup));
+    // A cumulative fingerprint is emitted at EVERY real primary Present,
+    // never only a sampled VB/IB or every-eighth UP frame. A PRIVATE capture
+    // can therefore reject callers reused by menu/sky/HUD even when a Draw
+    // was outside the 1-in-1024 detailed material witness cadence.
+    // Bitwise OR is monotonic over the process lifetime; unknown EXE origin
+    // forces conservative rejection by the offline negative-control gate.
+    m2vr::LogEvent("model2_d3d9_original_all_family_caller_bloom",
+        frame,g_original_draw_caller_bloom_lo.load(std::memory_order_acquire),
+        g_original_draw_caller_bloom_hi.load(std::memory_order_acquire),
+        g_original_draw_caller_unknown.load(std::memory_order_acquire)?1u:0u);
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair
