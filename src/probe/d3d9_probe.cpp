@@ -1934,6 +1934,15 @@ std::uint64_t ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
     return id;
 }
 
+void RecordOriginalSourceCompletion(std::uint64_t witness,
+     std::uint64_t frame,std::uint64_t ordinal,
+     m2vr::drawprobe::OriginalPhysicalSampleCompletion evidence) {
+    if(!witness)return;
+    // A single genuine hardware Draw COM completion, never a guessed
+    // pre-COM Scene/RT snapshot or CPU projection-only correlation.
+    m2vr::LogEvent("model2_d3d9_source_draw_completion",witness,
+        frame,ordinal,evidence.Encode());
+}
 void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
                                 void* caller,unsigned family,
                                 std::uint64_t original_frame,
@@ -2082,15 +2091,19 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
-    if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
-           original_lineage,ReadOriginalLineage(source_frame)))
+    const bool same_lineage=m2vr::drawprobe::SameOriginalLineage(
+        original_lineage,ReadOriginalLineage(source_frame));
+    if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,1u,CallerRva(caller));
-    g_original_target_draw_coverage.CompleteDraw(original_target_ticket,
-        CallerRva(caller)!=0u,SUCCEEDED(hr));
+    const bool target_retained=g_original_target_draw_coverage.CompleteDraw(
+        original_target_ticket,CallerRva(caller)!=0u,SUCCEEDED(hr));
+    const bool scene_retained=OriginalSceneStillOwnedAfterDraw(
+        source_scene,source_scene_open);
     g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
-        OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
-        SUCCEEDED(hr));
+        scene_retained,SUCCEEDED(hr));
+    RecordOriginalSourceCompletion(witness,source_frame,source_ordinal,
+        {SUCCEEDED(hr),scene_retained,target_retained,same_lineage});
     RecordOriginalSourceResult(witness,hr,caller,1u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -2140,15 +2153,19 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
-    if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
-           original_lineage,ReadOriginalLineage(source_frame)))
+    const bool same_lineage=m2vr::drawprobe::SameOriginalLineage(
+        original_lineage,ReadOriginalLineage(source_frame));
+    if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
-            source_frame,source_ordinal,2u,CallerRva(caller));
-    g_original_target_draw_coverage.CompleteDraw(original_target_ticket,
-        CallerRva(caller)!=0u,SUCCEEDED(hr));
+            source_frame,source_ordinal,undefinedu,CallerRva(caller));
+    const bool target_retained=g_original_target_draw_coverage.CompleteDraw(
+        original_target_ticket,CallerRva(caller)!=0u,SUCCEEDED(hr));
+    const bool scene_retained=OriginalSceneStillOwnedAfterDraw(
+        source_scene,source_scene_open);
     g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
-        OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
-        SUCCEEDED(hr));
+        scene_retained,SUCCEEDED(hr));
+    RecordOriginalSourceCompletion(witness,source_frame,source_ordinal,
+        {SUCCEEDED(hr),scene_retained,target_retained,same_lineage});
     RecordOriginalSourceResult(witness,hr,caller,2u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -2198,15 +2215,19 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
-    if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
-           original_lineage,ReadOriginalLineage(source_frame)))
+    const bool same_lineage=m2vr::drawprobe::SameOriginalLineage(
+        original_lineage,ReadOriginalLineage(source_frame));
+    if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
-            source_frame,source_ordinal,3u,CallerRva(caller));
-    g_original_target_draw_coverage.CompleteDraw(original_target_ticket,
-        CallerRva(caller)!=0u,SUCCEEDED(hr));
+            source_frame,source_ordinal,undefinedu,CallerRva(caller));
+    const bool target_retained=g_original_target_draw_coverage.CompleteDraw(
+        original_target_ticket,CallerRva(caller)!=0u,SUCCEEDED(hr));
+    const bool scene_retained=OriginalSceneStillOwnedAfterDraw(
+        source_scene,source_scene_open);
     g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
-        OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
-        SUCCEEDED(hr));
+        scene_retained,SUCCEEDED(hr));
+    RecordOriginalSourceCompletion(witness,source_frame,source_ordinal,
+        {SUCCEEDED(hr),scene_retained,target_retained,same_lineage});
     RecordOriginalSourceResult(witness,hr,caller,3u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -2258,15 +2279,19 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
-    if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
-           original_lineage,ReadOriginalLineage(source_frame)))
+    const bool same_lineage=m2vr::drawprobe::SameOriginalLineage(
+        original_lineage,ReadOriginalLineage(source_frame));
+    if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
-            source_frame,source_ordinal,4u,CallerRva(caller));
-    g_original_target_draw_coverage.CompleteDraw(original_target_ticket,
-        CallerRva(caller)!=0u,SUCCEEDED(hr));
+            source_frame,source_ordinal,undefinedu,CallerRva(caller));
+    const bool target_retained=g_original_target_draw_coverage.CompleteDraw(
+        original_target_ticket,CallerRva(caller)!=0u,SUCCEEDED(hr));
+    const bool scene_retained=OriginalSceneStillOwnedAfterDraw(
+        source_scene,source_scene_open);
     g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
-        OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
-        SUCCEEDED(hr));
+        scene_retained,SUCCEEDED(hr));
+    RecordOriginalSourceCompletion(witness,source_frame,source_ordinal,
+        {SUCCEEDED(hr),scene_retained,target_retained,same_lineage});
     RecordOriginalSourceResult(witness,hr,caller,4u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);

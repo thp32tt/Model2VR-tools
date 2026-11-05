@@ -220,6 +220,18 @@ int main(){
         OriginalPhysicalRtClass::Auxiliary,OriginalPhysicalDepthClass::Compatible};
     const OriginalTargetSnapshot bad_depth{
         OriginalPhysicalRtClass::Backbuffer,OriginalPhysicalDepthClass::Incompatible};
+    static_assert(OriginalPhysicalSampleCompletion{
+        true,true,true,true}.CanRemainCandidate());
+    static_assert(OriginalPhysicalSampleCompletion{
+        true,true,true,true}.Encode()==15u);
+    static_assert(!OriginalPhysicalSampleCompletion{
+        false,true,true,true}.CanRemainCandidate());
+    static_assert(!OriginalPhysicalSampleCompletion{
+        true,false,true,true}.CanRemainCandidate());
+    static_assert(!OriginalPhysicalSampleCompletion{
+        true,true,false,true}.CanRemainCandidate());
+    static_assert(!OriginalPhysicalSampleCompletion{
+        true,true,true,false}.CanRemainCandidate());
     OriginalPhysicalTargetDrawCoverage targets{};
     const auto cold=targets.Revision();
     assert(targets.NeedsResolution());
@@ -248,7 +260,7 @@ int main(){
     for(unsigned family=0;family<4u;++family){
         (void)family;
         auto pass=targets.EnterDraw();
-        targets.CompleteDraw(pass,true,true);
+        assert(targets.CompleteDraw(pass,true,true));
     }
     auto trusted_targets=targets.FinishPresent();
     assert(trusted_targets.backbuffer==4u &&

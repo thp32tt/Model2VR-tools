@@ -53,6 +53,22 @@ struct OriginalRasterSnapshot {
     bool known=false;
     bool full_main_depth_view=false;
 };
+// Four independent post-original-COM facts for ONE sampled original Draw.
+// The tuple never identifies 3D geometry by itself; it only rules out stale
+// CPU-projector matches borrowing a different physical GPU Draw source.
+struct OriginalPhysicalSampleCompletion {
+    bool succeeded=false;
+    bool scene_retained=false;
+    bool target_retained=false;
+    bool lineage_retained=false;
+    constexpr std::uint32_t Encode() const noexcept {
+        return (succeeded?1u:0u) | (scene_retained?2u:0u) |
+               (target_retained?4u:0u) | (lineage_retained?8u:0u);
+    }
+    constexpr bool CanRemainCandidate() const noexcept {
+        return Encode()==15u;
+    }
+};
 struct OriginalPhysicalTargetSummary {
     std::uint32_t backbuffer=0u, auxiliary=0u, unknown=0u, failed=0u;
     std::uint32_t incompatible_depth=0u, flags=0u;
@@ -219,21 +235,25 @@ public:
         if(sealed_)flags_|=kCrossPresent;
         return result;
     }
-    void CompleteDraw(const Token& token,bool exe_caller,
+    // Per-genuine-COM-return sampled CPU/GPU correspondence: a successful
+    // original HRESULT alone does not retain source RT/Scene evidence. The
+    // boolean is strictly negative evidence and cannot enable World3D.
+    // Called on EVERY physical Draw, including unsampled original Draws.
+    bool CompleteDraw(const Token& token,bool exe_caller,
                       bool original_succeeded) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        if(!token.valid){flags_|=kOverflow;return;}
-        if(!active_){flags_|=kCrossPresent;return;}
+        if(!token.valid){flags_|=kOverflow;return false;}
+        if(!active_){flags_|=kCrossPresent;return false;}
         --active_;
         if(token.epoch!=epoch_ || sealed_) {
-            flags_|=kCrossPresent;return;
+            flags_|=kCrossPresent;return false;
         }
         if(token.revision!=revision_){
             flags_|=kTargetDrift;
             Increment(unknown_);
-            return;
+            return false;
         }
-        if(!original_succeeded){Increment(failed_);return;}
+        if(!original_succeeded){Increment(failed_);return false;}
         if(!exe_caller || !token.owned_target || !token.owned_depth)
             flags_|=kUnownedTarget;
         if(token.state.depth!=OriginalPhysicalDepthClass::Compatible){
@@ -244,6 +264,12 @@ public:
         case OriginalPhysicalRtClass::Auxiliary: Increment(auxiliary_);break;
         default: Increment(unknown_);break;
         }
+        return flags_==0u && active_binds_==0u &&
+            token.owned_target && token.owned_depth && exe_caller &&
+            token.state.target==OriginalPhysicalRtClass::Backbuffer &&
+            token.state.depth==OriginalPhysicalDepthClass::Compatible &&
+            secondary_resolved_ && secondary_known_ && !secondary_mask_ &&
+            (!require_raster_ || (raster_resolved_ && raster_eligible_));
     }
     OriginalPhysicalTargetSummary FinishPresent() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
