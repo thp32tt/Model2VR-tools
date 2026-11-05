@@ -60,11 +60,11 @@ class OriginalD3D9PresentationSourceTest(unittest.TestCase):
         self.assertIn("g.source_epoch.Revoke(physical_present)",self.bridge)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",self.bridge)
         self.assertIn("model2_d3d9_original_presentation_control_rejected",self.bridge)
-        self.assertIn("kOriginalLineageKinds=56",self.lineage)
+        self.assertIn("kOriginalLineageKinds=57",self.lineage)
         self.assertIn("DeviceDialogBoxMode=49",self.lineage)
         self.assertIn("DeviceGammaRamp=50",self.lineage)
-        self.assertIn("method<=74u",self.failure)
-        self.assertIn("method>74u",self.gpu)
+        self.assertIn("method<=75u",self.failure)
+        self.assertIn("method>75u",self.gpu)
         for auditor in ("tools/model2_draw_source_report.py",
                         "tools/model2_up_draw_outcomes.py"):
             src=(ROOT/auditor).read_text("utf-8")
