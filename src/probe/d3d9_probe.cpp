@@ -2045,30 +2045,45 @@ HRESULT STDMETHODCALLTYPE SetPaletteEntriesHook(IDirect3DDevice9* d,
                                                 UINT palette,const PALETTEENTRY* entries){
     if(!g_primary_device.Owns(d))return g_set_palette_entries(d,palette,entries);
     void* const origin=_ReturnAddress();
-    const HRESULT hr=g_set_palette_entries(d,palette,entries);
     const auto rva=CallerRva(origin);
-    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,31u,rva);
-    if(rva && SUCCEEDED(hr)){
-        RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PaletteEntries,rva,hr);
-        Model2VR_ObserveOriginalD3D9PaletteMutation(
-            g_present_count.load(std::memory_order_acquire)+1u,rva,
-            g_original_frame_draw_ordinal.load(std::memory_order_acquire),1u);
+    // The real COM method can overwrite an already-staged GPU/CPU eye's
+    // indexed texels. Retire its original-Present source BEFORE that write.
+    // A non-EXE caller on the primary device has unknown display ownership.
+    if(rva)Model2VR_ObserveOriginalD3D9PaletteMutation(
+        g_present_count.load(std::memory_order_acquire)+1u,rva,
+        g_original_frame_draw_ordinal.load(std::memory_order_acquire),1u);
+    else {
+        g_original_external_presentation_unproven.store(
+            true,std::memory_order_release);
+        Model2VR_ObserveOriginalD3D9PresentationMutation(
+            g_present_count.load(std::memory_order_acquire)+1u,0u,0u,5u);
     }
+    const HRESULT hr=g_set_palette_entries(d,palette,entries);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,31u,rva);
+    if(rva && SUCCEEDED(hr))
+        RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PaletteEntries,rva,hr);
     return hr;
 }
 HRESULT STDMETHODCALLTYPE SetCurrentTexturePaletteHook(IDirect3DDevice9* d,
                                                         UINT palette){
     if(!g_primary_device.Owns(d))return g_set_current_texture_palette(d,palette);
     void* const origin=_ReturnAddress();
-    const HRESULT hr=g_set_current_texture_palette(d,palette);
     const auto rva=CallerRva(origin);
-    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,32u,rva);
-    if(rva && SUCCEEDED(hr)){
-        RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::CurrentPalette,rva,hr);
-        Model2VR_ObserveOriginalD3D9PaletteMutation(
-            g_present_count.load(std::memory_order_acquire)+1u,rva,
-            g_original_frame_draw_ordinal.load(std::memory_order_acquire),2u);
+    // Palette selection may change bound texture appearance without Draw,
+    // even for an in-flight original stereo frame. Retire first.
+    if(rva)Model2VR_ObserveOriginalD3D9PaletteMutation(
+        g_present_count.load(std::memory_order_acquire)+1u,rva,
+        g_original_frame_draw_ordinal.load(std::memory_order_acquire),2u);
+    else {
+        g_original_external_presentation_unproven.store(
+            true,std::memory_order_release);
+        Model2VR_ObserveOriginalD3D9PresentationMutation(
+            g_present_count.load(std::memory_order_acquire)+1u,0u,0u,5u);
     }
+    const HRESULT hr=g_set_current_texture_palette(d,palette);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,32u,rva);
+    if(rva && SUCCEEDED(hr))
+        RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::CurrentPalette,rva,hr);
     return hr;
 }
 HRESULT STDMETHODCALLTYPE StretchRectHook(IDirect3DDevice9* d,
