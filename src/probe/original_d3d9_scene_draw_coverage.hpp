@@ -21,6 +21,14 @@ struct OriginalPhysicalSceneDrawSummary {
         return flags==0u && begins==ends &&
             successful_in_scene>0u && !successful_untrusted && !failed_draws;
     }
+    // A real hardware source outside trusted Scene, or any failed original
+    // Draw/Scene, poisons BOTH stereo routes for this same physical Present.
+    // A draw-free menu frame is not automatically a stereo-world candidate.
+    bool RejectUnprovenStereoSource()const noexcept {
+        return flags!=0u || begins!=ends || successful_untrusted!=0u ||
+            failed_draws!=0u ||
+            (TotalDraws()!=0u && successful_in_scene==0u);
+    }
 };
 class OriginalPhysicalSceneDrawCoverage final {
 public:

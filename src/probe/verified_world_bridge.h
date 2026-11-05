@@ -394,6 +394,9 @@ __declspec(dllexport) void __stdcall Model2VR_RejectVerifiedD3D9SourceDraw(
 // Genuine original Draw completed but an intervening material/camera write
 // changed the previously authenticated source nonce. Revoke both eye paths
 // and the physical Present epoch, never the original COM Draw or mono.
+__declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9SceneDrawCoverage(
+    unsigned long long physical_present,unsigned int flags,
+    unsigned int untrusted_successful_draws,unsigned int failed_draws);
 __declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
     unsigned long long physical_frame,unsigned long long ordinal,
     unsigned int family,unsigned int original_caller_rva);

@@ -1233,6 +1233,34 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9UnmirroredGeometry(
             physical_present,0u,std::uint64_t{method}<<32u,0u);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// Complete original primary Scene/Draw provenance is a physical-epoch
+// condition, not something a later sampled VB/UP camera can repair.
+// The original hardware COM Draws and Present still execute exactly once;
+// rejecting speculative eyes preserves original mono/HUD and input/FFB.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9SceneDrawCoverage(
+    unsigned long long physical_present,unsigned int flags,
+    unsigned int untrusted_successful_draws,unsigned int failed_draws){
+    using namespace m2vr::vrbridge;
+    if(!physical_present ||
+       !(flags || untrusted_successful_draws || failed_draws) ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool first=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_present &&
+           (g.active || g.pending_present)){
+            const auto old=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalSceneFailed;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=old;
+        }
+        first=g.source_epoch.Revoke(physical_present);
+    }
+    if(first)
+        m2vr::LogEvent("model2_d3d9_original_scene_coverage_rejected",
+            physical_present,flags,untrusted_successful_draws,failed_draws);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Strict original physical-Draw post-call check: a state write concurrent
 // with CPU eye raster or the genuine D3D9 Draw may change its source.
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(

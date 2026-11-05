@@ -2941,6 +2941,14 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         g_original_scene_open.load(std::memory_order_acquire),
         g_original_scene_poisoned.load(std::memory_order_acquire),
         g_original_scene_hooks_ready.load(std::memory_order_acquire));
+    // Real game source frame is no longer fully Scene-owned. Revoke BOTH
+    // partially prepared CPU and GPU eyes before physical COM Present.
+    // Never change the source D3D9 call, displayed mono or game input/FFB.
+    if(original_scene_coverage.RejectUnprovenStereoSource())
+        Model2VR_RejectOriginalD3D9SceneDrawCoverage(
+            frame,original_scene_coverage.flags,
+            original_scene_coverage.successful_untrusted,
+            original_scene_coverage.failed_draws);
     // An unobserved state-block Apply vtable stays unsafe across Reset and
     // Present. Keep the HMD on original mono, not stale speculative eyes.
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) &&

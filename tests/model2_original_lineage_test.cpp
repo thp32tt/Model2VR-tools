@@ -82,9 +82,11 @@ int main(){
     assert(good_scene.begins==1u && good_scene.ends==1u);
     assert(good_scene.successful_in_scene==2u);
     assert(good_scene.TotalDraws()==2u && good_scene.CompleteSourceScene());
+    assert(!good_scene.RejectUnprovenStereoSource());
     // Each physical Present starts a fresh scene proof epoch.
     auto empty_scene=scene.FinishPresent(false,false,true);
     assert(empty_scene.TotalDraws()==0u && empty_scene.flags==0u);
+    assert(!empty_scene.RejectUnprovenStereoSource());
     scene.Begin(true,true);
     scene.Draw(true,false,true); // source draw outside original scene
     scene.End(true,true,true);
@@ -92,15 +94,18 @@ int main(){
     assert(!outside_scene.CompleteSourceScene());
     assert(outside_scene.successful_untrusted==1u &&
            outside_scene.successful_in_scene==0u);
+    assert(outside_scene.RejectUnprovenStereoSource());
     scene.Draw(false,false,true); // non-EXE primary Draw is unknown
     auto unknown_scene=scene.FinishPresent(false,false,true);
     assert((unknown_scene.flags&OriginalPhysicalSceneDrawCoverage::kUnknownDraw)!=0u);
+    assert(unknown_scene.RejectUnprovenStereoSource());
     scene.Begin(true,true);
     scene.Draw(true,true,false); // actual failed original COM draw
     scene.End(true,true,true);
     auto failed_scene=scene.FinishPresent(false,false,true);
     assert(failed_scene.failed_draws==1u &&
            !failed_scene.CompleteSourceScene());
+    assert(failed_scene.RejectUnprovenStereoSource());
     scene.Begin(true,true);
     assert((scene.FinishPresent(true,false,true).flags&
         OriginalPhysicalSceneDrawCoverage::kUnbalanced)!=0u);
