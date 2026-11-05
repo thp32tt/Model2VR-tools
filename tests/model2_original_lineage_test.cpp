@@ -1,6 +1,7 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
 #include "../src/probe/original_d3d9_control_present.hpp"
 #include "../src/probe/original_d3d9_scene_draw_coverage.hpp"
+#include "../src/probe/original_d3d9_draw_target_coverage.hpp"
 #include "../src/probe/original_d3d9_caller_bloom.hpp"
 #include "../src/probe/original_d3d9_caller_inventory.hpp"
 #include "../src/probe/original_d3d9_validation_policy.hpp"
@@ -199,6 +200,93 @@ int main(){
            (saturated.flags&OriginalPhysicalSceneDrawCoverage::kOverflow)!=0u &&
            (saturated.flags&OriginalPhysicalSceneDrawCoverage::kCrossPresent)==0u &&
            (saturated.flags&OriginalPhysicalSceneDrawCoverage::kInFlightAtPresent)==0u);
+    // Actual RT0/depth provenance now accompanies each of the four original
+    // physical Draw COM methods and survives scene/target bind changes.
+    const OriginalTargetSnapshot main_depth{
+        OriginalPhysicalRtClass::Backbuffer,OriginalPhysicalDepthClass::Compatible};
+    const OriginalTargetSnapshot offscreen_depth{
+        OriginalPhysicalRtClass::Auxiliary,OriginalPhysicalDepthClass::Compatible};
+    const OriginalTargetSnapshot bad_depth{
+        OriginalPhysicalRtClass::Backbuffer,OriginalPhysicalDepthClass::Incompatible};
+    OriginalPhysicalTargetDrawCoverage targets{};
+    const auto cold=targets.Revision();
+    assert(targets.NeedsResolution());
+    targets.ResolveIfUnchanged(cold,main_depth);
+    assert(!targets.NeedsResolution());
+    auto inferred=targets.EnterDraw();
+    targets.CompleteDraw(inferred,true,true);
+    auto inferred_summary=targets.FinishPresent();
+    assert(inferred_summary.backbuffer==1u &&
+           (inferred_summary.flags&
+            OriginalPhysicalTargetDrawCoverage::kUnownedTarget)!=0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    targets.RenderTargetBind(true,true,true,main_depth);
+    targets.DepthBind(true,true,main_depth);
+    for(unsigned family=0;family<4u;++family){
+        (void)family;
+        auto pass=targets.EnterDraw();
+        targets.CompleteDraw(pass,true,true);
+    }
+    auto trusted_targets=targets.FinishPresent();
+    assert(trusted_targets.backbuffer==4u &&
+           trusted_targets.TotalDraws()==4u &&
+           !trusted_targets.RejectUnprovenStereoSource());
+    targets.ReopenAfterPhysicalPresentReturn();
+    auto changing=targets.EnterDraw();
+    targets.RenderTargetBind(true,true,true,offscreen_depth);
+    targets.CompleteDraw(changing,true,true);
+    auto drift=targets.FinishPresent();
+    assert((drift.flags&OriginalPhysicalTargetDrawCoverage::kTargetDrift)!=0u &&
+           drift.unknown==1u && drift.RejectUnprovenStereoSource());
+    targets.ReopenAfterPhysicalPresentReturn();
+    auto aux_draw=targets.EnterDraw();
+    targets.CompleteDraw(aux_draw,true,true);
+    auto auxiliary=targets.FinishPresent();
+    assert(auxiliary.auxiliary==1u && auxiliary.flags==0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    targets.DepthBind(true,true,bad_depth);
+    auto depth_draw=targets.EnterDraw();
+    targets.CompleteDraw(depth_draw,true,true);
+    auto incompatible=targets.FinishPresent();
+    assert((incompatible.flags&
+           OriginalPhysicalTargetDrawCoverage::kInvalidDepth)!=0u);
+    assert(incompatible.incompatible_depth==1u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    targets.DepthBind(true,true,main_depth);
+    auto pending=targets.EnterDraw();
+    assert((targets.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kInFlight)!=0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    targets.CompleteDraw(pending,true,true);
+    const auto late_target=targets.FinishPresent();
+    assert((late_target.flags&
+            OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    const auto reset_target=targets.EnterDraw();
+    targets.Reset();
+    targets.CompleteDraw(reset_target,true,true);
+    assert((targets.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    targets.RenderTargetBind(true,true,true,main_depth);
+    targets.DepthBind(true,true,main_depth);
+    const auto before_malformed=targets.EnterDraw();
+    targets.CompleteDraw({},true,true); // a failed ticket cannot steal a slot
+    targets.CompleteDraw(before_malformed,true,true);
+    auto recovered_target=targets.FinishPresent();
+    assert(recovered_target.backbuffer==1u &&
+           (recovered_target.flags&
+            OriginalPhysicalTargetDrawCoverage::kOverflow)!=0u &&
+           (recovered_target.flags&
+            OriginalPhysicalTargetDrawCoverage::kInFlight)==0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    targets.RenderTargetBind(false,true,true,offscreen_depth);
+    auto foreign=targets.EnterDraw();
+    targets.CompleteDraw(foreign,false,true);
+    auto foreign_result=targets.FinishPresent();
+    assert((foreign_result.flags&
+            OriginalPhysicalTargetDrawCoverage::kForeignBind)!=0u);
+    assert(foreign_result.RejectUnprovenStereoSource());
     OriginalDrawCallerInventory exact{};
     assert(exact.Count()==0u && !exact.Incomplete());
     assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);
