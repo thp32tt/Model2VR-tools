@@ -108,6 +108,13 @@ public:
         m2vr::LogEvent("model2_vr_gpu_original_clear_failed",
             flags,original_hresult,scene_draws_,mirrored_clears_);
     }
+    void MarkOriginalLineageMismatch()noexcept{
+        std::lock_guard lock(mu_);
+        if(!enabled_ || source_original_failed_)return;
+        source_original_failed_=true;
+        m2vr::LogEvent("model2_vr_gpu_original_lineage_mismatch",
+            scene_draws_,mirrored_draws_,mirrored_stretches_,0u);
+    }
     void MarkFailedOriginalSurface(std::uint32_t method,
                                    std::uint32_t original_hresult)noexcept{
         // Keep in lockstep with original_d3d9_surface_result_gate.hpp:
@@ -1245,6 +1252,9 @@ void MirrorIndexedUP(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT min,
 void MarkFailedOriginalSurface(std::uint32_t method,
                                std::uint32_t original_hresult)noexcept{
     g_eye.MarkFailedOriginalSurface(method,original_hresult);
+}
+void MarkOriginalLineageMismatch()noexcept{
+    g_eye.MarkOriginalLineageMismatch();
 }
 void MarkFailedOriginalClear(std::uint32_t flags,
                              std::uint32_t original_hresult)noexcept{
