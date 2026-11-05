@@ -6,10 +6,11 @@
 // ROM, pixels or original game pointers; original mono/FFB/input unchanged.
 void BeforeOriginalPresentationControl(
     std::uint32_t caller_rva,std::uint32_t method) noexcept {
-    if(method<1u || method>5u)return;
+    if(method<1u || method>9u)return;
+    const bool fallback=(method>=3u && method<=5u)||method==9u;
     Model2VR_ObserveOriginalD3D9PresentationMutation(
         g_present_count.load(std::memory_order_acquire)+1u,caller_rva,
-        method>=3u?0u:g_original_frame_draw_ordinal.load(
+        fallback?0u:g_original_frame_draw_ordinal.load(
             std::memory_order_acquire),method);
 }
 HRESULT STDMETHODCALLTYPE OriginalSetDialogBoxModeHook(
