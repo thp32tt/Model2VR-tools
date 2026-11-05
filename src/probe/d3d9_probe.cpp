@@ -2400,7 +2400,7 @@ HRESULT STDMETHODCALLTYPE SetRenderTargetHook(IDirect3DDevice9* d,DWORD slot,
     const auto caller_rva=CallerRva(caller);
     // Observe the real post-COM RT0/depth; never replay the game Set* call.
     g_original_target_draw_coverage.RenderTargetBind(
-        caller_rva!=0u,SUCCEEDED(hr),slot==0u,
+        caller_rva!=0u,SUCCEEDED(hr),slot,surface!=nullptr,
         (SUCCEEDED(hr) && slot==0u)?ReadPhysicalOriginalRtDepth(d):
             m2vr::drawprobe::OriginalTargetSnapshot{});
     if(caller_rva && FAILED(hr))
@@ -2903,6 +2903,9 @@ HRESULT STDMETHODCALLTYPE StateBlockApplyHook(IDirect3DStateBlock9* block){
     if(!rva)return hr; // never attribute internal mirror/other DLL calls
     const auto frame=g_present_count.load(std::memory_order_acquire)+1u;
     if(primary){
+        // An authentic state-block may restore RT0/depth/MRT without calling
+        // the individually hooked Device9 SetRenderTarget/SetDepth methods.
+        g_original_target_draw_coverage.InvalidateOpaqueStateBlock();
         RecordOriginalLineageWrite(
             m2vr::drawprobe::OriginalLineageKind::StateBlockApply,rva,hr);
         // Even successful Apply may replace unobserved state. Discard the
@@ -2930,6 +2933,7 @@ bool EnsureStateBlockApplyObserved(IDirect3DStateBlock9* block){
 }
 void StateBlockHookCoverageFailed(std::uint32_t rva)noexcept{
     g_state_block_apply_unobserved.store(true,std::memory_order_release);
+    g_original_target_draw_coverage.InvalidateOpaqueStateBlock();
     if(rva)Model2VR_RejectOriginalD3D9StateBlockMutation(
         g_present_count.load(std::memory_order_acquire)+1u,2u,rva,0u);
 }
