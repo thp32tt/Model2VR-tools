@@ -15,6 +15,7 @@
 #include "original_d3d9_lineage.hpp"
 #include "original_d3d9_stream_frequency.hpp"
 #include "original_d3d9_raster_mode.hpp"
+#include "original_d3d9_unmirrored_geometry.hpp"
 #include "original_d3d9_authenticated_draw.hpp"
 #include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
@@ -89,6 +90,11 @@ using SetClipPlaneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,const 
 using SetClipStatusFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,const D3DCLIPSTATUS9*);
 using SetSoftwareVPFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,BOOL);
 using SetNPatchFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,float);
+// Authentically processed vertex buffers and higher-order patch draws.
+using ProcessVerticesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,UINT,UINT,IDirect3DVertexBuffer9*,IDirect3DVertexDeclaration9*,DWORD);
+using DrawRectPatchFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const float*,const D3DRECTPATCH_INFO*);
+using DrawTriPatchFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const float*,const D3DTRIPATCH_INFO*);
+using DeletePatchFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT);
 // IDirect3DDevice9 COM 59/60/61 and IDirect3DStateBlock9::Apply slot 5.
 // Block Apply may restore unobserved camera/material values without Set* COM.
 using CreateStateBlockFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -149,6 +155,10 @@ SetClipPlaneFn g_set_clip_plane=nullptr;
 SetClipStatusFn g_set_clip_status=nullptr;
 SetSoftwareVPFn g_set_software_vp=nullptr;
 SetNPatchFn g_set_npatch_mode=nullptr;
+ProcessVerticesFn g_process_vertices=nullptr;
+DrawRectPatchFn g_draw_rect_patch=nullptr;
+DrawTriPatchFn g_draw_tri_patch=nullptr;
+DeletePatchFn g_delete_patch=nullptr;
 CreateStateBlockFn g_create_state_block=nullptr;
 BeginStateBlockFn g_begin_state_block=nullptr;
 EndStateBlockFn g_end_state_block=nullptr;
@@ -158,6 +168,7 @@ std::mutex g_state_block_hook_mutex;
 std::atomic<bool> g_state_block_apply_unobserved{false};
 m2vr::drawprobe::OriginalStreamFrequencyState g_original_stream_frequency_state{};
 m2vr::drawprobe::OriginalRasterModeState g_original_raster_mode_state{};
+m2vr::drawprobe::OriginalUnmirroredGeometryState g_unmirrored_geometry_state{};
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -240,6 +251,10 @@ extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PaletteMutation(
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9RasterMode(
     unsigned long long physical_present,unsigned int unsafe_mask,
     unsigned int caller_rva);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9UnmirroredGeometry(
+    unsigned long long physical_present,unsigned int method,
+    unsigned int caller_rva,unsigned long long ordinal,
+    unsigned int original_hresult);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -2118,6 +2133,54 @@ HRESULT STDMETHODCALLTYPE SetNPatchModeHook(IDirect3DDevice9* d,float segments){
     }
     return hr;
 }
+// Original EXE COM runs exactly once. Unmirrored geometry cannot publish a
+// speculative CPU/GPU eye pair; source patch/vertex bytes stay private.
+void RejectUnmirrored(unsigned method,void* caller,std::uint64_t ordinal,HRESULT hr){
+    const auto rva=CallerRva(caller);
+    if(!rva)return;
+    const auto frame=g_present_count.load(std::memory_order_acquire)+1u;
+    Model2VR_RejectOriginalD3D9UnmirroredGeometry(
+        frame,method,rva,ordinal,static_cast<std::uint32_t>(hr));
+}
+HRESULT STDMETHODCALLTYPE ProcessVerticesHook(IDirect3DDevice9* d,UINT src,UINT dst,
+    UINT count,IDirect3DVertexBuffer9* vb,IDirect3DVertexDeclaration9* decl,DWORD flags){
+    if(!g_primary_device.Owns(d))return g_process_vertices(d,src,dst,count,vb,decl,flags);
+    void* origin=_ReturnAddress();
+    const HRESULT hr=g_process_vertices(d,src,dst,count,vb,decl,flags);
+    if(const auto rva=CallerRva(origin);rva && SUCCEEDED(hr)){
+        RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::ProcessVertices,rva,hr);
+        g_unmirrored_geometry_state.SuccessfulProcessVertices();
+    }
+    RejectUnmirrored(4u,origin,g_original_frame_draw_ordinal.load(std::memory_order_acquire),hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE DrawRectPatchHook(IDirect3DDevice9* d,UINT handle,
+    const float* segments,const D3DRECTPATCH_INFO* info){
+    if(!g_primary_device.Owns(d))return g_draw_rect_patch(d,handle,segments,info);
+    const m2vr::drawprobe::ScopedOriginalDrawBoundary boundary;
+    void* origin=_ReturnAddress();
+    const auto ordinal=g_original_frame_draw_ordinal.fetch_add(1u,std::memory_order_acq_rel)+1u;
+    const HRESULT hr=g_draw_rect_patch(d,handle,segments,info);
+    RejectUnmirrored(1u,origin,ordinal,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE DrawTriPatchHook(IDirect3DDevice9* d,UINT handle,
+    const float* segments,const D3DTRIPATCH_INFO* info){
+    if(!g_primary_device.Owns(d))return g_draw_tri_patch(d,handle,segments,info);
+    const m2vr::drawprobe::ScopedOriginalDrawBoundary boundary;
+    void* origin=_ReturnAddress();
+    const auto ordinal=g_original_frame_draw_ordinal.fetch_add(1u,std::memory_order_acq_rel)+1u;
+    const HRESULT hr=g_draw_tri_patch(d,handle,segments,info);
+    RejectUnmirrored(2u,origin,ordinal,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE DeletePatchHook(IDirect3DDevice9* d,UINT handle){
+    if(!g_primary_device.Owns(d))return g_delete_patch(d,handle);
+    void* origin=_ReturnAddress();
+    const HRESULT hr=g_delete_patch(d,handle);
+    RejectUnmirrored(3u,origin,g_original_frame_draw_ordinal.load(std::memory_order_acquire),hr);
+    return hr;
+}
 HRESULT STDMETHODCALLTYPE SetPSConstantFHook(IDirect3DDevice9* d,UINT start,
                                              const float* values,UINT count){
     if(!g_primary_device.Owns(d))return g_set_ps_constant_f(d,start,values,count);
@@ -2282,6 +2345,9 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     }
     // Check persisted source stream dividers BEFORE advancing Present ID:
     // reject speculative eyes even with no SetStreamSourceFreq this frame.
+    if(g_unmirrored_geometry_state.HasProcessedVertices())
+        Model2VR_RejectOriginalD3D9UnmirroredGeometry(
+            g_present_count.load(std::memory_order_acquire)+1u,5u,0u,0u,0u);
     const auto raster_mask=g_original_raster_mode_state.UnsupportedMask();
     if(raster_mask)Model2VR_RejectOriginalD3D9RasterMode(
         g_present_count.load(std::memory_order_acquire)+1u,raster_mask,0u);
@@ -2395,6 +2461,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     if(SUCCEEDED(result)){
         g_original_stream_frequency_state.AfterSuccessfulDeviceReset();
         g_original_raster_mode_state.AfterSuccessfulDeviceReset();
+        g_unmirrored_geometry_state.AfterSuccessfulDeviceReset();
     }
     return result;
 }
@@ -2458,6 +2525,10 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool clip_status=Hook(vtable[62],reinterpret_cast<void*>(&SetClipStatusHook),g_set_clip_status);
     const bool software_vp=Hook(vtable[77],reinterpret_cast<void*>(&SetSoftwareVertexProcessingHook),g_set_software_vp);
     const bool npatch=Hook(vtable[79],reinterpret_cast<void*>(&SetNPatchModeHook),g_set_npatch_mode);
+    const bool process_vertices=Hook(vtable[91],reinterpret_cast<void*>(&ProcessVerticesHook),g_process_vertices);
+    const bool rect_patch=Hook(vtable[115],reinterpret_cast<void*>(&DrawRectPatchHook),g_draw_rect_patch);
+    const bool tri_patch=Hook(vtable[116],reinterpret_cast<void*>(&DrawTriPatchHook),g_draw_tri_patch);
+    const bool delete_patch=Hook(vtable[117],reinterpret_cast<void*>(&DeletePatchHook),g_delete_patch);
     // Saved-state Apply can mutate camera/texture/shader without calling
     // the public Set* COM methods. Hook both state-block creation routes.
     const bool create_block=Hook(vtable[59],reinterpret_cast<void*>(&CreateStateBlockHook),g_create_state_block);
@@ -2476,7 +2547,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -2528,6 +2599,10 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(clip_status){MH_DisableHook(vtable[62]);MH_RemoveHook(vtable[62]);}
         if(software_vp){MH_DisableHook(vtable[77]);MH_RemoveHook(vtable[77]);}
         if(npatch){MH_DisableHook(vtable[79]);MH_RemoveHook(vtable[79]);}
+        if(process_vertices){MH_DisableHook(vtable[91]);MH_RemoveHook(vtable[91]);}
+        if(rect_patch){MH_DisableHook(vtable[115]);MH_RemoveHook(vtable[115]);}
+        if(tri_patch){MH_DisableHook(vtable[116]);MH_RemoveHook(vtable[116]);}
+        if(delete_patch){MH_DisableHook(vtable[117]);MH_RemoveHook(vtable[117]);}
         if(create_block){MH_DisableHook(vtable[59]);MH_RemoveHook(vtable[59]);}
         if(begin_block){MH_DisableHook(vtable[60]);MH_RemoveHook(vtable[60]);}
         if(end_block){MH_DisableHook(vtable[61]);MH_RemoveHook(vtable[61]);}
@@ -2556,6 +2631,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_set_material=nullptr;g_set_light=nullptr;
         g_light_enable=nullptr;g_set_clip_plane=nullptr;
         g_set_clip_status=nullptr;g_set_software_vp=nullptr;g_set_npatch_mode=nullptr;
+        g_process_vertices=nullptr;g_draw_rect_patch=nullptr;
+        g_draw_tri_patch=nullptr;g_delete_patch=nullptr;
         g_create_state_block=nullptr;g_begin_state_block=nullptr;
         g_end_state_block=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
@@ -2582,6 +2659,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         m2vr::LogEvent("model2_d3d9_fixed_function_hook_rollback",
             material,light,light_enable,clip_plane);
         m2vr::LogEvent("model2_d3d9_raster_mode_hook_rollback",clip_status,software_vp,npatch,0u);
+        m2vr::LogEvent("model2_d3d9_unmirrored_geometry_hook_rollback",
+            process_vertices,rect_patch,tri_patch,delete_patch);
         m2vr::LogEvent("model2_d3d9_stateblock_hook_rollback",
             create_block,begin_block,end_block,0u);
         return false;
@@ -2675,6 +2754,7 @@ Model2VR_CurrentOriginalD3D9LineageNonce(){
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
        g_original_stream_frequency_state.UnsupportedMask() ||
        g_original_raster_mode_state.UnsupportedMask() ||
+       g_unmirrored_geometry_state.HasProcessedVertices() ||
        !Model2VR_CurrentOriginalD3D9SceneOrdinal())return 0u;
     return m2vr::drawprobe::OriginalLineageNonce(ReadOriginalLineage(
         Model2VR_NextOriginalD3D9PresentFrameId()));

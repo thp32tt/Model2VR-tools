@@ -2,6 +2,7 @@
 #include "../src/probe/original_d3d9_stateblock_audit.hpp"
 #include "../src/probe/original_d3d9_stream_frequency.hpp"
 #include "../src/probe/original_d3d9_raster_mode.hpp"
+#include "../src/probe/original_d3d9_unmirrored_geometry.hpp"
 #include "../src/probe/original_d3d9_authenticated_draw.hpp"
 #include <cassert>
 #include <limits>
@@ -28,7 +29,14 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==35);
+    static_assert(kOriginalLineageKinds==36);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::ProcessVertices)==35u);
+    OriginalUnmirroredGeometryState unmirrored{};
+    assert(!unmirrored.HasProcessedVertices());
+    unmirrored.SuccessfulProcessVertices();
+    assert(unmirrored.HasProcessedVertices());
+    unmirrored.AfterSuccessfulDeviceReset();
+    assert(!unmirrored.HasProcessedVertices());
     static_assert(static_cast<unsigned>(OriginalLineageKind::ClipStatus)==32u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::SoftwareVertexProcessing)==33u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::NPatchMode)==34u);

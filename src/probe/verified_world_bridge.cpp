@@ -961,6 +961,35 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9RasterMode(
             physical_present,unsafe_mask,caller_rva,0u);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// Incomplete original D3D9 tessellated patch draws/processed vertex data
+// are never falsely promoted to independently rasterized OpenXR eyes.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9UnmirroredGeometry(
+    unsigned long long physical_present,unsigned int method,
+    unsigned int caller_rva,unsigned long long ordinal,
+    unsigned int original_hresult){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || method<1u || method>5u ||
+       (method==5u ? (caller_rva!=0u || ordinal!=0u) : caller_rva==0u) ||
+       ordinal>10000000u ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_present &&
+           (g.active || g.pending_present)){
+            const auto previous=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalUnmirroredGeometry;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=previous;
+        }
+        g.source_epoch.Revoke(physical_present);
+    }
+    // One sampled source-shape witness for private logs; never patch handle
+    // or original vertex buffer content. Caller/ordinal remain opaque.
+    if(physical_present==1u || physical_present%8u==0u)
+        m2vr::LogEvent("model2_d3d9_original_unmirrored_geometry",
+            physical_present,caller_rva,(std::uint64_t{method}<<32u)|ordinal,original_hresult);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Strict original physical-Draw post-call check: a state write concurrent
 // with CPU eye raster or the genuine D3D9 Draw may change its source.
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
