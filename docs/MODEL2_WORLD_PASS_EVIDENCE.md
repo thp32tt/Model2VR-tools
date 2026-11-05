@@ -1,5 +1,47 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Original D3D9 Clear and surface mutation integrity + scheduling report (2026-11-05)
+
+The physical *original game executable* primary D3D9 method calls `Clear` (43),
+`UpdateSurface` (30), `StretchRect` (34), and `ColorFill` (35) now return
+the game's original HRESULT without duplicate game calls. A failed HRESULT
+poisons the **same** physical original Present's uncommitted CPU-world and
+experimental GPU stereo candidates, whether the failed command happens
+before or after another successfully witnessed original Draw. The next
+physical Present may recover; a successful original Present still permits
+the **original mono game backbuffer** to be displayed as a flat HMD quad.
+No original game/ROM, FFB or simulation modification is performed.
+
+The real x86 source hook writes only bounded integer metadata:
+`model2_d3d9_original_clear_failed` / `model2_d3d9_original_surface_failed`
+on EXE-owned failures, and at most one successful
+`model2_d3d9_original_mutation_phase` per Clear/UpdateSurface/StretchRect/
+ColorFill every eighth original Present (including first original Present).
+Each successful phase witness ties the same original Present and EXE-relative
+return caller to preceding global four-family Draw ordinal and current
+successful original scene ordinal/open state. It is not permission to
+classify a pass as game world. Audit private traces locally:
+
+```sh
+python tools/model2_mutation_phase_report.py private/race_a.csv \
+  --output private/race_a_mutation_phase.json
+```
+
+The matched Daytona Win32+Win64 release ZIP also contains the same analyzer
+as `Analyze-OriginalMutation-Phase.py`; Python 3 is required. **Run this
+only on authorized PRIVATE captures, and keep all CSV/JSON/ROM/REA evidence
+in `thp32tt/Model2VR-analysis-private` or a private local directory.**
+`tools/model2_draw_source_report.py`,
+`tools/model2_up_draw_outcomes.py` and two-race/nonrace
+`tools/model2_world_pass_evidence.py` now all reject a previously
+eligible material+camera candidate contaminated by an authentic failed
+original Clear or surface transfer. Old reports without each new failure
+counter also fail closed. The analyzer reports
+`world_pass_proof=NOT_ESTABLISHED`, `adapter_auto_enable=false`,
+`hmd_runtime_validation=UNTESTED`; none of these logs alone calibrate
+Daytona world axes, camera translation/IPD, meters per unit, HUD/sky or
+authenticate physical Quest stereoscopy.
+
 This is a **local, read-only private-evidence triage tool**, not an auto
 world/HUD classifier or permission to publish XR eye frames.
 

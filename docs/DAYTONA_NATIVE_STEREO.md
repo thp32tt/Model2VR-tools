@@ -1,3 +1,31 @@
+## Genuine original Clear / surface mutation source integrity (2026-11-05)
+
+The current x86 original emulator DLL checks authentic game EXE-owned
+`Clear`, `UpdateSurface`, `StretchRect` and `ColorFill` HRESULTs at the
+**actual D3D9 COM call**. Any failed original source mutation rejects an
+incomplete CPU-world/GameStereo frame for that physical Present and drops
+speculative GPU-eye replay. The next genuine source frame may recover and
+the original mono backbuffer remains available after successful physical
+Present. This does not auto-enable a Daytona world pass.
+
+To examine where real original game render-target mutation occurs relative
+to original all-family Draw/scene/Present (without disclosing assets), run
+on an authorized PRIVATE x86 startup log:
+
+```powershell
+py -3 Analyze-OriginalMutation-Phase.py logs\daytona_vr_startup_PRIVATE.csv --output logs\mutation_phase_PRIVATE.json
+```
+
+The report only summarizes bounded original EXE caller RVAs, phase ordinals
+and source mutation families. Keep both input and output exclusively
+PRIVATE. The test build uses exact code SHA
+`d9c31c3beae51afe94586317eea6965de4069c75` and CI checks
+Public `41947996672`, ModDev `41947996689`, native Win32
+`41947996561`, Win32+Win64 ZIP `41947996626` — all SUCCESS.
+`RUNTIME_VALIDATION=UNTESTED`: passing CI does not demonstrate authentic
+Daytona 6DoF source/world camera calibration, native gameplay stereo or
+Quest3+VDXR hardware acceptance.
+
 ## Private original-UP physical Draw/Present evidence helper (2026-11-05)
 
 ## Emulator first-launch GUI in Quest 3 (2026-11-05)
@@ -13,10 +41,17 @@ is sampled at most 10 fps, letterboxed without stretching. It includes the
 **real Windows mouse cursor and hotspot** when the emulator window is in the
 foreground, so selecting a game remains visible while wearing the headset.
 
-- **Interaction:** use the PC mouse/keyboard or Virtual Desktop's existing
-  desktop-mouse feature to select the Daytona ROM; a dedicated OpenXR
-  controller-ray/mouse-click injector is not implemented. No synthetic game
-  keystrokes or mouse clicks are sent, and wheel FFB is unchanged.
+- **Interaction:** use the original PC mouse/keyboard or Virtual
+  Desktop's desktop mouse, **or** Quest Touch controller aim/trigger on
+  the world-fixed 2D menu quad. If the active OpenXR runtime rejects a
+  Touch trigger-to-boolean binding, left X / right A selection is supported.
+  Controller injection occurs **only** for the current real foreground
+  emulator HWND/PID with the exact target-point HWND also belonging to
+  that emulator, never in the actual race, unknown overlays or stereo
+  game transport. Disable by setting `quest_menu_controller_enabled=0`
+  in `daytona_native_stereo.ini`. This is build-verified only; real Quest
+  menu/controller interaction remains `RUNTIME_VALIDATION=UNTESTED`.
+  No synthetic game keystrokes or FFB writes are sent.
 - **Automatic handoff:** once a fresh real x86 D3D9 game source arrives, it
   supersedes the desktop window; verified stereo uses two projection views,
   original game mono uses the same world-fixed 2D quad. Menu capture is
