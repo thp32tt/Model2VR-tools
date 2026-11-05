@@ -120,7 +120,7 @@ class OriginalControlPhysicalPresentTest(unittest.TestCase):
                         present.index('"model2_d3d9_original_all_family_caller_bloom"'))
         for name in ("DrawHook","IndexedHook","DrawUPHook","IndexedUPHook"):
             chunk=native.split("HRESULT STDMETHODCALLTYPE "+name+"(")[1]
-            chunk=chunk.split("\\nHRESULT STDMETHODCALLTYPE ",1)[0]
+            chunk=chunk.split("HRESULT STDMETHODCALLTYPE ",1)[0]
             self.assertEqual(chunk.count("ObserveOriginalAllFamilyDrawCaller(caller);"),1)
             self.assertLess(chunk.index("if(!g_primary_device.Owns(d))"),
                             chunk.index("ObserveOriginalAllFamilyDrawCaller(caller);"))
