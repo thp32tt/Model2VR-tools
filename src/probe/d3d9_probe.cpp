@@ -49,6 +49,10 @@ using StretchRectFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DSurface9*,const RECT*,D3DTEXTUREFILTERTYPE);
 using ColorFillFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,D3DCOLOR);
+using SetRenderTargetFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,DWORD,IDirect3DSurface9*);
+using SetDepthStencilSurfaceFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,IDirect3DSurface9*);
 using ClearFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,DWORD,const D3DRECT*,DWORD,D3DCOLOR,float,DWORD);
 using PrimitiveFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,UINT);
@@ -69,6 +73,8 @@ ClearFn g_clear=nullptr;
 UpdateSurfaceFn g_update_surface=nullptr;
 StretchRectFn g_stretch_rect=nullptr;
 ColorFillFn g_color_fill=nullptr;
+SetRenderTargetFn g_set_render_target=nullptr;
+SetDepthStencilSurfaceFn g_set_depth_surface=nullptr;
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -84,6 +90,8 @@ std::array<std::atomic<unsigned>,4> g_family_samples{};
 // witness per operation and every eighth physical Present. A continuous
 // 60fps game must not flood local private analysis logs with raw content.
 std::array<std::atomic<unsigned>,4> g_original_mutation_samples{};
+// Successful game-owned target transitions: bounded per-real-Present evidence.
+std::array<std::atomic<unsigned>,2> g_original_target_bind_samples{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 // Physical original Draw order across all four API families, including
@@ -188,6 +196,57 @@ void LogOriginalD3D9MutationPhase(std::uint32_t method,
     m2vr::LogEvent("model2_d3d9_original_mutation_phase",
         frame,caller_rva,(std::uint64_t(method)<<32)|draw,
         (std::uint64_t(scene)<<32)|(open?1ull:0ull));
+}
+// Original successful primary-device target/depth binding evidence. The
+// source's target identity/format is never disclosed; only RT0 backbuffer
+// vs auxiliary and depth/target dimension match metadata are sampled.
+void LogOriginalD3D9TargetBindPhase(IDirect3DDevice9* d,
+    std::uint32_t method,std::uint32_t caller_rva,DWORD index,
+    IDirect3DSurface9* surface,HRESULT hr)noexcept{
+    if(!d || !caller_rva || method<1u || method>2u || FAILED(hr))return;
+    const auto frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    if(frame!=1u && frame%8u!=0u)return;
+    if(g_original_target_bind_samples[method-1u].fetch_add(
+        1u,std::memory_order_relaxed)!=0u)return;
+    unsigned target_class=0u;
+    bool desc_known=false,matching_size=false;
+    if(method==1u && index==0u && surface){
+        IDirect3DSurface9* backbuffer=nullptr;
+        if(SUCCEEDED(d->GetBackBuffer(0,0,D3DBACKBUFFER_TYPE_MONO,
+                                     &backbuffer)) && backbuffer){
+            target_class=surface==backbuffer?1u:2u;
+            backbuffer->Release();
+        }
+    }else if(method==2u && surface){
+        IDirect3DSurface9* target=nullptr;
+        D3DSURFACE_DESC depth_desc{},target_desc{};
+        const bool d_ok=SUCCEEDED(surface->GetDesc(&depth_desc));
+        const bool t_ok=SUCCEEDED(d->GetRenderTarget(0,&target))&&target &&
+            SUCCEEDED(target->GetDesc(&target_desc));
+        desc_known=d_ok&&t_ok;
+        matching_size=desc_known && depth_desc.Width==target_desc.Width &&
+            depth_desc.Height==target_desc.Height;
+        if(target)target->Release();
+    }
+    const auto ordinal=g_original_frame_draw_ordinal.load(
+        std::memory_order_relaxed);
+    const auto scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
+    if(ordinal>10000000u || scene>100000u)return;
+    const bool scene_open=g_original_scene_hooks_ready.load(
+        std::memory_order_acquire) &&
+        !g_original_scene_poisoned.load(std::memory_order_acquire) &&
+        g_original_scene_open.load(std::memory_order_acquire) &&
+        g_original_scene_owner_thread.load(std::memory_order_acquire)==
+            GetCurrentThreadId();
+    // a0=physical Present, a1=EXE caller RVA, a2=(bind method<<32)|Draw
+    // ordinal, a3=(scene ordinal<<32)|flags: bit0 scene open,
+    // bits8..9 RT0 class, bit16 descriptors known, bit17 size match.
+    const std::uint32_t flags=(scene_open?1u:0u)|
+        (target_class<<8u)|(desc_known?1u<<16u:0u)|
+        (matching_size?1u<<17u:0u);
+    m2vr::LogEvent("model2_d3d9_original_target_bind_phase",
+        frame,caller_rva,(std::uint64_t{method}<<32u)|ordinal,
+        (std::uint64_t{scene}<<32u)|flags);
 }
 void TrackFailedOriginalD3D9Clear(HRESULT hr,std::uint32_t flags,
                                   std::uint32_t caller_rva) noexcept {
@@ -1440,6 +1499,35 @@ HRESULT STDMETHODCALLTYPE ColorFillHook(IDirect3DDevice9* d,
     }
     return hr;
 }
+// Original target/depth COM calls are observed ONCE and never replayed.
+// Failed authentic source bindings invalidate both speculative GPU eyes and
+// authenticated CPU-world eyes for the same physical original Present.
+HRESULT STDMETHODCALLTYPE SetRenderTargetHook(IDirect3DDevice9* d,DWORD slot,
+                                              IDirect3DSurface9* surface){
+    if(!g_primary_device.Owns(d))
+        return g_set_render_target(d,slot,surface);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_render_target(d,slot,surface);
+    const auto caller_rva=CallerRva(caller);
+    if(caller_rva && FAILED(hr))
+        TrackFailedOriginalD3D9Surface(hr,4u,caller_rva);
+    else if(SUCCEEDED(hr))
+        LogOriginalD3D9TargetBindPhase(d,1u,caller_rva,slot,surface,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetDepthStencilSurfaceHook(IDirect3DDevice9* d,
+                                                     IDirect3DSurface9* surface){
+    if(!g_primary_device.Owns(d))
+        return g_set_depth_surface(d,surface);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_depth_surface(d,surface);
+    const auto caller_rva=CallerRva(caller);
+    if(caller_rva && FAILED(hr))
+        TrackFailedOriginalD3D9Surface(hr,5u,caller_rva);
+    else if(SUCCEEDED(hr))
+        LogOriginalD3D9TargetBindPhase(d,2u,caller_rva,0u,surface,hr);
+    return hr;
+}
 // Every COM Present path must execute the original game's method exactly
 // once; a secondary device is excluded from all primary frame accounting.
 HRESULT CallOriginalPresentOnce(IDirect3DDevice9* d,CONST RECT* a,
@@ -1490,6 +1578,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         counter.store(0u,std::memory_order_relaxed);
     for(auto& counter:g_original_mutation_samples)
         counter.store(0u,std::memory_order_relaxed);
+    for(auto& counter:g_original_target_bind_samples)
+        counter.store(0u,std::memory_order_relaxed);
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
@@ -1530,6 +1620,8 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     g_original_scene_ordinal.store(0u,std::memory_order_relaxed);
     for(auto& counter:g_original_mutation_samples)
         counter.store(0u,std::memory_order_relaxed);
+    for(auto& counter:g_original_target_bind_samples)
+        counter.store(0u,std::memory_order_relaxed);
     g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
@@ -1560,6 +1652,11 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool update=Hook(vtable[30],reinterpret_cast<void*>(&UpdateSurfaceHook),g_update_surface);
     const bool stretch=Hook(vtable[34],reinterpret_cast<void*>(&StretchRectHook),g_stretch_rect);
     const bool fill=Hook(vtable[35],reinterpret_cast<void*>(&ColorFillHook),g_color_fill);
+    // IDirect3DDevice9 SetRenderTarget=37, SetDepthStencilSurface=39.
+    const bool rt=Hook(vtable[37],reinterpret_cast<void*>(&SetRenderTargetHook),
+                       g_set_render_target);
+    const bool depth=Hook(vtable[39],
+        reinterpret_cast<void*>(&SetDepthStencilSurfaceHook),g_set_depth_surface);
     // Scene boundary observation is optional: if either COM hook cannot
     // be installed, rollback BOTH and mark scene source unknown. This
     // must never prevent the normal original game/mono fallback path.
@@ -1573,7 +1670,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -1593,14 +1690,18 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(update){MH_DisableHook(vtable[30]);MH_RemoveHook(vtable[30]);}
         if(stretch){MH_DisableHook(vtable[34]);MH_RemoveHook(vtable[34]);}
         if(fill){MH_DisableHook(vtable[35]);MH_RemoveHook(vtable[35]);}
+        if(rt){MH_DisableHook(vtable[37]);MH_RemoveHook(vtable[37]);}
+        if(depth){MH_DisableHook(vtable[39]);MH_RemoveHook(vtable[39]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_update_surface=nullptr;
         g_stretch_rect=nullptr;g_color_fill=nullptr;
+        g_set_render_target=nullptr;g_set_depth_surface=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
                        update,stretch,fill,clear);
+        m2vr::LogEvent("model2_d3d9_target_hook_rollback",rt,depth,0u,0u);
         return false;
     }
     // Vtable methods are shared by D3D9 devices. Bind the real first

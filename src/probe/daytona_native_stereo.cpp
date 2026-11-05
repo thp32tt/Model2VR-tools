@@ -110,7 +110,7 @@ public:
     }
     void MarkFailedOriginalSurface(std::uint32_t method,
                                    std::uint32_t original_hresult)noexcept{
-        if(method<1u || method>3u ||
+        if(method<1u || method>5u ||
            !(original_hresult&0x80000000u))return;
         std::lock_guard lock(mu_);
         if(!enabled_ || source_original_failed_)return;

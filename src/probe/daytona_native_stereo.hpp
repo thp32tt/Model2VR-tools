@@ -83,7 +83,7 @@ void MarkFailedOriginalScene(std::uint32_t transition,
 // A failed original EXE-owned primary Clear revokes incomplete GPU eyes.
 void MarkFailedOriginalClear(std::uint32_t flags,
                               std::uint32_t original_hresult) noexcept;
-// Original EXE-owned UpdateSurface, StretchRect and ColorFill failures.
+// Original EXE-owned surface transfer and RT/depth binding failures.
 void MarkFailedOriginalSurface(std::uint32_t method,
                                std::uint32_t original_hresult) noexcept;
 // A failed primary-device game EXE Draw in any of four families invalidates
