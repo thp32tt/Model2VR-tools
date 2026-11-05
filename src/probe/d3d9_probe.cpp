@@ -75,6 +75,11 @@ using SetRenderStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DRENDERS
 using SetShaderIntFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const int*,UINT);
 using SetShaderBoolFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const BOOL*,UINT);
 using SetFrequencyFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,UINT);
+// Track authentic source fixed-function state without inspecting game data.
+using SetMaterialFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,const D3DMATERIAL9*);
+using SetLightFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,const D3DLIGHT9*);
+using LightEnableFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,BOOL);
+using SetClipPlaneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,const float*);
 // IDirect3DDevice9 COM 59/60/61 and IDirect3DStateBlock9::Apply slot 5.
 // Block Apply may restore unobserved camera/material values without Set* COM.
 using CreateStateBlockFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -125,6 +130,10 @@ SetShaderBoolFn g_vs_b=nullptr;
 SetShaderIntFn g_ps_i=nullptr;
 SetShaderBoolFn g_ps_b=nullptr;
 SetFrequencyFn g_freq=nullptr;
+SetMaterialFn g_set_material=nullptr;
+SetLightFn g_set_light=nullptr;
+LightEnableFn g_light_enable=nullptr;
+SetClipPlaneFn g_set_clip_plane=nullptr;
 CreateStateBlockFn g_create_state_block=nullptr;
 BeginStateBlockFn g_begin_state_block=nullptr;
 EndStateBlockFn g_end_state_block=nullptr;
@@ -1417,6 +1426,10 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
             (std::uint64_t{w[22]}<<32)|w[23]);
         m2vr::LogEvent("model2_d3d9_source_stream_frequency_lineage",witness,
             original_frame,w[24],0u);
+        // Only original state revision counters; no light, material or plane data.
+        m2vr::LogEvent("model2_d3d9_source_fixed_function_lineage",witness,
+            original_frame,(std::uint64_t{w[25]}<<32)|w[26],
+            (std::uint64_t{w[27]}<<32)|w[28]);
     }
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
@@ -1940,6 +1953,45 @@ HRESULT STDMETHODCALLTYPE SetStreamFrequencyHook(IDirect3DDevice9* d,UINT stream
 }
 // Original material/texture/pixel-constant writes; genuine COM/HRESULT
 // unchanged. A failed EXE-owned mutation revokes both speculative eyes.
+// These four native D3D9 COM observers forward the original method ONCE,
+// retain HRESULT and leave original mono unaffected. Neither raw light,
+// material nor clipping coefficients are captured or logged.
+HRESULT STDMETHODCALLTYPE SetMaterialHook(IDirect3DDevice9* d,const D3DMATERIAL9* material){
+    if(!g_primary_device.Owns(d))return g_set_material(d,material);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_set_material(d,material);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,26u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::Material,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetLightHook(IDirect3DDevice9* d,DWORD index,const D3DLIGHT9* light){
+    if(!g_primary_device.Owns(d))return g_set_light(d,index,light);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_set_light(d,index,light);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,27u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::Light,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE LightEnableHook(IDirect3DDevice9* d,DWORD index,BOOL enabled){
+    if(!g_primary_device.Owns(d))return g_light_enable(d,index,enabled);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_light_enable(d,index,enabled);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,28u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::LightEnable,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetClipPlaneHook(IDirect3DDevice9* d,DWORD index,const float* plane){
+    if(!g_primary_device.Owns(d))return g_set_clip_plane(d,index,plane);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_set_clip_plane(d,index,plane);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,29u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::ClipPlane,rva,hr);
+    return hr;
+}
 HRESULT STDMETHODCALLTYPE SetPSConstantFHook(IDirect3DDevice9* d,UINT start,
                                              const float* values,UINT count){
     if(!g_primary_device.Owns(d))return g_set_ps_constant_f(d,start,values,count);
@@ -2265,6 +2317,10 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool ps_i=Hook(vtable[111],reinterpret_cast<void*>(&SetPSConstantIHook),g_ps_i);
     const bool ps_b=Hook(vtable[113],reinterpret_cast<void*>(&SetPSConstantBHook),g_ps_b);
     const bool freq=Hook(vtable[102],reinterpret_cast<void*>(&SetStreamFrequencyHook),g_freq);
+    const bool material=Hook(vtable[49],reinterpret_cast<void*>(&SetMaterialHook),g_set_material);
+    const bool light=Hook(vtable[51],reinterpret_cast<void*>(&SetLightHook),g_set_light);
+    const bool light_enable=Hook(vtable[53],reinterpret_cast<void*>(&LightEnableHook),g_light_enable);
+    const bool clip_plane=Hook(vtable[55],reinterpret_cast<void*>(&SetClipPlaneHook),g_set_clip_plane);
     // Saved-state Apply can mutate camera/texture/shader without calling
     // the public Set* COM methods. Hook both state-block creation routes.
     const bool create_block=Hook(vtable[59],reinterpret_cast<void*>(&CreateStateBlockHook),g_create_state_block);
@@ -2283,7 +2339,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -2325,6 +2381,10 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(ps_i){MH_DisableHook(vtable[111]);MH_RemoveHook(vtable[111]);}
         if(ps_b){MH_DisableHook(vtable[113]);MH_RemoveHook(vtable[113]);}
         if(freq){MH_DisableHook(vtable[102]);MH_RemoveHook(vtable[102]);}
+        if(material){MH_DisableHook(vtable[49]);MH_RemoveHook(vtable[49]);}
+        if(light){MH_DisableHook(vtable[51]);MH_RemoveHook(vtable[51]);}
+        if(light_enable){MH_DisableHook(vtable[53]);MH_RemoveHook(vtable[53]);}
+        if(clip_plane){MH_DisableHook(vtable[55]);MH_RemoveHook(vtable[55]);}
         if(create_block){MH_DisableHook(vtable[59]);MH_RemoveHook(vtable[59]);}
         if(begin_block){MH_DisableHook(vtable[60]);MH_RemoveHook(vtable[60]);}
         if(end_block){MH_DisableHook(vtable[61]);MH_RemoveHook(vtable[61]);}
@@ -2349,6 +2409,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_ps_i=nullptr;
         g_ps_b=nullptr;
         g_freq=nullptr;
+        g_set_material=nullptr;g_set_light=nullptr;
+        g_light_enable=nullptr;g_set_clip_plane=nullptr;
         g_create_state_block=nullptr;g_begin_state_block=nullptr;
         g_end_state_block=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
@@ -2368,6 +2430,8 @@ bool HookDevice(IDirect3DDevice9* dev){
             vs_i,vs_b,ps_i,ps_b);
         m2vr::LogEvent("model2_d3d9_stream_freq_hook_rollback",
             freq,0u,0u,0u);
+        m2vr::LogEvent("model2_d3d9_fixed_function_hook_rollback",
+            material,light,light_enable,clip_plane);
         m2vr::LogEvent("model2_d3d9_stateblock_hook_rollback",
             create_block,begin_block,end_block,0u);
         return false;

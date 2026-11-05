@@ -26,7 +26,11 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==25);
+    static_assert(kOriginalLineageKinds==29);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::Material)==25u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::Light)==26u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::LightEnable)==27u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::ClipPlane)==28u);
     OriginalLineageStamp initial{77,{}};
     assert(!OriginalLineageUsable(initial));
     assert(OriginalLineageNonce(initial)==0);
@@ -86,6 +90,18 @@ int main(){
     assert(!one_shot.Take(77u,5u,2u,0x345u,3u,true,accepted,
                          OriginalLineageNonce(rebound),&mismatch));
     assert(mismatch && !one_shot.Pending());
+    // Fixed-function mutations invalidate the exact original Draw one-shot.
+    for(auto kind:{OriginalLineageKind::Material,OriginalLineageKind::Light,
+                   OriginalLineageKind::LightEnable,OriginalLineageKind::ClipPlane}){
+        auto token=rule;
+        token.expected_lineage_nonce=OriginalLineageNonce(initial);
+        assert(one_shot.Arm(token));
+        auto changed_fixed=initial;
+        ++changed_fixed.successful_writes[static_cast<std::size_t>(kind)];
+        assert(!one_shot.Take(77u,5u,2u,0x345u,3u,true,accepted,
+            OriginalLineageNonce(changed_fixed),&mismatch));
+        assert(mismatch && !one_shot.Pending());
+    }
     // Legacy ABI is unchanged; the external world-proof gate remains.
     rule.expected_lineage_nonce=0u;
     assert(one_shot.Arm(rule));

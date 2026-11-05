@@ -118,9 +118,10 @@ public:
     void MarkFailedOriginalSurface(std::uint32_t method,
                                    std::uint32_t original_hresult)noexcept{
         // Keep in lockstep with original_d3d9_surface_result_gate.hpp:
-        // 8/9=viewport/scissor; 10..15=geometry/shader; 16..25=materials/constants/frequency.
+        // 8/9=viewport/scissor; 10..15=geometry/shader;
+// 16..25=material/constants/instancing; 26..29=fixed-function state.
         // A failed original state mutation cannot publish GPU binocular eyes.
-        if(method<1u || method>25u ||
+        if(method<1u || method>29u ||
            !(original_hresult&0x80000000u))return;
         std::lock_guard lock(mu_);
         if(!enabled_ || source_original_failed_)return;
