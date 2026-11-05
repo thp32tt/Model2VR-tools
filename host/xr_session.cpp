@@ -13,6 +13,7 @@ void checkhr(HRESULT r,const char* op){
     if(FAILED(r))throw std::runtime_error(std::string(op)+" HRESULT="+std::to_string(r));
 }
 XrApp::~XrApp(){
+    menu_controller_.Shutdown();
     for(auto& c:chains_)if(c.handle!=XR_NULL_HANDLE)xrDestroySwapchain(c.handle);
     if(local_space_!=XR_NULL_HANDLE)xrDestroySpace(local_space_);
     if(session_!=XR_NULL_HANDLE)xrDestroySession(session_);
@@ -123,6 +124,8 @@ void XrApp::initialize(){
     space_info.referenceSpaceType=XR_REFERENCE_SPACE_TYPE_LOCAL;
     space_info.poseInReferenceSpace.orientation.w=1.0f;
     check(xrCreateReferenceSpace(session_,&space_info,&local_space_),"create local space");
+    if(!menu_controller_.Initialize(instance_,session_))
+        std::cout<<"Model2VR XR emulator menu controller unavailable; original desktop mouse remains active\n";
     std::uint32_t n=0;
     check(xrEnumerateViewConfigurationViews(instance_,system_,
         XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,0,&n,nullptr),"view count");

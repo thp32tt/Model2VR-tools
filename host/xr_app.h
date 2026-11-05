@@ -19,6 +19,7 @@
 #include "../src/common/daytona_mono_quad_anchor.hpp"
 #include "../src/common/daytona_host_pixel_format.hpp"
 #include "emulator_window_capture.hpp"
+#include "emulator_menu_controller.hpp"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -60,6 +61,8 @@ private:
     // Capture the real pre-game Windows menu/ROM dialog into a flat XR quad.
     // This capture never authorizes native stereo or writes game IPC.
     EmulatorWindowCapture emulator_window_capture_{};
+    EmulatorMenuController menu_controller_{};
+    bool xr_session_focused_=false;
     bool emulator_window_on_quad_=false;
     transport::SharedFrames shared_frames_;
     producerhealth::Link producer_health_;

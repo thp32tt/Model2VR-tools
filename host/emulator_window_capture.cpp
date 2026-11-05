@@ -140,6 +140,23 @@ bool EmulatorWindowCapture::Capture(HWND hwnd){
             }
         }
     }
+    // Controller aim lives in the HMD screenshot only; unlike a PC cursor
+    // it never warps the desktop mouse until an explicit select press.
+    if(drawn && reticle_visible_ &&
+       reticle_x_<transport::kWidth && reticle_y_<transport::kHeight){
+        HPEN pen=CreatePen(PS_SOLID,2,RGB(0,255,255));
+        if(pen){
+            HGDIOBJ previous=SelectObject(target,pen);
+            if(previous && previous!=HGDI_ERROR){
+                const int x=static_cast<int>(reticle_x_);
+                const int y=static_cast<int>(reticle_y_);
+                MoveToEx(target,x-10,y,nullptr);LineTo(target,x+11,y);
+                MoveToEx(target,x,y-10,nullptr);LineTo(target,x,y+11);
+                SelectObject(target,previous);
+            }
+            DeleteObject(pen);
+        }
+    }
     if(drawn){
         rgba_.resize(transport::kBytesPerEye);
         const auto* bgra=static_cast<const std::uint8_t*>(bits);
@@ -155,5 +172,43 @@ bool EmulatorWindowCapture::Capture(HWND hwnd){
     DeleteDC(target);
     ReleaseDC(dc_owner,source);
     return drawn!=0;
+}
+bool EmulatorWindowCapture::DeliverControllerClick(
+    std::uint32_t pid,std::uint32_t window_x,std::uint32_t window_y){
+    if(!ready_ || !window_ || !pid ||
+       GetForegroundWindow()!=window_ ||
+       !IsWindow(window_) || !IsWindowVisible(window_) || IsIconic(window_))
+        return false;
+    DWORD owner=0;
+    GetWindowThreadProcessId(window_,&owner);
+    if(owner!=static_cast<DWORD>(pid))return false;
+    RECT rect{};
+    if(!GetWindowRect(window_,&rect))return false;
+    const auto width=rect.right-rect.left;
+    const auto height=rect.bottom-rect.top;
+    if(width<160 || height<100 || width>4096 || height>4096 ||
+       window_x>=static_cast<std::uint32_t>(width) ||
+       window_y>=static_cast<std::uint32_t>(height))return false;
+    // Desktop-wide SetCursorPos preserves negative multi-monitor origins.
+    // SendInput is confined to the genuine foreground emulator HWND;
+    // never use WM_* messages or inject into the original D3D9 game.
+    if(!SetCursorPos(rect.left+static_cast<int>(window_x),
+                     rect.top+static_cast<int>(window_y)))return false;
+    if(GetForegroundWindow()!=window_)return false;
+    INPUT click[2]{};
+    click[0].type=INPUT_MOUSE;
+    click[0].mi.dwFlags=MOUSEEVENTF_LEFTDOWN;
+    click[1].type=INPUT_MOUSE;
+    click[1].mi.dwFlags=MOUSEEVENTF_LEFTUP;
+    const UINT sent=SendInput(2,click,sizeof(INPUT));
+    if(sent==1u){
+        // Best-effort release if Windows accepted only the first event.
+        SendInput(1,&click[1],sizeof(INPUT));
+    }
+    if(sent!=2u)return false;
+    // Let the next XR menu frame read the resulting dialog/control state
+    // immediately rather than retaining the previous 10fps menu image.
+    next_capture_ms_=0;
+    return true;
 }
 } // namespace m2vr::host

@@ -161,6 +161,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
     std::cout<<"Daytona VR Wizard: captured logs/daytona_vr_bug_capture.txt\n";
 }
 void XrApp::invalidate_source_session() noexcept {
+    emulator_window_capture_.SetControllerReticle(false,0,0);
     if(pose_writer_.Valid())pose_writer_.Invalidate();
     pose_history_.Clear();
     frame_gate_.ExpireKeepFrameId();
@@ -391,6 +392,12 @@ void XrApp::draw_frame(XrTime display_time){
             }
         }else mono_anchor_warning_=false;
     }
+    // Action synchronization runs while XR is focused, but the controller
+    // ray/click can address ONLY the foreground Win32 emulator menu source.
+    // The original game mono and verified native stereo never receive input.
+    menu_controller_.Poll(session_,local_space_,display_time,
+        xr_session_focused_,menu_quad && flat_quad,source_pid_,
+        mono_quad_anchor_.Get(),emulator_window_capture_);
     if(menu_quad!=emulator_window_on_quad_){
         emulator_window_on_quad_=menu_quad;
         std::cout<<"Model2VR XR pre-game emulator 2D quad: "
@@ -582,6 +589,7 @@ void XrApp::run(int max_frames){
                 case XR_SESSION_STATE_EXITING: state_name="EXITING"; break;
                 default: break;
                 }
+                xr_session_focused_=s.state==XR_SESSION_STATE_FOCUSED;
                 std::cout<<"OpenXR session_state="<<state_name
                          <<" ("<<static_cast<int>(s.state)<<")"<<std::endl;
                 if(s.state==XR_SESSION_STATE_READY){

@@ -15,7 +15,8 @@ FetchContent_Declare(openxr
  GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(openxr)
-add_executable(Model2VROpenXRHost main.cpp xr_session.cpp xr_frame.cpp emulator_window_capture.cpp)
+add_executable(Model2VROpenXRHost main.cpp xr_session.cpp xr_frame.cpp
+    emulator_window_capture.cpp emulator_menu_controller.cpp)
 target_compile_features(Model2VROpenXRHost PRIVATE cxx_std_20)
 target_compile_definitions(Model2VROpenXRHost PRIVATE
  XR_USE_PLATFORM_WIN32 XR_USE_GRAPHICS_API_D3D11 NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -155,3 +156,9 @@ add_executable(model2_emulator_window_policy_x64_test
 target_compile_features(model2_emulator_window_policy_x64_test PRIVATE cxx_std_20)
 add_test(NAME model2_emulator_menu_2d_pre_game_policy_x64
          COMMAND model2_emulator_window_policy_x64_test)
+
+add_executable(model2_menu_controller_ray_x64_test
+    ../tests/model2_menu_controller_ray_test.cpp)
+target_compile_features(model2_menu_controller_ray_x64_test PRIVATE cxx_std_20)
+add_test(NAME model2_quest_controller_menu_ray_letterbox_x64
+         COMMAND model2_menu_controller_ray_x64_test)
