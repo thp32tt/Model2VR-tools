@@ -1,4 +1,5 @@
 #include "xr_app.h"
+#include "../src/common/model2_emulator_window_policy.hpp"
 #include <filesystem>
 #include <algorithm>
 #include <iostream>
@@ -174,6 +175,8 @@ void XrApp::invalidate_source_session() noexcept {
     eye_delivery_gate_.Reset();
     mono_quad_anchor_.Reset();
     mono_anchor_warning_=false;
+    emulator_window_capture_.Invalidate();
+    emulator_window_on_quad_=false;
     for(auto& chain:chains_)
         std::fill(chain.uploaded_frame_ids.begin(),
                   chain.uploaded_frame_ids.end(),0u);
@@ -342,16 +345,31 @@ void XrApp::draw_frame(XrTime display_time){
         eye_frame_.frame_id==frame_gate_.id() &&
         transport::ValidEyePayload(eye_frame_.kind,
             eye_frame_.eyes[0].size(),eye_frame_.eyes[1].size());
+    // Before a ROM/game first Present, x86 D3D9 stereo transport is absent.
+    // Show the real emulator's Win32 menu instead of colored diagnostics.
+    // A genuine, live original-game stereo/mono frame always takes priority.
+    // Diagnostic transport is NOT game content and cannot hide a real menu.
+    const bool game_picture=usable && (
+        transport::IsStereoGame(frame_gate_.kind()) ||
+        transport::IsMonoGame(frame_gate_.kind()));
+    const bool window_captured=!game_picture && source_pid_!=0 &&
+        emulator_window_capture_.Update(source_pid_) &&
+        emulator_window_capture_.Rgba().size()==transport::kBytesPerEye;
+    const auto picture=desktopmenu::Choose(
+        game_picture,transport::IsStereoGame(frame_gate_.kind()),window_captured);
+    bool original_mono_quad=picture==desktopmenu::Source::GameMono2D;
+    bool menu_quad=picture==desktopmenu::Source::EmulatorWindow2D;
+    bool flat_quad=original_mono_quad || menu_quad;
+
     // Establish a genuinely world-fixed cinema screen ONCE from the
-    // headset's actual two view poses. OpenXR LOCAL origin is not
-    // guaranteed to be the seated driver's current head position.
-    // Do not recenter the quad every display frame (head-follow bug).
-    const bool mono_source=transport::IsMonoGame(frame_gate_.kind());
-    if(!mono_source){
+    // headset's actual tracked views. The Win32 menu and game-mono fallback
+    // use the SAME quad anchor; never follow head motion or counterfeit
+    // independent stereo camera geometry.
+    if(!flat_quad){
         mono_quad_anchor_.Reset();mono_anchor_warning_=false;
     }
     bool mono_anchor_rejected=false;
-    if(usable && mono_source){
+    if(flat_quad){
         const auto convert=[](const XrView& view) noexcept {
             return monoquad::View{
                 {view.pose.position.x,view.pose.position.y,view.pose.position.z},
@@ -363,12 +381,26 @@ void XrApp::draw_frame(XrTime display_time){
                 mono_quad_distance_m_,mono_quad_width_m_)){
             mono_anchor_rejected=true;
             usable=false;
+            original_mono_quad=false;
+            menu_quad=false;
+            flat_quad=false;
             if(!mono_anchor_warning_){
                 std::cerr<<"Daytona VR original mono quad: TRACKED_EYE_POSE_REJECTED"
                          <<std::endl;
                 mono_anchor_warning_=true;
             }
         }else mono_anchor_warning_=false;
+    }
+    if(menu_quad!=emulator_window_on_quad_){
+        emulator_window_on_quad_=menu_quad;
+        std::cout<<"Model2VR XR pre-game emulator 2D quad: "
+                 <<(menu_quad?"VISIBLE":"HIDDEN")
+                 <<" emulator_pid="<<source_pid_
+                 <<" capture_serial="<<emulator_window_capture_.Serial()
+                 <<" game_frame="<<frame_gate_.id()
+                 <<" native_stereo="<<(game_picture && !menu_quad &&
+                        transport::IsStereoGame(frame_gate_.kind())?1:0)
+                 <<std::endl;
     }
     // A solid left/right fallback color is OpenXR host output, not proof
     // that the original 32-bit Daytona GPU image crossed x86->x64 IPC.
@@ -412,18 +444,15 @@ void XrApp::draw_frame(XrTime display_time){
                  <<std::endl;
     }
     report_wizard_health(true,usable);
-    // The real original mono game image is a 2D cinema quad, never
-    // counterfeit independent per-eye world projection.
-    const bool original_mono_quad=usable &&
-        transport::IsMonoGame(frame_gate_.kind()) &&
-        chains_[0].width==transport::kWidth &&
-        chains_[0].height==transport::kHeight;
+    // Both the original-game mono backbuffer and the emulator's desktop
+    // configuration/ROM menu use exactly one world-stationary XR quad.
+    // Live, authenticated GameStereo still uses both projection views.
     std::array<XrCompositionLayerProjectionView,2> layer_views{
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
         XrCompositionLayerProjectionView{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}
     };
     // The quad needs only one native DX11 swapchain image and one upload.
-    for(std::size_t eye=0;eye<(original_mono_quad?1u:chains_.size());++eye){
+    for(std::size_t eye=0;eye<(flat_quad?1u:chains_.size());++eye){
         auto& chain=chains_[eye];
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
         std::uint32_t index=0;
@@ -431,13 +460,18 @@ void XrApp::draw_frame(XrTime display_time){
         XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
         wait.timeout=XR_INFINITE_DURATION;
         check(xrWaitSwapchainImage(chain.handle,&wait),"wait swapchain image");
-        if(usable && chain.width==transport::kWidth &&
+        if((usable || menu_quad) && chain.width==transport::kWidth &&
            chain.height==transport::kHeight){
-            // XR may return the same swapchain image on subsequent frames.
-            // It already holds the exact current left/right source frame:
-            // avoid redundant CPU->GPU uploads on that image.
-            if(chain.uploaded_frame_ids.at(index)!=frame_gate_.id()){
-                const auto* upload_pixels=eye_frame_.eyes[eye].data();
+            // Desktop capture serials occupy a separate high-bit namespace
+            // so returning from ROM menu to game cannot reuse stale pixels.
+            // Each XR swapchain image is uploaded only on a source change.
+            const auto upload_id=menu_quad
+                ? desktopmenu::MenuUploadToken(emulator_window_capture_.Serial())
+                : frame_gate_.id();
+            if(upload_id!=0u && chain.uploaded_frame_ids.at(index)!=upload_id){
+                const auto* upload_pixels=menu_quad
+                    ? emulator_window_capture_.Rgba().data()
+                    : eye_frame_.eyes[eye].data();
                 if(swapchain_upload_format_==DXGI_FORMAT_B8G8R8A8_UNORM){
                     if(bgra_upload_scratch_.size()!=transport::kBytesPerEye)
                         bgra_upload_scratch_.resize(transport::kBytesPerEye);
@@ -450,7 +484,7 @@ void XrApp::draw_frame(XrTime display_time){
                 }
                 context_->UpdateSubresource(chain.images.at(index).texture,0,nullptr,
                       upload_pixels,transport::kPitch,0);
-                chain.uploaded_frame_ids[index]=frame_gate_.id();
+                chain.uploaded_frame_ids[index]=upload_id;
             }
         }else{
             // Absent/stale producer: clear and invalidate each XR image slot,
@@ -488,7 +522,7 @@ void XrApp::draw_frame(XrTime display_time){
     mono_quad.subImage.imageRect.extent.height=
         static_cast<std::int32_t>(chains_[0].height);
     // Never submit an uninitialized or stale local-space quad pose.
-    if(original_mono_quad && mono_quad_anchor_.Valid()){
+    if(flat_quad && mono_quad_anchor_.Valid()){
         const auto& anchor=mono_quad_anchor_.Get();
         mono_quad.pose.position.x=anchor.position.x;
         mono_quad.pose.position.y=anchor.position.y;
@@ -501,7 +535,7 @@ void XrApp::draw_frame(XrTime display_time){
         mono_quad.size.height=anchor.height;
     }
     const XrCompositionLayerBaseHeader* selected_layer=
-        original_mono_quad
+        flat_quad
             ?reinterpret_cast<const XrCompositionLayerBaseHeader*>(&mono_quad)
             :reinterpret_cast<const XrCompositionLayerBaseHeader*>(&projection);
     const XrCompositionLayerBaseHeader* layers[]={selected_layer};
@@ -511,7 +545,7 @@ void XrApp::draw_frame(XrTime display_time){
     end.layerCount=1;
     end.layers=layers;
     check(xrEndFrame(session_,&end),
-          original_mono_quad?"end original-game mono quad frame":"end stereo frame");
+          flat_quad?"end emulator/game mono 2D quad frame":"end stereo frame");
 }
 void XrApp::run(int max_frames){
     wizard_diag_enabled_=GetPrivateProfileIntW(L"probe",L"wizard_health_diagnostics",

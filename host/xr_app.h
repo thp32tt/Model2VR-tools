@@ -18,6 +18,7 @@
 #include "../src/common/daytona_eye_delivery_status.hpp"
 #include "../src/common/daytona_mono_quad_anchor.hpp"
 #include "../src/common/daytona_host_pixel_format.hpp"
+#include "emulator_window_capture.hpp"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -56,6 +57,10 @@ private:
     // One recycled pixel swizzle scratch buffer, never part of IPC staging.
     std::vector<std::uint8_t> bgra_upload_scratch_;
     std::uint32_t source_pid_=0;
+    // Capture the real pre-game Windows menu/ROM dialog into a flat XR quad.
+    // This capture never authorizes native stereo or writes game IPC.
+    EmulatorWindowCapture emulator_window_capture_{};
+    bool emulator_window_on_quad_=false;
     transport::SharedFrames shared_frames_;
     producerhealth::Link producer_health_;
     producerhealth::Snapshot producer_health_status_{};
