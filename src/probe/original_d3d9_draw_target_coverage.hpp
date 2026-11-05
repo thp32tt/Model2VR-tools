@@ -52,6 +52,8 @@ public:
     static constexpr std::uint32_t kCrossPresent=64u;
     static constexpr std::uint32_t kOverflow=128u;
     static constexpr std::uint32_t kCountMismatch=256u;
+    static constexpr std::uint32_t kOpaqueStateBlock=512u;
+    static constexpr std::uint32_t kMrtActive=1024u;
     struct Token {
         std::uint64_t epoch=0u, revision=0u;
         OriginalTargetSnapshot state{};
@@ -74,17 +76,29 @@ public:
         state_=actual;
         resolved_=true;
     }
-    void RenderTargetBind(bool exe_caller,bool succeeded,bool slot_zero,
+    void RenderTargetBind(bool exe_caller,bool succeeded,
+                          std::uint32_t slot,bool nonnull,
                           OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         if(!exe_caller) {
             flags_|=kForeignBind;
-            if(slot_zero){state_={};owned_target_=false;owned_depth_=false;
-                resolved_=false;++revision_;}
+            state_={};owned_target_=false;owned_depth_=false;
+            resolved_=false;++revision_;
             return;
         }
         if(!succeeded){flags_|=kFailedBind;return;}
-        if(!slot_zero)return; // no claim that MRT slot 1 is the RT0 owner
+        if(slot!=0u){
+            // Real SetRenderTarget(1..3) is persistent across Presents.
+            // Draws with simultaneous outputs are not verified by this
+            // single-RT0 CPU/GPU stereo source adapter.
+            if(slot<=3u){
+                const auto bit=1u<<(slot-1u);
+                if(nonnull)secondary_mask_|=bit;
+                else secondary_mask_&=~bit;
+            }else flags_|=kMrtActive;
+            ++revision_;
+            return;
+        }
         state_=actual;resolved_=true;
         owned_target_=actual.target!=OriginalPhysicalRtClass::Unknown;
         // Changing RT0 does not prove original depth-surface ownership.
@@ -102,8 +116,15 @@ public:
         owned_depth_=actual.depth!=OriginalPhysicalDepthClass::Unknown;
         ++revision_;
     }
+    void InvalidateOpaqueStateBlock() noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        flags_|=kOpaqueStateBlock;
+        state_={};owned_target_=owned_depth_=false;
+        resolved_=false;secondary_mask_=0u;++revision_;
+    }
     Token EnterDraw() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
+        if(secondary_mask_)flags_|=kMrtActive;
         Token result{epoch_,revision_,state_,owned_target_,owned_depth_,true};
         if(active_>=kLimit){
             flags_|=kOverflow;result.valid=false;return result;
@@ -159,6 +180,7 @@ public:
         ++epoch_;
         ++revision_;
         state_={};owned_target_=owned_depth_=false;resolved_=false;
+        secondary_mask_=0u;
         backbuffer_=auxiliary_=unknown_=failed_=bad_depth_=flags_=0u;
         sealed_=false;
         // Keep active_: late original COM operations must still be consumed
@@ -172,7 +194,7 @@ private:
     std::mutex mutex_;
     OriginalTargetSnapshot state_{};
     std::uint64_t epoch_=1u,revision_=1u;
-    std::uint32_t active_=0u,backbuffer_=0u,auxiliary_=0u,
+    std::uint32_t secondary_mask_=0u,active_=0u,backbuffer_=0u,auxiliary_=0u,
         unknown_=0u,failed_=0u,bad_depth_=0u,flags_=0u;
     bool owned_target_=false, owned_depth_=false, sealed_=false, resolved_=false;
 };
