@@ -31,9 +31,12 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==51);
+    static_assert(kOriginalLineageKinds==54);
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceDialogBoxMode)==49u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceGammaRamp)==50u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceCursorProperties)==51u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceCursorPosition)==52u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceCursorVisibility)==53u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::GpuSurfaceContents)==48u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ProcessVertices)==35u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::TextureTransform)==36u);
