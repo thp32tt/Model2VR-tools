@@ -82,6 +82,41 @@ jobs:
           }
       - name: Audit original texture/vertex/index getter aliases
         run: python -m unittest discover -s tests -p test_model2_getter_resource_source.py -v
+      - name: Smoke test private session copier (synthetic CSV, fail closed)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $root=Join-Path $env:RUNNER_TEMP "private-original-evidence-smoke"
+          $inputs=Join-Path $root "source"
+          New-Item -ItemType Directory -Force -Path $inputs | Out-Null
+          Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+          Copy-Item tools/model2_draw_source_report.py $root/
+          Copy-Item tools/model2_world_pass_evidence.py $root/
+          foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")){
+            $fake=Join-Path $inputs ($label+".csv")
+            [IO.File]::WriteAllText($fake,
+              ("seq,qpc,thread,event,a0,a1,a2,a3" + "`n" +
+               "1,1,1,synthetic_unproven_" + $label + ",0,0,0,0" + "`n"))
+          }
+          $rejected=$false
+          try {
+            & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") `
+              -PackageRoot $root -ExistingSessionFolder $inputs
+          } catch {
+            if($_.Exception.Message -notmatch "FAIL-CLOSED"){ throw }
+            $rejected=$true
+          }
+          if(-not $rejected){ throw "Synthetic controls incorrectly authorized original World3D" }
+          $archives=@(Get-ChildItem (Join-Path $root "logs") -Directory)
+          if($archives.Count -ne 1){ throw "Expected exactly one local private archive" }
+          foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")){
+            if(!(Test-Path (Join-Path $archives[0].FullName ($label+".csv")))){
+              throw "Missing locally archived synthetic session $label"
+            }
+          }
+          if(!(Test-Path (Join-Path $archives[0].FullName "PRIVATE_MANIFEST.json"))){
+            throw "Missing local private hash manifest"
+          }
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
       - name: Build original game hook/loader
