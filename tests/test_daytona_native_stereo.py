@@ -1802,5 +1802,31 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("world_pass_proven",report)
         self.assertIn('"world_pass_proof": "NOT_ESTABLISHED"',report)
 
+    def test_original_device_cursor_output_never_promotes_unproven_stereo(self):
+        probe=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        cursor=(ROOT/"src/probe/original_d3d9_cursor_hooks.inl").read_text("utf-8")
+        presentation=(ROOT/"src/probe/original_d3d9_presentation_hooks.inl").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        lineage=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
+        for slot,name in ((10,"OriginalSetCursorPropertiesHook"),
+                          (11,"OriginalSetCursorPositionHook"),
+                          (12,"OriginalShowCursorHook")):
+            self.assertIn(f"Hook(vtable[{slot}]",probe)
+            self.assertIn(f"reinterpret_cast<void*>(&{name})",probe)
+            self.assertIn(f"MH_DisableHook(vtable[{slot}]);MH_RemoveHook(vtable[{slot}]);",probe)
+            self.assertIn(name+"(",cursor)
+        self.assertIn("BeforeOriginalPresentationControl(0u,9u)",probe)
+        self.assertIn("const BOOL was_visible=g_original_show_cursor(device,show);",cursor)
+        self.assertIn("return was_visible;",cursor)
+        self.assertIn("if(rva && may_draw)BeforeOriginalPresentationControl(rva,7u)",cursor)
+        self.assertIn("if(method<1u || method>9u)return;",presentation)
+        self.assertIn("OriginalSourceFailure::OriginalPresentationStateUnproven",bridge)
+        self.assertIn("method>9u",bridge)
+        self.assertIn("g.source_epoch.Revoke(physical_present)",bridge)
+        self.assertIn("kOriginalLineageKinds=54",lineage)
+        self.assertIn("DeviceCursorVisibility=53",lineage)
+        self.assertNotIn("World3D=true",cursor)
+
+
 if __name__=="__main__":
     unittest.main()
