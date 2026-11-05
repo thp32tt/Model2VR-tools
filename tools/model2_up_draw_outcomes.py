@@ -273,6 +273,7 @@ def audit_csv(path):
                 "model2_d3d9_original_instancing_active",
                 "model2_d3d9_original_texture_upload_rejected",
                 "model2_d3d9_original_palette_mutation_rejected",
+                "model2_d3d9_original_raster_mode_unsupported",
             }):
                 continue
             try:
