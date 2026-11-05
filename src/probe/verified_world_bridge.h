@@ -402,6 +402,9 @@ __declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDri
 __declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
     unsigned long long physical_frame,unsigned int stage,
     unsigned int original_caller_rva,unsigned int original_hresult);
+__declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
+    unsigned long long physical_frame,unsigned int stream,
+    unsigned int original_caller_rva,unsigned int frequency);
 }
 
 // Optional explicit recenter on a proven scene/device restart.

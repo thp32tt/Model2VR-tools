@@ -11,7 +11,7 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==20);
+    static_assert(kOriginalLineageKinds==25);
     OriginalLineageStamp initial{77,{}};
     assert(!OriginalLineageUsable(initial));
     assert(OriginalLineageNonce(initial)==0);
@@ -67,7 +67,7 @@ int main(){
     rule.expected_lineage_nonce=OriginalLineageNonce(initial);
     assert(one_shot.Arm(rule));
     auto rebound=initial;
-    ++rebound.successful_writes[static_cast<std::size_t>(OriginalLineageKind::StateBlockApply)];
+    ++rebound.successful_writes[static_cast<std::size_t>(OriginalLineageKind::StreamFrequency)];
     assert(!one_shot.Take(77u,5u,2u,0x345u,3u,true,accepted,
                          OriginalLineageNonce(rebound),&mismatch));
     assert(mismatch && !one_shot.Pending());

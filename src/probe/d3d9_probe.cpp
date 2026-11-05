@@ -71,6 +71,9 @@ using SetTextureFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,IDirect3
 using SetTextureStageStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,D3DTEXTURESTAGESTATETYPE,DWORD);
 using SetSamplerStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,D3DSAMPLERSTATETYPE,DWORD);
 using SetRenderStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DRENDERSTATETYPE,DWORD);
+using SetShaderIntFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const int*,UINT);
+using SetShaderBoolFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const BOOL*,UINT);
+using SetFrequencyFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,UINT);
 // IDirect3DDevice9 COM 59/60/61 and IDirect3DStateBlock9::Apply slot 5.
 // Block Apply may restore unobserved camera/material values without Set* COM.
 using CreateStateBlockFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -116,6 +119,11 @@ SetTextureFn g_set_texture=nullptr;
 SetTextureStageStateFn g_set_texture_stage=nullptr;
 SetSamplerStateFn g_set_sampler_state=nullptr;
 SetRenderStateFn g_set_render_state=nullptr;
+SetShaderIntFn g_vs_i=nullptr;
+SetShaderBoolFn g_vs_b=nullptr;
+SetShaderIntFn g_ps_i=nullptr;
+SetShaderBoolFn g_ps_b=nullptr;
+SetFrequencyFn g_freq=nullptr;
 CreateStateBlockFn g_create_state_block=nullptr;
 BeginStateBlockFn g_begin_state_block=nullptr;
 EndStateBlockFn g_end_state_block=nullptr;
@@ -191,6 +199,9 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Surface(
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
     unsigned long long physical_present,unsigned int stage,
     unsigned int original_caller_rva,unsigned int original_hresult);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
+    unsigned long long physical_present,unsigned int stream,
+    unsigned int original_caller_rva,unsigned int frequency);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -1397,6 +1408,11 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
         // revision separately; unknown state contents never grant World3D.
         m2vr::LogEvent("model2_d3d9_source_stateblock_lineage",witness,
             original_frame,w[19],0u);
+        m2vr::LogEvent("model2_d3d9_source_shader_aux_lineage",witness,
+            original_frame,(std::uint64_t{w[20]}<<32)|w[21],
+            (std::uint64_t{w[22]}<<32)|w[23]);
+        m2vr::LogEvent("model2_d3d9_source_stream_frequency_lineage",witness,
+            original_frame,w[24],0u);
     }
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
@@ -1862,6 +1878,55 @@ HRESULT STDMETHODCALLTYPE SetPixelShaderHook(IDirect3DDevice9* d,IDirect3DPixelS
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelShader,rva,hr);
     return hr;
 }
+HRESULT STDMETHODCALLTYPE SetVSConstantIHook(IDirect3DDevice9* d,UINT start,const int* values,UINT count){
+    if(!g_primary_device.Owns(d))return g_vs_i(d,start,values,count);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_vs_i(d,start,values,count);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,21u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::VertexConstantInt,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetVSConstantBHook(IDirect3DDevice9* d,UINT start,const BOOL* values,UINT count){
+    if(!g_primary_device.Owns(d))return g_vs_b(d,start,values,count);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_vs_b(d,start,values,count);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,22u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::VertexConstantBool,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetPSConstantIHook(IDirect3DDevice9* d,UINT start,const int* values,UINT count){
+    if(!g_primary_device.Owns(d))return g_ps_i(d,start,values,count);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_ps_i(d,start,values,count);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,23u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelConstantInt,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetPSConstantBHook(IDirect3DDevice9* d,UINT start,const BOOL* values,UINT count){
+    if(!g_primary_device.Owns(d))return g_ps_b(d,start,values,count);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_ps_b(d,start,values,count);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,24u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelConstantBool,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetStreamFrequencyHook(IDirect3DDevice9* d,UINT stream,UINT frequency){
+    if(!g_primary_device.Owns(d))return g_freq(d,stream,frequency);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_freq(d,stream,frequency);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,25u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::StreamFrequency,rva,hr);
+    if(rva && SUCCEEDED(hr) && frequency!=1u)
+        Model2VR_RejectOriginalD3D9InstancedStream(
+            g_present_count.load(std::memory_order_acquire)+1u,
+            stream,rva,frequency);
+    return hr;
+}
 // Original material/texture/pixel-constant writes; genuine COM/HRESULT
 // unchanged. A failed EXE-owned mutation revokes both speculative eyes.
 HRESULT STDMETHODCALLTYPE SetPSConstantFHook(IDirect3DDevice9* d,UINT start,
@@ -2173,6 +2238,11 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool texture_stage=Hook(vtable[67],reinterpret_cast<void*>(&SetTextureStageStateHook),g_set_texture_stage);
     const bool sampler=Hook(vtable[69],reinterpret_cast<void*>(&SetSamplerStateHook),g_set_sampler_state);
     const bool render_state=Hook(vtable[57],reinterpret_cast<void*>(&SetRenderStateHook),g_set_render_state);
+    const bool vs_i=Hook(vtable[96],reinterpret_cast<void*>(&SetVSConstantIHook),g_vs_i);
+    const bool vs_b=Hook(vtable[98],reinterpret_cast<void*>(&SetVSConstantBHook),g_vs_b);
+    const bool ps_i=Hook(vtable[111],reinterpret_cast<void*>(&SetPSConstantIHook),g_ps_i);
+    const bool ps_b=Hook(vtable[113],reinterpret_cast<void*>(&SetPSConstantBHook),g_ps_b);
+    const bool freq=Hook(vtable[102],reinterpret_cast<void*>(&SetStreamFrequencyHook),g_freq);
     // Saved-state Apply can mutate camera/texture/shader without calling
     // the public Set* COM methods. Hook both state-block creation routes.
     const bool create_block=Hook(vtable[59],reinterpret_cast<void*>(&CreateStateBlockHook),g_create_state_block);
@@ -2191,7 +2261,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -2228,6 +2298,11 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(texture_stage){MH_DisableHook(vtable[67]);MH_RemoveHook(vtable[67]);}
         if(sampler){MH_DisableHook(vtable[69]);MH_RemoveHook(vtable[69]);}
         if(render_state){MH_DisableHook(vtable[57]);MH_RemoveHook(vtable[57]);}
+        if(vs_i){MH_DisableHook(vtable[96]);MH_RemoveHook(vtable[96]);}
+        if(vs_b){MH_DisableHook(vtable[98]);MH_RemoveHook(vtable[98]);}
+        if(ps_i){MH_DisableHook(vtable[111]);MH_RemoveHook(vtable[111]);}
+        if(ps_b){MH_DisableHook(vtable[113]);MH_RemoveHook(vtable[113]);}
+        if(freq){MH_DisableHook(vtable[102]);MH_RemoveHook(vtable[102]);}
         if(create_block){MH_DisableHook(vtable[59]);MH_RemoveHook(vtable[59]);}
         if(begin_block){MH_DisableHook(vtable[60]);MH_RemoveHook(vtable[60]);}
         if(end_block){MH_DisableHook(vtable[61]);MH_RemoveHook(vtable[61]);}
@@ -2247,6 +2322,11 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_set_ps_constant_f=nullptr;
         g_set_texture=nullptr;g_set_texture_stage=nullptr;
         g_set_sampler_state=nullptr;g_set_render_state=nullptr;
+        g_vs_i=nullptr;
+        g_vs_b=nullptr;
+        g_ps_i=nullptr;
+        g_ps_b=nullptr;
+        g_freq=nullptr;
         g_create_state_block=nullptr;g_begin_state_block=nullptr;
         g_end_state_block=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
@@ -2262,6 +2342,10 @@ bool HookDevice(IDirect3DDevice9* dev){
             vertex_shader,pixel_shader,ps_constants,0u);
         m2vr::LogEvent("model2_d3d9_material_hook_rollback",
             texture,texture_stage,sampler,render_state);
+        m2vr::LogEvent("model2_d3d9_aux_shader_hook_rollback",
+            vs_i,vs_b,ps_i,ps_b);
+        m2vr::LogEvent("model2_d3d9_stream_freq_hook_rollback",
+            freq,0u,0u,0u);
         m2vr::LogEvent("model2_d3d9_stateblock_hook_rollback",
             create_block,begin_block,end_block,0u);
         return false;

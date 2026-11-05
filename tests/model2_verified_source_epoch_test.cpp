@@ -51,6 +51,7 @@ int main() {
     CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::PresentFrameMismatch)==15u);
     CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalSceneFailed)==16u);
     CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalStateBlockUnknown)==21u);
+    CHECK(static_cast<std::uint32_t>(OriginalSourceFailure::OriginalInstancedStreamUnknown)==22u);
     {
         ScopedOriginalSourceDrawKind projected(OriginalSourceDrawKind::ProjectedPrimitiveUP);
         CHECK(!RejectOriginalSourceMaterial(OriginalSourceFailure::ProjectionPass));

@@ -147,8 +147,8 @@ class NativeStereoTest(unittest.TestCase):
     def test_failed_original_viewport_scissor_revoke_gpu_eyes(self):
         source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         header=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
-        self.assertIn("method>20u", source)
-        self.assertIn("method<=20u", header)
+        self.assertIn("method>25u", source)
+        self.assertIn("method<=25u", header)
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,8u,rva)", (
             ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8"))
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,9u,rva)", (
@@ -184,9 +184,9 @@ class NativeStereoTest(unittest.TestCase):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         source=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
         gate=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
-        self.assertIn("kOriginalLineageKinds=20",source)
-        self.assertIn("method<=20u",gate)
-        self.assertIn("method>20u",gpu)
+        self.assertIn("kOriginalLineageKinds=25",source)
+        self.assertIn("method<=25u",gate)
+        self.assertIn("method>25u",gpu)
         for method,slot,kind,fail in (
             ("SetStreamSource",100,"StreamSource",10),
             ("SetIndices",104,"IndexBuffer",11),
@@ -207,12 +207,37 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("w[13]",hooks)
         self.assertIn("OriginalLineageNonce(lineage),permission",hooks)
 
+    def test_shader_int_bool_and_instanced_stream_source_paths(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        for method,slot,kind,ptr,fail in (
+            ("SetVSConstantI",96,"VertexConstantInt","g_vs_i",21),
+            ("SetVSConstantB",98,"VertexConstantBool","g_vs_b",22),
+            ("SetPSConstantI",111,"PixelConstantInt","g_ps_i",23),
+            ("SetPSConstantB",113,"PixelConstantBool","g_ps_b",24),
+            ("SetStreamFrequency",102,"StreamFrequency","g_freq",25),
+        ):
+            body=hooks.split(f"HRESULT STDMETHODCALLTYPE {method}Hook(")[1].split(
+                "HRESULT STDMETHODCALLTYPE ",1)[0]
+            self.assertIn("g_primary_device.Owns(d)",body)
+            self.assertIn(f"const HRESULT hr={ptr}(",body)
+            self.assertIn(f"OriginalLineageKind::{kind}",body)
+            self.assertIn(f"TrackFailedOriginalD3D9Surface(hr,{fail}u,rva)",body)
+            self.assertIn(f"vtable[{slot}]",hooks)
+            self.assertIn(f"MH_RemoveHook(vtable[{slot}]);",hooks)
+        self.assertIn("model2_d3d9_source_shader_aux_lineage",hooks)
+        self.assertIn("model2_d3d9_source_stream_frequency_lineage",hooks)
+        self.assertIn("&&vs_i&&vs_b&&ps_i&&ps_b&&freq",hooks)
+        self.assertIn("Model2VR_RejectOriginalD3D9InstancedStream(",hooks)
+        self.assertIn("OriginalSourceFailure::OriginalInstancedStreamUnknown",bridge)
+        self.assertIn("model2_d3d9_original_instancing_unsupported",bridge)
+
     def test_original_state_block_apply_is_single_call_and_stereo_fail_closed(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         policy=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
         api=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
-        self.assertIn("kOriginalLineageKinds=20",policy)
+        self.assertIn("kOriginalLineageKinds=25",policy)
         self.assertIn("StateBlockApply=19",policy)
         self.assertIn("vtable[59]",hooks)
         self.assertIn("vtable[60]",hooks)
@@ -271,8 +296,8 @@ class NativeStereoTest(unittest.TestCase):
             self.assertIn(f"MH_RemoveHook(vtable[{slot}]);",hooks)
         self.assertIn("model2_d3d9_source_material_lineage",hooks)
         self.assertIn("model2_d3d9_source_render_lineage",hooks)
-        self.assertIn("method>20u",gpu)
-        self.assertIn("method<=20u",gate)
+        self.assertIn("method>25u",gpu)
+        self.assertIn("method<=25u",gate)
         self.assertIn("&&ps_constants&&texture&&texture_stage&&sampler&&render_state",hooks)
 
     def test_original_exe_scene_boundaries_are_optional_and_readonly(self):
@@ -424,7 +449,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("&&fill&&rt&&depth",hooks)
         self.assertIn("model2_d3d9_original_target_bind_phase",hooks)
         self.assertIn("g_original_target_bind_samples",hooks)
-        self.assertIn("method>20u",gpu)
+        self.assertIn("method>25u",gpu)
         self.assertIn("model2_d3d9_target_hook_rollback",hooks)
 
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):

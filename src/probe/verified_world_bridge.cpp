@@ -934,6 +934,29 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
             physical_present,stage,original_caller_rva,original_hresult);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// The original game's non-unit D3D9 vertex stream divider cannot be
+// represented by the independent-eye CPU topology raster. Preserve mono.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
+    unsigned long long physical_present,unsigned int stream,
+    unsigned int original_caller_rva,unsigned int frequency){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || !original_caller_rva || frequency==1u ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_present &&
+           (g.active||g.pending_present)){
+            const auto previous=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalInstancedStreamUnknown;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=previous;
+        }
+        g.source_epoch.Revoke(physical_present);
+    }
+    m2vr::LogEvent("model2_d3d9_original_instancing_unsupported",
+        physical_present,stream,original_caller_rva,frequency);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);
     // A physical original device Reset invalidates all stored CPU-world
