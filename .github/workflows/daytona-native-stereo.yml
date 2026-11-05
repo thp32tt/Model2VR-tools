@@ -38,6 +38,7 @@ on:
       - 'tools/model2_camera_state_phase_report.py'
       - 'tests/test_model2_camera_state_phase.py'
       - 'scripts/Analyze-Daytona-UP-Source.cmd'
+      - 'scripts/Analyze-Daytona-Transform-Source.cmd'
       - 'docs/MODEL2_WORLD_PASS_EVIDENCE.md'
       - 'tests/daytona_wizard_health_test.cpp'
       - 'docs/vr_wizard/**'
@@ -122,6 +123,7 @@ jobs:
           Copy-Item tools/model2_camera_state_phase_report.py stage/Analyze-OriginalCamera-Phase.py
            Copy-Item tools/model2_mutation_phase_report.py stage/Analyze-OriginalMutation-Phase.py
           Copy-Item scripts/Analyze-Daytona-UP-Source.cmd stage/
+          Copy-Item scripts/Analyze-Daytona-Transform-Source.cmd stage/
           Copy-Item docs/MODEL2_WORLD_PASS_EVIDENCE.md stage/ORIGINAL-WORLD-SOURCE-EVIDENCE.md
           Copy-Item docs/vr_wizard/PLAYTEST.md stage/PLAYTEST-WIZARD.md
           Copy-Item docs/vr_wizard/PHASE_PLAN.md stage/VR-WIZARD-STATUS.md

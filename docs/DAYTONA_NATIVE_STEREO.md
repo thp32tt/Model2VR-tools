@@ -1,3 +1,28 @@
+## Original D3D9 Set/MultiplyTransform private source audit (2026-11-05)
+
+The native 32-bit original emulator probe forwards the game's actual
+`IDirect3DDevice9::MultiplyTransform` COM 46 call exactly once. Its genuine
+view/projection/world/texture and unclassified mutations now participate in
+the same physical original Draw lineage used to reject stale CPU/GPU stereo
+eyes. A failed real original call invalidates that physical Present's
+speculative stereo; the original game mono/FFB and x64 pre-game virtual screen
+remain unchanged. Source lineage does **not** establish race-world or 6DoF
+camera ownership.
+
+The combined Win32+Win64 release includes a local-only camera-state report
+launcher, `Analyze-Daytona-Transform-Source.cmd`. Double-click it to analyze
+the newest `logs/daytona_vr_startup_*.csv` next to the test package, or drag
+a selected original private CSV onto the launcher. It runs the bundled
+`Analyze-OriginalCamera-Phase.py`, and writes a bounded, read-only JSON report
+to `logs/daytona_transform_physical_*.json`. It records only original EXE
+caller RVA, Draw/scene ordinals, transform state category and bounded flags;
+no game matrix data, ROM, textures, source vertices or pixels are sent or
+published. Previous `SetTransform` category-4 "other" CSVs remain accepted;
+the new `MultiplyTransform` category 4 is "texture" and 5 is "other".
+`world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED` until
+independent original Daytona race A/B, menu/HUD controls, full matrix and
+HMD calibration are proved.
+
 ## Genuine original Clear / surface mutation source integrity (2026-11-05)
 
 The current x86 original emulator DLL checks authentic game EXE-owned

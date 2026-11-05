@@ -103,6 +103,22 @@ class CameraStatePhaseTests(unittest.TestCase):
             with self.subTest(rows=rows), self.assertRaises(ValueError):
                 self.run_audit(rows)
 
+    def test_packaged_private_transform_analyzer_is_local_only(self):
+        workflow=(ROOT/".github/workflows/daytona-native-stereo.yml").read_text("utf-8")
+        script=(ROOT/"scripts/Analyze-Daytona-Transform-Source.cmd").read_text("utf-8")
+        docs=(ROOT/"docs/DAYTONA_NATIVE_STEREO.md").read_text("utf-8")
+        self.assertIn("Copy-Item tools/model2_camera_state_phase_report.py stage/Analyze-OriginalCamera-Phase.py",workflow)
+        self.assertIn("Copy-Item scripts/Analyze-Daytona-Transform-Source.cmd stage/",workflow)
+        self.assertIn("python -m unittest discover -s tests -p test_model2_camera_state_phase.py",workflow)
+        self.assertIn('Analyze-OriginalCamera-Phase.py',script)
+        self.assertIn('logs\\daytona_vr_startup_*.csv',script)
+        self.assertIn('daytona_transform_physical_',script)
+        self.assertIn('ONLY on this computer',script)
+        self.assertIn('World/HUD and OpenXR 6DoF still require',script)
+        self.assertIn('Analyze-Daytona-Transform-Source.cmd',docs)
+        for forbidden in ("curl ", "Invoke-WebRequest", "Invoke-RestMethod", "ftp ", "scp "):
+            self.assertNotIn(forbidden,script)
+
     def test_renderer_retains_one_original_call(self):
         source = (ROOT / "src/probe/d3d9_probe.cpp").read_text("utf-8")
         for hook, original, slot, method in (
