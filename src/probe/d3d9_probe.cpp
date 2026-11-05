@@ -1311,7 +1311,8 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
                                 void* caller,unsigned family,
                                 std::uint64_t original_frame,
                                 std::uint64_t frame_ordinal,
-                                unsigned scene_ordinal,bool scene_open) {
+                                unsigned scene_ordinal,bool scene_open,
+                                const m2vr::drawprobe::OriginalLineageStamp& lineage) {
     if(!witness)return;
     // Capture phase BEFORE the original COM Draw; a concurrent Present
     // must not relabel the returned HRESULT with the next frame.
@@ -1328,6 +1329,18 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
                                "model2_d3d9_up_original_result",witness,
         static_cast<std::uint32_t>(hr),CallerRva(caller),
         (original_frame<<32)|family);
+    // Exact witness join: never repurpose the original source camera
+    // state from a later physical Present or unrelated Draw/scene.
+    if(lineage.physical_present==original_frame &&
+       m2vr::drawprobe::OriginalLineageUsable(lineage)){
+        const auto& w=lineage.successful_writes;
+        m2vr::LogEvent("model2_d3d9_source_camera_lineage",witness,
+            original_frame,(std::uint64_t{w[0]}<<32)|w[1],
+            (std::uint64_t{w[2]}<<32)|w[3]);
+        m2vr::LogEvent("model2_d3d9_source_region_lineage",witness,
+            original_frame,(std::uint64_t{w[4]}<<32)|w[5],
+            (std::uint64_t{w[6]}<<32)|w[7]);
+    }
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
 // Only a separately authenticated, one-use rule may forward a physical
@@ -1367,6 +1380,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,1,p,count,caller)?
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
+    const auto original_lineage=ReadOriginalLineage(source_frame);
     ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         1u,caller,
         source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
@@ -1379,7 +1393,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const HRESULT hr=g_draw(d,p,start,count);
     RecordOriginalSourceResult(witness,hr,caller,1u,
                                source_frame,source_ordinal,
-                               source_scene,source_scene_open);
+                               source_scene,source_scene_open,original_lineage);
     TrackOriginalD3D9DrawResult(hr,1u,caller,d);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorPrimitive(d,p,start,count,g_draw);
@@ -1405,6 +1419,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,2,p,count,caller)?
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
+    const auto original_lineage=ReadOriginalLineage(source_frame);
     ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         2u,caller,
         source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
@@ -1417,7 +1432,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
     RecordOriginalSourceResult(witness,hr,caller,2u,
                                source_frame,source_ordinal,
-                               source_scene,source_scene_open);
+                               source_scene,source_scene_open,original_lineage);
     TrackOriginalD3D9DrawResult(hr,2u,caller,d);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexed(d,p,base,min,num,start,count,g_draw_indexed);
@@ -1443,6 +1458,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,3,p,count,caller)?
         ObserveUP(d,3,p,count,caller,verts,stride):0u;
+    const auto original_lineage=ReadOriginalLineage(source_frame);
     ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         3u,caller,
         source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
@@ -1455,7 +1471,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const HRESULT hr=g_draw_up(d,p,count,verts,stride);
     RecordOriginalSourceResult(witness,hr,caller,3u,
                                source_frame,source_ordinal,
-                               source_scene,source_scene_open);
+                               source_scene,source_scene_open,original_lineage);
     TrackOriginalD3D9DrawResult(hr,3u,caller,d);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorDraw(d,p,count,verts,stride,CallerRva(caller),g_draw_up);
@@ -1481,6 +1497,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         GetCurrentThreadId();
     const std::uint64_t witness=Sample(d,4,p,count,caller)?
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num):0u;
+    const auto original_lineage=ReadOriginalLineage(source_frame);
     ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         4u,caller,
         source_scene,source_scene_open,[&](unsigned cpu,unsigned alpha){
@@ -1495,7 +1512,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
     RecordOriginalSourceResult(witness,hr,caller,4u,
                                source_frame,source_ordinal,
-                               source_scene,source_scene_open);
+                               source_scene,source_scene_open,original_lineage);
     TrackOriginalD3D9DrawResult(hr,4u,caller,d);
     if(SUCCEEDED(hr) && g_native_stereo)
         m2vr::daytona::MirrorIndexedUP(d,p,min,num,count,idx,fmt,verts,stride,g_draw_indexed_up);
