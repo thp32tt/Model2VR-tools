@@ -148,6 +148,7 @@ void* g_vb_unlock_target=nullptr;
 void* g_ib_unlock_target=nullptr;
 std::mutex g_buffer_hook_mutex;
 std::atomic<bool> g_buffer_hook_unknown{false};
+m2vr::drawprobe::OriginalBoundWriteLocks g_original_bound_write_locks{};
 std::array<std::atomic<std::uint32_t>,2> g_original_buffer_writes{};
 SetIndicesFn g_set_indices=nullptr;
 SetVertexDeclarationFn g_set_vertex_declaration=nullptr;
@@ -1522,7 +1523,8 @@ bool ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
        g_original_stream_frequency_state.UnsupportedMask() ||
        g_original_raster_mode_state.UnsupportedMask() ||
-       g_buffer_hook_unknown.load(std::memory_order_acquire))
+       g_buffer_hook_unknown.load(std::memory_order_acquire) ||
+       g_original_bound_write_locks.HasOutstandingWrites())
         return false; // unknown original resource bytes are not stereo proof
     m2vr::vrbridge::ArmedOriginalDraw permission{};
     if(!m2vr::vrbridge::TryTakeAuthenticatedOriginalDraw(
@@ -2418,6 +2420,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
                            seen,0u,0u,0u);
         return CallOriginalPresentOnce(d,a,b,w,dirty);
     }
+    // If a writable original resource is still mapped at Present, the
+    // game may modify it without another Lock. Future stereo must remain
+    // disarmed, not silently reuse a previous eye geometry source.
+    if(g_original_bound_write_locks.HasOutstandingWrites())
+        OriginalBufferCoverageUnknown(0u,0u);
     if(g_buffer_hook_unknown.load(std::memory_order_acquire))
         Model2VR_RejectOriginalD3D9BufferHookCoverage(
             g_present_count.load(std::memory_order_acquire)+1u,0u,0u);
@@ -2565,6 +2572,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         g_original_stream_frequency_state.AfterSuccessfulDeviceReset();
         g_original_raster_mode_state.AfterSuccessfulDeviceReset();
         g_unmirrored_geometry_state.AfterSuccessfulDeviceReset();
+        g_original_bound_write_locks.AfterSuccessfulDeviceReset();
     }
     return result;
 }
@@ -2864,6 +2872,7 @@ Model2VR_CurrentOriginalD3D9LineageNonce(){
        g_original_raster_mode_state.UnsupportedMask() ||
        g_unmirrored_geometry_state.HasProcessedVertices() ||
        g_buffer_hook_unknown.load(std::memory_order_acquire) ||
+       g_original_bound_write_locks.HasOutstandingWrites() ||
        !Model2VR_CurrentOriginalD3D9SceneOrdinal())return 0u;
     return m2vr::drawprobe::OriginalLineageNonce(ReadOriginalLineage(
         Model2VR_NextOriginalD3D9PresentFrameId()));

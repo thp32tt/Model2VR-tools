@@ -18,6 +18,7 @@ BufferUnlockFn BufferUnlockTrampoline(D3DRESOURCETYPE kind) noexcept {
     return kind==D3DRTYPE_VERTEXBUFFER?g_vb_unlock:
            kind==D3DRTYPE_INDEXBUFFER?g_ib_unlock:nullptr;
 }
+void OriginalBufferCoverageUnknown(std::uint32_t caller_rva,unsigned family) noexcept;
 HRESULT STDMETHODCALLTYPE OriginalBufferLockHook(IDirect3DResource9* resource,
     UINT offset,UINT length,void** destination,DWORD flags) {
     const auto kind=resource?resource->GetType():D3DRTYPE_FORCE_DWORD;
@@ -38,6 +39,8 @@ HRESULT STDMETHODCALLTYPE OriginalBufferLockHook(IDirect3DResource9* resource,
             m2vr::drawprobe::OriginalLineageKind::IndexBufferContent,rva,hr);
         g_original_buffer_writes[family-1u].fetch_add(
             1u,std::memory_order_relaxed);
+        if(!g_original_bound_write_locks.Begin(resource))
+            OriginalBufferCoverageUnknown(rva,family);
         // Successful writable Lock can be modified before Unlock. Invalidating
         // now guarantees a stale eye is not consumed on later game Present.
         Model2VR_ObserveOriginalD3D9BufferMutation(
@@ -54,9 +57,11 @@ HRESULT STDMETHODCALLTYPE OriginalBufferUnlockHook(IDirect3DResource9* resource)
     const bool primary=PrimaryOriginalResource(resource);
     void* const caller=_ReturnAddress();
     const HRESULT hr=original(resource);
-    if(primary && FAILED(hr)) {
-        const auto rva=CallerRva(caller);
-        if(rva)TrackFailedOriginalD3D9Surface(
+    const auto rva=primary?CallerRva(caller):0u;
+    if(rva && SUCCEEDED(hr))
+        g_original_bound_write_locks.SuccessfulUnlock(resource);
+    if(rva && FAILED(hr)) {
+        TrackFailedOriginalD3D9Surface(
             hr,kind==D3DRTYPE_VERTEXBUFFER?39u:40u,rva);
     }
     return hr; // genuine original Unlock HRESULT, untouched

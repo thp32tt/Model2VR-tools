@@ -37,6 +37,18 @@ int main(){
     static_assert(static_cast<unsigned>(OriginalLineageKind::OtherTransform)==37u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::VertexBufferContent)==38u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::IndexBufferContent)==39u);
+    OriginalBoundWriteLocks active{};
+    assert(!active.HasOutstandingWrites());
+    assert(active.Begin(reinterpret_cast<const void*>(0x1234)));
+    assert(active.HasOutstandingWrites());
+    assert(!active.Begin(reinterpret_cast<const void*>(0x1234)));
+    active.SuccessfulUnlock(reinterpret_cast<const void*>(0x5678));
+    assert(active.HasOutstandingWrites());
+    active.SuccessfulUnlock(reinterpret_cast<const void*>(0x1234));
+    assert(!active.HasOutstandingWrites());
+    assert(active.Begin(reinterpret_cast<const void*>(0x1234)));
+    active.AfterSuccessfulDeviceReset();
+    assert(!active.HasOutstandingWrites());
     static_assert(IsWritableBufferLock(0u));
     static_assert(IsWritableBufferLock(0x2000u)); // DISCARD
     static_assert(IsWritableBufferLock(0x1000u)); // NOOVERWRITE
