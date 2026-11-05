@@ -81,6 +81,11 @@ echo is presented as a clearly labelled 2D HMD fallback, not fake native stereo.
 echo If the headset still shows one solid color per eye, check the host log for:
 echo   Daytona VR eye delivery: ... action=...
 echo Detailed original D3D9 producer reason and Draw counters are logged there.
+echo Pre-game emulator menus are shown in the HMD on one world-fixed 2D screen.
+echo Quest Touch aim/trigger is enabled only while the real emulator menu is
+echo in the foreground. Windows/Virtual Desktop mouse remains available.
+echo If Quest trigger does nothing, check OpenXR focus and menu controller
+echo diagnostics in the F9 local report; covered windows cannot be clicked.
 echo Press F9 while OpenXR is running to append local diagnosis in logs.
 >>"%LAUNCHLOG%" echo LOADER_COMPLETE_ONLY: see OpenXR host eye delivery status before declaring native game stereo
 echo Logs: "%~dp0logs"

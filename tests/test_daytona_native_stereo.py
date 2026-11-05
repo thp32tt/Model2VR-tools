@@ -335,6 +335,26 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("PlacePointer(",policy)
         self.assertIn("pointer.x==504 && pointer.y==504",regression)
 
+    def test_quest_menu_ray_cannot_inject_into_game_or_foreign_window(self):
+        controller=(ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8")
+        capture=(ROOT/"host/emulator_window_capture.cpp").read_text("utf-8")
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        config=configparser.ConfigParser()
+        config.read(ROOT/"config/daytona_native_stereo.ini",encoding="utf-8")
+        self.assertEqual(config["probe"]["quest_menu_controller_enabled"],"1")
+        self.assertIn("xrSyncActions(session,&sync)",controller)
+        self.assertIn("xrLocateSpace(aim_spaces_[hand],local_space",controller)
+        self.assertIn("button.changedSinceLastSync",controller)
+        self.assertIn("if(!menu_visible || !capture.Ready()",controller)
+        self.assertIn("GetForegroundWindow()!=window_",capture)
+        self.assertIn("WindowFromPoint(target_point)",capture)
+        self.assertIn("post_warp_pid!=static_cast<DWORD>(pid)",capture)
+        self.assertIn("SetControllerReticle(true,hit.texture_x,hit.texture_y)",controller)
+        self.assertIn("menu_quad && flat_quad,source_pid_",host)
+        self.assertIn("quest_menu_controller_has_ray_hit=",host)
+        self.assertIn("quest_menu_openxr_focused=",host)
+        self.assertNotIn("Model2VR_SubmitStereoRGBA",controller)
+
     def test_original_d3d9_mono_pixel_fallback_is_end_to_end_but_not_world_proof(self):
         source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         transport=(ROOT/"src/common/stereo_frame_ipc.h").read_text("utf-8")
