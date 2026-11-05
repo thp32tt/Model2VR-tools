@@ -7,9 +7,10 @@ from collections import Counter
 from pathlib import Path
 
 TRANSFORM = "model2_d3d9_original_transform_phase"
+MULTIPLY = "model2_d3d9_original_multiply_transform_phase"
 VS = "model2_d3d9_original_vs_constants_phase"
 REGION = "model2_d3d9_original_region_phase"
-KINDS = {1: "view", 2: "projection", 3: "world", 4: "other"}
+KINDS = {1: "view", 2: "projection", 3: "world", 4: "texture", 5: "other"}
 
 def integer(v):
     s = str(v).strip()
@@ -27,7 +28,7 @@ def audit(path):
             if i >= 3_000_000:
                 raise ValueError("CSV maximum rows exceeded")
             event = row["event"]
-            if event not in (TRANSFORM, VS, REGION):
+            if event not in (TRANSFORM, MULTIPLY, VS, REGION):
                 continue
             try:
                 frame, caller, a2, a3 = (integer(row[k]) for k in ("a0", "a1", "a2", "a3"))
@@ -37,17 +38,19 @@ def audit(path):
                     and 0 < caller <= 0xffffffff and
                     0 <= a2 <= 0xffffffffffffffff and 0 <= a3 <= 0xffffffffffffffff):
                 raise ValueError("invalid original source provenance")
-            if event == TRANSFORM:
+            if event in (TRANSFORM, MULTIPLY):
                 kind, draw = a2 >> 32, a2 & 0xffffffff
                 scene, flags = a3 >> 32, a3 & 0xffffffff
                 state, opened = flags >> 1, flags & 1
                 valid = (kind == 1 and state == 2 or kind == 2 and state == 3
                          or kind == 3 and 256 <= state <= 511
-                         or kind == 4 and 0 <= state <= 511 and
-                            state not in (2, 3) and not 256 <= state <= 511)
+                         or kind == 4 and 16 <= state <= 23
+                         or kind == 5 and 0 <= state <= 511 and
+                            state not in (2, 3) and not 16 <= state <= 23
+                            and not 256 <= state <= 511)
                 if not valid:
                     raise ValueError("unknown transform category/state")
-                name = KINDS[kind]
+                name = ("multiply_" if event == MULTIPLY else "") + KINDS[kind]
                 detail = {"transform_state": state}
                 key = (frame, event, kind)
             elif event == VS:

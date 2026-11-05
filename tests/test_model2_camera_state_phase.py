@@ -10,12 +10,18 @@ sys.path.insert(0, str(ROOT / "tools"))
 from model2_camera_state_phase_report import audit
 
 TRANSFORM = "model2_d3d9_original_transform_phase"
+MULTIPLY = "model2_d3d9_original_multiply_transform_phase"
 VS = "model2_d3d9_original_vs_constants_phase"
 REGION = "model2_d3d9_original_region_phase"
 
 def transform(frame, kind, state, scene=1, opened=1):
     return [TRANSFORM, frame, 0x345, (kind << 32) | 4,
             (scene << 32) | (state << 1) | opened]
+
+def multiply(frame, kind, state, scene=1, opened=1):
+    return [MULTIPLY, frame, 0x345, (kind << 32) | 4,
+            (scene << 32) | (state << 1) | opened]
+
 
 def region(frame, method, flags, scene=1):
     return [REGION, frame, 0x345, (method << 32) | 4,
@@ -41,17 +47,24 @@ class CameraStatePhaseTests(unittest.TestCase):
             transform(1, 1, 2), transform(1, 2, 3),
             transform(1, 3, 256), transform(1, 4, 16),
             vs(1, 0, 4), transform(8, 3, 257),
+            multiply(1, 1, 2), multiply(8, 4, 16),
         ])
-        self.assertEqual(data["witness_count"], 6)
+        self.assertEqual(data["witness_count"], 8)
         self.assertFalse(data["adapter_auto_enable"])
         self.assertEqual(data["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertEqual(data["method_counts"]["world"], 2)
+        self.assertEqual(data["method_counts"]["multiply_view"], 1)
+        self.assertEqual(data["method_counts"]["multiply_texture"], 1)
 
     def test_bad_camera_state_fails_closed(self):
         bad = [
             [transform(1, 1, 2), transform(1, 1, 2)],
             [transform(2, 1, 2)],
             [transform(1, 3, 2)],
+            [multiply(1, 4, 256)],
+            [multiply(1, 1, 3)],
+            [multiply(1, 5, 16)],
+            [multiply(1, 2, 3), multiply(1, 2, 3)],
             [transform(1, 1, 2, scene=0, opened=1)],
             [vs(1, 255, 2)],
             [vs(1, 0, 0)],
@@ -91,6 +104,7 @@ class CameraStatePhaseTests(unittest.TestCase):
         source = (ROOT / "src/probe/d3d9_probe.cpp").read_text("utf-8")
         for hook, original, slot, method in (
             ("SetTransformHook", "g_set_transform", 44, 6),
+            ("MultiplyTransformHook", "g_multiply_transform", 46, 36),
             ("SetVSConstantFHook", "g_set_vs_constant_f", 94, 7),
             ("SetViewportHook", "g_set_viewport", 47, 8),
             ("SetScissorRectHook", "g_set_scissor", 75, 9),
@@ -103,6 +117,9 @@ class CameraStatePhaseTests(unittest.TestCase):
             self.assertIn("vtable[" + str(slot) + "]", source)
             self.assertIn("MH_RemoveHook(vtable[" + str(slot) + "]);", source)
         self.assertIn("model2_d3d9_original_transform_phase", source)
+        self.assertIn("model2_d3d9_original_multiply_transform_phase", source)
+        self.assertIn("OriginalTransformLineageKind(kind)",source)
+        self.assertIn("&&transform&&multiply_transform&&vs_constants",source)
         self.assertIn("model2_d3d9_original_vs_constants_phase", source)
         self.assertIn("model2_d3d9_original_region_phase", source)
         self.assertIn("g_original_region_samples", source)

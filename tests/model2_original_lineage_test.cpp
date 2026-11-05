@@ -1,4 +1,5 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
+#include "../src/probe/original_d3d9_transform_lineage.hpp"
 #include "../src/probe/original_d3d9_stateblock_audit.hpp"
 #include "../src/probe/original_d3d9_stream_frequency.hpp"
 #include "../src/probe/original_d3d9_raster_mode.hpp"
@@ -29,8 +30,19 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==36);
+    static_assert(kOriginalLineageKinds==38);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ProcessVertices)==35u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::TextureTransform)==36u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::OtherTransform)==37u);
+    static_assert(ClassifyOriginalTransform(2u)==OriginalTransformCategory::View);
+    static_assert(ClassifyOriginalTransform(3u)==OriginalTransformCategory::Projection);
+    static_assert(ClassifyOriginalTransform(256u)==OriginalTransformCategory::World);
+    static_assert(ClassifyOriginalTransform(511u)==OriginalTransformCategory::World);
+    static_assert(ClassifyOriginalTransform(16u)==OriginalTransformCategory::Texture);
+    static_assert(ClassifyOriginalTransform(23u)==OriginalTransformCategory::Texture);
+    static_assert(ClassifyOriginalTransform(24u)==OriginalTransformCategory::Other);
+    static_assert(OriginalTransformLineageKind(OriginalTransformCategory::Texture)==OriginalLineageKind::TextureTransform);
+    static_assert(OriginalTransformLineageKind(OriginalTransformCategory::Other)==OriginalLineageKind::OtherTransform);
     OriginalUnmirroredGeometryState unmirrored{};
     assert(!unmirrored.HasProcessedVertices());
     unmirrored.SuccessfulProcessVertices();
@@ -88,6 +100,12 @@ int main(){
         ++next.successful_writes[kind];
         assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(next));
     }
+    auto texture_changed=initial;
+    ++texture_changed.successful_writes[static_cast<std::size_t>(OriginalLineageKind::TextureTransform)];
+    assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(texture_changed));
+    auto unclassified_changed=initial;
+    ++unclassified_changed.successful_writes[static_cast<std::size_t>(OriginalLineageKind::OtherTransform)];
+    assert(!SameOriginalLineage(initial,unclassified_changed));
     auto new_frame=initial;
     ++new_frame.physical_present;
     assert(!SameOriginalLineage(initial,new_frame));

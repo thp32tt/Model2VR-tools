@@ -3,7 +3,7 @@
 #include <cassert>
 int main(){
     using namespace m2vr::vrbridge;
-    for(std::uint32_t method=1u;method<=35u;++method){
+    for(std::uint32_t method=1u;method<=36u;++method){
         assert(IsFailedOriginalD3D9Surface(method,0x8876086Cu));
         assert(!IsFailedOriginalD3D9Surface(method,0u));
         assert(FailedOriginalD3D9SurfaceSourceKind(method)==method+21u);
