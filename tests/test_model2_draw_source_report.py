@@ -45,7 +45,7 @@ class SourceAuditTests(unittest.TestCase):
                             (7,0x1234,pack(5,0),0),
                             (7,0,pack(5,1),0),
                             (7,0,pack(5,0),1),
-                            (7,0x1234,pack(1,12),0),
+                            (7,0,pack(1,12),0),
                             (7,0x1234,pack(6,12),0),
                             (7,0x1234,pack(1,0),0),
                             (7,0x1234,pack(2,10000001),0)):
