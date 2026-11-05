@@ -1920,6 +1920,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         return TrackOriginalD3D9DrawResult(
             g_draw(d,p,start,count),1u,caller,d);
     g_draws.fetch_add(1,std::memory_order_relaxed);
+    const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -1952,7 +1953,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,1u,CallerRva(caller));
-    g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
+    g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
         OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
         SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,1u,
@@ -1973,6 +1974,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         return TrackOriginalD3D9DrawResult(
             g_draw_indexed(d,p,base,min,num,start,count),2u,caller,d);
     g_indexed.fetch_add(1,std::memory_order_relaxed);
+    const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2005,7 +2007,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,2u,CallerRva(caller));
-    g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
+    g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
         OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
         SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,2u,
@@ -2026,6 +2028,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         return TrackOriginalD3D9DrawResult(
             g_draw_up(d,p,count,verts,stride),3u,caller,d);
     g_up.fetch_add(1,std::memory_order_relaxed);
+    const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2058,7 +2061,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,3u,CallerRva(caller));
-    g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
+    g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
         OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
         SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,3u,
@@ -2079,6 +2082,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         return TrackOriginalD3D9DrawResult(
             g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride),4u,caller,d);
     g_indexed_up.fetch_add(1,std::memory_order_relaxed);
+    const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2113,7 +2117,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
            original_lineage,ReadOriginalLineage(source_frame)))
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,4u,CallerRva(caller));
-    g_original_scene_draw_coverage.Draw(CallerRva(caller)!=0u,
+    g_original_scene_draw_coverage.Draw(source_operation,CallerRva(caller)!=0u,
         OriginalSceneStillOwnedAfterDraw(source_scene,source_scene_open),
         SUCCEEDED(hr));
     RecordOriginalSourceResult(witness,hr,caller,4u,
@@ -2128,11 +2132,14 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
 // an original COM HRESULT. A failed original scene call is not admitted.
 HRESULT STDMETHODCALLTYPE BeginSceneHook(IDirect3DDevice9* d){
     void* const caller=_ReturnAddress();
+    const bool primary=g_primary_device.Owns(d);
+    const auto source_operation=primary?
+        g_original_scene_draw_coverage.EnterOperation():0u;
     const HRESULT hr=g_begin_scene(d);
     // The game EXE must own the REAL source scene. Mirror/overlay DLL
     // transitions never assert original-scene provenance or poison it.
     const auto caller_rva=CallerRva(caller);
-    if(g_primary_device.Owns(d) && caller_rva){
+    if(primary && caller_rva){
         if(FAILED(hr))TrackFailedOriginalD3D9Scene(hr,1u,caller_rva);
         else if(!g_original_scene_poisoned.load(std::memory_order_acquire)){
             g_original_scene_ordinal.fetch_add(1u,std::memory_order_relaxed);
@@ -2140,31 +2147,34 @@ HRESULT STDMETHODCALLTYPE BeginSceneHook(IDirect3DDevice9* d){
                 GetCurrentThreadId(),std::memory_order_release);
             g_original_scene_open.store(true,std::memory_order_release);
         }
-        g_original_scene_draw_coverage.Begin(
+        g_original_scene_draw_coverage.Begin(source_operation,
             true,SUCCEEDED(hr) &&
             !g_original_scene_poisoned.load(std::memory_order_acquire));
-    }else if(g_primary_device.Owns(d)){
-        g_original_scene_draw_coverage.Begin(false,false);
+    }else if(primary){
+        g_original_scene_draw_coverage.Begin(source_operation,false,false);
     }
     return hr;
 }
 HRESULT STDMETHODCALLTYPE EndSceneHook(IDirect3DDevice9* d){
     void* const caller=_ReturnAddress();
+    const bool primary=g_primary_device.Owns(d);
+    const auto source_operation=primary?
+        g_original_scene_draw_coverage.EnterOperation():0u;
     const bool source_was_open=g_original_scene_open.load(
         std::memory_order_acquire) &&
         g_original_scene_owner_thread.load(std::memory_order_acquire)==
             GetCurrentThreadId();
     const HRESULT hr=g_end_scene(d);
     const auto caller_rva=CallerRva(caller);
-    if(g_primary_device.Owns(d) && caller_rva){
+    if(primary && caller_rva){
         if(FAILED(hr))TrackFailedOriginalD3D9Scene(hr,2u,caller_rva);
         else {
             g_original_scene_open.store(false,std::memory_order_release);
             g_original_scene_owner_thread.store(0u,std::memory_order_release);
         }
-        g_original_scene_draw_coverage.End(true,SUCCEEDED(hr),source_was_open);
-    }else if(g_primary_device.Owns(d)){
-        g_original_scene_draw_coverage.End(false,SUCCEEDED(hr),source_was_open);
+        g_original_scene_draw_coverage.End(source_operation,true,SUCCEEDED(hr),source_was_open);
+    }else if(primary){
+        g_original_scene_draw_coverage.End(source_operation,false,SUCCEEDED(hr),source_was_open);
     }
     return hr;
 }
@@ -2966,6 +2976,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             original_scene_coverage.successful_untrusted,
             original_scene_coverage.failed_draws);
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
+    g_original_scene_draw_coverage.ReopenAfterPhysicalPresentAdvance();
     // An unobserved state-block Apply vtable stays unsafe across Reset and
     // Present. Keep the HMD on original mono, not stale speculative eyes.
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) &&
