@@ -232,7 +232,7 @@ int main(){
            (inferred_summary.flags&
             OriginalPhysicalTargetDrawCoverage::kUnownedTarget)!=0u);
     targets.ReopenAfterPhysicalPresentReturn();
-    targets.RenderTargetBind(true,true,true,main_depth);
+    targets.RenderTargetBind(true,true,0u,true,main_depth);
     targets.DepthBind(true,true,main_depth);
     for(unsigned family=0;family<4u;++family){
         (void)family;
@@ -245,7 +245,7 @@ int main(){
            !trusted_targets.RejectUnprovenStereoSource());
     targets.ReopenAfterPhysicalPresentReturn();
     auto changing=targets.EnterDraw();
-    targets.RenderTargetBind(true,true,true,offscreen_depth);
+    targets.RenderTargetBind(true,true,0u,true,offscreen_depth);
     targets.CompleteDraw(changing,true,true);
     auto drift=targets.FinishPresent();
     assert((drift.flags&OriginalPhysicalTargetDrawCoverage::kTargetDrift)!=0u &&
@@ -280,7 +280,7 @@ int main(){
     assert((targets.FinishPresent().flags&
             OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
     targets.ReopenAfterPhysicalPresentReturn();
-    targets.RenderTargetBind(true,true,true,main_depth);
+    targets.RenderTargetBind(true,true,0u,true,main_depth);
     targets.DepthBind(true,true,main_depth);
     const auto before_malformed=targets.EnterDraw();
     targets.CompleteDraw({},true,true); // a failed ticket cannot steal a slot
@@ -292,7 +292,31 @@ int main(){
            (recovered_target.flags&
             OriginalPhysicalTargetDrawCoverage::kInFlight)==0u);
     targets.ReopenAfterPhysicalPresentReturn();
-    targets.RenderTargetBind(false,true,true,offscreen_depth);
+    targets.RenderTargetBind(true,true,0u,true,main_depth);
+    targets.DepthBind(true,true,main_depth);
+    // A successful real MRT slot 1 bind persists until the original EXE
+    // explicitly unbinds it. It is not a single RT0 OpenXR source.
+    targets.RenderTargetBind(true,true,1u,true,offscreen_depth);
+    auto mrt=targets.EnterDraw();targets.CompleteDraw(mrt,true,true);
+    auto active_mrt=targets.FinishPresent();
+    assert(active_mrt.backbuffer==1u &&
+           (active_mrt.flags&
+            OriginalPhysicalTargetDrawCoverage::kMrtActive)!=0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    targets.RenderTargetBind(true,true,1u,false,offscreen_depth);
+    auto normal=targets.EnterDraw();targets.CompleteDraw(normal,true,true);
+    assert(targets.FinishPresent().flags==0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    auto stateblock=targets.EnterDraw();
+    targets.InvalidateOpaqueStateBlock();
+    targets.CompleteDraw(stateblock,true,true);
+    auto opaque=targets.FinishPresent();
+    assert((opaque.flags&
+            OriginalPhysicalTargetDrawCoverage::kOpaqueStateBlock)!=0u);
+    assert((opaque.flags&
+            OriginalPhysicalTargetDrawCoverage::kTargetDrift)!=0u);
+    targets.ReopenAfterPhysicalPresentReturn();
+    targets.RenderTargetBind(false,true,0u,true,offscreen_depth);
     auto foreign=targets.EnterDraw();
     targets.CompleteDraw(foreign,false,true);
     auto foreign_result=targets.FinishPresent();
