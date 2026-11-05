@@ -84,6 +84,13 @@ using SetPSConstantFFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const
 using SetTextureFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,IDirect3DBaseTexture9*);
 using TextureLockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DTexture9*,UINT,D3DLOCKED_RECT*,const RECT*,DWORD);
 using TextureUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DTexture9*,UINT);
+using TextureGetSurfaceLevelFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DTexture9*,UINT,IDirect3DSurface9**);
+using SurfaceLockRectFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DSurface9*,D3DLOCKED_RECT*,const RECT*,DWORD);
+using SurfaceUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*);
+using SurfaceGetDCFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,HDC*);
+using SurfaceReleaseDCFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,HDC);
 using CubeLockRectFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DCubeTexture9*,D3DCUBEMAP_FACES,UINT,D3DLOCKED_RECT*,const RECT*,DWORD);
 using CubeUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -168,6 +175,18 @@ SetPSConstantFFn g_set_ps_constant_f=nullptr;
 SetTextureFn g_set_texture=nullptr;
 TextureLockRectFn g_texture_lock_rect=nullptr;
 TextureUnlockRectFn g_texture_unlock_rect=nullptr;
+TextureGetSurfaceLevelFn g_texture_get_surface_level=nullptr;
+SurfaceLockRectFn g_surface_lock_rect=nullptr;
+SurfaceUnlockRectFn g_surface_unlock_rect=nullptr;
+SurfaceGetDCFn g_surface_get_dc=nullptr;
+SurfaceReleaseDCFn g_surface_release_dc=nullptr;
+void* g_texture_get_surface_level_target=nullptr;
+void* g_surface_lock_target=nullptr;
+void* g_surface_unlock_target=nullptr;
+void* g_surface_get_dc_target=nullptr;
+void* g_surface_release_dc_target=nullptr;
+std::mutex g_texture_surface_hook_mutex;
+std::atomic<std::uint32_t> g_original_texture_surface_writes{0u};
 CubeLockRectFn g_cube_lock_rect=nullptr;
 CubeUnlockRectFn g_cube_unlock_rect=nullptr;
 VolumeLockBoxFn g_volume_lock_box=nullptr;
@@ -1530,7 +1549,7 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
         m2vr::LogEvent("model2_d3d9_source_texture_upload_lineage",witness,
             original_frame,w[29],w[40]);
         m2vr::LogEvent("model2_d3d9_source_texture_shape_lineage",witness,
-            original_frame,(std::uint64_t{w[41]}<<32)|w[42],0u);
+            original_frame,(std::uint64_t{w[41]}<<32)|w[42],w[43]);
         m2vr::LogEvent("model2_d3d9_source_palette_lineage",witness,
             original_frame,(std::uint64_t{w[30]}<<32)|w[31],0u);
         m2vr::LogEvent("model2_d3d9_source_raster_mode_lineage",witness,
@@ -2032,6 +2051,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 // camera/geometry nonce and reject stale partial OpenXR stereo eye frames.
 #include "original_d3d9_buffer_hooks.inl"
 #include "original_d3d9_texture_shapes_hooks.inl"
+#include "original_d3d9_texture_surface_hooks.inl"
 #include "original_d3d9_texture_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
 // preserved, while failures poison only speculative binocular output.
@@ -2502,6 +2522,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(std::size_t i=0;i<unmirrored_counts.size();++i)
         unmirrored_counts[i]=g_original_unmirrored_calls[i].exchange(
             0u,std::memory_order_relaxed);
+    const auto surface_locks=g_original_texture_surface_writes.exchange(
+        0u,std::memory_order_relaxed);
     const auto cube_locks=g_original_texture_shape_writes[0].exchange(
         0u,std::memory_order_relaxed);
     const auto volume_locks=g_original_texture_shape_writes[1].exchange(
@@ -2520,6 +2542,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         m2vr::LogEvent("model2_d3d9_original_texture_shape_lock_counts",
             frame,cube_locks,volume_locks,
             g_texture_hook_unknown.load(std::memory_order_acquire)?1u:0u);
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_texture_surface_lock_counts",
+            frame,surface_locks,
+            g_texture_hook_unknown.load(std::memory_order_acquire)?1u:0u,0u);
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_buffer_lock_counts",
             frame,vb_write,ib_write,
@@ -2611,6 +2637,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     for(auto& calls:g_original_unmirrored_calls)calls.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_buffer_writes)count.store(0u,std::memory_order_relaxed);
     g_original_texture_lock_writes.store(0u,std::memory_order_relaxed);
+    g_original_texture_surface_writes.store(0u,std::memory_order_relaxed);
     for(auto& n:g_original_texture_shape_writes)
         n.store(0u,std::memory_order_relaxed);
     for(auto& revision:g_original_lineage_writes)

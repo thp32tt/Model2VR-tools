@@ -19,15 +19,16 @@ namespace m2vr::vrbridge {
 // 35=SetNPatchMode (79), 36=MultiplyTransform (46),
 // 37/38=VB/IB Lock (COM 11), 39/40=VB/IB Unlock (COM 12),
 // 41/42=2D LockRect/UnlockRect; 43/44=cube LockRect/UnlockRect;
-// 45/46=volume LockBox/UnlockBox (COM slots 19/20):
+// 45/46=volume LockBox/UnlockBox (COM slots 19/20);
+// 47=GetSurfaceLevel, 48/49=Surface Lock/Unlock, 50/51=GetDC/ReleaseDC:
 // original source-state and resource operation failures.
 inline constexpr bool IsFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits)noexcept {
-    return method>=1u && method<=46u && (result_bits&0x80000000u)!=0u;
+    return method>=1u && method<=51u && (result_bits&0x80000000u)!=0u;
 }
 inline constexpr std::uint32_t FailedOriginalD3D9SurfaceSourceKind(
     std::uint32_t method)noexcept {
     // Separate from Draw 17..20 and Clear 21.
-    return method>=1u && method<=46u?21u+method:0u;
+    return method>=1u && method<=51u?21u+method:0u;
 }
 } // namespace m2vr::vrbridge

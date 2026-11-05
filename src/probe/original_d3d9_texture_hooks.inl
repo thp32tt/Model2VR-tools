@@ -58,12 +58,15 @@ bool ObserveOriginalBoundTexture(IDirect3DBaseTexture9* texture,
     std::lock_guard lock(g_texture_hook_mutex);
     if(g_texture_hook_unknown.load(std::memory_order_acquire))return false;
     auto** vt=*reinterpret_cast<void***>(texture);
-    if(!vt || !vt[19] || !vt[20]){
+    if(!vt || !vt[18] || !vt[19] || !vt[20]){
         OriginalTextureCoverageUnknown(caller_rva);return false;
     }
-    if(g_texture_lock_target || g_texture_unlock_target){
-        if(g_texture_lock_target==vt[19] &&
+    if(g_texture_get_surface_level_target || g_texture_lock_target ||
+       g_texture_unlock_target){
+        if(g_texture_get_surface_level_target==vt[18] &&
+           g_texture_lock_target==vt[19] &&
            g_texture_unlock_target==vt[20] &&
+           g_texture_get_surface_level &&
            g_texture_lock_rect && g_texture_unlock_rect)return true;
         OriginalTextureCoverageUnknown(caller_rva);return false;
     }
@@ -77,6 +80,16 @@ bool ObserveOriginalBoundTexture(IDirect3DBaseTexture9* texture,
         g_texture_lock_rect=nullptr;
         OriginalTextureCoverageUnknown(caller_rva);return false;
     }
+    // GetSurfaceLevel provides a separate Surface::LockRect/GetDC write path
+    // even when this texture's own LockRect is correctly hooked.
+    if(!Hook(vt[18],reinterpret_cast<void*>(&OriginalTextureGetSurfaceLevelHook),
+             g_texture_get_surface_level)){
+        MH_DisableHook(vt[20]);MH_RemoveHook(vt[20]);
+        MH_DisableHook(vt[19]);MH_RemoveHook(vt[19]);
+        g_texture_lock_rect=nullptr;g_texture_unlock_rect=nullptr;
+        OriginalTextureCoverageUnknown(caller_rva);return false;
+    }
+    g_texture_get_surface_level_target=vt[18];
     g_texture_lock_target=vt[19];g_texture_unlock_target=vt[20];
     return true;
 }
