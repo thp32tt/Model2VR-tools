@@ -48,6 +48,9 @@ using UpdateSurfaceFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,IDirect3DSurface9*,const POINT*);
 using UpdateTextureFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,IDirect3DBaseTexture9*,IDirect3DBaseTexture9*);
+// Genuine device-wide palette changes can alter bound paletted texels.
+using SetPaletteEntriesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const PALETTEENTRY*);
+using SetCurrentTexturePaletteFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT);
 using StretchRectFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,IDirect3DSurface9*,const RECT*,
     IDirect3DSurface9*,const RECT*,D3DTEXTUREFILTERTYPE);
@@ -109,6 +112,8 @@ SceneFn g_end_scene=nullptr;
 ClearFn g_clear=nullptr;
 UpdateSurfaceFn g_update_surface=nullptr;
 UpdateTextureFn g_update_texture=nullptr;
+SetPaletteEntriesFn g_set_palette_entries=nullptr;
+SetCurrentTexturePaletteFn g_set_current_texture_palette=nullptr;
 StretchRectFn g_stretch_rect=nullptr;
 ColorFillFn g_color_fill=nullptr;
 SetRenderTargetFn g_set_render_target=nullptr;
@@ -221,6 +226,9 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9ActiveInstancing(
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9TextureUpload(
     unsigned long long physical_present,unsigned int caller_rva,
     unsigned long long preceding_draw_ordinal);
+extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PaletteMutation(
+    unsigned long long physical_present,unsigned int caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int method);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -1439,6 +1447,8 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
             (std::uint64_t{w[27]}<<32)|w[28]);
         m2vr::LogEvent("model2_d3d9_source_texture_upload_lineage",witness,
             original_frame,w[29],0u);
+        m2vr::LogEvent("model2_d3d9_source_palette_lineage",witness,
+            original_frame,(std::uint64_t{w[30]}<<32)|w[31],0u);
     }
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
@@ -1731,6 +1741,38 @@ HRESULT STDMETHODCALLTYPE UpdateTextureHook(IDirect3DDevice9* d,
         Model2VR_ObserveOriginalD3D9TextureUpload(
             g_present_count.load(std::memory_order_acquire)+1u,caller_rva,
             g_original_frame_draw_ordinal.load(std::memory_order_acquire));
+    }
+    return hr;
+}
+// A successful palette change may update already-bound texels without
+// SetTexture or UpdateTexture. Original COM HRESULT and data are untouched.
+HRESULT STDMETHODCALLTYPE SetPaletteEntriesHook(IDirect3DDevice9* d,
+                                                UINT palette,const PALETTEENTRY* entries){
+    if(!g_primary_device.Owns(d))return g_set_palette_entries(d,palette,entries);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_set_palette_entries(d,palette,entries);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,31u,rva);
+    if(rva && SUCCEEDED(hr)){
+        RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PaletteEntries,rva,hr);
+        Model2VR_ObserveOriginalD3D9PaletteMutation(
+            g_present_count.load(std::memory_order_acquire)+1u,rva,
+            g_original_frame_draw_ordinal.load(std::memory_order_acquire),1u);
+    }
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetCurrentTexturePaletteHook(IDirect3DDevice9* d,
+                                                        UINT palette){
+    if(!g_primary_device.Owns(d))return g_set_current_texture_palette(d,palette);
+    void* const origin=_ReturnAddress();
+    const HRESULT hr=g_set_current_texture_palette(d,palette);
+    const auto rva=CallerRva(origin);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,32u,rva);
+    if(rva && SUCCEEDED(hr)){
+        RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::CurrentPalette,rva,hr);
+        Model2VR_ObserveOriginalD3D9PaletteMutation(
+            g_present_count.load(std::memory_order_acquire)+1u,rva,
+            g_original_frame_draw_ordinal.load(std::memory_order_acquire),2u);
     }
     return hr;
 }
@@ -2318,6 +2360,8 @@ bool HookDevice(IDirect3DDevice9* dev){
     // They are pure original COM observers unless native-eye replay is on.
     const bool update=Hook(vtable[30],reinterpret_cast<void*>(&UpdateSurfaceHook),g_update_surface);
     const bool texture_upload=Hook(vtable[31],reinterpret_cast<void*>(&UpdateTextureHook),g_update_texture);
+    const bool palette_entries=Hook(vtable[71],reinterpret_cast<void*>(&SetPaletteEntriesHook),g_set_palette_entries);
+    const bool current_palette=Hook(vtable[73],reinterpret_cast<void*>(&SetCurrentTexturePaletteHook),g_set_current_texture_palette);
     const bool stretch=Hook(vtable[34],reinterpret_cast<void*>(&StretchRectHook),g_stretch_rect);
     const bool fill=Hook(vtable[35],reinterpret_cast<void*>(&ColorFillHook),g_color_fill);
     // IDirect3DDevice9 SetRenderTarget=37, SetDepthStencilSurface=39.
@@ -2370,7 +2414,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&texture_upload&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -2389,6 +2433,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(clear){MH_DisableHook(vtable[43]);MH_RemoveHook(vtable[43]);}
         if(update){MH_DisableHook(vtable[30]);MH_RemoveHook(vtable[30]);}
         if(texture_upload){MH_DisableHook(vtable[31]);MH_RemoveHook(vtable[31]);}
+        if(palette_entries){MH_DisableHook(vtable[71]);MH_RemoveHook(vtable[71]);}
+        if(current_palette){MH_DisableHook(vtable[73]);MH_RemoveHook(vtable[73]);}
         if(stretch){MH_DisableHook(vtable[34]);MH_RemoveHook(vtable[34]);}
         if(fill){MH_DisableHook(vtable[35]);MH_RemoveHook(vtable[35]);}
         if(rt){MH_DisableHook(vtable[37]);MH_RemoveHook(vtable[37]);}
@@ -2423,6 +2469,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_update_surface=nullptr;g_update_texture=nullptr;
+        g_set_palette_entries=nullptr;g_set_current_texture_palette=nullptr;
         g_stretch_rect=nullptr;g_color_fill=nullptr;
         g_set_render_target=nullptr;g_set_depth_surface=nullptr;
         g_set_transform=nullptr;g_set_vs_constant_f=nullptr;
@@ -2451,6 +2498,8 @@ bool HookDevice(IDirect3DDevice9* dev){
                        update,stretch,fill,clear);
         m2vr::LogEvent("model2_d3d9_texture_upload_hook_rollback",
                        texture_upload,0u,0u,0u);
+        m2vr::LogEvent("model2_d3d9_palette_hooks_rollback",
+                       palette_entries,current_palette,0u,0u);
         m2vr::LogEvent("model2_d3d9_target_hook_rollback",rt,depth,0u,0u);
         m2vr::LogEvent("model2_d3d9_transform_hook_rollback",transform,vs_constants,0u,0u);
         m2vr::LogEvent("model2_d3d9_region_hook_rollback",viewport,scissor,0u,0u);

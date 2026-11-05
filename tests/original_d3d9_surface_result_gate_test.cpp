@@ -3,13 +3,13 @@
 #include <cassert>
 int main(){
     using namespace m2vr::vrbridge;
-    for(std::uint32_t method=1u;method<=30u;++method){
+    for(std::uint32_t method=1u;method<=32u;++method){
         assert(IsFailedOriginalD3D9Surface(method,0x8876086Cu));
         assert(!IsFailedOriginalD3D9Surface(method,0u));
         assert(FailedOriginalD3D9SurfaceSourceKind(method)==method+21u);
     }
     static_assert(!IsFailedOriginalD3D9Surface(0u,0x80070057u));
-    static_assert(!IsFailedOriginalD3D9Surface(31u,0x80070057u));
+    static_assert(!IsFailedOriginalD3D9Surface(33u,0x80070057u));
     static_assert(static_cast<unsigned>(OriginalSourceFailure::OriginalSurfaceFailed)==19u);
     OriginalSourceFrameEpoch epoch{};
     assert(epoch.CanBegin(77u,76u));

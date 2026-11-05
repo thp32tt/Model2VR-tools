@@ -26,12 +26,14 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==30);
+    static_assert(kOriginalLineageKinds==32);
     static_assert(static_cast<unsigned>(OriginalLineageKind::Material)==25u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::Light)==26u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::LightEnable)==27u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ClipPlane)==28u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::TextureUpload)==29u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::PaletteEntries)==30u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::CurrentPalette)==31u);
     OriginalLineageStamp initial{77,{}};
     assert(!OriginalLineageUsable(initial));
     assert(OriginalLineageNonce(initial)==0);

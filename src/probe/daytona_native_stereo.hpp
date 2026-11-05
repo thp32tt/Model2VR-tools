@@ -91,6 +91,7 @@ void MarkFailedOriginalSurface(std::uint32_t method,
 void MarkOriginalLineageMismatch() noexcept;
 // A successful source texture upload after GPU eye Draw invalidates texels.
 void MarkOriginalTextureUploadAfterEyes() noexcept;
+void MarkOriginalPaletteMutationAfterEyes(std::uint32_t method) noexcept;
 // A failed primary-device game EXE Draw in any of four families invalidates
 // speculative GPU eyes, but never changes the original Draw HRESULT.
 void MarkFailedOriginalDraw(std::uint32_t family,

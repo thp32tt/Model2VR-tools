@@ -910,6 +910,32 @@ extern "C" void __stdcall Model2VR_ObserveOriginalD3D9TextureUpload(
             physical_present,original_caller_rva,preceding_draw_ordinal,0u);
     m2vr::daytona::MarkOriginalTextureUploadAfterEyes();
 }
+// Palette writes may change already drawn eye texels without a binding call.
+// They never alter the original emulator Draw or mono backbuffer.
+extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PaletteMutation(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int method){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || !original_caller_rva || method<1u || method>2u ||
+       preceding_draw_ordinal>10000000u ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool rejected=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.frame==physical_present && (g.active || g.pending_present)){
+            const auto previous=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalPaletteMutationAfterStereo;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=previous;
+            g.source_epoch.Revoke(physical_present);
+            rejected=true;
+        }
+    }
+    if(rejected)
+        m2vr::LogEvent("model2_d3d9_original_palette_mutation_rejected",
+            physical_present,original_caller_rva,preceding_draw_ordinal,method);
+    m2vr::daytona::MarkOriginalPaletteMutationAfterEyes(method);
+}
 // Strict original physical-Draw post-call check: a state write concurrent
 // with CPU eye raster or the genuine D3D9 Draw may change its source.
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
