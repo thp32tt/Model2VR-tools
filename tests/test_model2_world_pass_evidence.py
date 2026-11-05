@@ -304,6 +304,29 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             compare_sessions([report(witness()),report(witness())],
                              controls(aux=control))
 
+    def test_fully_saturated_real_bloom_no_longer_excludes_unrelated_race(self):
+        # A real long original title/menu session may touch >1000 unique
+        # physical Draw callsites. Its two bloom lanes can legitimately
+        # saturate, without sharing the specific candidate world caller.
+        from tools.model2_world_pass_evidence import original_caller_bloom_bits
+        callers=[0x00510000+i for i in range(1500)]
+        lo=hi=0
+        for rva in callers:
+            a,b=original_caller_bloom_bits(rva)
+            lo|=a
+            hi|=b
+        self.assertEqual(lo,0xffffffffffffffff)
+        self.assertEqual(hi,0xffffffffffffffff)
+        control=report()
+        control["original_all_family_exact_caller_inventory"].update(
+            callers=[f"0x{rva:08x}" for rva in callers],
+            unique_caller_count=len(callers))
+        control["original_all_family_caller_bloom"].update(lane0=lo,lane1=hi)
+        got=compare_sessions([report(witness()),report(witness())],
+                             controls(aux=control))
+        self.assertEqual(len(got["candidates"]),1)
+        self.assertFalse(got["adapter_auto_enable"])
+
     def test_missing_exact_caller_control_fails_closed(self):
         control=report()
         del control["original_all_family_exact_caller_inventory"]
