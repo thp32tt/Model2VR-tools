@@ -207,6 +207,18 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("w[13]",hooks)
         self.assertIn("OriginalLineageNonce(lineage),permission",hooks)
 
+    def test_persistent_original_stream_frequency_cannot_publish_stereo(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        tracker=(ROOT/"src/probe/original_d3d9_stream_frequency.hpp").read_text("utf-8")
+        self.assertIn("g_original_stream_frequency_state.SuccessfulOriginalWrite(",hooks)
+        self.assertIn("g_original_stream_frequency_state.UnsupportedMask()",hooks)
+        self.assertIn("g_original_stream_frequency_state.AfterSuccessfulDeviceReset()",hooks)
+        self.assertIn("Model2VR_RejectOriginalD3D9ActiveInstancing(",hooks)
+        self.assertIn("model2_d3d9_original_instancing_active",bridge)
+        self.assertIn("g.source_epoch.Revoke(physical_present)",bridge)
+        self.assertIn("kUnknownStream=1u<<31",tracker)
+
     def test_shader_int_bool_and_instanced_stream_source_paths(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")

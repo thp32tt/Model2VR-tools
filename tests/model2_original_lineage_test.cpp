@@ -1,9 +1,24 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
 #include "../src/probe/original_d3d9_stateblock_audit.hpp"
+#include "../src/probe/original_d3d9_stream_frequency.hpp"
 #include "../src/probe/original_d3d9_authenticated_draw.hpp"
 #include <cassert>
 int main(){
     using namespace m2vr::drawprobe;
+    OriginalStreamFrequencyState freq{};
+    assert(freq.UnsupportedMask()==0u);
+    freq.SuccessfulOriginalWrite(0u,0x40000002u);
+    assert(freq.UnsupportedMask()==1u);
+    freq.SuccessfulOriginalWrite(1u,0x80000001u);
+    assert(freq.UnsupportedMask()==3u);
+    freq.SuccessfulOriginalWrite(0u,1u);
+    assert(freq.UnsupportedMask()==2u); // other instanced stream persists
+    freq.SuccessfulOriginalWrite(1u,1u);
+    assert(freq.UnsupportedMask()==0u);
+    freq.SuccessfulOriginalWrite(17u,2u);
+    assert(freq.UnsupportedMask()==OriginalStreamFrequencyState::kUnknownStream);
+    freq.AfterSuccessfulDeviceReset();
+    assert(freq.UnsupportedMask()==0u);
     OriginalStateBlockAuditOncePerPresent audit{};
     assert(!audit.Claim(0u));
     assert(audit.Claim(77u));

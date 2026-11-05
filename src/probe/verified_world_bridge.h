@@ -405,6 +405,11 @@ __declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutati
 __declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
     unsigned long long physical_frame,unsigned int stream,
     unsigned int original_caller_rva,unsigned int frequency);
+// A previous physical Present may leave instanced stream state active;
+// current frame must fail closed even when no original SetStreamSourceFreq
+// is issued in this Present. No original game state is changed.
+__declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9ActiveInstancing(
+    unsigned long long physical_frame,unsigned int active_stream_mask);
 }
 
 // Optional explicit recenter on a proven scene/device restart.

@@ -957,6 +957,27 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
         physical_present,stream,original_caller_rva,frequency);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9ActiveInstancing(
+    unsigned long long physical_present,unsigned int active_stream_mask){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || !active_stream_mask ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_present &&
+           (g.active||g.pending_present)){
+            const auto old=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalInstancedStreamUnknown;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=old;
+        }
+        g.source_epoch.Revoke(physical_present);
+    }
+    // a1 is the currently active unsafe-stream bit mask, not a game pointer.
+    m2vr::LogEvent("model2_d3d9_original_instancing_active",
+        physical_present,active_stream_mask,0u,0u);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);
     // A physical original device Reset invalidates all stored CPU-world

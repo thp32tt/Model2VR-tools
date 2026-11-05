@@ -6,6 +6,7 @@ Updated: 2026-11-05 KST
 
 - Connect real original D3D9 Win32 SetVertexShaderConstantI/B, SetPixelShaderConstantI/B and SetStreamSourceFreq to one original COM call each, original HRESULT, bounded same-Draw nonfloating-shader and stream write witnesses. Full 25-kind primary physical Present lineage now contributes to the strict source nonce and before/after original Draw checks.
 - Failed authentic write methods 21..25 revoke the physical source frame. Any successful non-unit stream frequency is unsupported by the original CPU independent-eye raster and therefore poisons that entire source Present; actual game Draw, HMD mono, FFB, input, 64-bit OpenXR host remain intact.
+- **Same-feature persistence fix, +0:** preserve per-original-device nonunit stream frequency by stream across physical Presents; fail closed before source Present even when no SetStreamSourceFreq occurs this frame. Only successful Setting=1 for each active stream or successful device Reset clears the unsafe source. Report bounded `model2_d3d9_original_instancing_active` private-audit event. No game state modification.
 - Private A/B race, HUD/sky/aux controls, original CPU projector/camera basis/meters-per-unit and Quest3/VDXR physical validation remain outstanding. `RUNTIME_VALIDATION=UNTESTED`.
 
 

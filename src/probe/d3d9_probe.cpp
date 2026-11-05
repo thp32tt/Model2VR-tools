@@ -13,6 +13,7 @@
 #include "original_d3d9_clear_result_gate.hpp"
 #include "original_d3d9_surface_result_gate.hpp"
 #include "original_d3d9_lineage.hpp"
+#include "original_d3d9_stream_frequency.hpp"
 #include "original_d3d9_authenticated_draw.hpp"
 #include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
@@ -131,6 +132,7 @@ StateBlockApplyFn g_state_block_apply=nullptr;
 void* g_state_block_apply_target=nullptr;
 std::mutex g_state_block_hook_mutex;
 std::atomic<bool> g_state_block_apply_unobserved{false};
+m2vr::drawprobe::OriginalStreamFrequencyState g_original_stream_frequency_state{};
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -202,6 +204,8 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
     unsigned long long physical_present,unsigned int stream,
     unsigned int original_caller_rva,unsigned int frequency);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9ActiveInstancing(
+    unsigned long long physical_present,unsigned int active_stream_mask);
 
 template<class T>
 bool Hook(void* target,void* detour,T& original){
@@ -1424,8 +1428,9 @@ bool ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
     std::uint64_t frame,std::uint64_t ordinal,unsigned family,
     void* caller,unsigned scene,bool original_scene_open,
     const m2vr::drawprobe::OriginalLineageStamp& lineage,Submit&& submit){
-    if(g_state_block_apply_unobserved.load(std::memory_order_acquire))
-        return false; // unknown original Apply implementation: no World3D
+    if(g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
+       g_original_stream_frequency_state.UnsupportedMask())
+        return false; // unknown Apply or persistent instanced geometry
     m2vr::vrbridge::ArmedOriginalDraw permission{};
     if(!m2vr::vrbridge::TryTakeAuthenticatedOriginalDraw(
           frame,ordinal,family,CallerRva(caller),scene,
@@ -1921,10 +1926,16 @@ HRESULT STDMETHODCALLTYPE SetStreamFrequencyHook(IDirect3DDevice9* d,UINT stream
     const auto rva=CallerRva(origin);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,25u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::StreamFrequency,rva,hr);
-    if(rva && SUCCEEDED(hr) && frequency!=1u)
-        Model2VR_RejectOriginalD3D9InstancedStream(
-            g_present_count.load(std::memory_order_acquire)+1u,
-            stream,rva,frequency);
+    if(rva && SUCCEEDED(hr)){
+        // The physical game's non-unit frequency can outlive a Present.
+        // A later success Setting=1 only clears THIS stream.
+        g_original_stream_frequency_state.SuccessfulOriginalWrite(
+            stream,frequency);
+        if(frequency!=1u)
+            Model2VR_RejectOriginalD3D9InstancedStream(
+                g_present_count.load(std::memory_order_acquire)+1u,
+                stream,rva,frequency);
+    }
     return hr;
 }
 // Original material/texture/pixel-constant writes; genuine COM/HRESULT
@@ -2091,6 +2102,12 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
                            seen,0u,0u,0u);
         return CallOriginalPresentOnce(d,a,b,w,dirty);
     }
+    // Check persisted source stream dividers BEFORE advancing Present ID:
+    // reject speculative eyes even with no SetStreamSourceFreq this frame.
+    const auto active_freq=g_original_stream_frequency_state.UnsupportedMask();
+    if(active_freq)
+        Model2VR_RejectOriginalD3D9ActiveInstancing(
+            g_present_count.load(std::memory_order_acquire)+1u,active_freq);
     const unsigned frame=g_present_count.fetch_add(1,std::memory_order_relaxed)+1;
     // An unobserved state-block Apply vtable stays unsafe across Reset and
     // Present. Keep the HMD on original mono, not stale speculative eyes.
@@ -2191,7 +2208,12 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     m2vr::drawprobe::NextProjectDrawEpoch();
     Model2VR_DiscardPendingWorldOnReset();
     if(g_native_stereo)m2vr::daytona::ResetResources();
-    return g_reset(d,pp);
+    const HRESULT result=g_reset(d,pp);
+    // Failed device Reset must not forget an active original instanced
+    // stream setting; only a SUCCESSFUL real Reset returns to defaults.
+    if(SUCCEEDED(result))
+        g_original_stream_frequency_state.AfterSuccessfulDeviceReset();
+    return result;
 }
 bool HookDevice(IDirect3DDevice9* dev){
     if(!dev)return false;
@@ -2437,6 +2459,7 @@ Model2VR_NextOriginalD3D9PresentFrameId(){
 extern "C" __declspec(dllexport) unsigned long long __stdcall
 Model2VR_CurrentOriginalD3D9LineageNonce(){
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
+       g_original_stream_frequency_state.UnsupportedMask() ||
        !Model2VR_CurrentOriginalD3D9SceneOrdinal())return 0u;
     return m2vr::drawprobe::OriginalLineageNonce(ReadOriginalLineage(
         Model2VR_NextOriginalD3D9PresentFrameId()));

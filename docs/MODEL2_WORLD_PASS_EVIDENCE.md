@@ -15,7 +15,13 @@ failures (failure methods 21..25) revoke both CPU and speculative GPU
 binocular source epochs without changing original game rendering or FFB.
 
 A successful non-unit vertex stream frequency may select instanced/divisor
-geometry unsupported by the independent-eye CPU triangle bridge. This
+geometry unsupported by the independent-eye CPU triangle bridge. Its
+per-stream unsafe mask persists across physical Presents until each stream
+is successfully restored to Setting=1 or a real successful device Reset.
+Even a Present with **no new SetStreamSourceFreq** fails closed while the
+original device is still in unsupported instancing mode. The private
+`model2_d3d9_original_instancing_active` event carries a bounded source
+stream mask for this persistent negative evidence. This
 source is rejected for the **entire physical Present**, even if a later
 original call resets the frequency to one. The original game still renders
 normally and its backbuffer remains the honest fallback. The tagged
