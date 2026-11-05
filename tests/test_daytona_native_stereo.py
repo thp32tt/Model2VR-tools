@@ -1397,7 +1397,9 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("g_original_gpu_surface_writes[i].exchange(",native)
         self.assertIn("g_original_gpu_surface_writes[family-1u].fetch_add(",native)
         self.assertIn("g.source_epoch.Revoke(physical_present)",cpu)
-        self.assertIn("m2vr::daytona::MarkOriginalTextureUploadAfterEyes()",cpu)
+        self.assertIn("m2vr::daytona::MarkOriginalGpuSurfaceMutationAfterEyes(method)",cpu)
+        self.assertIn("OriginalGpuSurfaceMutationAfterStereo",cpu)
+        self.assertIn("model2_d3d9_original_gpu_surface_mutation_rejected",cpu)
         methods=[
             ("ClearHook","g_clear(d,count,rects,flags,color,z,stencil)",1),
             ("UpdateSurfaceHook","g_update_surface(d,src,src_rect,dst,dst_point)",2),
@@ -1407,8 +1409,8 @@ class NativeStereoTest(unittest.TestCase):
             body=native.split("HRESULT STDMETHODCALLTYPE "+name+"(")[1].split(
                 "\nHRESULT STDMETHODCALLTYPE ",1)[0]
             self.assertEqual(body.count("const HRESULT hr="+original+";"),1)
-            self.assertEqual(body.count("BeforeOriginalGpuSurfaceWrite(caller_rva);"),1)
-            self.assertLess(body.index("BeforeOriginalGpuSurfaceWrite(caller_rva);"),
+            self.assertEqual(body.count(f"BeforeOriginalGpuSurfaceWrite(caller_rva,{family}u);"),1)
+            self.assertLess(body.index(f"BeforeOriginalGpuSurfaceWrite(caller_rva,{family}u);"),
                             body.index("const HRESULT hr="+original+";"))
             self.assertIn(f"RecordOriginalGpuSurfaceWrite(caller_rva,hr,{family}u);",body)
             self.assertIn("if(caller_rva && FAILED(hr))",body)

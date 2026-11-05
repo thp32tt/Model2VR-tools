@@ -283,6 +283,7 @@ def audit_csv(path):
                 "model2_d3d9_original_instancing_unsupported",
                 "model2_d3d9_original_instancing_active",
                 "model2_d3d9_original_texture_upload_rejected",
+                "model2_d3d9_original_gpu_surface_mutation_rejected",
                 "model2_d3d9_original_buffer_mutation_rejected",
                 "model2_d3d9_original_buffer_hook_unobserved",
                 "model2_d3d9_original_palette_mutation_rejected",
@@ -370,6 +371,17 @@ def audit_csv(path):
                     not 0 < a1 <= 0xffffffff or
                     a2 > 10_000_000 or a3 not in (1,2)):
                     raise ValueError("invalid original palette mutation rejection")
+                failed_original_surface_frames.add(a0)
+                continue
+            if event == "model2_d3d9_original_gpu_surface_mutation_rejected":
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or
+                    not 0 < a1 <= 0xffffffff or
+                    a2 > 10_000_000 or a3 not in (1,2,3,4)):
+                    raise ValueError("invalid original GPU Surface mutation rejection")
+                if len(failed_original_surface_frames) >= MAX_PENDING and (
+                    a0 not in failed_original_surface_frames):
+                    raise ValueError("original GPU Surface mutation capacity")
                 failed_original_surface_frames.add(a0)
                 continue
             if event == "model2_d3d9_original_texture_upload_rejected":
@@ -542,7 +554,9 @@ def audit_csv(path):
                 elif key == "gpu_surface_lineage":
                     if (not 0 < a1 <= 0xffffffff or
                         a1 <= observed_present_frame or
-                        a2 > 1_000_000 or a3 != 0 or key in rec):
+                        a2 > 1_000_000 or a3 != 0 or key in rec or
+                        (rec.get("source_frame") is not None and
+                         rec["source_frame"] != a1)):
                         raise ValueError("invalid original UP GPU Surface lineage")
                     once(rec,key,(a1,a2,a3),a0)
                 elif key == "texture_shape_lineage":

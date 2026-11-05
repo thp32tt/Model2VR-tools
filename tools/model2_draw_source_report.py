@@ -623,6 +623,19 @@ def audit_csv(path):
                 if len(original_surface_failures)>MAX_WITNESSES:
                     raise ValueError("original palette mutation capacity")
                 continue
+            if event == "model2_d3d9_original_gpu_surface_mutation_rejected":
+                try:
+                    frame, caller, ordinal, method = (
+                        number(row[k]) for k in ("a0", "a1", "a2", "a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original GPU Surface mutation row") from exc
+                if (not 0 < frame <= 0xffffffff or not 0 < caller <= 0xffffffff or
+                    ordinal > 10_000_000 or method not in (1,2,3,4)):
+                    raise ValueError("invalid original GPU Surface mutation rejection")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures)>MAX_WITNESSES:
+                    raise ValueError("original GPU Surface mutation capacity")
+                continue
             if event == "model2_d3d9_original_texture_upload_rejected":
                 try:
                     frame, caller, ordinal, reserved = (
