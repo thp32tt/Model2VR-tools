@@ -1383,6 +1383,36 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("d->SetDepthStencilSurface(original_depth)",gpu)
         self.assertIn("if(!both || !restored){Reset();return;}",gpu)
 
+    def test_real_gpu_surface_writes_revoke_xr_before_one_original_com(self):
+        native=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        lineage=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
+        cpu=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        audit=(ROOT/"tools/model2_draw_source_report.py").read_text("utf-8")
+        up=(ROOT/"tools/model2_up_draw_outcomes.py").read_text("utf-8")
+        self.assertIn("GpuSurfaceContents=48",lineage)
+        self.assertIn("kOriginalLineageKinds=49",lineage)
+        self.assertIn("model2_d3d9_source_gpu_surface_lineage",native)
+        self.assertIn("original_gpu_surface_lineage_witnesses",audit)
+        self.assertIn("original_gpu_surface_lineage_witness",up)
+        self.assertIn("g_original_gpu_surface_writes[i].exchange(",native)
+        self.assertIn("g_original_gpu_surface_writes[family-1u].fetch_add(",native)
+        self.assertIn("g.source_epoch.Revoke(physical_present)",cpu)
+        self.assertIn("m2vr::daytona::MarkOriginalTextureUploadAfterEyes()",cpu)
+        methods=[
+            ("ClearHook","g_clear(d,count,rects,flags,color,z,stencil)",1),
+            ("UpdateSurfaceHook","g_update_surface(d,src,src_rect,dst,dst_point)",2),
+            ("StretchRectHook","g_stretch_rect(d,src,src_rect,dst,dst_rect,filter)",3),
+            ("ColorFillHook","g_color_fill(d,dst,rect,color)",4)]
+        for name,original,family in methods:
+            body=native.split("HRESULT STDMETHODCALLTYPE "+name+"(")[1].split(
+                "\nHRESULT STDMETHODCALLTYPE ",1)[0]
+            self.assertEqual(body.count("const HRESULT hr="+original+";"),1)
+            self.assertEqual(body.count("BeforeOriginalGpuSurfaceWrite(caller_rva);"),1)
+            self.assertLess(body.index("BeforeOriginalGpuSurfaceWrite(caller_rva);"),
+                            body.index("const HRESULT hr="+original+";"))
+            self.assertIn(f"RecordOriginalGpuSurfaceWrite(caller_rva,hr,{family}u);",body)
+            self.assertIn("if(caller_rva && FAILED(hr))",body)
+
     def test_native_surface_writes_preserve_original_and_eye_gate(self):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")

@@ -47,6 +47,22 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0, caller, pack(frame, 3)),
         ]
 
+    def test_real_gpu_surface_lineage_up_is_bounded_and_same_present(self):
+        lineage=event("model2_d3d9_source_gpu_surface_lineage",21,7,9,0)
+        good=self.report(self.projected()+[
+            lineage,event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(good["counts"]["original_gpu_surface_lineage_witness"],1)
+        self.assertEqual(good["counts"]["same_witness_cpu_camera_present_candidate"],1)
+        for bad in ((0,9,0),(8,9,0),(7,1000001,0),(7,9,1)):
+            events=self.projected()+[
+                event("model2_d3d9_source_gpu_surface_lineage",21,*bad),
+                event("model2_d3d9_original_present_result",7,0,1,0)]
+            with self.assertRaisesRegex(ValueError,"GPU Surface"):
+                self.report(events)
+        with self.assertRaisesRegex(ValueError,"GPU Surface"):
+            self.report(self.projected()+[lineage,lineage,
+                event("model2_d3d9_original_present_result",7,0,1,0)])
+
     def test_unmirrored_patch_and_processed_vb_fail_closed_same_up_present(self):
         good=self.report(self.projected()+[
             event("model2_d3d9_original_present_result",7,0,1,0)])

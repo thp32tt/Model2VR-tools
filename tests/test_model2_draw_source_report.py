@@ -22,6 +22,31 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_authentic_gpu_surface_lineage_is_same_physical_draw_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"private_gpu_surface.csv"
+            frame=17
+            rows=[
+                ("model2_d3d9_vb_present_frame",201,frame,1,0),
+                ("model2_d3d9_vb_source",201,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",201,frame,12,pack(0x1234,1)),
+                ("model2_d3d9_source_gpu_surface_lineage",201,frame,7,0),
+                ("model2_d3d9_vb_original_result",201,0,0x1234,pack(frame,1)),
+                ("model2_d3d9_original_present_result",frame,0,1,0)]
+            self.write_log(p,rows)
+            got=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(got["original_gpu_surface_lineage_witnesses"],1)
+            self.assertFalse(got["world_pass_proven"])
+            for bad in ((18,7,0),(17,1000001,0),(17,7,1),(0,7,0)):
+                mutated=rows.copy()
+                mutated[3]=("model2_d3d9_source_gpu_surface_lineage",201,*bad)
+                self.write_log(p,mutated)
+                with self.assertRaisesRegex(ValueError,"GPU Surface"):
+                    REPORT.audit_csv(p)
+            self.write_log(p,rows[:4]+[rows[3]]+rows[4:])
+            with self.assertRaisesRegex(ValueError,"GPU Surface"):
+                REPORT.audit_csv(p)
+
     def test_unmirrored_patch_and_process_vertices_revoke_original_vb(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/"unmirrored.csv"
