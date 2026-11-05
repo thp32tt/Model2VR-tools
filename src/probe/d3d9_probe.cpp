@@ -192,6 +192,9 @@ std::array<std::atomic<unsigned>,2> g_original_region_samples{};
 // Four authentic unmirrored COM families, max one private witness per family
 // in each sampled original physical Present (not per game mesh/vertex).
 std::array<std::atomic<unsigned>,4> g_original_unmirrored_samples{};
+// Exact real-device COM call totals per original physical Present. No
+// original game patch handles, VB pointers, vertex counts or game data.
+std::array<std::atomic<std::uint32_t>,4> g_original_unmirrored_calls{};
 // Monotonic state-write revisions per PHYSICAL original source Present.
 // Secondary devices and non-EXE renderer/mirror callbacks never advance.
 std::array<std::atomic<std::uint32_t>,m2vr::drawprobe::kOriginalLineageKinds>
@@ -2141,6 +2144,11 @@ HRESULT STDMETHODCALLTYPE SetNPatchModeHook(IDirect3DDevice9* d,float segments){
 void RejectUnmirrored(unsigned method,void* caller,std::uint64_t ordinal,HRESULT hr){
     const auto rva=CallerRva(caller);
     if(!rva)return;
+    // Saturate instead of rolling over if a malformed original game loops.
+    auto& calls=g_original_unmirrored_calls[method-1u];
+    auto old=calls.load(std::memory_order_relaxed);
+    while(old<10000000u && !calls.compare_exchange_weak(
+        old,old+1u,std::memory_order_relaxed,std::memory_order_relaxed)){}
     const auto frame=g_present_count.load(std::memory_order_acquire)+1u;
     Model2VR_RejectOriginalD3D9UnmirroredGeometry(
         frame,method,rva,ordinal,static_cast<std::uint32_t>(hr));
@@ -2384,6 +2392,19 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     const unsigned dip=g_indexed.exchange(0u,std::memory_order_relaxed);
     const unsigned dpup=g_up.exchange(0u,std::memory_order_relaxed);
     const unsigned dipup=g_indexed_up.exchange(0u,std::memory_order_relaxed);
+    std::array<std::uint32_t,4> unmirrored_counts{};
+    for(std::size_t i=0;i<unmirrored_counts.size();++i)
+        unmirrored_counts[i]=g_original_unmirrored_calls[i].exchange(
+            0u,std::memory_order_relaxed);
+    if(frame==1u || frame%120u==0u){
+        // Physical Present aggregate: rect patch, tri patch, delete patch,
+        // ProcessVertices. This is diagnostic only, never World3D evidence.
+        m2vr::LogEvent("model2_d3d9_original_unmirrored_com_counts",
+            frame,
+            (std::uint64_t{unmirrored_counts[0]}<<32u)|unmirrored_counts[1],
+            (std::uint64_t{unmirrored_counts[2]}<<32u)|unmirrored_counts[3],
+            g_unmirrored_geometry_state.HasProcessedVertices()?1u:0u);
+    }
     // Query the authenticated source before the physical Present; this
     // permits staging original mono as backup instead of forcing two
     // speculative GPU eye readbacks that cannot win the frame arbitration.
@@ -2459,6 +2480,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     g_original_vs_constant_samples.store(0u,std::memory_order_relaxed);
     for(auto& sample:g_original_region_samples)sample.store(0u,std::memory_order_relaxed);
     for(auto& sample:g_original_unmirrored_samples)sample.store(0u,std::memory_order_relaxed);
+    for(auto& calls:g_original_unmirrored_calls)calls.store(0u,std::memory_order_relaxed);
     for(auto& revision:g_original_lineage_writes)
         revision.store(0u,std::memory_order_release);
     g_original_scene_poisoned.store(false,std::memory_order_release);
