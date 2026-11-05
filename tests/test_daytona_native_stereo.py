@@ -147,8 +147,8 @@ class NativeStereoTest(unittest.TestCase):
     def test_failed_original_viewport_scissor_revoke_gpu_eyes(self):
         source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         header=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
-        self.assertIn("method>42u", source)
-        self.assertIn("method<=42u", header)
+        self.assertIn("method>46u", source)
+        self.assertIn("method<=46u", header)
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,8u,rva)", (
             ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8"))
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,9u,rva)", (
@@ -206,7 +206,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("OriginalLineageKind::IndexBufferContent",hooks)
         self.assertIn("VertexBufferContent=38",lineage)
         self.assertIn("IndexBufferContent=39",lineage)
-        self.assertIn("kOriginalLineageKinds=41",lineage)
+        self.assertIn("kOriginalLineageKinds=43",lineage)
         self.assertIn("w[38]}<<32)|w[39]",probe)
         self.assertIn("model2_d3d9_source_buffer_content_lineage",probe)
         self.assertIn("Model2VR_ObserveOriginalD3D9BufferMutation(",bridge)
@@ -216,7 +216,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("OriginalSourceFailure::OriginalBufferHookCoverageUnknown",bridge)
         self.assertIn("MarkOriginalBufferMutationAfterEyes",gpu)
         self.assertIn("model2_vr_gpu_original_buffer_mutation_stale",gpu)
-        self.assertIn("method<=42u",gate)
+        self.assertIn("method<=46u",gate)
         # No original VB/IB byte reads and no second original Draw call.
         self.assertNotIn("memcpy",hooks)
         self.assertNotIn("DrawPrimitive(",hooks)
@@ -249,7 +249,7 @@ class NativeStereoTest(unittest.TestCase):
             self.assertIn("RejectUnmirrored(",body)
         self.assertIn("OriginalLineageKind::ProcessVertices",hooks)
         self.assertIn("ProcessVertices=35",lineage)
-        self.assertIn("kOriginalLineageKinds=41",lineage)
+        self.assertIn("kOriginalLineageKinds=43",lineage)
         self.assertIn("g_original_unmirrored_samples",hooks)
         # A sparse sampled log could falsely pass an intervening original
         # unsafe patch Draw; every affected physical Present is recorded.
@@ -271,9 +271,9 @@ class NativeStereoTest(unittest.TestCase):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         source=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
         gate=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
-        self.assertIn("kOriginalLineageKinds=41",source)
-        self.assertIn("method<=42u",gate)
-        self.assertIn("method>42u",gpu)
+        self.assertIn("kOriginalLineageKinds=43",source)
+        self.assertIn("method<=46u",gate)
+        self.assertIn("method>46u",gpu)
         for method,slot,kind,fail in (
             ("SetStreamSource",100,"StreamSource",10),
             ("SetIndices",104,"IndexBuffer",11),
@@ -355,15 +355,15 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("model2_d3d9_source_fixed_function_lineage",hooks)
         self.assertIn("(std::uint64_t{w[25]}<<32)|w[26]",hooks)
         self.assertIn("(std::uint64_t{w[27]}<<32)|w[28]",hooks)
-        self.assertIn("method<=42u",gate)
-        self.assertIn("method>42u",gpu)
+        self.assertIn("method<=46u",gate)
+        self.assertIn("method>46u",gpu)
 
     def test_original_state_block_apply_is_single_call_and_stereo_fail_closed(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         policy=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
         api=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
-        self.assertIn("kOriginalLineageKinds=41",policy)
+        self.assertIn("kOriginalLineageKinds=43",policy)
         self.assertIn("StateBlockApply=19",policy)
         self.assertIn("vtable[59]",hooks)
         self.assertIn("vtable[60]",hooks)
@@ -422,8 +422,8 @@ class NativeStereoTest(unittest.TestCase):
             self.assertIn(f"MH_RemoveHook(vtable[{slot}]);",hooks)
         self.assertIn("model2_d3d9_source_material_lineage",hooks)
         self.assertIn("model2_d3d9_source_render_lineage",hooks)
-        self.assertIn("method>42u",gpu)
-        self.assertIn("method<=42u",gate)
+        self.assertIn("method>46u",gpu)
+        self.assertIn("method<=46u",gate)
         self.assertIn("&&ps_constants&&texture&&texture_stage&&sampler&&render_state",hooks)
 
     def test_original_exe_scene_boundaries_are_optional_and_readonly(self):
@@ -547,13 +547,50 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(unlock.count("const HRESULT hr=g_texture_unlock_rect("),1)
         self.assertNotIn("memcpy",hooks)
 
+    def test_cube_and_volume_original_texture_lock_preserve_abi_and_source(self):
+        native=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        shapes=(ROOT/"src/probe/original_d3d9_texture_shapes_hooks.inl").read_text("utf-8")
+        hooks=(ROOT/"src/probe/original_d3d9_texture_hooks.inl").read_text("utf-8")
+        lineage=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
+        surface=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
+        self.assertIn("CubeTextureContent=41",lineage)
+        self.assertIn("VolumeTextureContent=42",lineage)
+        self.assertIn("kOriginalLineageKinds=43",lineage)
+        self.assertIn("method<=46u",surface)
+        self.assertIn("original_d3d9_texture_shapes_hooks.inl",native)
+        self.assertIn("w[41]}<<32)|w[42]",native)
+        self.assertIn("model2_d3d9_source_texture_shape_lineage",native)
+        self.assertIn("ObserveOriginalBoundShapeTexture(texture,caller_rva,shape)",hooks)
+        self.assertIn("D3DRTYPE_CUBETEXTURE",hooks)
+        self.assertIn("D3DRTYPE_VOLUMETEXTURE",hooks)
+        self.assertIn("vt[19]",shapes)
+        self.assertIn("vt[20]",shapes)
+        self.assertIn("g_original_texture_write_locks.Begin(t)",shapes)
+        self.assertIn("g_original_texture_write_locks.SuccessfulUnlock(t)",shapes)
+        for label,call,code in (
+            ("OriginalCubeLockRectHook","g_cube_lock_rect(",43),
+            ("OriginalCubeUnlockRectHook","g_cube_unlock_rect(",44),
+            ("OriginalVolumeLockBoxHook","g_volume_lock_box(",45),
+            ("OriginalVolumeUnlockBoxHook","g_volume_unlock_box(",46),
+        ):
+            body=shapes.split("HRESULT STDMETHODCALLTYPE "+label+"(")[1].split(
+                "\nHRESULT STDMETHODCALLTYPE ",1)[0].split(
+                "\nbool ObserveOriginalBoundShapeTexture(",1)[0]
+            self.assertEqual(body.count("const HRESULT hr="+call),1)
+            self.assertIn(f"TrackFailedOriginalD3D9Surface(hr,{code}u,rva)",body)
+            self.assertIn("return hr;",body)
+        self.assertIn("OriginalLineageKind::CubeTextureContent",shapes)
+        self.assertIn("OriginalLineageKind::VolumeTextureContent",shapes)
+        self.assertEqual(shapes.count("Model2VR_ObserveOriginalD3D9TextureUpload("),2)
+        self.assertNotIn("memcpy",shapes)
+
     def test_original_update_texture_is_single_call_and_revokes_stale_eyes(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         epoch=(ROOT/"src/probe/verified_world_source_epoch.hpp").read_text("utf-8")
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         state=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
-        assert "kOriginalLineageKinds=41" in state
+        assert "kOriginalLineageKinds=43" in state
         self.assertIn("TextureUpload=29",state)
         body=hooks.split("HRESULT STDMETHODCALLTYPE UpdateTextureHook(")[1].split(
             "HRESULT STDMETHODCALLTYPE ",1)[0]
@@ -685,7 +722,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("&&fill&&rt&&depth",hooks)
         self.assertIn("model2_d3d9_original_target_bind_phase",hooks)
         self.assertIn("g_original_target_bind_samples",hooks)
-        self.assertIn("method>42u",gpu)
+        self.assertIn("method>46u",gpu)
         self.assertIn("model2_d3d9_target_hook_rollback",hooks)
 
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):

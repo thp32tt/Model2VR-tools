@@ -36,6 +36,7 @@ META = {
     "model2_d3d9_source_fixed_function_lineage": "fixed_function_lineage",
     "model2_d3d9_source_raster_mode_lineage": "raster_mode_lineage",
     "model2_d3d9_source_buffer_content_lineage": "buffer_content_lineage",
+    "model2_d3d9_source_texture_shape_lineage": "texture_shape_lineage",
     "model2_d3d9_up_layout_frame": "layout_frame",
     "model2_d3d9_source_pass_context": "context",
     "model2_d3d9_cpu_up_matrix_identity": "matrix",
@@ -168,6 +169,8 @@ def audit_csv(path):
                  rec["fixed_function_lineage"][0] != frame) or
                 (rec.get("texture_upload_lineage") is not None and
                  rec["texture_upload_lineage"][0] != frame) or
+                (rec.get("texture_shape_lineage") is not None and
+                 rec["texture_shape_lineage"][0] != frame) or
                 (rec.get("palette_lineage") is not None and
                  rec["palette_lineage"][0] != frame) or
                 (rec.get("raster_mode_lineage") is not None and
@@ -199,6 +202,8 @@ def audit_csv(path):
         if status == "original_source_draw_and_present_succeeded":
             if rec.get("texture_upload_lineage") is not None:
                 counts["original_texture_upload_lineage_witness"] += 1
+            if rec.get("texture_shape_lineage") is not None:
+                counts["original_texture_shape_lineage_witness"] += 1
             if rec.get("palette_lineage") is not None:
                 counts["original_palette_lineage_witness"] += 1
             if rec.get("fixed_function_lineage") is not None:
@@ -403,7 +408,7 @@ def audit_csv(path):
                 else:
                     valid = (0 < a0 <= 0xffffffff and
                              a0 > observed_present_frame and
-                             1 <= a1 <= 42 and a2 <= 0xffffffff and
+                             1 <= a1 <= 46 and a2 <= 0xffffffff and
                              (a2 & 0x80000000) != 0 and
                              0 < a3 <= 0xffffffff)
                 if not valid:
@@ -528,6 +533,14 @@ def audit_csv(path):
                         a1 <= observed_present_frame or
                         a2 > 1_000_000 or a3 > 1_000_000 or key in rec):
                         raise ValueError("invalid original UP texture upload lineage")
+                    once(rec,key,(a1,a2,a3),a0)
+                elif key == "texture_shape_lineage":
+                    revisions = halves(a2)
+                    if (not 0 < a1 <= 0xffffffff or
+                        a1 <= observed_present_frame or
+                        any(n > 1_000_000 for n in revisions) or
+                        a3 != 0 or key in rec):
+                        raise ValueError("invalid original UP cube/volume texture lineage")
                     once(rec,key,(a1,a2,a3),a0)
                 elif key == "palette_lineage":
                     revs = halves(a2)

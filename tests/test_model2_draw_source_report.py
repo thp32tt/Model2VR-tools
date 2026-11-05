@@ -319,6 +319,23 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(p,rows)
             good=REPORT.audit_csv(p)["sources"][0]
             self.assertEqual(good["original_texture_upload_lineage_witnesses"],1)
+            shape_rows=list(rows)
+            shape_rows.insert(5,("model2_d3d9_source_texture_shape_lineage",
+                                 501,17,pack(2,3),0))
+            self.write_log(p,shape_rows)
+            shape=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(shape["original_texture_shape_lineage_witnesses"],1)
+            for bad_shape in ((18,pack(2,3),0),
+                              (17,pack(1_000_001,3),0),(17,pack(2,3),1)):
+                altered=list(shape_rows)
+                altered[5]=("model2_d3d9_source_texture_shape_lineage",501,*bad_shape)
+                self.write_log(p,altered)
+                with self.assertRaisesRegex(ValueError,"cube/volume texture"):
+                    REPORT.audit_csv(p)
+            self.write_log(p,shape_rows[:6]+[shape_rows[5]]+shape_rows[6:])
+            with self.assertRaisesRegex(ValueError,"cube/volume texture"):
+                REPORT.audit_csv(p)
+            self.write_log(p,rows)
             locked=list(rows)
             locked[4]=("model2_d3d9_source_texture_upload_lineage",501,17,3,2)
             self.write_log(p,locked)
@@ -451,7 +468,7 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
                     REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
-                        (43,0x8876086C,0x4321),
+                        (47,0x8876086C,0x4321),
                         (1,0,0x4321),
                         (2,0x8876086C,0)):
                 failure=("model2_d3d9_original_surface_failed",17,*bad)
