@@ -69,7 +69,7 @@ class OriginalCursorStereoSourceTest(unittest.TestCase):
 
     def test_real_72_state_kinds_and_bounded_failure_codes(self):
         for field in ("DeviceCursorProperties=51","DeviceCursorPosition=52",
-                      "DeviceCursorVisibility=53","kOriginalLineageKinds=59"):
+                      "DeviceCursorVisibility=53","kOriginalLineageKinds=61"):
             self.assertIn(field,self.lineage)
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,71u,rva)",self.hooks)
         self.assertIn("method<=75u",self.failed)

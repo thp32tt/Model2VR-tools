@@ -60,7 +60,7 @@ class OriginalD3D9PresentationSourceTest(unittest.TestCase):
         self.assertIn("g.source_epoch.Revoke(physical_present)",self.bridge)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",self.bridge)
         self.assertIn("model2_d3d9_original_presentation_control_rejected",self.bridge)
-        self.assertIn("kOriginalLineageKinds=59",self.lineage)
+        self.assertIn("kOriginalLineageKinds=61",self.lineage)
         self.assertIn("DeviceDialogBoxMode=49",self.lineage)
         self.assertIn("DeviceGammaRamp=50",self.lineage)
         self.assertIn("method<=75u",self.failure)
