@@ -19,6 +19,7 @@ SOURCE_KIND = "real_d3d9_command_boundary_readonly_metadata"
 RVA = re.compile(r"0x[0-9a-fA-F]{8}\Z")
 MIN_PRESENTS = 2
 MAX_SOURCES = 100_000
+CONTROL_TYPES = frozenset(("title", "menu", "sky", "hud", "aux"))
 
 
 def _validate_report(report):
@@ -134,77 +135,104 @@ def _enough_original_source(source):
     return _cpu_callers(source) is not None
 
 
-def compare_sessions(race_reports, nonrace_reports):
-    """Return conservative candidates, NEVER game-world authorization.
+def _control_projector_callers(control):
+    """Any readable CPU source caller in a non-race capture is negative evidence.
 
-    At least two independently captured race sessions and a separate
-    nonrace/title/menu session are required. Camera motion, units, world/HUD,
-    emulator signature and HMD visuals still require private human proof.
+    HUD/sky/menu projections need not form a complete world candidate. An
+    invalid non-race CPU record must never silently hide a caller collision.
     """
-    if len(race_reports) < 2 or len(nonrace_reports) < 1:
-        raise ValueError("need two race captures and at least one nonrace capture")
-    race = [_validate_report(report) for report in race_reports]
-    nonrace = [_validate_report(report) for report in nonrace_reports]
-    all_callers = set().union(*(set(r) for r in race))
-    nonrace_callers = set().union(*(set(r) for r in nonrace))
-    candidates = []
-    rejected = []
-    for family, caller in sorted(all_callers):
-        key = (family, caller)
-        reason = None
-        if int(caller, 16) == 0:
-            reason = "unknown_gpu_caller"
-        elif key in nonrace_callers:
-            reason = "caller_also_used_outside_race"
+    callers=set()
+    for source in control.values():
+        records=source.get("same_witness_joint_cpu_matrix_commands",[])
+        if not isinstance(records,list):
+            raise ValueError("invalid nonrace CPU projector provenance")
+        for record in records:
+            if (not isinstance(record,list) or len(record)!=4 or
+                any(not isinstance(item,str) or RVA.fullmatch(item) is None
+                    for item in record) or int(record[0],16)==0):
+                raise ValueError("invalid nonrace CPU projector provenance")
+            callers.add(record[0].lower())
+    return callers
+
+
+def compare_sessions(race_reports, nonrace_reports):
+    """Seven explicitly labelled private source captures: candidate-only.
+
+    Two independent races and title/menu/sky/hud/aux NEGATIVE controls are
+    required. Neither caller matching nor class labels prove actual world.
+    """
+    if not isinstance(race_reports,list) or len(race_reports)<2:
+        raise ValueError("need two independent original race captures")
+    if not isinstance(nonrace_reports,dict) or set(nonrace_reports)!=CONTROL_TYPES:
+        raise ValueError("need exact title/menu/sky/hud/aux negative controls")
+    race=[_validate_report(report) for report in race_reports]
+    nonrace={label:_validate_report(nonrace_reports[label])
+             for label in sorted(CONTROL_TYPES)}
+    all_callers=set().union(*(set(r) for r in race))
+    # Original game can call one EXE RVA with different primitive families.
+    control_gpu={label:{caller for _,caller in sources}
+                 for label,sources in nonrace.items()}
+    control_cpu={label:_control_projector_callers(sources)
+                 for label,sources in nonrace.items()}
+    candidates=[]
+    rejected=[]
+    for family,caller in sorted(all_callers):
+        key=(family,caller)
+        reason=None
+        if int(caller,16)==0:
+            reason="unknown_gpu_caller"
+        elif any(caller in rv_as for rv_as in control_gpu.values()):
+            reason="caller_also_used_outside_race"
         elif any(key not in session for session in race):
-            reason = "missing_in_race_capture"
+            reason="missing_in_race_capture"
         elif any(not _enough_original_source(session[key]) for session in race):
-            reason = "missing_same_draw_matrix_material_or_render_evidence"
+            reason="missing_same_draw_matrix_material_or_render_evidence"
         else:
-            callers = [_cpu_callers(session[key]) for session in race]
-            if any(c != callers[0] for c in callers[1:]):
-                reason = "conflicting_original_cpu_projector_callers"
+            callers=[_cpu_callers(session[key]) for session in race]
+            if any(c!=callers[0] for c in callers[1:]):
+                reason="conflicting_original_cpu_projector_callers"
+            elif any(next(iter(callers[0])) in sources
+                     for sources in control_cpu.values()):
+                reason="cpu_projector_also_used_outside_race"
         if reason:
-            rejected.append({"draw_family": family, "caller_rva_hex": caller,
-                             "reason": reason})
+            rejected.append({"draw_family":family,"caller_rva_hex":caller,
+                             "reason":reason})
         else:
             candidates.append({
-                "draw_family": family,
-                "caller_rva_hex": caller,
-                "cpu_projector_caller_rva_hex": next(iter(callers[0])),
-                "race_session_count": len(race),
-                "per_race_source_present_counts": [
+                "draw_family":family,
+                "caller_rva_hex":caller,
+                "cpu_projector_caller_rva_hex":next(iter(callers[0])),
+                "race_session_count":len(race),
+                "per_race_source_present_counts":[
                     session[key]["distinct_projected_material_present_frame_count"]
-                    for session in race
-                ],
-                "per_race_physically_presented_frame_counts": [
+                    for session in race],
+                "per_race_physically_presented_frame_counts":[
                     session[key]["distinct_physically_presented_material_present_frame_count"]
-                    for session in race
-                ],
-                "per_race_original_draw_ordinal_ranges": [
+                    for session in race],
+                "per_race_original_draw_ordinal_ranges":[
                     [session[key]["original_draw_ordinal_min"],
                      session[key]["original_draw_ordinal_max"]]
-                    for session in race
-                ],
-                "per_race_original_scene_ordinal_ranges": [
+                    for session in race],
+                "per_race_original_scene_ordinal_ranges":[
                     [session[key]["original_scene_ordinal_min"],
                      session[key]["original_scene_ordinal_max"]]
-                    for session in race
-                ],
-                "evidence": "phase_attested_same_witness_source_candidate_only",
-                "world_pass_authorized": False,
+                    for session in race],
+                "evidence":"phase_attested_same_witness_source_candidate_only",
+                "world_pass_authorized":False,
             })
     return {
-        "schema": 1,
-        "source_kind": "private_cross_phase_original_draw_candidate_triage",
-        "race_session_count": len(race),
-        "nonrace_session_count": len(nonrace),
-        "world_pass_proof": "NOT_ESTABLISHED",
-        "camera_axes_and_meters_per_unit": "NOT_CALIBRATED",
-        "adapter_auto_enable": False,
-        "hmd_runtime_validation": "UNTESTED",
-        "candidates": candidates,
-        "rejected": rejected,
+        "schema":1,
+        "source_kind":"private_cross_phase_original_draw_candidate_triage",
+        "race_session_count":len(race),
+        "nonrace_session_count":len(nonrace),
+        "control_types":sorted(CONTROL_TYPES),
+        "complete_negative_controls":True,
+        "world_pass_proof":"NOT_ESTABLISHED",
+        "camera_axes_and_meters_per_unit":"NOT_CALIBRATED",
+        "adapter_auto_enable":False,
+        "hmd_runtime_validation":"UNTESTED",
+        "candidates":candidates,
+        "rejected":rejected,
     }
 
 
@@ -225,33 +253,42 @@ def _load_report(path):
         return json.load(handle)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--race", action="append", required=True, type=Path,
-                        help="private race CSV or model2_draw_source_report JSON; repeat")
-    parser.add_argument("--nonrace", action="append", required=True, type=Path,
-                        help="private menu/title/aux CSV or JSON; repeat")
-    parser.add_argument("--output", type=Path, help="private local JSON destination")
-    args = parser.parse_args()
-    paths = args.race + args.nonrace
-    if len(args.race) < 2 or len(set(p.resolve() for p in paths)) != len(paths):
+def main(argv=None):
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--race",action="append",required=True,type=Path,
+                        help="private original race CSV/report; provide at least two")
+    parser.add_argument("--control",action="append",nargs=2,required=True,
+                        metavar=("CLASS","PRIVATE_CSV_OR_JSON"),
+                        help="exactly one for each title/menu/sky/hud/aux")
+    parser.add_argument("--output",type=Path,
+                        help="PRIVATE local-only JSON candidate report")
+    args=parser.parse_args(argv)
+    controls={}
+    for label,raw in args.control:
+        if label not in CONTROL_TYPES or label in controls:
+            parser.error("unique --control classes must be title/menu/sky/hud/aux")
+        controls[label]=Path(raw)
+    if set(controls)!=CONTROL_TYPES:
+        parser.error("all five title/menu/sky/hud/aux controls required")
+    paths=args.race+list(controls.values())
+    if len(args.race)<2 or len(set(p.resolve() for p in paths))!=len(paths):
         parser.error("two independent race files and distinct capture paths required")
     try:
-        fingerprints = [_capture_digest(path) for path in paths]
-        if len(set(fingerprints)) != len(fingerprints):
-            parser.error("reused identical race/menu log bytes are not independent sessions")
-        result = compare_sessions(
+        fingerprints=[_capture_digest(path) for path in paths]
+        if len(set(fingerprints))!=len(fingerprints):
+            parser.error("identical capture bytes cannot prove independent sessions")
+        result=compare_sessions(
             [_load_report(path) for path in args.race],
-            [_load_report(path) for path in args.nonrace],
+            {label:_load_report(path) for label,path in controls.items()},
         )
-    except (ValueError, OSError, json.JSONDecodeError) as exc:
+    except (ValueError,OSError,json.JSONDecodeError) as exc:
         parser.error(str(exc))
-    content = json.dumps(result, sort_keys=True, indent=2) + "\n"
+    content=json.dumps(result,sort_keys=True,indent=2)+"\n"
     if args.output:
-        args.output.write_text(content, encoding="utf-8")
+        args.output.write_text(content,encoding="utf-8")
     else:
-        print(content, end="")
+        print(content,end="")
 
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
