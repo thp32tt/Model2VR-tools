@@ -2157,7 +2157,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         original_lineage,ReadOriginalLineage(source_frame));
     if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
-            source_frame,source_ordinal,undefinedu,CallerRva(caller));
+            source_frame,source_ordinal,2u,CallerRva(caller));
     const bool target_retained=g_original_target_draw_coverage.CompleteDraw(
         original_target_ticket,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const bool scene_retained=OriginalSceneStillOwnedAfterDraw(
@@ -2219,7 +2219,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         original_lineage,ReadOriginalLineage(source_frame));
     if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
-            source_frame,source_ordinal,undefinedu,CallerRva(caller));
+            source_frame,source_ordinal,3u,CallerRva(caller));
     const bool target_retained=g_original_target_draw_coverage.CompleteDraw(
         original_target_ticket,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const bool scene_retained=OriginalSceneStillOwnedAfterDraw(
@@ -2283,7 +2283,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         original_lineage,ReadOriginalLineage(source_frame));
     if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
-            source_frame,source_ordinal,undefinedu,CallerRva(caller));
+            source_frame,source_ordinal,4u,CallerRva(caller));
     const bool target_retained=g_original_target_draw_coverage.CompleteDraw(
         original_target_ticket,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const bool scene_retained=OriginalSceneStillOwnedAfterDraw(
