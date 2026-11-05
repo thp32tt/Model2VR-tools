@@ -284,6 +284,7 @@ def audit_csv(path):
                 "model2_d3d9_original_instancing_active",
                 "model2_d3d9_original_texture_upload_rejected",
                 "model2_d3d9_original_gpu_surface_mutation_rejected",
+                "model2_d3d9_original_swap_chain_source_rejected",
                 "model2_d3d9_original_buffer_mutation_rejected",
                 "model2_d3d9_original_buffer_hook_unobserved",
                 "model2_d3d9_original_palette_mutation_rejected",
@@ -371,6 +372,16 @@ def audit_csv(path):
                     not 0 < a1 <= 0xffffffff or
                     a2 > 10_000_000 or a3 not in (1,2)):
                     raise ValueError("invalid original palette mutation rejection")
+                failed_original_surface_frames.add(a0)
+                continue
+            if event == "model2_d3d9_original_swap_chain_source_rejected":
+                if (not 0 < a0 <= 0xffffffff or a0 <= observed_present_frame or
+                    a1 > 0xffffffff or a2 not in (1,2) or a3 != 0 or
+                    (a2 == 1 and a1 == 0)):
+                    raise ValueError("invalid original SwapChain rejection")
+                if len(failed_original_surface_frames)>=MAX_PENDING and (
+                    a0 not in failed_original_surface_frames):
+                    raise ValueError("original SwapChain rejection capacity")
                 failed_original_surface_frames.add(a0)
                 continue
             if event == "model2_d3d9_original_gpu_surface_mutation_rejected":

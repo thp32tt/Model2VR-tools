@@ -5,13 +5,20 @@
 // source from a read-only GetBackBuffer(5). All original COM calls run once.
 // A surface returned here receives the existing CPU/GDI write observer before
 // its first LockRect/GetDC, with no pixels or COM identities logged.
-bool OriginalSwapChainBelongsToPrimary(IDirect3DSwapChain9* chain) noexcept {
-    if(!chain)return false;
+enum class OriginalSwapChainOwner : std::uint32_t {
+    Unknown=0u, Primary=1u, Secondary=2u
+};
+OriginalSwapChainOwner OriginalSwapChainDeviceOwner(
+    IDirect3DSwapChain9* chain) noexcept {
+    if(!chain)return OriginalSwapChainOwner::Unknown;
     IDirect3DDevice9* device=nullptr;
     const HRESULT hr=chain->GetDevice(&device);
-    const bool primary=SUCCEEDED(hr)&&device&&g_primary_device.Owns(device);
+    const bool known=SUCCEEDED(hr) && device;
+    const bool primary=known && g_primary_device.Owns(device);
     if(device)device->Release();
-    return primary;
+    if(!known)return OriginalSwapChainOwner::Unknown;
+    return primary?OriginalSwapChainOwner::Primary:
+                   OriginalSwapChainOwner::Secondary;
 }
 void OriginalSwapChainCoverageUnknown(std::uint32_t rva) noexcept {
     g_original_swap_chain_source_unproven.store(true,std::memory_order_release);
@@ -25,16 +32,18 @@ HRESULT STDMETHODCALLTYPE OriginalSwapChainPresentHook(
     void* const origin=_ReturnAddress();
     const auto rva=CallerRva(origin);
     if(rva){
-        if(OriginalSwapChainBelongsToPrimary(chain)){
+        const auto owner=OriginalSwapChainDeviceOwner(chain);
+        if(owner==OriginalSwapChainOwner::Primary){
             g_original_swap_chain_calls[2].fetch_add(1u,std::memory_order_relaxed);
-            // Revoke CPU-world and GPU-eye speculation BEFORE genuine
-            // presentation. Alternate Present has no authenticated frame id.
-            OriginalSwapChainCoverageUnknown(rva);
+            // Revoke BOTH sources BEFORE genuine COM presentation. Preserve
+            // reason=1 rather than overwriting it with generic uncertainty.
+            g_original_swap_chain_source_unproven.store(
+                true,std::memory_order_release);
             Model2VR_RejectOriginalD3D9SwapChainPresent(
                 g_present_count.load(std::memory_order_acquire)+1u,rva,1u);
-        }else{
-            // An EXE-owned SwapChain with uncertain owner must never
-            // silently masquerade as the primary stereo source.
+        }else if(owner==OriginalSwapChainOwner::Unknown){
+            // A failed GetDevice cannot authenticate primary source ownership.
+            // A known secondary device is NOT the game's primary Draw owner.
             OriginalSwapChainCoverageUnknown(rva);
         }
     }
@@ -47,10 +56,15 @@ HRESULT STDMETHODCALLTYPE OriginalSwapChainGetBackBufferHook(
     void* const origin=_ReturnAddress();
     const HRESULT hr=g_original_swap_chain_get_back_buffer(chain,index,type,out);
     const auto rva=CallerRva(origin);
-    if(rva && OriginalSwapChainBelongsToPrimary(chain) && SUCCEEDED(hr)){
-        g_original_swap_chain_calls[3].fetch_add(1u,std::memory_order_relaxed);
-        if(!out || !*out || !ObserveOriginalTextureSurface(*out,rva))
+    if(rva && SUCCEEDED(hr)){
+        const auto owner=OriginalSwapChainDeviceOwner(chain);
+        if(owner==OriginalSwapChainOwner::Primary){
+            g_original_swap_chain_calls[3].fetch_add(1u,std::memory_order_relaxed);
+            if(!out || !*out || !ObserveOriginalTextureSurface(*out,rva))
+                OriginalSwapChainCoverageUnknown(rva);
+        }else if(owner==OriginalSwapChainOwner::Unknown){
             OriginalSwapChainCoverageUnknown(rva);
+        }
     }
     return hr;
 }

@@ -31,14 +31,24 @@ class OriginalSwapChainSourceTest(unittest.TestCase):
     def test_surface_alias_and_present_invalidation_before_original_com(self):
         self.assertIn("chain->GetDevice(&device)",self.hooks)
         self.assertIn("g_primary_device.Owns(device)",self.hooks)
+        self.assertIn("OriginalSwapChainOwner::Secondary",self.hooks)
+        self.assertIn("OriginalSwapChainOwner::Unknown",self.hooks)
         self.assertIn("ObserveOriginalTextureSurface(*out,rva)",self.hooks)
         present=self.part("OriginalSwapChainPresentHook")
-        self.assertLess(present.index("OriginalSwapChainCoverageUnknown(rva);"),
+        self.assertLess(present.index("Model2VR_RejectOriginalD3D9SwapChainPresent("),
                         present.index("return g_original_swap_chain_present("))
+        self.assertIn("owner==OriginalSwapChainOwner::Primary",present)
         self.assertIn("Model2VR_RejectOriginalD3D9SwapChainPresent(",self.hooks)
         self.assertIn("OriginalSourceFailure::OriginalSwapChainPresentUnverified",self.bridge)
         self.assertIn("OriginalSwapChainPresentUnverified=30u",self.epoch)
         self.assertIn("g.source_epoch.Revoke(physical_present)",self.bridge)
+        vb=(ROOT/"tools/model2_draw_source_report.py").read_text("utf-8")
+        up=(ROOT/"tools/model2_up_draw_outcomes.py").read_text("utf-8")
+        for auditor in (vb,up):
+            self.assertIn("model2_d3d9_original_swap_chain_source_rejected",auditor)
+            self.assertIn("invalid original SwapChain rejection",auditor)
+            self.assertIn("original_surface_failures.add(frame)" if auditor is vb
+                          else "failed_original_surface_frames.add(a0)",auditor)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",self.bridge)
     def test_transactional_hooks_reset_and_safe_payload(self):
         self.assertIn("if(!(present&&back))",self.hooks)
