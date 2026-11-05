@@ -1261,6 +1261,35 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9SceneDrawCoverage(
             physical_present,flags,untrusted_successful_draws,failed_draws);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// The native primary RT0/depth seen by every original four-family Draw
+// must remain attributable to the same physical Scene/Present. Inferred
+// D3D9 bindings, depth mismatch, crossed COM epochs and missing Draws are
+// negative evidence, NEVER an automatic 3D/HMD permission grant.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9TargetDrawCoverage(
+    unsigned long long physical_present,unsigned int flags,
+    unsigned int unknown_target_draws,unsigned int invalid_depth_draws){
+    using namespace m2vr::vrbridge;
+    if(!physical_present ||
+       !(flags || unknown_target_draws || invalid_depth_draws) ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool first=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_present &&
+           (g.active || g.pending_present)){
+            const auto old=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalLineageMismatch;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=old;
+        }
+        first=g.source_epoch.Revoke(physical_present);
+    }
+    if(first)
+        m2vr::LogEvent("model2_d3d9_original_target_coverage_rejected",
+            physical_present,flags,unknown_target_draws,invalid_depth_draws);
+    // The original game device/mono/2D/menu/FFB continue unchanged.
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Strict original physical-Draw post-call check: a state write concurrent
 // with CPU eye raster or the genuine D3D9 Draw may change its source.
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
