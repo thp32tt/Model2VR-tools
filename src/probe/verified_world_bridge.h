@@ -213,6 +213,18 @@ __declspec(dllexport) BOOL __stdcall Model2VR_ArmVerifiedOriginalD3D9Draw(
 // Read-only physical source phase. Query on the render thread immediately
 // BEFORE a genuine Draw, then arm its exact all-family ordinal and scene.
 // Neither value is gameplay World3D proof. Invalid ownership returns zero.
+// Same-source strict variant: an independently authenticated adapter may
+// capture this opaque read-only per-Present lineage nonce immediately after
+// its original camera/RT configuration, then pin its next real Draw. The
+// token is not gameplay evidence and never enables VR by itself.
+__declspec(dllexport) unsigned long long __stdcall
+Model2VR_CurrentOriginalD3D9LineageNonce();
+__declspec(dllexport) BOOL __stdcall Model2VR_ArmVerifiedOriginalD3D9DrawWithLineage(
+    unsigned long long original_present_frame,
+    unsigned long long original_draw_ordinal,unsigned int original_family,
+    unsigned int original_caller_rva,unsigned int original_scene_ordinal,
+    unsigned int authenticated_cpu_projector_caller_rva,
+    unsigned int alpha_cutoff,unsigned long long expected_lineage_nonce);
 __declspec(dllexport) unsigned long long __stdcall
 Model2VR_NextOriginalD3D9DrawOrdinal();
 __declspec(dllexport) unsigned int __stdcall
