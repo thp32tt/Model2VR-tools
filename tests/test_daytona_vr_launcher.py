@@ -23,7 +23,10 @@ class DaytonaVrLauncherTest(unittest.TestCase):
         self.assertIn("desktopmenu::CurrentVirtualDesktop()",source)
         self.assertIn("capture.Grab(hwnd)",source)
         self.assertIn("quad.eyeVisibility=XR_EYE_VISIBILITY_BOTH",source)
-        self.assertNotIn("GetClientRect(hwnd,&rc)",source)
+        grab=source.split("bool Grab(HWND hwnd)const{",1)[1].split(
+            "\n    }",1)[0]
+        self.assertNotIn("GetClientRect(hwnd,&rc)",grab)
+        self.assertIn("if(!hwnd && !emulator_pid)",source)
 
     def test_no_probe_or_duplicate_ffb_owner_in_launcher(self):
         bat=(ROOT/"scripts/Start-DaytonaVR.cmd").read_text(encoding="utf-8")
