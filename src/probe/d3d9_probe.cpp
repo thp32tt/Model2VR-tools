@@ -429,6 +429,37 @@ std::array<std::atomic<std::uint32_t>,m2vr::drawprobe::kOriginalLineageKinds>
     g_original_lineage_writes{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
+// Startup-only, pointer-free original COM boundary evidence. At most three
+// flushed records for the FIRST authentic primary Draw and Present each.
+// This pinpoints shutdown in probe preparation vs original COM vs XR dispatch,
+// without logging game assets, stack addresses, shaders, camera or pixels.
+std::atomic<bool> g_startup_original_draw_seen{false};
+bool TraceFirstOriginalDrawEntry(unsigned family,
+                                 std::uint64_t physical_present) noexcept {
+    if(g_startup_original_draw_seen.exchange(
+           true,std::memory_order_acq_rel))return false;
+    m2vr::LogEvent("model2_d3d9_startup_original_draw_boundary",
+        1u,family,physical_present,0u);
+    m2vr::FlushLog();
+    return true;
+}
+void TraceFirstOriginalDrawStage(bool selected,unsigned stage,
+                                 unsigned family,std::uint64_t physical_present,
+                                 std::uint32_t original_hresult=0u) noexcept {
+    if(!selected)return;
+    m2vr::LogEvent("model2_d3d9_startup_original_draw_boundary",
+        stage,family,physical_present,original_hresult);
+    m2vr::FlushLog();
+}
+void TraceFirstOriginalPresentStage(bool selected,unsigned stage,
+                                    std::uint64_t physical_present,
+                                    std::uint32_t original_hresult=0u) noexcept {
+    if(!selected)return;
+    m2vr::LogEvent("model2_d3d9_startup_original_present_boundary",
+        stage,0u,physical_present,original_hresult);
+    m2vr::FlushLog();
+}
+
 // Physical original Draw order across all four API families, including
 // unsampled commands. Never inferred from per-family sample cadence.
 std::atomic<std::uint64_t> g_original_frame_draw_ordinal{0u};
@@ -1819,6 +1850,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    const bool startup_first_draw=TraceFirstOriginalDrawEntry(1u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
         std::memory_order_relaxed) &&
@@ -1836,7 +1868,10 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
             :Model2VR_AppendVerifiedD3D9VBTopologyTextured(
                 d,static_cast<unsigned>(p),start,count,alpha);
     });
+    TraceFirstOriginalDrawStage(startup_first_draw,2u,1u,source_frame);
     const HRESULT hr=g_draw(d,p,start,count);
+    TraceFirstOriginalDrawStage(startup_first_draw,3u,1u,source_frame,
+        static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
     if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
@@ -1864,6 +1899,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    const bool startup_first_draw=TraceFirstOriginalDrawEntry(2u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
         std::memory_order_relaxed) &&
@@ -1881,7 +1917,10 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
             :Model2VR_AppendVerifiedD3D9IndexedVBTopologyTextured(
                 d,static_cast<unsigned>(p),base,min,num,start,count,alpha);
     });
+    TraceFirstOriginalDrawStage(startup_first_draw,2u,2u,source_frame);
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
+    TraceFirstOriginalDrawStage(startup_first_draw,3u,2u,source_frame,
+        static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
     if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
@@ -1909,6 +1948,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    const bool startup_first_draw=TraceFirstOriginalDrawEntry(3u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
         std::memory_order_relaxed) &&
@@ -1926,7 +1966,10 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
             :Model2VR_AppendVerifiedD3D9PrimitiveUPTopologyTextured(
                 d,static_cast<unsigned>(p),count,verts,stride,alpha);
     });
+    TraceFirstOriginalDrawStage(startup_first_draw,2u,3u,source_frame);
     const HRESULT hr=g_draw_up(d,p,count,verts,stride);
+    TraceFirstOriginalDrawStage(startup_first_draw,3u,3u,source_frame,
+        static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
     if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
@@ -1954,6 +1997,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
+    const bool startup_first_draw=TraceFirstOriginalDrawEntry(4u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
         std::memory_order_relaxed) &&
@@ -1973,7 +2017,10 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
                 d,static_cast<unsigned>(p),min,num,count,idx,
                 static_cast<unsigned>(fmt),verts,stride,alpha);
     });
+    TraceFirstOriginalDrawStage(startup_first_draw,2u,4u,source_frame);
     const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
+    TraceFirstOriginalDrawStage(startup_first_draw,3u,4u,source_frame,
+        static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
     if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
@@ -2738,6 +2785,9 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
                            seen,0u,0u,0u);
         return CallOriginalPresentOnce(d,a,b,w,dirty);
     }
+    const bool startup_first_present=
+        g_present_count.load(std::memory_order_acquire)==0u;
+    TraceFirstOriginalPresentStage(startup_first_present,1u,1u);
     // Original dialogue overlay and device gamma can change actual displayed
     // content without another Draw; never reuse unverified eye surfaces.
     // Hardware/GDI/emulated cursor output is not authenticated XR eye content.
@@ -2974,7 +3024,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(auto& sample:g_original_unmirrored_samples)sample.store(0u,std::memory_order_relaxed);
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
+    TraceFirstOriginalPresentStage(startup_first_present,2u,frame);
     const HRESULT original_result=g_present(d,a,b,w,dirty);
+    TraceFirstOriginalPresentStage(startup_first_present,3u,frame,
+        static_cast<std::uint32_t>(original_result));
     const auto source_samples=g_original_source_result_samples.exchange(
         0u,std::memory_order_relaxed);
     if(source_samples)
