@@ -465,6 +465,60 @@ int main(){
     assert((failed_get.FinishPresent().flags&
             OriginalPhysicalTargetDrawCoverage::kMrtActive)!=0u);
     failed_get.ReopenAfterPhysicalPresentReturn();
+    // Genuine original unsampled Draw region readback: target/depth ownership
+    // alone cannot certify an OpenXR eye if the actual GPU viewport, Z write,
+    // or scissor window is partial/unreadable. Original mono still draws.
+    OriginalPhysicalTargetDrawCoverage raster{true};
+    raster.RenderTargetBind(true,true,0u,true,main_depth);
+    raster.DepthBind(true,true,main_depth);
+    raster.ResolveSecondaryIfUnchanged(raster.Revision(),{0u,true});
+    assert(!raster.CanAttemptVerifiedWorldDraw());
+    auto without_raster=raster.EnterDraw();
+    raster.CompleteDraw(without_raster,true,true);
+    assert((raster.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kUnverifiedRaster)!=0u);
+    raster.ReopenAfterPhysicalPresentReturn();
+    const auto first_raster_revision=raster.Revision();
+    raster.ResolveRasterIfUnchanged(first_raster_revision,{true,true});
+    assert(raster.CanAttemptVerifiedWorldDraw());
+    auto clean_raster_draw=raster.EnterDraw();
+    raster.CompleteDraw(clean_raster_draw,true,true);
+    assert(raster.FinishPresent().flags==0u);
+    raster.ReopenAfterPhysicalPresentReturn();
+    const auto pending_region=raster.EnterBind();
+    assert(!raster.CanAttemptVerifiedWorldDraw());
+    raster.CompleteRasterMutation(pending_region,true,true);
+    assert(raster.NeedsRasterResolution());
+    raster.ResolveRasterIfUnchanged(first_raster_revision,{true,true});
+    assert(!raster.CanAttemptVerifiedWorldDraw()); // old read is stale
+    raster.ResolveRasterIfUnchanged(raster.Revision(),{true,false});
+    assert(!raster.CanAttemptVerifiedWorldDraw()); // partial/disabled Z
+    auto partial=raster.EnterDraw();
+    raster.CompleteDraw(partial,true,true);
+    assert((raster.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kUnverifiedRaster)!=0u);
+    raster.ReopenAfterPhysicalPresentReturn();
+    const auto old_region=raster.EnterBind();
+    assert((raster.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kInFlight)!=0u);
+    raster.ReopenAfterPhysicalPresentReturn();
+    raster.CompleteRasterMutation(old_region,true,true);
+    assert((raster.FinishPresent().flags&
+            OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
+    raster.ReopenAfterPhysicalPresentReturn();
+    const auto new_region=raster.EnterBind();
+    raster.CompleteRasterMutation(new_region,true,true);
+    raster.RenderTargetBind(true,true,0u,true,main_depth);
+    raster.DepthBind(true,true,main_depth);
+    raster.ResolveSecondaryIfUnchanged(raster.Revision(),{0u,true});
+    raster.ResolveRasterIfUnchanged(raster.Revision(),{true,true});
+    assert(raster.CanAttemptVerifiedWorldDraw());
+    const auto stateblock_region=raster.Revision();
+    raster.InvalidateOpaqueStateBlock();
+    raster.ResolveRasterIfUnchanged(stateblock_region,{true,true});
+    assert(!raster.CanAttemptVerifiedWorldDraw());
+    raster.Reset();
+    assert(raster.NeedsRasterResolution());
     OriginalDrawCallerInventory exact{};
     assert(exact.Count()==0u && !exact.Incomplete());
     assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);

@@ -79,7 +79,7 @@ class SourceAuditTests(unittest.TestCase):
                 and row[1]==frames-1)
             for flags,depth in ((4,0),(32,0),(64,0),(8,1),
                                 (512,0),(1024,0),(1536,0),
-                                (2048,0),(3072,0),(4096,0)):
+                                (2048,0),(3072,0),(4096,0),(8192,0),(12288,0)):
                 bad=list(events)
                 bad[target_index]=(
                     "model2_d3d9_original_draw_target_coverage",
@@ -112,7 +112,7 @@ class SourceAuditTests(unittest.TestCase):
                 ("model2_d3d9_original_draw_target_coverage",
                  frames-1,pack(0,0),pack(0,0),pack(0,0)),
                 ("model2_d3d9_original_draw_target_coverage",
-                 frames-1,pack(1,0),pack(0,0),pack(0,8192)),
+                 frames-1,pack(1,0),pack(0,0),pack(0,16384)),
                 ("model2_d3d9_original_draw_target_coverage",
                  frames-1,pack(1,0),pack(0,0),pack(1,0)),
             ):

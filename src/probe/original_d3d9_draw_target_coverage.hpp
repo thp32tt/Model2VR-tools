@@ -36,6 +36,12 @@ struct OriginalSecondaryRtSnapshot {
     std::uint32_t mask=0u;
     bool known=false;
 };
+// This read-only, revision-tied physical D3D9 viewport/Z/scissor check is
+// NEGATIVE evidence, not authority to identify Daytona gameplay geometry.
+struct OriginalRasterSnapshot {
+    bool known=false;
+    bool full_main_depth_view=false;
+};
 struct OriginalPhysicalTargetSummary {
     std::uint32_t backbuffer=0u, auxiliary=0u, unknown=0u, failed=0u;
     std::uint32_t incompatible_depth=0u, flags=0u;
@@ -64,6 +70,10 @@ public:
     static constexpr std::uint32_t kMrtUnresolved=2048u;
     // An offscreen RT0 needs independently verified compositing before eye use.
     static constexpr std::uint32_t kAuxiliarySource=4096u;
+    static constexpr std::uint32_t kUnverifiedRaster=8192u;
+    explicit OriginalPhysicalTargetDrawCoverage(
+        bool require_original_raster=false) noexcept
+        : require_raster_(require_original_raster) {}
     struct Token {
         std::uint64_t epoch=0u, revision=0u;
         OriginalTargetSnapshot state{};
@@ -76,6 +86,18 @@ public:
     bool NeedsSecondaryResolution() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         return !secondary_resolved_;
+    }
+    bool NeedsRasterResolution() noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return require_raster_ && !raster_resolved_;
+    }
+    void ResolveRasterIfUnchanged(
+        std::uint64_t prior,OriginalRasterSnapshot actual) noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if(!require_raster_ || prior!=revision_ || raster_resolved_ ||
+           active_binds_ || active_ || sealed_)return;
+        raster_resolved_=true; // even a failed getter is cached
+        raster_eligible_=actual.known && actual.full_main_depth_view;
     }
     void ResolveSecondaryIfUnchanged(
         std::uint64_t prior,OriginalSecondaryRtSnapshot actual) noexcept {
@@ -136,12 +158,25 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if(CompleteBind(token))DepthBindCore(caller,succeeded,actual);
     }
+    // Native SetViewport, SetScissorRect and Z/scissor SetRenderState use
+    // real pre/post-COM tickets. A transient write is never a safe raster
+    // source, even when its old read-only getter had been canonical.
+    void CompleteRasterMutation(const BindToken& token,
+                                bool exe_caller,bool succeeded) noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if(!CompleteBind(token))return;
+        if(!exe_caller)flags_|=kForeignBind;
+        if(!succeeded)flags_|=kFailedBind;
+        InvalidateRaster();
+        ++revision_;
+    }
     void InvalidateOpaqueStateBlock() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         flags_|=kOpaqueStateBlock;
         state_={};owned_target_=owned_depth_=false;
         resolved_=false;secondary_mask_=0u;
-        secondary_resolved_=secondary_known_=false;++revision_;
+        secondary_resolved_=secondary_known_=false;
+        InvalidateRaster();++revision_;
     }
     // Avoid building speculative CPU-world eye pixels if this original
     // physical Draw lacks an EXE-owned, compatible RT0/depth state. The
@@ -151,6 +186,7 @@ public:
         return !sealed_ && active_binds_==0u && resolved_ && owned_target_ && owned_depth_ &&
             secondary_resolved_ && secondary_known_ &&
             secondary_mask_==0u && flags_==0u &&
+            (!require_raster_ || (raster_resolved_ && raster_eligible_)) &&
             state_.target==OriginalPhysicalRtClass::Backbuffer &&
             state_.depth==OriginalPhysicalDepthClass::Compatible;
     }
@@ -158,6 +194,8 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if(state_.target==OriginalPhysicalRtClass::Auxiliary)
             flags_|=kAuxiliarySource;
+        if(require_raster_ && (!raster_resolved_ || !raster_eligible_))
+            flags_|=kUnverifiedRaster;
         if(secondary_mask_)flags_|=kMrtActive;
         if(!secondary_resolved_ || !secondary_known_)
             flags_|=kMrtUnresolved;
@@ -219,6 +257,7 @@ public:
         state_={};owned_target_=owned_depth_=false;resolved_=false;
         secondary_mask_=0u;
         secondary_resolved_=secondary_known_=false;
+        InvalidateRaster();
         backbuffer_=auxiliary_=unknown_=failed_=bad_depth_=flags_=0u;
         sealed_=false;
         // Keep active_ AND active_binds_: late original COM operations
@@ -227,10 +266,14 @@ public:
         // as crossed-epoch failures, never credited to the next game frame.
     }
 private:
+    void InvalidateRaster() noexcept {
+        raster_resolved_=raster_eligible_=false;
+    }
     void InvalidateOwnedBinding() noexcept {
         state_={};owned_target_=owned_depth_=false;
         resolved_=false;secondary_mask_=0u;
-        secondary_resolved_=secondary_known_=false;++revision_;
+        secondary_resolved_=secondary_known_=false;
+        InvalidateRaster();++revision_;
     }
     bool CompleteBind(const BindToken& token) noexcept {
         if(!token.valid){flags_|=kOverflow;InvalidateOwnedBinding();return false;}
@@ -254,7 +297,8 @@ private:
             flags_|=kForeignBind;
             state_={};owned_target_=false;owned_depth_=false;
             resolved_=false;secondary_mask_=0u;
-            secondary_resolved_=secondary_known_=false;++revision_;
+            secondary_resolved_=secondary_known_=false;
+            InvalidateRaster();++revision_;
             return;
         }
         if(!succeeded){flags_|=kFailedBind;return;}
@@ -270,24 +314,25 @@ private:
                 // witnessed, changing this single slot proves nothing.
                 if(!secondary_known_)secondary_resolved_=false;
             }else flags_|=kMrtActive;
-            ++revision_;
+            InvalidateRaster();++revision_;
             return;
         }
         state_=actual;resolved_=true;
         owned_target_=actual.target!=OriginalPhysicalRtClass::Unknown;
         // Changing RT0 does not prove original depth-surface ownership.
-        ++revision_;
+        InvalidateRaster();++revision_;
     }
     void DepthBindCore(bool exe_caller,bool succeeded,
                    OriginalTargetSnapshot actual) noexcept {
         if(!exe_caller) {
             flags_|=kForeignBind;state_.depth=OriginalPhysicalDepthClass::Unknown;
-            owned_depth_=false;resolved_=false;++revision_;return;
+            owned_depth_=false;resolved_=false;
+            InvalidateRaster();++revision_;return;
         }
         if(!succeeded){flags_|=kFailedBind;return;}
         state_=actual;resolved_=true;
         owned_depth_=actual.depth!=OriginalPhysicalDepthClass::Unknown;
-        ++revision_;
+        InvalidateRaster();++revision_;
     }
     void Increment(std::uint32_t& value) noexcept {
         if(value==kLimit)flags_|=kOverflow;
@@ -300,5 +345,6 @@ private:
         unknown_=0u,failed_=0u,bad_depth_=0u,flags_=0u;
     bool owned_target_=false, owned_depth_=false, sealed_=false, resolved_=false;
     bool secondary_resolved_=false, secondary_known_=false;
+    bool require_raster_=false, raster_resolved_=false, raster_eligible_=false;
 };
 } // namespace m2vr::drawprobe

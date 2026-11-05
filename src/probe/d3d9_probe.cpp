@@ -531,7 +531,7 @@ std::atomic<bool> g_original_scene_poisoned{false};
 std::atomic<DWORD> g_original_scene_owner_thread{0u};
 std::atomic<bool> g_original_scene_hooks_ready{false};
 m2vr::drawprobe::OriginalPhysicalSceneDrawCoverage g_original_scene_draw_coverage{};
-m2vr::drawprobe::OriginalPhysicalTargetDrawCoverage g_original_target_draw_coverage{};
+m2vr::drawprobe::OriginalPhysicalTargetDrawCoverage g_original_target_draw_coverage{true};
 // Read-only COM binding identities and descriptors, NEVER original texels.
 // No source surface pointer is serialized, exported or retained after call.
 m2vr::drawprobe::OriginalTargetSnapshot ReadPhysicalOriginalRtDepth(
@@ -594,10 +594,48 @@ m2vr::drawprobe::OriginalSecondaryRtSnapshot ReadPhysicalOriginalSecondaryRt(
     }
     return result;
 }
+// Read-only physical original D3D9 source region: a compatible RT0/depth
+// alone does not prove that the actual Draw fills a canonical World3D eye.
+// Cache only per physical RT/depth/view-state revision; no source pixels.
+m2vr::drawprobe::OriginalRasterSnapshot ReadPhysicalOriginalRaster(
+    IDirect3DDevice9* d) noexcept {
+    m2vr::drawprobe::OriginalRasterSnapshot result{};
+    if(!d)return result;
+    IDirect3DSurface9* rt=nullptr;
+    D3DSURFACE_DESC desc{};
+    const bool target=SUCCEEDED(d->GetRenderTarget(0u,&rt)) && rt &&
+        SUCCEEDED(rt->GetDesc(&desc));
+    if(rt)rt->Release();
+    D3DVIEWPORT9 vp{};
+    DWORD zen=0u,zwrite=0u,scissor=0u;
+    const bool known=target && desc.Width>0u && desc.Height>0u &&
+        desc.Width<=16384u && desc.Height<=16384u &&
+        SUCCEEDED(d->GetViewport(&vp)) &&
+        SUCCEEDED(d->GetRenderState(D3DRS_ZENABLE,&zen)) &&
+        SUCCEEDED(d->GetRenderState(D3DRS_ZWRITEENABLE,&zwrite)) &&
+        SUCCEEDED(d->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor));
+    if(!known)return result;
+    result.known=true;
+    bool full_scissor=scissor==0u;
+    if(scissor==1u){
+        RECT rect{};
+        if(SUCCEEDED(d->GetScissorRect(&rect)))
+            full_scissor=rect.left==0 && rect.top==0 &&
+                rect.right==static_cast<LONG>(desc.Width) &&
+                rect.bottom==static_cast<LONG>(desc.Height);
+        else result.known=false;
+    }
+    result.full_main_depth_view=vp.X==0u && vp.Y==0u &&
+        vp.Width==desc.Width && vp.Height==desc.Height &&
+        vp.MinZ==0.0f && vp.MaxZ==1.0f &&
+        zen==D3DZB_TRUE && zwrite==TRUE && full_scissor;
+    return result;
+}
 void EnsurePhysicalOriginalRtDepth(IDirect3DDevice9* d) noexcept {
     const bool primary=g_original_target_draw_coverage.NeedsResolution();
     const bool secondary=g_original_target_draw_coverage.NeedsSecondaryResolution();
-    if(!primary && !secondary)return; // cache per verified binding revision
+    const bool raster=g_original_target_draw_coverage.NeedsRasterResolution();
+    if(!primary && !secondary && !raster)return; // cache by source revision
     const auto revision=g_original_target_draw_coverage.Revision();
     if(primary){
         const auto actual=ReadPhysicalOriginalRtDepth(d);
@@ -607,6 +645,10 @@ void EnsurePhysicalOriginalRtDepth(IDirect3DDevice9* d) noexcept {
         const auto actual=ReadPhysicalOriginalSecondaryRt(d);
         g_original_target_draw_coverage.ResolveSecondaryIfUnchanged(
             revision,actual);
+    }
+    if(raster){
+        const auto actual=ReadPhysicalOriginalRaster(d);
+        g_original_target_draw_coverage.ResolveRasterIfUnchanged(revision,actual);
     }
 }
 bool OriginalSceneStillOwnedAfterDraw(
@@ -2892,8 +2934,16 @@ HRESULT STDMETHODCALLTYPE SetSamplerStateHook(IDirect3DDevice9* d,DWORD sampler,
 HRESULT STDMETHODCALLTYPE SetRenderStateHook(IDirect3DDevice9* d,D3DRENDERSTATETYPE state,DWORD value){
     if(!g_primary_device.Owns(d))return g_set_render_state(d,state,value);
     void* const caller=_ReturnAddress();
+    const bool raster_state=state==D3DRS_ZENABLE ||
+        state==D3DRS_ZWRITEENABLE || state==D3DRS_SCISSORTESTENABLE;
+    const auto token=raster_state?
+        g_original_target_draw_coverage.EnterBind():
+        m2vr::drawprobe::OriginalPhysicalTargetDrawCoverage::BindToken{};
     const HRESULT hr=g_set_render_state(d,state,value);
     const auto rva=CallerRva(caller);
+    if(raster_state)
+        g_original_target_draw_coverage.CompleteRasterMutation(
+            token,rva!=0u,SUCCEEDED(hr));
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,20u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::RenderState,rva,hr);
     return hr;
@@ -2904,8 +2954,11 @@ HRESULT STDMETHODCALLTYPE SetViewportHook(IDirect3DDevice9* d,
                                            const D3DVIEWPORT9* vp){
     if(!g_primary_device.Owns(d))return g_set_viewport(d,vp);
     void* const caller=_ReturnAddress();
+    const auto token=g_original_target_draw_coverage.EnterBind();
     const HRESULT hr=g_set_viewport(d,vp);
     const auto rva=CallerRva(caller);
+    g_original_target_draw_coverage.CompleteRasterMutation(
+        token,rva!=0u,SUCCEEDED(hr));
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,8u,rva);
     else if(rva && SUCCEEDED(hr) && vp)
         LogOriginalRegionPhase(d,1u,rva,vp->X,vp->Y,vp->Width,vp->Height);
@@ -2917,8 +2970,11 @@ HRESULT STDMETHODCALLTYPE SetScissorRectHook(IDirect3DDevice9* d,
                                              const RECT* rect){
     if(!g_primary_device.Owns(d))return g_set_scissor(d,rect);
     void* const caller=_ReturnAddress();
+    const auto token=g_original_target_draw_coverage.EnterBind();
     const HRESULT hr=g_set_scissor(d,rect);
     const auto rva=CallerRva(caller);
+    g_original_target_draw_coverage.CompleteRasterMutation(
+        token,rva!=0u,SUCCEEDED(hr));
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,9u,rva);
     else if(rva && SUCCEEDED(hr) && rect)
         LogOriginalRegionPhase(d,2u,rva,rect->left,rect->top,
