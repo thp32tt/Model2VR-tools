@@ -23,9 +23,9 @@ class OriginalResourceResidencyTest(unittest.TestCase):
         self.assertIn("vt[7]",h)
         self.assertIn("vt[9]",h)
         self.assertIn("const DWORD previous=original(resource,priority);",h)
-        self.assertEqual(h.count("original(resource);"),1)
+        self.assertEqual(h.count("original(resource);"),2)  # eye replay bypass and the original game path are mutually exclusive
+        self.assertIn("IsEyeReplayActive()",h)
         self.assertIn("return previous;",h)
-        self.assertIn("NOT\n",h) if False else None
         for text in ("GetDevice(", "TrackFailedOriginalD3D9Surface(",
                      "memcpy(", "fwrite(", "xrEndFrame(", "DrawPrimitive("):
             self.assertNotIn(text,h)
