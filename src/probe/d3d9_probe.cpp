@@ -91,6 +91,13 @@ using SurfaceLockRectFn=HRESULT (STDMETHODCALLTYPE*)(
 using SurfaceUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*);
 using SurfaceGetDCFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,HDC*);
 using SurfaceReleaseDCFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DSurface9*,HDC);
+using CubeGetSurfaceFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DCubeTexture9*,D3DCUBEMAP_FACES,UINT,IDirect3DSurface9**);
+using VolumeGetLevelFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DVolumeTexture9*,UINT,IDirect3DVolume9**);
+using VolumeLevelLockFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DVolume9*,D3DLOCKED_BOX*,const D3DBOX*,DWORD);
+using VolumeLevelUnlockFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DVolume9*);
 using CubeLockRectFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DCubeTexture9*,D3DCUBEMAP_FACES,UINT,D3DLOCKED_RECT*,const RECT*,DWORD);
 using CubeUnlockRectFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -187,6 +194,15 @@ void* g_surface_get_dc_target=nullptr;
 void* g_surface_release_dc_target=nullptr;
 std::mutex g_texture_surface_hook_mutex;
 std::atomic<std::uint32_t> g_original_texture_surface_writes{0u};
+CubeGetSurfaceFn g_cube_get_surface=nullptr;
+VolumeGetLevelFn g_volume_get_level=nullptr;
+VolumeLevelLockFn g_volume_level_lock=nullptr;
+VolumeLevelUnlockFn g_volume_level_unlock=nullptr;
+void* g_cube_get_surface_target=nullptr;
+void* g_volume_get_level_target=nullptr;
+void* g_volume_level_lock_target=nullptr;
+void* g_volume_level_unlock_target=nullptr;
+std::mutex g_volume_level_hook_mutex;
 CubeLockRectFn g_cube_lock_rect=nullptr;
 CubeUnlockRectFn g_cube_unlock_rect=nullptr;
 VolumeLockBoxFn g_volume_lock_box=nullptr;
@@ -2050,8 +2066,9 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 // Native original bound buffer Lock/Unlock hooks join one physical Present
 // camera/geometry nonce and reject stale partial OpenXR stereo eye frames.
 #include "original_d3d9_buffer_hooks.inl"
-#include "original_d3d9_texture_shapes_hooks.inl"
 #include "original_d3d9_texture_surface_hooks.inl"
+#include "original_d3d9_texture_subresource_hooks.inl"
+#include "original_d3d9_texture_shapes_hooks.inl"
 #include "original_d3d9_texture_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
 // preserved, while failures poison only speculative binocular output.

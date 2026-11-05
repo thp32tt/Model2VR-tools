@@ -77,21 +77,24 @@ bool ObserveOriginalBoundShapeTexture(IDirect3DBaseTexture9* t,
     std::lock_guard lock(g_texture_hook_mutex);
     if(g_texture_hook_unknown.load(std::memory_order_acquire))return false;
     auto** vt=*reinterpret_cast<void***>(t);
-    if(!vt || !vt[19] || !vt[20]){
+    if(!vt || !vt[18] || !vt[19] || !vt[20]){
         OriginalTextureCoverageUnknown(rva);return false;
     }
     const bool cube=shape==D3DRTYPE_CUBETEXTURE;
     void*& lock_target=cube?g_cube_lock_target:g_volume_lock_target;
     void*& unlock_target=cube?g_cube_unlock_target:g_volume_unlock_target;
+    void*& getter_target=cube?g_cube_get_surface_target:g_volume_get_level_target;
     if(vt[19]==g_texture_lock_target || vt[20]==g_texture_unlock_target ||
        vt[19]==(cube?g_volume_lock_target:g_cube_lock_target) ||
        vt[20]==(cube?g_volume_unlock_target:g_cube_unlock_target)){
         OriginalTextureCoverageUnknown(rva);return false;
     }
-    if(lock_target || unlock_target){
-        const bool complete=cube?(g_cube_lock_rect && g_cube_unlock_rect):
-                                 (g_volume_lock_box && g_volume_unlock_box);
-        if(complete && lock_target==vt[19] && unlock_target==vt[20])return true;
+    if(lock_target || unlock_target || getter_target){
+        const bool complete=cube?
+            (g_cube_lock_rect && g_cube_unlock_rect && g_cube_get_surface):
+            (g_volume_lock_box && g_volume_unlock_box && g_volume_get_level);
+        if(complete && lock_target==vt[19] && unlock_target==vt[20] &&
+           getter_target==vt[18])return true;
         OriginalTextureCoverageUnknown(rva);return false;
     }
     const bool h1=cube?
@@ -107,6 +110,19 @@ bool ObserveOriginalBoundShapeTexture(IDirect3DBaseTexture9* t,
         else g_volume_lock_box=nullptr;
         OriginalTextureCoverageUnknown(rva);return false;
     }
+    const bool h3=cube?
+        Hook(vt[18],reinterpret_cast<void*>(&OriginalCubeGetSurfaceHook),
+             g_cube_get_surface):
+        Hook(vt[18],reinterpret_cast<void*>(&OriginalVolumeGetLevelHook),
+             g_volume_get_level);
+    if(!h3){
+        MH_DisableHook(vt[20]);MH_RemoveHook(vt[20]);
+        MH_DisableHook(vt[19]);MH_RemoveHook(vt[19]);
+        if(cube){g_cube_lock_rect=nullptr;g_cube_unlock_rect=nullptr;}
+        else {g_volume_lock_box=nullptr;g_volume_unlock_box=nullptr;}
+        OriginalTextureCoverageUnknown(rva);return false;
+    }
+    getter_target=vt[18];
     lock_target=vt[19];unlock_target=vt[20];
     return true;
 }
