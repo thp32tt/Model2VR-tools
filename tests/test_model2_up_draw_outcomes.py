@@ -47,6 +47,28 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0, caller, pack(frame, 3)),
         ]
 
+    def test_raster_mode_up_source_and_late_unsafe_original(self):
+        lineage=event("model2_d3d9_source_raster_mode_lineage",
+                      21,7,pack(1,2),3)
+        ok=self.report(self.projected()+[lineage,
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(ok["counts"]["original_raster_mode_lineage_witness"],1)
+        self.assertEqual(ok["counts"]["same_witness_cpu_camera_present_candidate"],1)
+        blocked=self.report(self.projected()+[lineage,
+            event("model2_d3d9_original_raster_mode_unsupported",7,2,0,0),
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(blocked["counts"]["original_surface_failed"],1)
+        for bad in ((8,pack(1,2),3),(7,pack(1000001,2),3),
+                    (7,pack(1,2),1000001)):
+            with self.assertRaisesRegex(ValueError,"raster-mode"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_source_raster_mode_lineage",21,*bad),
+                    event("model2_d3d9_original_present_result",7,0,1,0)])
+        for bad in ((7,0,0,0),(7,4,0,0),(7,2,0,1)):
+            with self.assertRaisesRegex(ValueError,"raster mode"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_raster_mode_unsupported",*bad),
+                    event("model2_d3d9_original_present_result",7,0,1,0)])
     def test_same_source_fixed_function_lineage_for_up_present(self):
         fixed=event("model2_d3d9_source_fixed_function_lineage",
                     21,7,pack(1,2),pack(3,4))

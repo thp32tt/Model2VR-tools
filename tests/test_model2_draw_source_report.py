@@ -22,6 +22,39 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_raster_mode_lineage_and_unsupported_real_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"raster.csv"
+            rows=[
+                ("model2_d3d9_vb_present_frame",201,7,1,0),
+                ("model2_d3d9_vb_source",201,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",201,7,12,pack(0x1234,1)),
+                ("model2_d3d9_source_raster_mode_lineage",201,7,pack(1,2),3),
+                ("model2_d3d9_vb_original_result",201,0,0x1234,pack(7,1)),
+                ("model2_d3d9_original_present_result",7,0,1,0)]
+            self.write_log(path,rows)
+            good=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(good["original_raster_mode_lineage_witnesses"],1)
+            self.assertEqual(good["original_surface_failure_witnesses"],0)
+            self.write_log(path,rows[:-1]+[
+                ("model2_d3d9_original_raster_mode_unsupported",7,2,0,0),rows[-1]])
+            rejected=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(rejected["original_surface_failure_witnesses"],1)
+            for bad in ((8,pack(1,2),3),(7,pack(1000001,2),3),
+                        (7,pack(1,2),1000001),(0,pack(1,2),3)):
+                mutated=list(rows)
+                mutated[3]=("model2_d3d9_source_raster_mode_lineage",201,*bad)
+                self.write_log(path,mutated)
+                with self.assertRaisesRegex(ValueError,"raster-mode"):
+                    REPORT.audit_csv(path)
+            self.write_log(path,rows[:4]+[rows[3]]+rows[4:])
+            with self.assertRaisesRegex(ValueError,"raster-mode"):
+                REPORT.audit_csv(path)
+            for invalid in ((0,1,0,0),(7,0,0,0),(7,4,0,0),(7,2,0,1)):
+                self.write_log(path,rows[:-1]+[
+                    ("model2_d3d9_original_raster_mode_unsupported",*invalid),rows[-1]])
+                with self.assertRaisesRegex(ValueError,"raster mode"):
+                    REPORT.audit_csv(path)
     def test_fixed_function_lineage_is_bound_to_exact_vb_present(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"fixed_function.csv"
