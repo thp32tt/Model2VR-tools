@@ -63,7 +63,7 @@ class OriginalSwapChainSourceTest(unittest.TestCase):
         self.assertIn("g_original_swap_chain_readbacks.exchange(",self.probe)
         self.assertIn("model2_d3d9_original_swap_chain_readback_counts",self.probe)
         self.assertIn("g_original_swap_chain_present_target==table[3]",self.hooks)
-        self.assertIn("&&create_swap_chain&&get_swap_chain&&create_query&&dp",self.probe)
+        self.assertIn("&&create_swap_chain&&get_swap_chain&&validate&&create_query&&dp",self.probe)
         self.assertIn("g_original_swap_chain_source_unproven.load(",self.probe)
         self.assertIn("model2_d3d9_original_swap_chain_counts",self.probe)
         self.assertIn("for(auto& count:g_original_swap_chain_calls)",self.probe)
