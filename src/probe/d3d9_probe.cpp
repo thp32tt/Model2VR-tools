@@ -53,6 +53,8 @@ using SetRenderTargetFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,DWORD,IDirect3DSurface9*);
 using SetDepthStencilSurfaceFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,IDirect3DSurface9*);
+using SetTransformFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,D3DTRANSFORMSTATETYPE,const D3DMATRIX*);
 using ClearFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,DWORD,const D3DRECT*,DWORD,D3DCOLOR,float,DWORD);
 using PrimitiveFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,UINT);
@@ -75,6 +77,7 @@ StretchRectFn g_stretch_rect=nullptr;
 ColorFillFn g_color_fill=nullptr;
 SetRenderTargetFn g_set_render_target=nullptr;
 SetDepthStencilSurfaceFn g_set_depth_surface=nullptr;
+SetTransformFn g_set_transform=nullptr;
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -92,6 +95,7 @@ std::array<std::atomic<unsigned>,4> g_family_samples{};
 std::array<std::atomic<unsigned>,4> g_original_mutation_samples{};
 // Successful game-owned target transitions: bounded per-real-Present evidence.
 std::array<std::atomic<unsigned>,2> g_original_target_bind_samples{};
+std::array<std::atomic<unsigned>,4> g_original_transform_samples{};
 m2vr::drawprobe::DrawOriginGate g_draw_origin_gate{};
 std::atomic<unsigned> g_present_count{0};
 // Physical original Draw order across all four API families, including
@@ -1528,6 +1532,38 @@ HRESULT STDMETHODCALLTYPE SetDepthStencilSurfaceHook(IDirect3DDevice9* d,
         LogOriginalD3D9TargetBindPhase(d,2u,caller_rva,0u,surface,hr);
     return hr;
 }
+// Passive original-game transform provenance; no matrix contents are logged.
+HRESULT STDMETHODCALLTYPE SetTransformHook(IDirect3DDevice9* d,
+    D3DTRANSFORMSTATETYPE state,const D3DMATRIX* matrix){
+    if(!g_primary_device.Owns(d))return g_set_transform(d,state,matrix);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_transform(d,state,matrix);
+    const auto rva=CallerRva(caller);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,6u,rva);
+    if(!rva || FAILED(hr))return hr;
+    const auto kind=state==D3DTS_VIEW?1u:
+        state==D3DTS_PROJECTION?2u:
+        (static_cast<unsigned>(state)>=256u &&
+         static_cast<unsigned>(state)<=511u)?3u:4u;
+    const auto frame=g_present_count.load(std::memory_order_relaxed)+1u;
+    const auto ordinal=g_original_frame_draw_ordinal.load(std::memory_order_relaxed);
+    const auto scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
+    if((frame==1u || frame%8u==0u) && ordinal<=10000000u &&
+       scene<=100000u &&
+       g_original_transform_samples[kind-1u].fetch_add(
+           1u,std::memory_order_relaxed)==0u){
+        const auto packed=(std::uint64_t{kind}<<32u)|ordinal;
+        const bool open=g_original_scene_hooks_ready.load(
+            std::memory_order_acquire) &&
+            !g_original_scene_poisoned.load(std::memory_order_acquire) &&
+            g_original_scene_open.load(std::memory_order_acquire) &&
+            g_original_scene_owner_thread.load(std::memory_order_acquire)==GetCurrentThreadId();
+        m2vr::LogEvent("model2_d3d9_original_transform_phase",
+            frame,rva,packed,(std::uint64_t{scene}<<32u)|
+            (std::uint64_t{static_cast<unsigned>(state)}<<1u)|(open?1u:0u));
+    }
+    return hr;
+}
 // Every COM Present path must execute the original game's method exactly
 // once; a secondary device is excluded from all primary frame accounting.
 HRESULT CallOriginalPresentOnce(IDirect3DDevice9* d,CONST RECT* a,
@@ -1580,6 +1616,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         counter.store(0u,std::memory_order_relaxed);
     for(auto& counter:g_original_target_bind_samples)
         counter.store(0u,std::memory_order_relaxed);
+    for(auto& counter:g_original_transform_samples)
+        counter.store(0u,std::memory_order_relaxed);
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
@@ -1622,6 +1660,8 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         counter.store(0u,std::memory_order_relaxed);
     for(auto& counter:g_original_target_bind_samples)
         counter.store(0u,std::memory_order_relaxed);
+    for(auto& counter:g_original_transform_samples)
+        counter.store(0u,std::memory_order_relaxed);
     g_original_scene_poisoned.store(false,std::memory_order_release);
     g_original_scene_open.store(false,std::memory_order_release);
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
@@ -1657,6 +1697,8 @@ bool HookDevice(IDirect3DDevice9* dev){
                        g_set_render_target);
     const bool depth=Hook(vtable[39],
         reinterpret_cast<void*>(&SetDepthStencilSurfaceHook),g_set_depth_surface);
+    const bool transform=Hook(vtable[44],
+        reinterpret_cast<void*>(&SetTransformHook),g_set_transform);
     // Scene boundary observation is optional: if either COM hook cannot
     // be installed, rollback BOTH and mark scene source unknown. This
     // must never prevent the normal original game/mono fallback path.
@@ -1670,7 +1712,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -1692,16 +1734,19 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(fill){MH_DisableHook(vtable[35]);MH_RemoveHook(vtable[35]);}
         if(rt){MH_DisableHook(vtable[37]);MH_RemoveHook(vtable[37]);}
         if(depth){MH_DisableHook(vtable[39]);MH_RemoveHook(vtable[39]);}
+        if(transform){MH_DisableHook(vtable[44]);MH_RemoveHook(vtable[44]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_update_surface=nullptr;
         g_stretch_rect=nullptr;g_color_fill=nullptr;
         g_set_render_target=nullptr;g_set_depth_surface=nullptr;
+        g_set_transform=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
                        update,stretch,fill,clear);
         m2vr::LogEvent("model2_d3d9_target_hook_rollback",rt,depth,0u,0u);
+        m2vr::LogEvent("model2_d3d9_transform_hook_rollback",transform,0u,0u,0u);
         return false;
     }
     // Vtable methods are shared by D3D9 devices. Bind the real first
