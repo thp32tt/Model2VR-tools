@@ -51,7 +51,8 @@ enum class OriginalSourceFailure : std::uint32_t {
     OriginalUnmirroredGeometry=26u,
     OriginalBufferContentAfterStereo=27u,
     OriginalBufferHookCoverageUnknown=28u,
-    OriginalGpuSurfaceMutationAfterStereo=29u
+    OriginalGpuSurfaceMutationAfterStereo=29u,
+    OriginalSwapChainPresentUnverified=30u
 };
 inline thread_local OriginalSourceFailure g_current_original_source_failure=
     OriginalSourceFailure::Unknown;

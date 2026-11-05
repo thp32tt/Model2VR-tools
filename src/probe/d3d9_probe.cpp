@@ -44,6 +44,14 @@ namespace {
 using Create9Fn=IDirect3D9* (WINAPI*)(UINT);
 using CreateDeviceFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3D9*,UINT,D3DDEVTYPE,HWND,DWORD,D3DPRESENT_PARAMETERS*,IDirect3DDevice9**);
+using CreateAdditionalSwapChainFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,D3DPRESENT_PARAMETERS*,IDirect3DSwapChain9**);
+using GetSwapChainFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DDevice9*,UINT,IDirect3DSwapChain9**);
+using OriginalSwapChainPresentFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DSwapChain9*,const RECT*,const RECT*,HWND,const RGNDATA*,DWORD);
+using OriginalSwapChainGetBackBufferFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DSwapChain9*,UINT,D3DBACKBUFFER_TYPE,IDirect3DSurface9**);
 using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,CONST RECT*,CONST RECT*,HWND,CONST RGNDATA*);
 using ResetFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRESENT_PARAMETERS*);
@@ -188,6 +196,17 @@ using IndexedUPFn=HRESULT (STDMETHODCALLTYPE*)(
 Create9Fn g_create9=nullptr;
 CreateDeviceFn g_create_device=nullptr;
 PresentFn g_present=nullptr;
+CreateAdditionalSwapChainFn g_create_additional_swap_chain=nullptr;
+GetSwapChainFn g_get_swap_chain=nullptr;
+OriginalSwapChainPresentFn g_original_swap_chain_present=nullptr;
+OriginalSwapChainGetBackBufferFn g_original_swap_chain_get_back_buffer=nullptr;
+void* g_original_swap_chain_present_target=nullptr;
+void* g_original_swap_chain_get_back_target=nullptr;
+std::mutex g_original_swap_chain_hook_mutex;
+// An additional physical SwapChain Present cannot be assigned the device
+// Present's Draw/camera/source epoch. Remain mono-safe for this process.
+std::atomic<bool> g_original_swap_chain_source_unproven{false};
+std::array<std::atomic<std::uint32_t>,4> g_original_swap_chain_calls{};
 ResetFn g_reset=nullptr;
 SceneFn g_begin_scene=nullptr;
 SceneFn g_end_scene=nullptr;
@@ -407,6 +426,9 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
     unsigned int original_caller_rva,unsigned int frequency);
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9ActiveInstancing(
     unsigned long long physical_present,unsigned int active_stream_mask);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned int reason);
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9BufferMutation(
     unsigned long long physical_present,unsigned int caller_rva,
     unsigned long long ordinal,unsigned int family);
@@ -2214,6 +2236,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 #include "original_d3d9_readback_hooks.inl"
 #include "original_d3d9_surface_get_hooks.inl"
 #include "original_d3d9_resource_get_hooks.inl"
+#include "original_d3d9_swap_chain_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
 // preserved, while failures poison only speculative binocular output.
 HRESULT STDMETHODCALLTYPE SetStreamSourceHook(IDirect3DDevice9* d,UINT stream,IDirect3DVertexBuffer9* buffer,UINT offset,UINT stride){
@@ -2635,6 +2658,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
                            seen,0u,0u,0u);
         return CallOriginalPresentOnce(d,a,b,w,dirty);
     }
+    // A genuine additional SwapChain::Present is a distinct physical
+    // presentation, not a device Present nonce. Never republish its old eyes.
+    if(g_original_swap_chain_source_unproven.load(std::memory_order_acquire))
+        Model2VR_RejectOriginalD3D9SwapChainPresent(
+            g_present_count.load(std::memory_order_acquire)+1u,0u,2u);
     // If a writable original resource is still mapped at Present, the
     // game may modify it without another Lock. Future stereo must remain
     // disarmed, not silently reuse a previous eye geometry source.
@@ -2695,6 +2723,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(std::size_t i=0;i<surface_creates.size();++i)
         surface_creates[i]=g_original_surface_creates[i].exchange(
             0u,std::memory_order_relaxed);
+    std::array<std::uint32_t,4> original_swap_chain_calls{};
+    for(std::size_t i=0;i<original_swap_chain_calls.size();++i)
+        original_swap_chain_calls[i]=g_original_swap_chain_calls[i].exchange(
+            0u,std::memory_order_relaxed);
     std::array<std::uint32_t,3> original_resource_getters{};
     for(std::size_t i=0;i<original_resource_getters.size();++i)
         original_resource_getters[i]=g_original_resource_getters[i].exchange(
@@ -2744,6 +2776,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             (std::uint64_t{gpu_surface_writes[0]}<<32u)|gpu_surface_writes[1],
             (std::uint64_t{gpu_surface_writes[2]}<<32u)|gpu_surface_writes[3],
             0u);
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_swap_chain_counts",frame,
+            (std::uint64_t{original_swap_chain_calls[0]}<<32u)|original_swap_chain_calls[1],
+            (std::uint64_t{original_swap_chain_calls[2]}<<32u)|original_swap_chain_calls[3],
+            g_original_swap_chain_source_unproven.load(std::memory_order_acquire)?1u:0u);
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_resource_getter_counts",
             frame,original_resource_getters[0],
@@ -2864,6 +2901,10 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         count.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_resource_getters)
         count.store(0u,std::memory_order_relaxed);
+    for(auto& count:g_original_swap_chain_calls)
+        count.store(0u,std::memory_order_relaxed);
+    // SwapChain source uncertainty persists across Reset: no remapping to
+    // the primary physical Present is proven by a device Reset alone.
     g_original_texture_lock_writes.store(0u,std::memory_order_relaxed);
     g_original_texture_surface_writes.store(0u,std::memory_order_relaxed);
     for(auto& n:g_original_texture_shape_writes)
@@ -2895,6 +2936,11 @@ bool HookDevice(IDirect3DDevice9* dev){
     // COM IDirect3DDevice9 method slots per d3d9.h (IUnknown included).
     auto** vtable=*reinterpret_cast<void***>(dev);
     const bool p=Hook(vtable[17],reinterpret_cast<void*>(&PresentHook),g_present);
+    const bool create_swap_chain=Hook(vtable[13],
+        reinterpret_cast<void*>(&OriginalCreateAdditionalSwapChainHook),
+        g_create_additional_swap_chain);
+    const bool get_swap_chain=Hook(vtable[14],
+        reinterpret_cast<void*>(&OriginalGetSwapChainHook),g_get_swap_chain);
     const bool dp=Hook(vtable[81],reinterpret_cast<void*>(&DrawHook),g_draw);
     const bool di=Hook(vtable[82],reinterpret_cast<void*>(&IndexedHook),g_draw_indexed);
     const bool du=Hook(vtable[83],reinterpret_cast<void*>(&DrawUPHook),g_draw_up);
@@ -3013,10 +3059,12 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
+    if(!(p&&create_swap_chain&&get_swap_chain&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
+        if(create_swap_chain){MH_DisableHook(vtable[13]);MH_RemoveHook(vtable[13]);}
+        if(get_swap_chain){MH_DisableHook(vtable[14]);MH_RemoveHook(vtable[14]);}
         if(dp){MH_DisableHook(vtable[81]);MH_RemoveHook(vtable[81]);}
         if(di){MH_DisableHook(vtable[82]);MH_RemoveHook(vtable[82]);}
         if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
@@ -3090,6 +3138,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(begin_block){MH_DisableHook(vtable[60]);MH_RemoveHook(vtable[60]);}
         if(end_block){MH_DisableHook(vtable[61]);MH_RemoveHook(vtable[61]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
+        g_create_additional_swap_chain=nullptr;g_get_swap_chain=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_create_vertex_buffer=nullptr;g_create_index_buffer=nullptr;
         g_create_texture=nullptr;g_create_volume_texture=nullptr;
@@ -3129,6 +3178,8 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_end_state_block=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
+        m2vr::LogEvent("model2_d3d9_original_swap_chain_hook_rollback",
+            create_swap_chain,get_swap_chain,0u,0u);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
                        update,stretch,fill,clear);
         m2vr::LogEvent("model2_d3d9_buffer_create_hook_rollback",

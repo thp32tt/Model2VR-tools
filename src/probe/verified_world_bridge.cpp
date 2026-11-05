@@ -995,6 +995,34 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9BufferHookCoverage(
             physical_present,original_caller_rva,family,0u);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// A real IDirect3DSwapChain9::Present is not the primary IDirect3DDevice9
+// physical Present. There is no proven original Draw/eye ownership mapping,
+// so discard both speculative paths before the original COM call and keep
+// the original game's mono presentation intact. Reason 1=observed call,
+// 2=persistent unknown alternate swap-chain / unobserved source coverage.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned int reason){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || reason<1u || reason>2u ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool first=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.frame==physical_present && (g.active || g.pending_present)){
+            const auto prior=g_current_original_source_failure;
+            g_current_original_source_failure=
+                OriginalSourceFailure::OriginalSwapChainPresentUnverified;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=prior;
+        }
+        first=g.source_epoch.Revoke(physical_present);
+    }
+    if(first)
+        m2vr::LogEvent("model2_d3d9_original_swap_chain_source_rejected",
+            physical_present,original_caller_rva,reason,0u);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Palette writes may change already drawn eye texels without a binding call.
 // They never alter the original emulator Draw or mono backbuffer.
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PaletteMutation(
