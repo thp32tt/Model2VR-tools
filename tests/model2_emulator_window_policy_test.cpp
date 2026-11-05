@@ -21,5 +21,17 @@ int main(){
     static_assert(MenuUploadToken(0)==0);
     static_assert(MenuUploadToken(1)==(std::uint64_t{1}<<63 | 1u));
     assert(MenuUploadToken(101)!=MenuUploadToken(102));
+    constexpr auto fit=Fit(640,480,1024,1024);
+    constexpr auto pointer=PlacePointer(420,290,100,50,640,480,
+                                       fit,32,32,5,5);
+    static_assert(pointer.Valid());
+    static_assert(pointer.x==504 && pointer.y==504);
+    static_assert(pointer.width==51 && pointer.height==51);
+    static_assert(!PlacePointer(99,290,100,50,640,480,
+                               fit,32,32,0,0).Valid());
+    static_assert(!PlacePointer(420,530,100,50,640,480,
+                               fit,32,32,0,0).Valid());
+    static_assert(!PlacePointer(420,290,100,50,640,480,
+                               fit,32,32,32,0).Valid());
     return 0;
 }

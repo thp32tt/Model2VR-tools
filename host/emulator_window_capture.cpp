@@ -111,6 +111,35 @@ bool EmulatorWindowCapture::Capture(HWND hwnd){
         static_cast<int>(dest.width),static_cast<int>(dest.height),
         source,from_desktop?rect.left:0,from_desktop?rect.top:0,
         sw,sh,SRCCOPY);
+    // BitBlt does NOT normally include the software cursor. Blend the
+    // user's genuine Win32 cursor onto the virtual menu while this exact
+    // emulator HWND owns foreground focus; do NOT impersonate a Quest
+    // controller pointer, inject clicks or change emulator window focus.
+    if(drawn && from_desktop){
+        CURSORINFO cursor{};
+        cursor.cbSize=sizeof(cursor);
+        if(GetCursorInfo(&cursor) &&
+           (cursor.flags&CURSOR_SHOWING)!=0 && cursor.hCursor){
+            ICONINFO icon{};
+            if(GetIconInfo(cursor.hCursor,&icon)){
+                const auto pointer=desktopmenu::PlacePointer(
+                    cursor.ptScreenPos.x,cursor.ptScreenPos.y,
+                    rect.left,rect.top,
+                    static_cast<std::uint32_t>(sw),
+                    static_cast<std::uint32_t>(sh),dest,
+                    static_cast<std::uint32_t>(GetSystemMetrics(SM_CXCURSOR)),
+                    static_cast<std::uint32_t>(GetSystemMetrics(SM_CYCURSOR)),
+                    icon.xHotspot,icon.yHotspot);
+                if(pointer.Valid())
+                    DrawIconEx(target,pointer.x,pointer.y,cursor.hCursor,
+                        static_cast<int>(pointer.width),
+                        static_cast<int>(pointer.height),
+                        0,nullptr,DI_NORMAL);
+                if(icon.hbmMask)DeleteObject(icon.hbmMask);
+                if(icon.hbmColor)DeleteObject(icon.hbmColor);
+            }
+        }
+    }
     if(drawn){
         rgba_.resize(transport::kBytesPerEye);
         const auto* bgra=static_cast<const std::uint8_t*>(bits);

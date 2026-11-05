@@ -321,6 +321,20 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("model2_vr_cpu_world_source_pose_expired",cpu)
         self.assertIn("success,pose_live);",cpu)
 
+    def test_original_desktop_gui_quad_displays_real_windows_cursor(self):
+        capture=(ROOT/"host/emulator_window_capture.cpp").read_text("utf-8")
+        policy=(ROOT/"src/common/model2_emulator_window_policy.hpp").read_text("utf-8")
+        regression=(ROOT/"tests/model2_emulator_window_policy_test.cpp").read_text("utf-8")
+        self.assertIn("GetCursorInfo(&cursor)",capture)
+        self.assertIn("cursor.flags&CURSOR_SHOWING",capture)
+        self.assertIn("GetIconInfo(cursor.hCursor,&icon)",capture)
+        self.assertIn("desktopmenu::PlacePointer(",capture)
+        self.assertIn("DrawIconEx(target,pointer.x,pointer.y",capture)
+        self.assertIn("if(drawn && from_desktop)",capture)
+        self.assertIn("if(icon.hbmMask)DeleteObject(icon.hbmMask)",capture)
+        self.assertIn("PlacePointer(",policy)
+        self.assertIn("pointer.x==504 && pointer.y==504",regression)
+
     def test_original_d3d9_mono_pixel_fallback_is_end_to_end_but_not_world_proof(self):
         source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         transport=(ROOT/"src/common/stereo_frame_ipc.h").read_text("utf-8")
