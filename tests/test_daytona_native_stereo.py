@@ -277,6 +277,25 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("g_original_frame_draw_ordinal.load(",hooks)
         self.assertIn("g_original_scene_ordinal.load(",hooks)
 
+    def test_original_target_bind_hooks_fail_closed_and_record_private_phase(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        for name,original,method,slot in (
+            ("SetRenderTargetHook","g_set_render_target",4,37),
+            ("SetDepthStencilSurfaceHook","g_set_depth_surface",5,39)):
+            body=hooks.split("HRESULT STDMETHODCALLTYPE "+name+"(")[1].split(
+                "HRESULT STDMETHODCALLTYPE ")[0]
+            self.assertEqual(body.count("const HRESULT hr="+original+"("),1)
+            self.assertIn("if(caller_rva && FAILED(hr))",body)
+            self.assertIn(f"TrackFailedOriginalD3D9Surface(hr,{method}u,caller_rva)",body)
+            self.assertIn(f"MH_RemoveHook(vtable[{slot}]);",hooks)
+            self.assertIn(f"vtable[{slot}]",hooks)
+        self.assertIn("&&fill&&rt&&depth",hooks)
+        self.assertIn("model2_d3d9_original_target_bind_phase",hooks)
+        self.assertIn("g_original_target_bind_samples",hooks)
+        self.assertIn("method>5u",gpu)
+        self.assertIn("model2_d3d9_target_hook_rollback",hooks)
+
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):
         workflow=(ROOT/".github/workflows/daytona-native-stereo.yml").read_text("utf-8")
         script=(ROOT/"scripts/Analyze-Daytona-UP-Source.cmd").read_text("utf-8")

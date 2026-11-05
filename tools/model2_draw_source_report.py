@@ -534,7 +534,7 @@ def audit_csv(path):
                 except (ValueError, TypeError) as exc:
                     raise ValueError("invalid original surface failure row") from exc
                 if (not 0 < frame <= 0xffffffff or
-                        method not in (1, 2, 3) or
+                        method not in (1, 2, 3, 4, 5) or
                         result > 0xffffffff or (result & 0x80000000) == 0 or
                         not 0 < caller <= 0xffffffff):
                     raise ValueError("invalid original surface failure")

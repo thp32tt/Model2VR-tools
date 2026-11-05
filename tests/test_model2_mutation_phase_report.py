@@ -36,3 +36,39 @@ class RealOriginalMutationPhaseTest(unittest.TestCase):
     def test_unrelated_events_cannot_claim_original_source(self):
         self.assertEqual(self.inspect([("model2_d3d9_draw_sample",1,2,3,4)])
                          ["witness_count"],0)
+
+    def bind(self,frame=8,method=1,caller=0x4567,draw=33,scene=2,
+             scene_open=1,target_class=1,depth_known=0,depth_match=0):
+        flags=(scene_open|(target_class<<8)|
+               (depth_known<<16)|(depth_match<<17))
+        return ("model2_d3d9_original_target_bind_phase",frame,caller,
+                pack(method,draw),pack(scene,flags))
+    def test_target_bind_witnesses_are_private_and_not_world_proof(self):
+        events=[self.bind(frame=1,draw=0,scene=0,scene_open=0),
+                self.bind(frame=8,target_class=2),
+                self.bind(frame=8,method=2,target_class=0,
+                          depth_known=1,depth_match=1),
+                self.bind(frame=16,method=2,target_class=0,depth_known=0)]
+        result=self.inspect(events)
+        self.assertEqual(result["target_bind_witness_count"],4)
+        self.assertEqual(result["target_bind_method_counts"]["SetRenderTarget"],2)
+        self.assertEqual(result["target_bind_classes"]["auxiliary"],1)
+        self.assertEqual(result["target_bind_classes"]["depth_dimension_matched"],1)
+        self.assertFalse(result["adapter_auto_enable"])
+        self.assertTrue(all(not s["world_authorized"] for s in result["samples"]))
+    def test_target_bind_invalid_flags_and_duplicate_rejected(self):
+        invalid=[
+            self.bind(method=0),self.bind(method=3),
+            self.bind(frame=7),self.bind(caller=0),
+            self.bind(scene=0,scene_open=1),
+            self.bind(target_class=3),
+            self.bind(method=2,target_class=1),
+            self.bind(method=1,depth_known=1),
+            self.bind(method=2,target_class=0,depth_known=0,depth_match=1)
+        ]
+        for row in invalid:
+            with self.subTest(row=row):
+                with self.assertRaisesRegex(ValueError,"invalid original target bind"):
+                    self.inspect([row])
+        with self.assertRaisesRegex(ValueError,"repeated same-frame/target bind"):
+            self.inspect([self.bind(),self.bind(caller=0x3456)])
