@@ -505,6 +505,9 @@ def store_original_draw_witness_field(fields, name, values, witness):
 def audit_csv(path):
     witnesses = {}
     physical_presents = {}
+    # Independently sampled genuine primary Present even without VB witnesses.
+    original_control_presents = {}
+    last_control_present = 0
     original_scene_failures = set()
     original_draw_failures = set()
     original_clear_failures = set()
@@ -823,6 +826,26 @@ def audit_csv(path):
                 original_scene_failures.add(frame)
                 if len(original_scene_failures) > MAX_WITNESSES:
                     raise ValueError("original scene failures exceeded limit")
+                continue
+            if event == "model2_d3d9_original_control_present_phase":
+                try:
+                    frame,hr,vb_pair,up_pair=(
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError,TypeError) as exc:
+                    raise ValueError("invalid original control Present row") from exc
+                dp,dip=vb_pair>>32,vb_pair&0xffffffff
+                dpup,dipup=up_pair>>32,up_pair&0xffffffff
+                if (not 0<frame<=0xffffffff or
+                    (frame!=1 and frame%8!=0) or
+                    frame<=last_control_present or
+                    not 0<=hr<=0xffffffff or
+                    not 0<=vb_pair<=0xffffffffffffffff or
+                    not 0<=up_pair<=0xffffffffffffffff or
+                    any(n>10000000 for n in (dp,dip,dpup,dipup)) or
+                    len(original_control_presents)>=MAX_WITNESSES):
+                    raise ValueError("invalid original control Present provenance")
+                original_control_presents[frame]=(hr,dp,dip,dpup,dipup)
+                last_control_present=frame
                 continue
             if event == "model2_d3d9_original_present_result":
                 try:
@@ -1598,9 +1621,29 @@ def audit_csv(path):
             else:
                 record[key] = item
         sources.append(record)
+    # Original control coverage is a post-COM physical primary-device event,
+    # not the per-VB sampled Present witness used for source authorization.
+    # Both independent logs must agree whenever the same Present is present.
+    for frame,values in original_control_presents.items():
+        if frame in physical_presents and physical_presents[frame]!=values[0]:
+            raise ValueError("conflicting physical original control Present")
+    successful_controls=[
+        values for values in original_control_presents.values()
+        if values[0]&0x80000000==0]
+    drawn_controls=[
+        values for values in successful_controls if sum(values[1:])>0]
     return {
         "schema": 1,
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
+        "original_control_present_sample_count":len(original_control_presents),
+        "original_control_successful_present_count":len(successful_controls),
+        "original_control_successful_drawn_present_count":len(drawn_controls),
+        "original_control_four_family_draw_totals":{
+            "DrawPrimitive":sum(v[1] for v in original_control_presents.values()),
+            "DrawIndexedPrimitive":sum(v[2] for v in original_control_presents.values()),
+            "DrawPrimitiveUP":sum(v[3] for v in original_control_presents.values()),
+            "DrawIndexedPrimitiveUP":sum(v[4] for v in original_control_presents.values()),
+        },
         "world_pass_proof": "NOT_ESTABLISHED",
         "hmd_runtime_validation": "UNTESTED",
         "caller_count": len(sources),
