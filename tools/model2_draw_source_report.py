@@ -516,6 +516,12 @@ def audit_csv(path):
     last_bloom_frame = 0
     bloom_count = 0
     observed_control_bloom_frames = set()
+    # Exact original physical Draw caller inventory, one append-only identity
+    # per EXE RVA (including unsampled VB/UP). Never more than 4096 originals.
+    original_exact_callers = set()
+    last_exact_inventory_frame = 0
+    exact_inventory_count = 0
+    exact_inventory_flags = (0,0)
     original_scene_failures = set()
     original_draw_failures = set()
     original_clear_failures = set()
@@ -834,6 +840,42 @@ def audit_csv(path):
                 original_scene_failures.add(frame)
                 if len(original_scene_failures) > MAX_WITNESSES:
                     raise ValueError("original scene failures exceeded limit")
+                continue
+            if event == "model2_d3d9_original_draw_caller_first":
+                try:
+                    frame,caller,tag,reserved=(
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError,TypeError) as exc:
+                    raise ValueError("invalid original exact Draw caller") from exc
+                family,ordinal=halves(tag)
+                if (not 0<frame<=0xffffffff or
+                    frame!=last_exact_inventory_frame+1 or
+                    not 0<caller<=0xffffffff or
+                    not 1<=family<=4 or
+                    not 0<ordinal<=10000000 or
+                    reserved!=0 or caller in original_exact_callers or
+                    len(original_exact_callers)>=4096):
+                    raise ValueError("invalid/duplicate original exact Draw caller")
+                original_exact_callers.add(caller)
+                continue
+            if event == "model2_d3d9_original_caller_inventory":
+                try:
+                    frame,claimed_count,overflow,unknown=(
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError,TypeError) as exc:
+                    raise ValueError("invalid original exact caller inventory") from exc
+                if (not 0<frame<=0xffffffff or
+                    frame!=last_exact_inventory_frame+1 or
+                    claimed_count!=len(original_exact_callers) or
+                    claimed_count>4096 or overflow not in (0,1) or
+                    unknown not in (0,1) or
+                    overflow<exact_inventory_flags[0] or
+                    unknown<exact_inventory_flags[1] or
+                    (last_bloom_frame and last_bloom_frame != frame)):
+                    raise ValueError("invalid/incomplete original exact caller inventory")
+                exact_inventory_flags=(overflow,unknown)
+                last_exact_inventory_frame=frame
+                exact_inventory_count+=1
                 continue
             if event == "model2_d3d9_original_all_family_caller_bloom":
                 try:
@@ -1659,6 +1701,9 @@ def audit_csv(path):
     # Only a complete consecutive physical Present stream can support a
     # cross-session NEGATIVE caller exclusion. An old CSV without this new
     # source is still readable but is NOT a complete negative control.
+    if exact_inventory_count and (last_exact_inventory_frame!=last_bloom_frame or
+        last_exact_inventory_frame<last_control_present):
+        raise ValueError("orphan original exact Draw caller records")
     if original_all_family_bloom is not None:
         if (set(original_control_presents) != observed_control_bloom_frames or
             last_bloom_frame < last_control_present or
@@ -1674,6 +1719,15 @@ def audit_csv(path):
     return {
         "schema": 1,
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
+        "original_all_family_exact_caller_inventory": (
+            {"callers":[f"0x{value:08x}" for value in sorted(original_exact_callers)],
+             "unique_caller_count":len(original_exact_callers),
+             "overflow":bool(exact_inventory_flags[0]),
+             "unknown_caller":bool(exact_inventory_flags[1]),
+             "first_present_frame":1,
+             "last_present_frame":last_exact_inventory_frame,
+             "physical_present_count":exact_inventory_count}
+            if exact_inventory_count else None),
         "original_all_family_caller_bloom": (
             {"lane0":original_all_family_bloom[0],
              "lane1":original_all_family_bloom[1],

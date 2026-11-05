@@ -62,6 +62,47 @@ def _bloom_might_contain(bloom, caller):
     return bool(lo and hi and bloom[0]&lo and bloom[1]&hi)
 
 
+def _control_exact_callers(report,bloom):
+    record=report.get("original_all_family_exact_caller_inventory")
+    keys={"callers","unique_caller_count","overflow","unknown_caller",
+          "first_present_frame","last_present_frame","physical_present_count"}
+    if not isinstance(record,dict) or set(record)!=keys:
+        raise ValueError("missing exact original four-family negative-control callers")
+    raw=record["callers"]
+    if (not isinstance(raw,list) or len(raw)>4096 or
+        type(record["unique_caller_count"]) is not int or
+        record["unique_caller_count"]!=len(raw) or
+        type(record["overflow"]) is not bool or record["overflow"] or
+        type(record["unknown_caller"]) is not bool or record["unknown_caller"] or
+        type(record["first_present_frame"]) is not int or
+        record["first_present_frame"]!=1 or
+        type(record["last_present_frame"]) is not int or
+        type(record["physical_present_count"]) is not int or
+        not 1<=record["last_present_frame"]==
+        record["physical_present_count"]<=0xffffffff):
+        raise ValueError("incomplete exact original four-family negative-control callers")
+    callers=set()
+    expected_lo=expected_hi=0
+    for value in raw:
+        if (not isinstance(value,str) or RVA.fullmatch(value) is None or
+            int(value,16)==0 or value.lower() in callers):
+            raise ValueError("invalid exact original four-family caller entry")
+        callers.add(value.lower())
+        lo,hi=original_caller_bloom_bits(int(value,16))
+        expected_lo|=lo
+        expected_hi|=hi
+    # Bloom is retained for compatibility/diagnostic provenance but is NOT
+    # sufficient to exclude an exact game caller: after enough unique
+    # game Draws, all bits may saturate and create spurious exclusions.
+    if not callers or (expected_lo,expected_hi)!=bloom:
+        raise ValueError("mismatched exact original four-family caller coverage")
+    sampled=report.get("sources")
+    if any(source["caller_rva_hex"].lower() not in callers
+           for source in sampled):
+        raise ValueError("sampled original Draw absent from exact caller coverage")
+    return callers
+
+
 def _validate_report(report):
     if not isinstance(report, dict) or type(report.get("schema")) is not int or report["schema"] != 1 or (
         report.get("source_kind") != SOURCE_KIND or
@@ -237,6 +278,9 @@ def compare_sessions(race_reports, nonrace_reports):
     # signature for EVERY distinct private control before any candidate.
     control_blooms={label:_control_bloom(nonrace_reports[label])
                     for label in sorted(CONTROL_TYPES)}
+    control_exact={label:_control_exact_callers(
+        nonrace_reports[label],control_blooms[label])
+        for label in sorted(CONTROL_TYPES)}
     candidates=[]
     rejected=[]
     for family,caller in sorted(all_callers):
@@ -246,9 +290,8 @@ def compare_sessions(race_reports, nonrace_reports):
             reason="unknown_gpu_caller"
         elif any(caller in rv_as for rv_as in control_gpu.values()):
             reason="caller_also_used_outside_race"
-        elif any(_bloom_might_contain(bloom,caller)
-                 for bloom in control_blooms.values()):
-            reason="caller_signature_used_outside_race"
+        elif any(caller in caller_set for caller_set in control_exact.values()):
+            reason="caller_exactly_used_outside_race"
         elif any(key not in session for session in race):
             reason="missing_in_race_capture"
         elif any(not _enough_original_source(session[key]) for session in race):

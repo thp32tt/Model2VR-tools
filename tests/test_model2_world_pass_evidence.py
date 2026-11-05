@@ -53,14 +53,37 @@ def witness(cpu="0x004bb400", count=3):
 
 
 def report(*sources):
+    rvas={0x004f5000}
+    for source in sources:
+        caller=source.get("caller_rva_hex") if isinstance(source,dict) else None
+        if isinstance(caller,str) and caller.startswith("0x"):
+            try:
+                decoded=int(caller,16)
+            except ValueError:
+                continue
+            if 0<decoded<=0xffffffff:
+                rvas.add(decoded)
+    bits=[original_caller_bloom_bits(value) for value in rvas]
+    lo,hi=(0,0)
+    for a,b in bits:
+        lo|=a
+        hi|=b
     return {
         "schema": 1,
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
         "world_pass_proof": "NOT_ESTABLISHED",
         "hmd_runtime_validation": "UNTESTED",
+        "original_all_family_exact_caller_inventory":{
+            "callers":[f"0x{value:08x}" for value in sorted(rvas)],
+            "unique_caller_count":len(rvas),
+            "overflow":False,"unknown_caller":False,
+            "first_present_frame":1,
+            "last_present_frame":8,
+            "physical_present_count":8,
+        },
         "original_all_family_caller_bloom":{
-            "lane0":original_caller_bloom_bits(0x004f5000)[0],
-            "lane1":original_caller_bloom_bits(0x004f5000)[1],
+            "lane0":lo,
+            "lane1":hi,
             "unknown_caller":False,
             "first_present_frame":1,
             "last_present_frame":8,
@@ -240,8 +263,13 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         hud=report()
         caller=0x004a1234
         lo,hi=original_caller_bloom_bits(caller)
+        existing=0x004f5000
+        additional_lo,additional_hi=original_caller_bloom_bits(existing)
         hud["original_all_family_caller_bloom"].update(
-            lane0=lo,lane1=hi)
+            lane0=lo|additional_lo,lane1=hi|additional_hi)
+        hud["original_all_family_exact_caller_inventory"].update(
+            callers=[f"0x{value:08x}" for value in sorted((existing,caller))],
+            unique_caller_count=2)
         hud["original_control_four_family_draw_totals"]={
             "DrawPrimitive":0,"DrawIndexedPrimitive":0,
             "DrawPrimitiveUP":5,"DrawIndexedPrimitiveUP":4}
@@ -249,7 +277,7 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                              controls(hud=hud))
         self.assertEqual(got["candidates"],[])
         self.assertEqual(got["rejected"][0]["reason"],
-                         "caller_signature_used_outside_race")
+                         "caller_exactly_used_outside_race")
 
     def test_missing_or_unknown_bloom_does_not_claim_complete_controls(self):
         for mutation in (
@@ -264,6 +292,24 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"all-family"):
                 compare_sessions([report(witness()),report(witness())],
                                  controls(aux=control))
+
+    def test_saturated_bloom_cannot_falsely_exclude_exact_race_caller(self):
+        control=report()
+        # Deliberate full bloom (indistinguishable from race in bitmap),
+        # without an original exact callsite: reject the report as corrupted
+        # instead of manufacturing positive/negative gameplay proof.
+        control["original_all_family_caller_bloom"].update(
+            lane0=0xffffffffffffffff,lane1=0xffffffffffffffff)
+        with self.assertRaisesRegex(ValueError,"mismatched exact"):
+            compare_sessions([report(witness()),report(witness())],
+                             controls(aux=control))
+
+    def test_missing_exact_caller_control_fails_closed(self):
+        control=report()
+        del control["original_all_family_exact_caller_inventory"]
+        with self.assertRaisesRegex(ValueError,"exact original"):
+            compare_sessions([report(witness()),report(witness())],
+                             controls(menu=control))
 
     def test_original_gpu_caller_reused_with_different_primitive_family(self):
         original=witness()
