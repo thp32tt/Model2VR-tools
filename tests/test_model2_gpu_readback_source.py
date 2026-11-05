@@ -43,6 +43,30 @@ class OriginalGpuReadbackSourceTest(unittest.TestCase):
         self.assertIn("model2_d3d9_original_surface_readback_counts",self.device)
         self.assertIn("g_original_surface_readbacks[i].exchange(",self.device)
         self.assertIn("for(auto& count:g_original_surface_readbacks)",self.device)
+    def test_original_surface_getter_aliases_register_before_cpu_maps(self):
+        getter=(ROOT/"src/probe/original_d3d9_surface_get_hooks.inl").read_text("utf-8")
+        for method,slot,forward,index in (
+            ("OriginalGetBackBufferHook",18,"g_get_back_buffer",0),
+            ("OriginalGetRenderTargetHook",38,"g_get_render_target",1),
+            ("OriginalGetDepthStencilSurfaceHook",40,"g_get_depth_stencil_surface",2)):
+            body=getter.split("HRESULT STDMETHODCALLTYPE "+method+"(",1)[1]
+            body=body.split("HRESULT STDMETHODCALLTYPE ",1)[0]
+            self.assertEqual(body.count("const HRESULT hr="+forward+"("),1)
+            self.assertIn("const bool primary=g_primary_device.Owns(d)",body)
+            self.assertIn("if(rva && SUCCEEDED(hr))",body)
+            self.assertIn(f"g_original_surface_getters[{index}].fetch_add(",body)
+            self.assertIn("ObserveOriginalTextureSurface(*out,rva)",body)
+            self.assertIn("OriginalTextureCoverageUnknown(rva)",body)
+            self.assertIn("return hr;",body)
+            self.assertNotIn("TrackFailedOriginalD3D9Surface(",body)
+            self.assertIn(f"Hook(vtable[{slot}]",self.device)
+            self.assertIn(f"MH_RemoveHook(vtable[{slot}]);",self.device)
+        self.assertIn("&&get_back&&get_rt&&get_depth&&read_rt&&read_front",self.device)
+        self.assertIn("model2_d3d9_original_surface_getter_counts",self.device)
+        self.assertIn("g_original_surface_getters[i].exchange(",self.device)
+        self.assertIn("for(auto& count:g_original_surface_getters)",self.device)
+        self.assertIn('#include "original_d3d9_surface_get_hooks.inl"',self.device)
+
     def test_game_data_not_logged_or_auto_authorized(self):
         for banned in ("memcpy(","fwrite(","World3D=true","Model2VR_AuthorizeWorld",
                        "source->LockRect("):
