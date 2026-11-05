@@ -1,4 +1,5 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
+#include "../src/probe/original_d3d9_validation_policy.hpp"
 #include "../src/probe/original_d3d9_buffer_mutation.hpp"
 #include "../src/probe/original_d3d9_transform_lineage.hpp"
 #include "../src/probe/original_d3d9_stateblock_audit.hpp"
@@ -10,6 +11,19 @@
 #include <limits>
 int main(){
     using namespace m2vr::drawprobe;
+    using namespace m2vr::vrbridge;
+    static_assert(DecideOriginalD3D9Validation(0u,true,1u)==
+                  OriginalDeviceValidationDecision::TrustedSinglePass);
+    static_assert(DecideOriginalD3D9Validation(0u,true,2u)==
+                  OriginalDeviceValidationDecision::MultiplePasses);
+    static_assert(DecideOriginalD3D9Validation(0x8876086cu,true,1u)==
+                  OriginalDeviceValidationDecision::OriginalFailure);
+    static_assert(DecideOriginalD3D9Validation(0u,false,1u)==
+                  OriginalDeviceValidationDecision::ResultUnknown);
+    static_assert(DecideOriginalD3D9Validation(1u,true,1u)==
+                  OriginalDeviceValidationDecision::ResultUnknown);
+    static_assert(DecideOriginalD3D9Validation(0u,true,0u)==
+                  OriginalDeviceValidationDecision::ResultUnknown);
     OriginalStreamFrequencyState freq{};
     assert(freq.UnsupportedMask()==0u);
     freq.SuccessfulOriginalWrite(0u,0x40000002u);

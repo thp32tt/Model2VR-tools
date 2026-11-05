@@ -13,6 +13,7 @@
 #include "original_d3d9_clear_result_gate.hpp"
 #include "original_d3d9_surface_result_gate.hpp"
 #include "original_d3d9_lineage.hpp"
+#include "original_d3d9_validation_policy.hpp"
 #include "original_d3d9_transform_lineage.hpp"
 #include "original_d3d9_stream_frequency.hpp"
 #include "original_d3d9_raster_mode.hpp"
@@ -62,6 +63,7 @@ using OriginalQueryGetDataFn=HRESULT (STDMETHODCALLTYPE*)(
 using SetCursorPropertiesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,UINT,IDirect3DSurface9*);
 using SetCursorPositionFn=void (STDMETHODCALLTYPE*)(IDirect3DDevice9*,int,int,DWORD);
 using ShowCursorFn=BOOL (STDMETHODCALLTYPE*)(IDirect3DDevice9*,BOOL);
+using ValidateDeviceFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT*);
 using SetDialogBoxModeFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,BOOL);
 using SetGammaRampFn=void (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,DWORD,const D3DGAMMARAMP*);
 using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -223,6 +225,11 @@ std::atomic<bool> g_original_dialog_box_active{false};
 std::atomic<bool> g_original_gamma_unproven{false};
 std::atomic<bool> g_original_external_presentation_unproven{false};
 std::array<std::atomic<std::uint32_t>,2> g_original_presentation_controls{};
+ValidateDeviceFn g_validate_device=nullptr;
+std::atomic<bool> g_original_validation_unproven{false};
+std::atomic<bool> g_original_validation_foreign_caller{false};
+std::atomic<std::uint64_t> g_original_validation_rejected_present{0u};
+std::array<std::atomic<std::uint32_t>,4> g_original_validation_counts{};
 CreateQueryFn g_create_query=nullptr;
 OriginalQueryIssueFn g_original_query_issue=nullptr;
 OriginalQueryGetDataFn g_original_query_get_data=nullptr;
@@ -474,6 +481,9 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
     unsigned long long physical_present,unsigned int original_caller_rva,
     unsigned int reason);
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9QueryUse(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int reason);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9ValidationUse(
     unsigned long long physical_present,unsigned int original_caller_rva,
     unsigned long long preceding_draw_ordinal,unsigned int reason);
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9BufferMutation(
@@ -2304,6 +2314,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 #include "original_d3d9_resource_get_hooks.inl"
 #include "original_d3d9_swap_chain_hooks.inl"
 #include "original_d3d9_query_hooks.inl"
+#include "original_d3d9_validation_hooks.inl"
 #include "original_d3d9_presentation_hooks.inl"
 #include "original_d3d9_cursor_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
@@ -2735,6 +2746,10 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         BeforeOriginalPresentationControl(0u,9u);
     if(g_original_query_source_unproven.load(std::memory_order_acquire))
         OriginalQuerySourceBoundary(0u,3u);
+    // A physical Present cannot use an unproven native ValidateDevice pass
+    // count even if a later Draw supplied an otherwise matching camera nonce.
+    if(g_original_validation_unproven.load(std::memory_order_acquire))
+        OriginalValidationSourceBoundary(0u,5u);
     if(g_original_dialog_box_active.load(std::memory_order_acquire))
         BeforeOriginalPresentationControl(0u,3u);
     if(g_original_gamma_unproven.load(std::memory_order_acquire))
@@ -3088,6 +3103,8 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool get_swap_chain=Hook(vtable[14],
         reinterpret_cast<void*>(&OriginalGetSwapChainHook),g_get_swap_chain);
     // Safe startup after original hardware Query crashes: opt-in only.
+    const bool validate=Hook(vtable[70],
+        reinterpret_cast<void*>(&OriginalValidateDeviceHook),g_validate_device);
     const bool create_query=!g_query_hooks_enabled || Hook(vtable[118],
         reinterpret_cast<void*>(&OriginalCreateQueryHook),g_create_query);
     const bool dp=Hook(vtable[81],reinterpret_cast<void*>(&DrawHook),g_draw);
@@ -3208,7 +3225,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&cursor_image&&cursor_position&&cursor_visibility&&dialog&&gamma&&create_swap_chain&&get_swap_chain&&create_query&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
+    if(!(p&&cursor_image&&cursor_position&&cursor_visibility&&dialog&&gamma&&create_swap_chain&&get_swap_chain&&validate&&create_query&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -3220,6 +3237,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(create_swap_chain){MH_DisableHook(vtable[13]);MH_RemoveHook(vtable[13]);}
         if(get_swap_chain){MH_DisableHook(vtable[14]);MH_RemoveHook(vtable[14]);}
         if(create_query && g_query_hooks_enabled){MH_DisableHook(vtable[118]);MH_RemoveHook(vtable[118]);}
+        if(validate){MH_DisableHook(vtable[70]);MH_RemoveHook(vtable[70]);}
         if(dp){MH_DisableHook(vtable[81]);MH_RemoveHook(vtable[81]);}
         if(di){MH_DisableHook(vtable[82]);MH_RemoveHook(vtable[82]);}
         if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
@@ -3297,7 +3315,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_original_show_cursor=nullptr;
         g_original_set_dialog_box_mode=nullptr;g_original_set_gamma_ramp=nullptr;
         g_create_additional_swap_chain=nullptr;g_get_swap_chain=nullptr;
-        g_create_query=nullptr;
+        g_create_query=nullptr;g_validate_device=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_create_vertex_buffer=nullptr;g_create_index_buffer=nullptr;
         g_create_texture=nullptr;g_create_volume_texture=nullptr;
@@ -3341,6 +3359,7 @@ bool HookDevice(IDirect3DDevice9* dev){
             dialog,gamma,0u,0u);
         m2vr::LogEvent("model2_d3d9_original_swap_chain_hook_rollback",
             create_swap_chain,get_swap_chain,0u,0u);
+        m2vr::LogEvent("model2_d3d9_original_validation_hook_rollback",validate,0u,0u,0u);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
                        update,stretch,fill,clear);
         m2vr::LogEvent("model2_d3d9_buffer_create_hook_rollback",
@@ -3471,6 +3490,7 @@ Model2VR_CurrentOriginalD3D9LineageNonce(){
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
        g_original_stream_frequency_state.UnsupportedMask() ||
        g_original_raster_mode_state.UnsupportedMask() ||
+       g_original_validation_unproven.load(std::memory_order_acquire) ||
        g_unmirrored_geometry_state.HasProcessedVertices() ||
        g_buffer_hook_unknown.load(std::memory_order_acquire) ||
        g_original_bound_write_locks.HasOutstandingWrites() ||

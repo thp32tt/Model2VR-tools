@@ -1024,6 +1024,38 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
             physical_present,original_caller_rva,reason,0u);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// Real original Device9::ValidateDevice COM 70 may require several
+// hardware texture stages/passes. Without original per-pass camera and RT
+// proof, staged Win64 OpenXR eyes cannot be declared equivalent to the
+// original game's multi-pass output. Reasons 1=failed original HRESULT,
+// 2=multiple passes, 3=unreadable/ambiguous count, 4=foreign COM caller,
+// 5=unresolved state at physical Present. Real game COM and mono remain intact.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9ValidationUse(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int reason){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || reason<1u || reason>5u ||
+       preceding_draw_ordinal>10000000u ||
+       (reason<=3u && !original_caller_rva) ||
+       (reason>=4u && (original_caller_rva || preceding_draw_ordinal)) ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool first=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.frame==physical_present && (g.active || g.pending_present)){
+            const auto prior=g_current_original_source_failure;
+            g_current_original_source_failure=
+                OriginalSourceFailure::OriginalDeviceValidationUnproven;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=prior;
+        }
+        first=g.source_epoch.Revoke(physical_present);
+    }
+    if(first)
+        m2vr::LogEvent("model2_d3d9_original_validation_rejected",
+            physical_present,original_caller_rva,preceding_draw_ordinal,reason);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Genuine Query9 Issue/GetData may change the CPU's occlusion-culling
 // decisions without another original source camera write. Reason 1=Issue,
 // 2=GetData, 3=unknown caller/owner/vtable coverage (persistent at Present).

@@ -54,7 +54,8 @@ enum class OriginalSourceFailure : std::uint32_t {
     OriginalGpuSurfaceMutationAfterStereo=29u,
     OriginalSwapChainPresentUnverified=30u,
     OriginalPresentationStateUnproven=31u,
-    OriginalQuerySourceUnproven=32u
+    OriginalQuerySourceUnproven=32u,
+    OriginalDeviceValidationUnproven=33u
 };
 inline thread_local OriginalSourceFailure g_current_original_source_failure=
     OriginalSourceFailure::Unknown;
