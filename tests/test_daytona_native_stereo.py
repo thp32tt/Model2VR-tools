@@ -216,7 +216,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("g_original_scene_ordinal.exchange(0u", hooks)
         self.assertIn("g_original_scene_open.store(false", hooks)
         self.assertEqual(hooks.count("source_scene=g_original_scene_ordinal.load("),4)
-        self.assertEqual(hooks.count("source_scene,source_scene_open);"),4)
+        self.assertEqual(hooks.count("source_scene,source_scene_open,original_lineage);"),4)
 
     def test_failed_original_clear_is_single_call_cpu_gpu_epoch_poison(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
@@ -303,7 +303,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("&&fill&&rt&&depth",hooks)
         self.assertIn("model2_d3d9_original_target_bind_phase",hooks)
         self.assertIn("g_original_target_bind_samples",hooks)
-        self.assertIn("method>7u",gpu)
+        self.assertIn("method>9u",gpu)
         self.assertIn("model2_d3d9_target_hook_rollback",hooks)
 
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):
