@@ -21,6 +21,7 @@ def witness(cpu="0x004bb400", count=3):
         "original_scene_phase_inactive_witnesses": 0,
         "original_scene_phase_inconsistent_witnesses": 0,
         "original_scene_transition_failure_witnesses": 0,
+        "original_clear_failure_witnesses": 0,
         "other_original_draw_failure_witnesses": 0,
         "original_scene_ordinal_min": 1,
         "original_scene_ordinal_max": 2,
@@ -55,6 +56,20 @@ def report(*sources):
 
 
 class OriginalWorldPassEvidenceTest(unittest.TestCase):
+    def test_clear_failure_field_cannot_be_omitted_or_replayed(self):
+        clean=witness()
+        del clean["original_clear_failure_witnesses"]
+        got=compare_sessions([report(clean),report(witness())],[report()])
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "missing_same_draw_matrix_material_or_render_evidence")
+        bad=witness()
+        bad["original_clear_failure_witnesses"]=1
+        got=compare_sessions([report(bad),report(witness())],[report()])
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "missing_same_draw_matrix_material_or_render_evidence")
+
     def test_cross_phase_conservative_candidate_only(self):
         a, b = witness(), witness()
         # Same CPU caller, different matrix/command fingerprints per
@@ -107,6 +122,7 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         for damaged in (
             {"distinct_successful_projected_material_present_frame_count": 0},
             {"original_draw_failure_witnesses": 1},
+            {"original_clear_failure_witnesses": 1},
             {"original_draw_result_missing_witnesses": 1},
             {"original_draw_result_inconsistent_witnesses": 1},
             {"distinct_physically_presented_material_present_frame_count": 0},
