@@ -24,6 +24,7 @@ std::array<OriginalResourceHookTarget<OriginalResourcePreLoadFn>,
     kOriginalResourceHookSlots> g_original_preload_targets{};
 std::array<std::atomic<std::uint32_t>,2> g_original_resource_residency_calls{};
 std::array<std::atomic<std::uint64_t>,2> g_original_resource_residency_logged_frame{};
+std::atomic<std::uint64_t> g_original_resource_residency_unknown_logged_frame{0u};
 void RecordOriginalResourceResidencyPhase(std::uint32_t rva,
                                           std::uint32_t method) noexcept {
     if(!rva || method<1u || method>2u)return;
@@ -46,8 +47,18 @@ void OriginalResourceResidencyUnknown(std::uint32_t rva) noexcept {
     // Persist through Reset and reject every later physical Present.
     g_residency_foreign_unproven.store(true,std::memory_order_release);
     OriginalResidencySourceBoundary(0u,3u);
-    if(rva)m2vr::LogEvent("model2_d3d9_original_resource_residency_unobserved",
-        g_present_count.load(std::memory_order_relaxed)+1u,rva,0u,0u);
+    if(!rva)return;
+    const auto frame=std::uint64_t{
+        g_present_count.load(std::memory_order_acquire)}+1u;
+    if(frame!=1u && frame%8u!=0u)return;
+    auto prior=g_original_resource_residency_unknown_logged_frame.load(
+        std::memory_order_acquire);
+    while(prior<frame &&
+          !g_original_resource_residency_unknown_logged_frame.compare_exchange_weak(
+              prior,frame,std::memory_order_acq_rel,std::memory_order_acquire)){}
+    if(prior<frame)
+        m2vr::LogEvent("model2_d3d9_original_resource_residency_unobserved",
+            frame,rva,0u,0u);
 }
 template<class Fn>
 Fn OriginalResourceTrampoline(
