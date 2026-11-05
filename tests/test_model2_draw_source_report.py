@@ -22,6 +22,31 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_real_alternate_swap_chain_present_revokes_original_vb_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"private_alternate_swap_chain.csv"
+            source=[
+                ("model2_d3d9_vb_present_frame",201,17,1,0),
+                ("model2_d3d9_vb_source",201,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",201,17,12,pack(0x1234,1)),
+                ("model2_d3d9_vb_original_result",201,0,0x1234,pack(17,1)),
+            ]
+            for caller,reason in ((0x4321,1),(0,2),(0x4321,2)):
+                self.write_log(path,source+[
+                    ("model2_d3d9_original_swap_chain_source_rejected",
+                     17,caller,reason,0),
+                    ("model2_d3d9_original_present_result",17,0,1,0)])
+                got=REPORT.audit_csv(path)["sources"][0]
+                self.assertEqual(got["original_surface_failure_witnesses"],1)
+                self.assertFalse(got["world_pass_proven"])
+            for values in ((0,0x4321,1,0),(17,0,1,0),
+                           (17,0x4321,0,0),(17,0x4321,3,0),
+                           (17,0x4321,1,1)):
+                self.write_log(path,source+[
+                    ("model2_d3d9_original_swap_chain_source_rejected",*values)])
+                with self.assertRaisesRegex(ValueError,"SwapChain rejection"):
+                    REPORT.audit_csv(path)
+
     def test_authentic_gpu_surface_lineage_is_same_physical_draw_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"private_gpu_surface.csv"
