@@ -13,6 +13,7 @@
 #include "original_d3d9_clear_result_gate.hpp"
 #include "original_d3d9_surface_result_gate.hpp"
 #include "original_d3d9_lineage.hpp"
+#include "original_d3d9_control_present.hpp"
 #include "original_d3d9_validation_policy.hpp"
 #include "original_d3d9_resource_owner.hpp"
 #include "original_d3d9_transform_lineage.hpp"
@@ -3056,11 +3057,12 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // This is genuine primary-device post-COM frame evidence, NOT a
     // World3D signal: four family counts and HRESULT only, no game pixels,
     // resource addresses, vertex data, GPU contents or emulation state.
-    if(frame==1u || frame%8u==0u)
+    if(m2vr::drawprobe::OriginalControlPresentSample(
+           frame,dp,dip,dpup,dipup))
         m2vr::LogEvent("model2_d3d9_original_control_present_phase",
             frame,static_cast<std::uint32_t>(original_result),
-            (std::uint64_t{dp}<<32u)|dip,
-            (std::uint64_t{dpup}<<32u)|dipup);
+            m2vr::drawprobe::OriginalControlPresentPair(dp,dip),
+            m2vr::drawprobe::OriginalControlPresentPair(dpup,dipup));
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical
     // game Present. An explicitly authenticated same-frame CPU-world pair

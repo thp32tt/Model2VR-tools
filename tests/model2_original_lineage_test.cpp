@@ -1,4 +1,5 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
+#include "../src/probe/original_d3d9_control_present.hpp"
 #include "../src/probe/original_d3d9_validation_policy.hpp"
 #include "../src/probe/original_d3d9_resource_owner.hpp"
 #include "../src/probe/original_d3d9_buffer_mutation.hpp"
@@ -55,6 +56,14 @@ int main(){
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
     static_assert(kOriginalLineageKinds==61);
+    static_assert(OriginalControlPresentSample(1u,0u,0u,0u,0u));
+    static_assert(OriginalControlPresentSample(8u,100u,5u,21u,8u));
+    static_assert(!OriginalControlPresentSample(0u,0u,0u,0u,0u));
+    static_assert(!OriginalControlPresentSample(7u,1u,0u,0u,0u));
+    static_assert(!OriginalControlPresentSample(8u,10000001u,0u,0u,0u));
+    static_assert(!OriginalControlPresentSample(8u,0u,0u,0u,10000001u));
+    static_assert(OriginalControlPresentPair(7u,19u)==
+                  ((std::uint64_t{7u}<<32u)|19u));
     static_assert(static_cast<unsigned>(OriginalLineageKind::DeviceEvictManagedResources)==56u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ResourceSetPriority)==57u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ResourcePreLoad)==58u);

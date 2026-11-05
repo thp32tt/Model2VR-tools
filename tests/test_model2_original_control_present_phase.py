@@ -79,9 +79,12 @@ class OriginalControlPhysicalPresentTest(unittest.TestCase):
         self.assertLess(
             present.index("const HRESULT original_result=g_present(d,a,b,w,dirty);"),
             present.index('"model2_d3d9_original_control_present_phase"'))
-        self.assertIn("frame==1u || frame%8u==0u",present)
-        self.assertIn("(std::uint64_t{dp}<<32u)|dip",present)
-        self.assertIn("(std::uint64_t{dpup}<<32u)|dipup",present)
+        self.assertIn("OriginalControlPresentSample(",present)
+        self.assertIn("OriginalControlPresentPair(dp,dip)",present)
+        self.assertIn("OriginalControlPresentPair(dpup,dipup)",present)
+        gate=(ROOT/"src/probe/original_d3d9_control_present.hpp").read_text("utf-8")
+        self.assertIn("kMaxOriginalControlDraws=10000000u",gate)
+        self.assertIn("frame==1u || frame%8u==0u",gate)
         self.assertNotIn("memcpy(",present)
         self.assertNotIn("fwrite(",present)
 
