@@ -8,6 +8,7 @@ from pathlib import Path
 
 TRANSFORM = "model2_d3d9_original_transform_phase"
 VS = "model2_d3d9_original_vs_constants_phase"
+REGION = "model2_d3d9_original_region_phase"
 KINDS = {1: "view", 2: "projection", 3: "world", 4: "other"}
 
 def integer(v):
@@ -26,7 +27,7 @@ def audit(path):
             if i >= 3_000_000:
                 raise ValueError("CSV maximum rows exceeded")
             event = row["event"]
-            if event not in (TRANSFORM, VS):
+            if event not in (TRANSFORM, VS, REGION):
                 continue
             try:
                 frame, caller, a2, a3 = (integer(row[k]) for k in ("a0", "a1", "a2", "a3"))
@@ -49,7 +50,7 @@ def audit(path):
                 name = KINDS[kind]
                 detail = {"transform_state": state}
                 key = (frame, event, kind)
-            else:
+            elif event == VS:
                 scene, draw = a2 >> 32, a2 & 0xffffffff
                 first, flags = a3 >> 32, a3 & 0xffffffff
                 vectors, opened = flags >> 1, flags & 1
@@ -59,6 +60,28 @@ def audit(path):
                 name = "vs_constant_f"
                 detail = {"start_register": first, "float4_vectors": vectors}
                 key = (frame, event, 0)
+            else:
+                method, draw = a2 >> 32, a2 & 0xffffffff
+                scene, flags = a3 >> 32, a3 & 0xffffffff
+                opened = flags & 1
+                known, valid, inside, full = [bool(flags & (1 << bit)) for bit in (1, 2, 3, 4)]
+                backbuffer, aux = bool(flags & 64), bool(flags & 128)
+                bins = [(flags >> n) & 31 for n in (8, 13, 18, 23)]
+                if (method not in (1, 2) or flags >> 28 or
+                    (backbuffer and aux) or (valid and not known) or
+                    (inside and not valid) or (full and not inside) or
+                    (full and bins != [0, 0, 31, 31]) or
+                    (not valid and any(bins)) or
+                    (not known and (backbuffer or aux))):
+                    raise ValueError("invalid original viewport/scissor provenance")
+                name = "viewport" if method == 1 else "scissor"
+                detail = {"rt0_known": known, "positive_region": valid,
+                          "inside_rt0": inside, "covers_rt0": full,
+                          "scissor_enabled": bool(flags & 32),
+                          "target_class": "main_backbuffer" if backbuffer else (
+                              "auxiliary" if aux else "unknown"),
+                          "relative_5bit_xywh": bins}
+                key = (frame, event, method)
             if draw > 10_000_000 or scene > 100_000 or (opened and not scene):
                 raise ValueError("invalid original Draw/Scene ordinal")
             if key in seen:

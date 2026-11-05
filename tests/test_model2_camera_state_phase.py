@@ -11,10 +11,16 @@ from model2_camera_state_phase_report import audit
 
 TRANSFORM = "model2_d3d9_original_transform_phase"
 VS = "model2_d3d9_original_vs_constants_phase"
+REGION = "model2_d3d9_original_region_phase"
 
 def transform(frame, kind, state, scene=1, opened=1):
     return [TRANSFORM, frame, 0x345, (kind << 32) | 4,
             (scene << 32) | (state << 1) | opened]
+
+def region(frame, method, flags, scene=1):
+    return [REGION, frame, 0x345, (method << 32) | 4,
+            (scene << 32) | flags]
+
 
 def vs(frame, start, vectors, scene=1, opened=1):
     return [VS, frame, 0x345, (scene << 32) | 4,
@@ -55,11 +61,39 @@ class CameraStatePhaseTests(unittest.TestCase):
             with self.subTest(records=records), self.assertRaises(ValueError):
                 self.run_audit(records)
 
+    def test_original_region_phase_is_bounded_and_not_world_proof(self):
+        full = 1 | 2 | 4 | 8 | 16 | 64 | (31 << 18) | (31 << 23)
+        partial = 1 | 2 | 4 | 8 | 32 | 128 | (4 << 8) | (4 << 13) | (16 << 18) | (16 << 23)
+        got = self.run_audit([region(1, 1, full), region(1, 2, partial),
+                              region(8, 1, 1)])
+        self.assertEqual(got["witness_count"], 3)
+        self.assertEqual(got["method_counts"], {"viewport": 2, "scissor": 1})
+        self.assertFalse(got["adapter_auto_enable"])
+        self.assertEqual(got["world_pass_proof"], "NOT_ESTABLISHED")
+        self.assertTrue(got["samples"][0]["covers_rt0"])
+        self.assertEqual(got["samples"][1]["target_class"], "auxiliary")
+        for rows in (
+            [region(1, 1, full), region(1, 1, full)],
+            [region(2, 1, full)],
+            [region(1, 3, full)],
+            [region(1, 1, full, scene=0)],
+            [region(1, 1, full | 128)],
+            [region(1, 1, full | (1 << 28))],
+            [region(1, 1, 1 | 4)],
+            [region(1, 1, 1 | 8)],
+            [region(1, 1, 1 | 16)],
+            [region(1, 1, 1 | (1 << 8))],
+        ):
+            with self.subTest(rows=rows), self.assertRaises(ValueError):
+                self.run_audit(rows)
+
     def test_renderer_retains_one_original_call(self):
         source = (ROOT / "src/probe/d3d9_probe.cpp").read_text("utf-8")
         for hook, original, slot, method in (
             ("SetTransformHook", "g_set_transform", 44, 6),
             ("SetVSConstantFHook", "g_set_vs_constant_f", 94, 7),
+            ("SetViewportHook", "g_set_viewport", 47, 8),
+            ("SetScissorRectHook", "g_set_scissor", 75, 9),
         ):
             self.assertIn("HRESULT STDMETHODCALLTYPE " + hook + "(", source)
             body = source.split("HRESULT STDMETHODCALLTYPE " + hook + "(")[1].split(
@@ -70,6 +104,8 @@ class CameraStatePhaseTests(unittest.TestCase):
             self.assertIn("MH_RemoveHook(vtable[" + str(slot) + "]);", source)
         self.assertIn("model2_d3d9_original_transform_phase", source)
         self.assertIn("model2_d3d9_original_vs_constants_phase", source)
+        self.assertIn("model2_d3d9_original_region_phase", source)
+        self.assertIn("g_original_region_samples", source)
 
 if __name__ == "__main__":
     unittest.main()
