@@ -638,6 +638,21 @@ def audit_csv(path):
                 if len(original_surface_failures)>MAX_WITNESSES:
                     raise ValueError("original presentation control capacity")
                 continue
+            if event == "model2_d3d9_original_validation_rejected":
+                try:
+                    frame, caller, ordinal, reason = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original validation row") from exc
+                if (not 0 < frame <= 0xffffffff or caller > 0xffffffff or
+                    ordinal > 10000000 or reason not in (1,2,3,4,5) or
+                    (reason in (1,2,3) and caller == 0) or
+                    (reason in (4,5) and (caller != 0 or ordinal != 0))):
+                    raise ValueError("invalid original ValidateDevice source rejection")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures)>MAX_WITNESSES:
+                    raise ValueError("original ValidateDevice source capacity")
+                continue
             if event == "model2_d3d9_original_query_source_rejected":
                 try:
                     frame, caller, ordinal, reason = (

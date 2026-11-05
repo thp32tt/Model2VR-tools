@@ -22,6 +22,34 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_original_validate_device_multi_pass_cannot_claim_world(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"original_validate_device_private.csv"
+            source=[
+                ("model2_d3d9_vb_present_frame",501,7,1,0),
+                ("model2_d3d9_vb_source",501,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",501,7,12,pack(0x1234,1)),
+                ("model2_d3d9_vb_original_result",501,0,0x1234,pack(7,1)),
+            ]
+            for caller,ordinal,reason in (
+                    (0x4321,12,1),(0x4321,12,2),(0x4321,12,3),
+                    (0,0,4),(0,0,5)):
+                self.write_log(p,source+[
+                    ("model2_d3d9_original_validation_rejected",
+                     7,caller,ordinal,reason),
+                    ("model2_d3d9_original_present_result",7,0,1,0)])
+                row=REPORT.audit_csv(p)["sources"][0]
+                self.assertEqual(row["original_surface_failure_witnesses"],1)
+                self.assertFalse(row["world_pass_proven"])
+            for invalid in (
+                    (0,0x4321,12,1),(7,0,12,1),(7,0,12,2),
+                    (7,0,12,3),(7,0x4321,12,4),(7,0,1,5),
+                    (7,0x4321,10000001,2),(7,0,0,6)):
+                self.write_log(p,source+[
+                    ("model2_d3d9_original_validation_rejected",*invalid)])
+                with self.assertRaisesRegex(ValueError,"ValidateDevice source rejection"):
+                    REPORT.audit_csv(p)
+
     def test_original_query_issue_and_result_fail_closed_original_vb(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/"query_private_source.csv"

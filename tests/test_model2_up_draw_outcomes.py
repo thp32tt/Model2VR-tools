@@ -47,6 +47,30 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0, caller, pack(frame, 3)),
         ]
 
+    def test_original_validate_device_multi_pass_revokes_up_present(self):
+        baseline=self.projected()+[
+            event("model2_d3d9_original_present_result",7,0,1,0)]
+        self.assertEqual(self.report(baseline)["counts"][
+            "same_witness_cpu_camera_present_candidate"],1)
+        for caller,ordinal,reason in (
+                (0x4321,12,1),(0x4321,12,2),(0x4321,12,3),
+                (0,0,4),(0,0,5)):
+            report=self.report(self.projected()+[
+                event("model2_d3d9_original_validation_rejected",
+                      7,caller,ordinal,reason),
+                event("model2_d3d9_original_present_result",7,0,1,0)])
+            self.assertEqual(report["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",
+                             report["counts"])
+        for bad in (
+                (0,0x4321,12,1),(7,0,12,1),(7,0,12,2),
+                (7,0,12,3),(7,0x4321,12,4),(7,0,1,5),
+                (7,0x4321,10000001,2),(7,0,0,6)):
+            with self.assertRaisesRegex(ValueError,"ValidateDevice source rejection"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_validation_rejected",*bad),
+                    event("model2_d3d9_original_present_result",7,0,1,0)])
+
     def test_original_query_gpu_cpu_result_guards_same_up_present(self):
         base=self.projected()+[
             event("model2_d3d9_original_present_result",7,0,1,0)]

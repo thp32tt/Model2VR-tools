@@ -34,6 +34,11 @@ class OriginalValidationSourceTest(unittest.TestCase):
         self.assertIn("DecideOriginalD3D9Validation(",self.policy)
         self.assertIn("OriginalDeviceValidationDecision::MultiplePasses",self.policy)
         self.assertIn("OriginalDeviceValidationDecision::OriginalFailure",self.policy)
+        for auditor in ("tools/model2_draw_source_report.py",
+                        "tools/model2_up_draw_outcomes.py"):
+            src=(ROOT/auditor).read_text("utf-8")
+            self.assertIn("model2_d3d9_original_validation_rejected",src)
+            self.assertIn("invalid original ValidateDevice source rejection",src)
     def test_preserve_real_mono_and_no_private_exfiltration(self):
         self.assertNotIn("DrawPrimitive(",self.hooks)
         for forbidden in ("fwrite(", "LogEvent(", "memcpy(", "World3D=true",
