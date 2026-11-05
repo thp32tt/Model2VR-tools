@@ -2,6 +2,13 @@
 
 Updated: 2026-11-05 KST
 
+## 2026-11-05 — original nonfloating shader constants and stream-instancing source (implementation)
+
+- Connect real original D3D9 Win32 SetVertexShaderConstantI/B, SetPixelShaderConstantI/B and SetStreamSourceFreq to one original COM call each, original HRESULT, bounded same-Draw nonfloating-shader and stream write witnesses. Full 25-kind primary physical Present lineage now contributes to the strict source nonce and before/after original Draw checks.
+- Failed authentic write methods 21..25 revoke the physical source frame. Any successful non-unit stream frequency is unsupported by the original CPU independent-eye raster and therefore poisons that entire source Present; actual game Draw, HMD mono, FFB, input, 64-bit OpenXR host remain intact.
+- Private A/B race, HUD/sky/aux controls, original CPU projector/camera basis/meters-per-unit and Quest3/VDXR physical validation remain outstanding. `RUNTIME_VALIDATION=UNTESTED`.
+
+
 ### Final exact native CI / same-feature corrections — 2026-11-05 13:58 KST
 
 - **Final code SHA** `8c61e6a48603854c69d3c0a1d83d2ff5d541d1b5`. Public tools GitHub Actions `41970861001` SUCCESS, ModDev `41970860995` SUCCESS, original Win32 x86 native probe `41970861124` SUCCESS, original Daytona game Win32 + OpenXR host Win64 + matched release bundle `41970861007` SUCCESS (4/4; bundle subjobs 3/3). Matched artifact `DaytonaUSA-NativeStereo-Quest3-Win32-Win64`, id `13389174438`, expires 2026-11-19 04:58 UTC.

@@ -277,7 +277,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(recovered["counts"]["original_source_draw_and_present_succeeded"],1)
 
     def test_real_original_surface_failure_blocks_same_witness_up(self):
-        for method in range(1,21):
+        for method in range(1,26):
             events=self.projected()+[
                 event("model2_d3d9_original_surface_failed",
                       7,method,0x8876086C,0x4321),
@@ -302,6 +302,19 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"invalid original surface failure"):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_lineage_drift",7,*bad)])
+        for frequency in (0,2,0x40000001,0x80000001):
+            blocked=self.projected()+[
+                event("model2_d3d9_original_instancing_unsupported",7,0,0x4321,frequency),
+                event("model2_d3d9_original_present_result",7,0,1,0),
+            ]
+            result=self.report(blocked)
+            self.assertEqual(result["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",result["counts"])
+        for bad in ((7,0,0x4321,1),(7,0,0,2),
+                    (0,0,0x4321,2),(7,0,0x4321,0x100000000)):
+            with self.assertRaisesRegex(ValueError,"invalid original instancing source"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_instancing_unsupported",*bad)])
         for stage in (1,2):
             blocked=self.projected()+[
                 event("model2_d3d9_original_stateblock_mutation",7,stage,0x4321,0),
@@ -316,7 +329,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_stateblock_mutation",*bad)])
         for bad in ((0,0x8876086C,0x4321),
-                    (21,0x8876086C,0x4321),
+                    (26,0x8876086C,0x4321),
                     (2,0,0x4321),
                     (3,0x8876086C,0)):
             events=self.projected()+[

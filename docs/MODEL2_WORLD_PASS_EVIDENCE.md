@@ -1,5 +1,33 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Original Win32 shader integer/Boolean constants and stream instancing (2026-11-05)
+
+Five additional genuine primary EXE-owned D3D9 calls:
+`SetVertexShaderConstantI` (slot 96),
+`SetVertexShaderConstantB` (98),
+`SetPixelShaderConstantI` (111),
+`SetPixelShaderConstantB` (113) and
+`SetStreamSourceFreq` (102). Each executes the actual original COM
+method once with its unchanged HRESULT. Successful writes advance five
+independent per-Present revisions, increasing full source lineage to
+**25 kinds**, including original StateBlock Apply. Original HRESULT
+failures (failure methods 21..25) revoke both CPU and speculative GPU
+binocular source epochs without changing original game rendering or FFB.
+
+A successful non-unit vertex stream frequency may select instanced/divisor
+geometry unsupported by the independent-eye CPU triangle bridge. This
+source is rejected for the **entire physical Present**, even if a later
+original call resets the frequency to one. The original game still renders
+normally and its backbuffer remains the honest fallback. The tagged
+`model2_d3d9_original_instancing_unsupported` event retains only physical
+Present, stream index, authentic caller RVA and frequency value for local
+private analysis. Same-witness `model2_d3d9_source_shader_aux_lineage`
+and `model2_d3d9_source_stream_frequency_lineage` emit only bounded
+write counters, never actual shader constants, buffer contents or vertices.
+Both original UP and VB offline tools reject tainted source frames.
+No automatic World3D classification or Quest optical proof is implied.
+
+
 ## Native original D3D9 StateBlock Apply source safety (2026-11-05)
 
 Primary original game D3D9 `CreateStateBlock` (vtable 59),
