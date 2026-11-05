@@ -23,7 +23,7 @@ class OriginalD3D9PresentationSourceTest(unittest.TestCase):
                           self.probe)
             self.assertIn(f"reinterpret_cast<void*>(&{hook})",self.probe)
             self.assertIn(f"{original}=nullptr;",self.probe)
-        self.assertIn("&&dialog&&gamma&&create_swap_chain",self.probe)
+        self.assertIn("&&cursor_visibility&&dialog&&gamma&&create_swap_chain",self.probe)
         self.assertIn("if(!g_primary_device.Owns(device))",self.hooks)
         self.assertIn("const auto rva=CallerRva(origin);",self.hooks)
         self.assertIn("const HRESULT hr=g_original_set_dialog_box_mode(device,enabled);",
