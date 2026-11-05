@@ -137,9 +137,9 @@ public:
         // Keep in lockstep with original_d3d9_surface_result_gate.hpp:
         // 8/9=viewport/scissor; 10..15=geometry/shader;
         // 16..25=material/constants/instancing; 26..29=fixed-function,
-        // 30=real UpdateTexture; 31/32=palette entries/current palette.
+        // 30=real UpdateTexture; 31/32=palette; 33..35=raster.
         // A failed original state mutation cannot publish GPU binocular eyes.
-        if(method<1u || method>32u ||
+        if(method<1u || method>35u ||
            !(original_hresult&0x80000000u))return;
         std::lock_guard lock(mu_);
         if(!enabled_ || source_original_failed_)return;

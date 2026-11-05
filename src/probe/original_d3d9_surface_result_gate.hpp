@@ -14,15 +14,17 @@ namespace m2vr::vrbridge {
 // 23=SetPixelShaderConstantI (111), 24=SetPixelShaderConstantB (113),
 // 25=SetStreamSourceFreq (102), 26=SetMaterial (49), 27=SetLight (51),
 // 28=LightEnable (53), 29=SetClipPlane (55), 30=UpdateTexture (31),
-// 31=SetPaletteEntries (71), 32=SetCurrentTexturePalette (73):
+// 31=SetPaletteEntries (71), 32=SetCurrentTexturePalette (73),
+// 33=SetClipStatus (62), 34=SetSoftwareVertexProcessing (77),
+// 35=SetNPatchMode (79):
 // original source-state and resource operation failures.
 inline constexpr bool IsFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits)noexcept {
-    return method>=1u && method<=32u && (result_bits&0x80000000u)!=0u;
+    return method>=1u && method<=35u && (result_bits&0x80000000u)!=0u;
 }
 inline constexpr std::uint32_t FailedOriginalD3D9SurfaceSourceKind(
     std::uint32_t method)noexcept {
     // Separate from Draw 17..20 and Clear 21.
-    return method>=1u && method<=32u?21u+method:0u;
+    return method>=1u && method<=35u?21u+method:0u;
 }
 } // namespace m2vr::vrbridge

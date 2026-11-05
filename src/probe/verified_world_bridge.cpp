@@ -936,6 +936,31 @@ extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PaletteMutation(
             physical_present,original_caller_rva,preceding_draw_ordinal,method);
     m2vr::daytona::MarkOriginalPaletteMutationAfterEyes(method);
 }
+// Original software VP and N-Patch modes cannot be guaranteed equivalent
+// to CPU independent-eye triangles. Never promote stale source geometry.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9RasterMode(
+    unsigned long long physical_present,unsigned int unsafe_mask,
+    unsigned int caller_rva){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || !unsafe_mask || (unsafe_mask&~3u) ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_present &&
+           (g.active || g.pending_present)){
+            const auto old=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalRasterModeUnknown;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=old;
+        }
+        g.source_epoch.Revoke(physical_present);
+    }
+    // Only bounded mode flags and caller RVA; never game vertex/clip values.
+    if(caller_rva || physical_present==1u || physical_present%8u==0u)
+        m2vr::LogEvent("model2_d3d9_original_raster_mode_unsupported",
+            physical_present,unsafe_mask,caller_rva,0u);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Strict original physical-Draw post-call check: a state write concurrent
 // with CPU eye raster or the genuine D3D9 Draw may change its source.
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
