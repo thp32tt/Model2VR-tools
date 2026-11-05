@@ -14,6 +14,7 @@
 #include "original_d3d9_surface_result_gate.hpp"
 #include "original_d3d9_lineage.hpp"
 #include "original_d3d9_validation_policy.hpp"
+#include "original_d3d9_resource_owner.hpp"
 #include "original_d3d9_transform_lineage.hpp"
 #include "original_d3d9_stream_frequency.hpp"
 #include "original_d3d9_raster_mode.hpp"

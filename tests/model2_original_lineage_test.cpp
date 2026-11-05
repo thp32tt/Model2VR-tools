@@ -1,5 +1,6 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
 #include "../src/probe/original_d3d9_validation_policy.hpp"
+#include "../src/probe/original_d3d9_resource_owner.hpp"
 #include "../src/probe/original_d3d9_buffer_mutation.hpp"
 #include "../src/probe/original_d3d9_transform_lineage.hpp"
 #include "../src/probe/original_d3d9_stateblock_audit.hpp"
@@ -12,6 +13,14 @@
 int main(){
     using namespace m2vr::drawprobe;
     using namespace m2vr::vrbridge;
+    static_assert(DecideOriginalResourceOwner(true,true,true)==
+                  OriginalResourceOwner::Primary);
+    static_assert(DecideOriginalResourceOwner(true,true,false)==
+                  OriginalResourceOwner::Secondary);
+    static_assert(DecideOriginalResourceOwner(false,true,true)==
+                  OriginalResourceOwner::Unknown);
+    static_assert(DecideOriginalResourceOwner(true,false,true)==
+                  OriginalResourceOwner::Unknown);
     static_assert(DecideOriginalD3D9Validation(0u,true,1u)==
                   OriginalDeviceValidationDecision::TrustedSinglePass);
     static_assert(DecideOriginalD3D9Validation(0u,true,2u)==

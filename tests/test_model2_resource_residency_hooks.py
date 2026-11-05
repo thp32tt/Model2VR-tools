@@ -22,11 +22,15 @@ class OriginalResourceResidencyTest(unittest.TestCase):
         h=self.sources["src/probe/original_d3d9_resource_residency_hooks.inl"]
         self.assertIn("vt[7]",h)
         self.assertIn("vt[9]",h)
+        self.assertIn("OriginalResourceDeviceOwner(",h)
+        self.assertIn("OriginalResourceOwner::Unknown",h)
+        self.assertIn("OriginalResourceResidencyUnknown(CallerRva(origin));",h)
         self.assertIn("const DWORD previous=original(resource,priority);",h)
         self.assertEqual(h.count("original(resource);"),2)  # eye replay bypass and the original game path are mutually exclusive
         self.assertIn("IsEyeReplayActive()",h)
         self.assertIn("return previous;",h)
-        for text in ("GetDevice(", "TrackFailedOriginalD3D9Surface(",
+        self.assertIn("resource->GetDevice(&device);",h)
+        for text in ("TrackFailedOriginalD3D9Surface(",
                      "memcpy(", "fwrite(", "xrEndFrame(", "DrawPrimitive("):
             self.assertNotIn(text,h)
     def test_resource_observers_cover_prebind_and_alias_sources(self):

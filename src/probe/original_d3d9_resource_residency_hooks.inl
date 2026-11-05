@@ -70,6 +70,17 @@ Fn OriginalResourceTrampoline(
             return slot.original;
     return nullptr;
 }
+m2vr::vrbridge::OriginalResourceOwner OriginalResourceDeviceOwner(
+    IDirect3DResource9* resource) noexcept {
+    if(!resource)return m2vr::vrbridge::OriginalResourceOwner::Unknown;
+    IDirect3DDevice9* device=nullptr;
+    const HRESULT result=resource->GetDevice(&device);
+    const bool found=device!=nullptr;
+    const bool primary=found && g_primary_device.Owns(device);
+    if(device)device->Release();
+    return m2vr::vrbridge::DecideOriginalResourceOwner(
+        SUCCEEDED(result),found,primary);
+}
 void OriginalResourceMutationBeforeCom(std::uint32_t caller_rva) noexcept {
     if(caller_rva)OriginalResidencySourceBoundary(caller_rva,1u);
     else {
@@ -88,9 +99,12 @@ DWORD STDMETHODCALLTYPE OriginalResourceSetPriorityHook(
     if(m2vr::daytona::IsEyeReplayActive())
         return original(resource,priority);
     void* const origin=_ReturnAddress();
-    const bool primary=PrimaryOriginalResource(resource);
+    const auto owner=OriginalResourceDeviceOwner(resource);
+    const bool primary=owner==m2vr::vrbridge::OriginalResourceOwner::Primary;
     const auto rva=primary?CallerRva(origin):0u;
     if(primary)OriginalResourceMutationBeforeCom(rva);
+    else if(owner==m2vr::vrbridge::OriginalResourceOwner::Unknown)
+        OriginalResourceResidencyUnknown(CallerRva(origin));
     const DWORD previous=original(resource,priority);
     if(rva){
         g_original_resource_residency_calls[0].fetch_add(1u,
@@ -113,9 +127,12 @@ void STDMETHODCALLTYPE OriginalResourcePreLoadHook(IDirect3DResource9* resource)
         return;
     }
     void* const origin=_ReturnAddress();
-    const bool primary=PrimaryOriginalResource(resource);
+    const auto owner=OriginalResourceDeviceOwner(resource);
+    const bool primary=owner==m2vr::vrbridge::OriginalResourceOwner::Primary;
     const auto rva=primary?CallerRva(origin):0u;
     if(primary)OriginalResourceMutationBeforeCom(rva);
+    else if(owner==m2vr::vrbridge::OriginalResourceOwner::Unknown)
+        OriginalResourceResidencyUnknown(CallerRva(origin));
     original(resource);
     if(rva){
         g_original_resource_residency_calls[1].fetch_add(1u,
