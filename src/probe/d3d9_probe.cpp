@@ -2047,7 +2047,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         m2vr::LogEvent("model2_d3d9_transform_hook_rollback",transform,vs_constants,0u,0u);
         m2vr::LogEvent("model2_d3d9_region_hook_rollback",viewport,scissor,0u,0u);
         m2vr::LogEvent("model2_d3d9_pipeline_hook_rollback",
-            stream_source,indices,vertex_declaration,vertex_f_v_f);
+            stream_source,indices,vertex_declaration,f_v_f);
         m2vr::LogEvent("model2_d3d9_shader_hook_rollback",
             vertex_shader,pixel_shader,0u,0u);
         return false;
