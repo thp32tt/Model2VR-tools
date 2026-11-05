@@ -69,7 +69,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(self.report(baseline)["counts"][
             "same_witness_cpu_camera_present_candidate"],1)
         for caller,ordinal,method in ((0x4321,12,1),(0x4321,12,2),
-                                      (0,0,3),(0,0,4)):
+                                      (0,0,3),(0,0,4),(0,0,5)):
             blocked=self.projected()+[
                 event("model2_d3d9_original_presentation_control_rejected",
                       7,caller,ordinal,method),
@@ -80,7 +80,7 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                              got["counts"])
         for invalid in ((0,0x4321,12,1),(7,0,12,1),
                         (7,0x4321,10000001,2),(7,0x4321,12,5),
-                        (7,0x4321,0,3),(7,0,1,4)):
+                        (7,0x4321,0,3),(7,0,1,4),(7,0x4321,0,5)):
             with self.assertRaisesRegex(ValueError,"presentation control rejection"):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_presentation_control_rejected",

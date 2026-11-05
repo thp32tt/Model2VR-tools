@@ -48,6 +48,9 @@ class OriginalD3D9PresentationSourceTest(unittest.TestCase):
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,70u,rva)",dialog)
         self.assertIn("BeforeOriginalPresentationControl(0u,3u)",self.probe)
         self.assertIn("BeforeOriginalPresentationControl(0u,4u)",self.probe)
+        self.assertIn("BeforeOriginalPresentationControl(0u,5u)",self.probe)
+        self.assertIn("g_original_external_presentation_unproven.store(",self.hooks)
+        self.assertIn("g_original_external_presentation_unproven.load(",self.probe)
         self.assertIn("model2_d3d9_original_presentation_control_counts",self.probe)
 
     def test_cpu_gpu_epoch_private_auditor_and_no_byte_capture(self):

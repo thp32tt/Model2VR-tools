@@ -1027,13 +1027,14 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
 // Authentic original D3D9 display-mode/GDI-dialog and gamma output are
 // physical presentation state, not verified camera/texture/World3D proof.
 // method 1=SetDialogBoxMode, 2=SetGammaRamp, 3=active original GDI-dialog
-// fallback at physical Present, 4=uncalibrated gamma at physical Present.
+// fallback at physical Present, 4=uncalibrated gamma at physical Present,
+// 5=non-EXE primary-device presentation mutation with unknown source owner.
 // Caller/ordinal are nonzero only for actual original EXE-owned Set* calls.
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PresentationMutation(
     unsigned long long physical_present,unsigned int original_caller_rva,
     unsigned long long preceding_draw_ordinal,unsigned int method){
     using namespace m2vr::vrbridge;
-    if(!physical_present || method<1u || method>4u ||
+    if(!physical_present || method<1u || method>5u ||
        preceding_draw_ordinal>10000000u ||
        (method<=2u && !original_caller_rva) ||
        (method>=3u && (original_caller_rva || preceding_draw_ordinal)) ||

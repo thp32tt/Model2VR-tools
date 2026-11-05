@@ -6,7 +6,7 @@
 // ROM, pixels or original game pointers; original mono/FFB/input unchanged.
 void BeforeOriginalPresentationControl(
     std::uint32_t caller_rva,std::uint32_t method) noexcept {
-    if(method<1u || method>4u)return;
+    if(method<1u || method>5u)return;
     Model2VR_ObserveOriginalD3D9PresentationMutation(
         g_present_count.load(std::memory_order_acquire)+1u,caller_rva,
         method>=3u?0u:g_original_frame_draw_ordinal.load(
@@ -20,6 +20,11 @@ HRESULT STDMETHODCALLTYPE OriginalSetDialogBoxModeHook(
     void* const origin=_ReturnAddress();
     const auto rva=CallerRva(origin);
     if(rva)BeforeOriginalPresentationControl(rva,1u);
+    else {
+        g_original_external_presentation_unproven.store(
+            true,std::memory_order_release);
+        BeforeOriginalPresentationControl(0u,5u);
+    }
     const HRESULT hr=g_original_set_dialog_box_mode(device,enabled);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,70u,rva);
     if(rva && SUCCEEDED(hr)){
@@ -42,6 +47,12 @@ void STDMETHODCALLTYPE OriginalSetGammaRampHook(
     }
     void* const origin=_ReturnAddress();
     const auto rva=CallerRva(origin);
+    if(!rva){
+        g_original_external_presentation_unproven.store(
+            true,std::memory_order_release);
+        g_original_gamma_unproven.store(true,std::memory_order_release);
+        BeforeOriginalPresentationControl(0u,5u);
+    }
     if(rva){
         // A void original COM method cannot report failure. Keep the source
         // gamma unproven until a new process; Reset is not gamma calibration.

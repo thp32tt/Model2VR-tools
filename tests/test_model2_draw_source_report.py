@@ -36,7 +36,7 @@ class SourceAuditTests(unittest.TestCase):
             clean=REPORT.audit_csv(p)["sources"][0]
             self.assertEqual(clean["original_surface_failure_witnesses"],0)
             for caller,ordinal,method in ((0x4321,12,1),(0x4321,12,2),
-                                          (0,0,3),(0,0,4)):
+                                          (0,0,3),(0,0,4),(0,0,5)):
                 self.write_log(p,prefix+[
                     ("model2_d3d9_original_presentation_control_rejected",
                      17,caller,ordinal,method),
@@ -46,7 +46,7 @@ class SourceAuditTests(unittest.TestCase):
                 self.assertFalse(got["world_pass_proven"])
             for invalid in ((0,0x4321,12,1),(17,0,12,1),
                             (17,0x4321,10000001,2),(17,0x4321,12,5),
-                            (17,0x4321,0,3),(17,0,1,4)):
+                            (17,0x4321,0,3),(17,0,1,4),(17,0x4321,0,5)):
                 self.write_log(p,prefix+[
                     ("model2_d3d9_original_presentation_control_rejected",
                      *invalid)])

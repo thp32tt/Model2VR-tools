@@ -204,6 +204,7 @@ SetDialogBoxModeFn g_original_set_dialog_box_mode=nullptr;
 SetGammaRampFn g_original_set_gamma_ramp=nullptr;
 std::atomic<bool> g_original_dialog_box_active{false};
 std::atomic<bool> g_original_gamma_unproven{false};
+std::atomic<bool> g_original_external_presentation_unproven{false};
 std::array<std::atomic<std::uint32_t>,2> g_original_presentation_controls{};
 CreateAdditionalSwapChainFn g_create_additional_swap_chain=nullptr;
 GetSwapChainFn g_get_swap_chain=nullptr;
@@ -2680,6 +2681,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         BeforeOriginalPresentationControl(0u,3u);
     if(g_original_gamma_unproven.load(std::memory_order_acquire))
         BeforeOriginalPresentationControl(0u,4u);
+    if(g_original_external_presentation_unproven.load(std::memory_order_acquire))
+        BeforeOriginalPresentationControl(0u,5u);
     // A genuine additional SwapChain::Present is a distinct physical
     // presentation, not a device Present nonce. Never republish its old eyes.
     if(g_original_swap_chain_source_unproven.load(std::memory_order_acquire))
@@ -2806,7 +2809,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         m2vr::LogEvent("model2_d3d9_original_presentation_control_counts",
             frame,original_presentation_controls[0],original_presentation_controls[1],
             (g_original_dialog_box_active.load(std::memory_order_acquire)?1u:0u)|
-            (g_original_gamma_unproven.load(std::memory_order_acquire)?2u:0u));
+            (g_original_gamma_unproven.load(std::memory_order_acquire)?2u:0u)|
+            (g_original_external_presentation_unproven.load(std::memory_order_acquire)?4u:0u));
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_swap_chain_counts",frame,
             (std::uint64_t{original_swap_chain_calls[0]}<<32u)|original_swap_chain_calls[1],

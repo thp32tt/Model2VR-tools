@@ -377,9 +377,9 @@ def audit_csv(path):
                 continue
             if event == "model2_d3d9_original_presentation_control_rejected":
                 if (not 0 < a0 <= 0xffffffff or a0 <= observed_present_frame or
-                    a1 > 0xffffffff or a2 > 10000000 or a3 not in (1,2,3,4)
+                    a1 > 0xffffffff or a2 > 10000000 or a3 not in (1,2,3,4,5)
                     or (a3 in (1,2) and a1 == 0)
-                    or (a3 in (3,4) and (a1 != 0 or a2 != 0))):
+                    or (a3 in (3,4,5) and (a1 != 0 or a2 != 0))):
                     raise ValueError("invalid original presentation control rejection")
                 if len(failed_original_surface_frames)>=MAX_PENDING and (
                     a0 not in failed_original_surface_frames):

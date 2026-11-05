@@ -630,9 +630,9 @@ def audit_csv(path):
                 except (ValueError, TypeError) as exc:
                     raise ValueError("invalid original presentation control row") from exc
                 if (not 0 < frame <= 0xffffffff or caller > 0xffffffff or
-                    ordinal > 10000000 or method not in (1,2,3,4) or
+                    ordinal > 10000000 or method not in (1,2,3,4,5) or
                     (method in (1,2) and caller == 0) or
-                    (method in (3,4) and (caller != 0 or ordinal != 0))):
+                    (method in (3,4,5) and (caller != 0 or ordinal != 0))):
                     raise ValueError("invalid original presentation control rejection")
                 original_surface_failures.add(frame)
                 if len(original_surface_failures)>MAX_WITNESSES:
