@@ -2351,6 +2351,9 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
     }
     return hr;
 }
+// Resource9 COM 7/9 hooks are installed through the original VB/IB and
+// texture/surface observers; the definition follows buffer hook helpers.
+bool EnsureOriginalResourceResidencyObserved(IDirect3DResource9*,std::uint32_t);
 // Native original bound buffer Lock/Unlock hooks join one physical Present
 // camera/geometry nonce and reject stale partial OpenXR stereo eye frames.
 #include "original_d3d9_buffer_hooks.inl"
