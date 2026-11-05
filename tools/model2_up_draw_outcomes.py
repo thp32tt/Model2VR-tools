@@ -34,6 +34,7 @@ META = {
     "model2_d3d9_source_texture_upload_lineage": "texture_upload_lineage",
     "model2_d3d9_source_palette_lineage": "palette_lineage",
     "model2_d3d9_source_fixed_function_lineage": "fixed_function_lineage",
+    "model2_d3d9_source_raster_mode_lineage": "raster_mode_lineage",
     "model2_d3d9_up_layout_frame": "layout_frame",
     "model2_d3d9_source_pass_context": "context",
     "model2_d3d9_cpu_up_matrix_identity": "matrix",
@@ -167,7 +168,9 @@ def audit_csv(path):
                 (rec.get("texture_upload_lineage") is not None and
                  rec["texture_upload_lineage"][0] != frame) or
                 (rec.get("palette_lineage") is not None and
-                 rec["palette_lineage"][0] != frame)):
+                 rec["palette_lineage"][0] != frame) or
+                (rec.get("raster_mode_lineage") is not None and
+                 rec["raster_mode_lineage"][0] != frame)):
                 status = "source_identity_or_frame_mismatch"
             elif draw_hresult & 0x80000000:
                 status = "original_draw_failed"
@@ -199,6 +202,8 @@ def audit_csv(path):
                 counts["original_palette_lineage_witness"] += 1
             if rec.get("fixed_function_lineage") is not None:
                 counts["original_fixed_function_lineage_witness"] += 1
+            if rec.get("raster_mode_lineage") is not None:
+                counts["original_raster_mode_lineage_witness"] += 1
             if rec.get("scene_phase") is None:
                 counts["original_scene_phase_missing"] += 1
             elif rec["scene_phase"][2] != 1 or rec["scene_phase"][1] == 0:
@@ -320,6 +325,16 @@ def audit_csv(path):
                     raise ValueError("original stateblock mutation capacity exceeded")
                 failed_original_surface_frames.add(a0)
                 continue
+            if event == "model2_d3d9_original_raster_mode_unsupported":
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or a1 not in (1,2,3) or
+                    a2 > 0xffffffff or a3 != 0):
+                    raise ValueError("invalid original raster mode rejection")
+                if len(failed_original_surface_frames)>=MAX_PENDING and (
+                        a0 not in failed_original_surface_frames):
+                    raise ValueError("original raster mode capacity")
+                failed_original_surface_frames.add(a0)
+                continue
             if event == "model2_d3d9_original_palette_mutation_rejected":
                 if (not 0 < a0 <= 0xffffffff or
                     a0 <= observed_present_frame or
@@ -349,7 +364,7 @@ def audit_csv(path):
                 else:
                     valid = (0 < a0 <= 0xffffffff and
                              a0 > observed_present_frame and
-                             1 <= a1 <= 32 and a2 <= 0xffffffff and
+                             1 <= a1 <= 35 and a2 <= 0xffffffff and
                              (a2 & 0x80000000) != 0 and
                              0 < a3 <= 0xffffffff)
                 if not valid:
@@ -482,6 +497,13 @@ def audit_csv(path):
                         any(n > 1_000_000 for n in revs) or
                         a3 != 0 or key in rec):
                         raise ValueError("invalid original UP palette lineage")
+                    once(rec,key,(a1,a2,a3),a0)
+                elif key == "raster_mode_lineage":
+                    revisions = halves(a2) + [a3]
+                    if (not 0 < a1 <= 0xffffffff or
+                        a1 <= observed_present_frame or
+                        any(n > 1_000_000 for n in revisions) or key in rec):
+                        raise ValueError("invalid original UP raster-mode lineage")
                     once(rec,key,(a1,a2,a3),a0)
                 elif key == "fixed_function_lineage":
                     # Private source diagnosis only; never World3D authority.
