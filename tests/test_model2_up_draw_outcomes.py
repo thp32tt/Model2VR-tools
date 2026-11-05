@@ -47,6 +47,29 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0, caller, pack(frame, 3)),
         ]
 
+    def test_same_source_fixed_function_lineage_for_up_present(self):
+        fixed=event("model2_d3d9_source_fixed_function_lineage",
+                    21,7,pack(1,2),pack(3,4))
+        complete=self.report(self.projected()+[fixed,
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(complete["counts"]["original_fixed_function_lineage_witness"],1)
+        self.assertEqual(complete["counts"]["same_witness_cpu_camera_present_candidate"],1)
+        for bad in ((0,pack(1,2),pack(3,4)),
+                    (7,pack(1_000_001,2),pack(3,4)),
+                    (7,pack(1,2),pack(3,1_000_001))):
+            with self.assertRaisesRegex(ValueError,"fixed-function"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_source_fixed_function_lineage",21,*bad),
+                    event("model2_d3d9_original_present_result",7,0,1,0)])
+        wrong=self.report(self.projected()+[
+            event("model2_d3d9_source_fixed_function_lineage",
+                  21,8,pack(1,2),pack(3,4)),
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(wrong["counts"]["source_identity_or_frame_mismatch"],1)
+        self.assertNotIn("same_witness_cpu_camera_present_candidate",wrong["counts"])
+        with self.assertRaisesRegex(ValueError,"fixed-function"):
+            self.report(self.projected()+[fixed,fixed])
+
     def test_real_original_up_successful_draw_and_present_with_stable_cpu_join(self):
         events = self.projected() + [
             event("model2_d3d9_original_present_result", 7, 0, 1, 0),

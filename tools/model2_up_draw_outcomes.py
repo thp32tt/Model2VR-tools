@@ -31,6 +31,7 @@ META = {
     "model2_d3d9_up_source_fvf": "fvf",
     "model2_d3d9_source_draw_phase": "draw_phase",
     "model2_d3d9_source_scene_phase": "scene_phase",
+    "model2_d3d9_source_fixed_function_lineage": "fixed_function_lineage",
     "model2_d3d9_up_layout_frame": "layout_frame",
     "model2_d3d9_source_pass_context": "context",
     "model2_d3d9_cpu_up_matrix_identity": "matrix",
@@ -158,7 +159,9 @@ def audit_csv(path):
                 not caller or family not in (3, 4) or
                 not source_layout_matches or
                 (phase is not None and not phase_matches) or
-                not scene_matches):
+                not scene_matches or
+                (rec.get("fixed_function_lineage") is not None and
+                 rec["fixed_function_lineage"][0] != frame)):
                 status = "source_identity_or_frame_mismatch"
             elif draw_hresult & 0x80000000:
                 status = "original_draw_failed"
@@ -184,6 +187,8 @@ def audit_csv(path):
         kind = rec.get("kind", "unknown_source")
         counts["source_kind_" + kind] += 1
         if status == "original_source_draw_and_present_succeeded":
+            if rec.get("fixed_function_lineage") is not None:
+                counts["original_fixed_function_lineage_witness"] += 1
             if rec.get("scene_phase") is None:
                 counts["original_scene_phase_missing"] += 1
             elif rec["scene_phase"][2] != 1 or rec["scene_phase"][1] == 0:
@@ -432,6 +437,15 @@ def audit_csv(path):
                         (a3 == 1 and a2 == 0) or
                         a1 <= observed_present_frame):
                         raise ValueError("invalid original D3D9 scene phase")
+                    once(rec, key, (a1, a2, a3), a0)
+                elif key == "fixed_function_lineage":
+                    # Private source diagnosis only; never World3D authority.
+                    revs = halves(a2) + halves(a3)
+                    if (not 0 < a1 <= 0xffffffff or
+                        a1 <= observed_present_frame or
+                        any(n > 1_000_000 for n in revs) or
+                        key in rec):
+                        raise ValueError("invalid original UP fixed-function lineage")
                     once(rec, key, (a1, a2, a3), a0)
                 elif key == "draw_phase":
                     if (not a1 or a1 > 0xffffffff or

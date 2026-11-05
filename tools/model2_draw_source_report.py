@@ -43,6 +43,7 @@ NAMES = {
     "model2_d3d9_source_depth_cull",
     "model2_d3d9_source_vertex_pipeline",
     "model2_d3d9_source_fill",
+    "model2_d3d9_source_fixed_function_lineage",
 }
 
 def number(raw):
@@ -670,6 +671,14 @@ def audit_csv(path):
                 if "source_phase" in fields:
                     raise ValueError("duplicate source Draw phase")
                 fields["source_phase"] = values
+            elif event == "model2_d3d9_source_fixed_function_lineage":
+                frame, fixed_light, fixed_clip = values
+                revisions = halves(fixed_light) + halves(fixed_clip)
+                if (not 0 < frame <= 0xFFFFFFFF or
+                    any(n > 1_000_000 for n in revisions) or
+                    "fixed_function_lineage" in fields):
+                    raise ValueError("invalid original fixed-function Draw lineage")
+                fields["fixed_function_lineage"] = values
             elif event == "model2_d3d9_vb_source":
                 if "origin" in fields:
                     raise ValueError(f"duplicate source witness {witness}")
@@ -763,6 +772,7 @@ def audit_csv(path):
         "original_source_depth_cull_status": set(),
         "original_source_vertex_pipeline_status": set(),
         "original_source_fill_status": set(),
+        "original_fixed_function_lineage_witnesses": 0,
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
@@ -840,7 +850,8 @@ def audit_csv(path):
                                    "source_vertex_pipeline",
                                    "source_fill",
                                    "source_phase",
-                                   "source_scene_phase"}):
+                                   "source_scene_phase",
+                                    "fixed_function_lineage"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -864,6 +875,11 @@ def audit_csv(path):
                 raise ValueError("invalid original VB Present frame")
             present_frame = frame
             entry["present_frames"].add(frame)
+        fixed_function = data.get("fixed_function_lineage")
+        if fixed_function is not None:
+            if fixed_function[0] != present_frame:
+                raise ValueError("fixed-function original Draw frame mismatch")
+            entry["original_fixed_function_lineage_witnesses"] += 1
         # The physical Draw ordinal is independently recorded on the exact
         # witness, not guessed from the 1/1024 sampling cadence.
         phase = data.get("source_phase")
