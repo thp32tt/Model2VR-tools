@@ -9,9 +9,11 @@
 namespace m2vr::drawprobe {
 enum class OriginalLineageKind : std::uint32_t {
     View=0, Projection=1, World=2, VertexConstants=3,
-    RenderTarget=4, DepthSurface=5, Viewport=6, Scissor=7
+    RenderTarget=4, DepthSurface=5, Viewport=6, Scissor=7,
+    StreamSource=8, IndexBuffer=9, VertexDeclaration=10, VertexFVF=11,
+    VertexShader=12, PixelShader=13
 };
-inline constexpr std::size_t kOriginalLineageKinds=8;
+inline constexpr std::size_t kOriginalLineageKinds=14;
 inline constexpr std::uint32_t kMaxLineageWritesPerPresent=1000000u;
 struct OriginalLineageStamp {
     std::uint64_t physical_present=0;
@@ -34,7 +36,7 @@ constexpr bool SameOriginalLineage(const OriginalLineageStamp& lhs,
         if(lhs.successful_writes[i]!=rhs.successful_writes[i])return false;
     return true;
 }
-// FNV1a over one Present ID and eight counters. A compact non-secret
+// FNV1a over one Present ID and all camera/region/geometry/shader counters. A compact non-secret
 // consistency fingerprint, NOT cryptographic or a World3D authorization.
 constexpr std::uint64_t OriginalLineageNonce(
     const OriginalLineageStamp& stamp) noexcept {

@@ -3,7 +3,7 @@
 #include <cassert>
 int main(){
     using namespace m2vr::drawprobe;
-    static_assert(kOriginalLineageKinds==8);
+    static_assert(kOriginalLineageKinds==14);
     OriginalLineageStamp initial{77,{}};
     assert(!OriginalLineageUsable(initial));
     assert(OriginalLineageNonce(initial)==0);
@@ -18,6 +18,12 @@ int main(){
         auto next=initial;
         ++next.successful_writes[i];
         assert(!SameOriginalLineage(initial,next));
+        assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(next));
+    }
+    // All stream, layout and shader mutations change the same-Draw nonce.
+    for(std::size_t kind=8;kind<kOriginalLineageKinds;++kind){
+        auto next=initial;
+        ++next.successful_writes[kind];
         assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(next));
     }
     auto new_frame=initial;
@@ -50,6 +56,13 @@ int main(){
                          rule.expected_lineage_nonce,&mismatch));
     assert(!mismatch && !one_shot.Pending());
     assert(accepted.expected_lineage_nonce==rule.expected_lineage_nonce);
+    rule.expected_lineage_nonce=OriginalLineageNonce(initial);
+    assert(one_shot.Arm(rule));
+    auto rebound=initial;
+    ++rebound.successful_writes[static_cast<std::size_t>(OriginalLineageKind::PixelShader)];
+    assert(!one_shot.Take(77u,5u,2u,0x345u,3u,true,accepted,
+                         OriginalLineageNonce(rebound),&mismatch));
+    assert(mismatch && !one_shot.Pending());
     // Legacy ABI is unchanged; the external world-proof gate remains.
     rule.expected_lineage_nonce=0u;
     assert(one_shot.Arm(rule));
