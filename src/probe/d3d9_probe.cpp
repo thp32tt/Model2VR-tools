@@ -66,6 +66,11 @@ using SetVertexDeclarationFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDir
 using SetFVFFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD fvf);
 using SetVertexShaderFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDirect3DVertexShader9* shader);
 using SetPixelShaderFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDirect3DPixelShader9* shader);
+using SetPSConstantFFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,const float*,UINT);
+using SetTextureFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,IDirect3DBaseTexture9*);
+using SetTextureStageStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,D3DTEXTURESTAGESTATETYPE,DWORD);
+using SetSamplerStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD,D3DSAMPLERSTATETYPE,DWORD);
+using SetRenderStateFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DRENDERSTATETYPE,DWORD);
 using ClearFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,DWORD,const D3DRECT*,DWORD,D3DCOLOR,float,DWORD);
 using PrimitiveFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,UINT);
@@ -98,6 +103,11 @@ SetVertexDeclarationFn g_set_vertex_declaration=nullptr;
 SetFVFFn g_set_f_v_f=nullptr;
 SetVertexShaderFn g_set_vertex_shader=nullptr;
 SetPixelShaderFn g_set_pixel_shader=nullptr;
+SetPSConstantFFn g_set_ps_constant_f=nullptr;
+SetTextureFn g_set_texture=nullptr;
+SetTextureStageStateFn g_set_texture_stage=nullptr;
+SetSamplerStateFn g_set_sampler_state=nullptr;
+SetRenderStateFn g_set_render_state=nullptr;
 PrimitiveFn g_draw=nullptr;
 IndexedFn g_draw_indexed=nullptr;
 PrimitiveUPFn g_draw_up=nullptr;
@@ -1359,6 +1369,12 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
             (std::uint64_t{w[10]}<<32)|w[11]);
         m2vr::LogEvent("model2_d3d9_source_shader_lineage",witness,
             original_frame,w[12],w[13]);
+        // Same real Draw material revisions, never texture/constant bytes.
+        m2vr::LogEvent("model2_d3d9_source_material_lineage",witness,
+            original_frame,(std::uint64_t{w[14]}<<32)|w[15],
+            (std::uint64_t{w[16]}<<32)|w[17]);
+        m2vr::LogEvent("model2_d3d9_source_render_lineage",witness,
+            original_frame,w[18],0u);
     }
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
@@ -1797,6 +1813,56 @@ HRESULT STDMETHODCALLTYPE SetPixelShaderHook(IDirect3DDevice9* d,IDirect3DPixelS
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelShader,rva,hr);
     return hr;
 }
+// Original material/texture/pixel-constant writes; genuine COM/HRESULT
+// unchanged. A failed EXE-owned mutation revokes both speculative eyes.
+HRESULT STDMETHODCALLTYPE SetPSConstantFHook(IDirect3DDevice9* d,UINT start,
+                                             const float* values,UINT count){
+    if(!g_primary_device.Owns(d))return g_set_ps_constant_f(d,start,values,count);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_ps_constant_f(d,start,values,count);
+    const auto rva=CallerRva(caller);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,16u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelConstants,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetTextureHook(IDirect3DDevice9* d,DWORD stage,IDirect3DBaseTexture9* texture){
+    if(!g_primary_device.Owns(d))return g_set_texture(d,stage,texture);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_texture(d,stage,texture);
+    const auto rva=CallerRva(caller);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,17u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::TextureBinding,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetTextureStageStateHook(IDirect3DDevice9* d,DWORD stage,
+                                                   D3DTEXTURESTAGESTATETYPE type,DWORD value){
+    if(!g_primary_device.Owns(d))return g_set_texture_stage(d,stage,type,value);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_texture_stage(d,stage,type,value);
+    const auto rva=CallerRva(caller);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,18u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::TextureStage,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetSamplerStateHook(IDirect3DDevice9* d,DWORD sampler,
+                                              D3DSAMPLERSTATETYPE type,DWORD value){
+    if(!g_primary_device.Owns(d))return g_set_sampler_state(d,sampler,type,value);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_sampler_state(d,sampler,type,value);
+    const auto rva=CallerRva(caller);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,19u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::SamplerState,rva,hr);
+    return hr;
+}
+HRESULT STDMETHODCALLTYPE SetRenderStateHook(IDirect3DDevice9* d,D3DRENDERSTATETYPE state,DWORD value){
+    if(!g_primary_device.Owns(d))return g_set_render_state(d,state,value);
+    void* const caller=_ReturnAddress();
+    const HRESULT hr=g_set_render_state(d,state,value);
+    const auto rva=CallerRva(caller);
+    if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,20u,rva);
+    RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::RenderState,rva,hr);
+    return hr;
+}
 // Original COM state writes execute exactly once. On failure, revoke both
 // verified CPU-world and speculative GPU-eye source for the physical Present.
 HRESULT STDMETHODCALLTYPE SetViewportHook(IDirect3DDevice9* d,
@@ -1981,6 +2047,11 @@ bool HookDevice(IDirect3DDevice9* dev){
     const bool f_v_f=Hook(vtable[89],reinterpret_cast<void*>(&SetFVFHook),g_set_f_v_f);
     const bool vertex_shader=Hook(vtable[92],reinterpret_cast<void*>(&SetVertexShaderHook),g_set_vertex_shader);
     const bool pixel_shader=Hook(vtable[107],reinterpret_cast<void*>(&SetPixelShaderHook),g_set_pixel_shader);
+    const bool ps_constants=Hook(vtable[109],reinterpret_cast<void*>(&SetPSConstantFHook),g_set_ps_constant_f);
+    const bool texture=Hook(vtable[65],reinterpret_cast<void*>(&SetTextureHook),g_set_texture);
+    const bool texture_stage=Hook(vtable[67],reinterpret_cast<void*>(&SetTextureStageStateHook),g_set_texture_stage);
+    const bool sampler=Hook(vtable[69],reinterpret_cast<void*>(&SetSamplerStateHook),g_set_sampler_state);
+    const bool render_state=Hook(vtable[57],reinterpret_cast<void*>(&SetRenderStateHook),g_set_render_state);
     // Scene boundary observation is optional: if either COM hook cannot
     // be installed, rollback BOTH and mark scene source unknown. This
     // must never prevent the normal original game/mono fallback path.
@@ -1994,7 +2065,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader)){
+    if(!(p&&dp&&di&&du&&iu&&reset&&clear&&update&&stretch&&fill&&rt&&depth&&transform&&vs_constants&&viewport&&scissor&&stream_source&&indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&texture_stage&&sampler&&render_state)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -2026,6 +2097,11 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(f_v_f){MH_DisableHook(vtable[89]);MH_RemoveHook(vtable[89]);}
         if(vertex_shader){MH_DisableHook(vtable[92]);MH_RemoveHook(vtable[92]);}
         if(pixel_shader){MH_DisableHook(vtable[107]);MH_RemoveHook(vtable[107]);}
+        if(ps_constants){MH_DisableHook(vtable[109]);MH_RemoveHook(vtable[109]);}
+        if(texture){MH_DisableHook(vtable[65]);MH_RemoveHook(vtable[65]);}
+        if(texture_stage){MH_DisableHook(vtable[67]);MH_RemoveHook(vtable[67]);}
+        if(sampler){MH_DisableHook(vtable[69]);MH_RemoveHook(vtable[69]);}
+        if(render_state){MH_DisableHook(vtable[57]);MH_RemoveHook(vtable[57]);}
         g_present=nullptr;g_draw=nullptr;g_draw_indexed=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_update_surface=nullptr;
@@ -2039,6 +2115,9 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_set_f_v_f=nullptr;
         g_set_vertex_shader=nullptr;
         g_set_pixel_shader=nullptr;
+        g_set_ps_constant_f=nullptr;
+        g_set_texture=nullptr;g_set_texture_stage=nullptr;
+        g_set_sampler_state=nullptr;g_set_render_state=nullptr;
         g_draw_up=nullptr;g_draw_indexed_up=nullptr;
         m2vr::LogEvent("model2_d3d9_partial_hook_rolled_back",p,dp,di,du);
         m2vr::LogEvent("model2_d3d9_surface_hook_rollback",
@@ -2049,7 +2128,9 @@ bool HookDevice(IDirect3DDevice9* dev){
         m2vr::LogEvent("model2_d3d9_pipeline_hook_rollback",
             stream_source,indices,vertex_declaration,f_v_f);
         m2vr::LogEvent("model2_d3d9_shader_hook_rollback",
-            vertex_shader,pixel_shader,0u,0u);
+            vertex_shader,pixel_shader,ps_constants,0u);
+        m2vr::LogEvent("model2_d3d9_material_hook_rollback",
+            texture,texture_stage,sampler,render_state);
         return false;
     }
     // Vtable methods are shared by D3D9 devices. Bind the real first

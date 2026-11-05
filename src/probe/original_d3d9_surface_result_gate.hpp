@@ -7,14 +7,16 @@ namespace m2vr::vrbridge {
 // 7=SetVertexShaderConstantF (94), 8=SetViewport (47),
 // 9=SetScissorRect (75), 10=SetStreamSource (100), 11=SetIndices (104),
 // 12=SetVertexDeclaration (87), 13=SetFVF (89),
-// 14=SetVertexShader (92), 15=SetPixelShader (107): original state failures.
+// 14=SetVertexShader (92), 15=SetPixelShader (107), 16=SetPixelShaderConstantF (109),
+// 17=SetTexture (65), 18=SetTextureStageState (67),
+// 19=SetSamplerState (69), 20=SetRenderState (57): original state failures.
 inline constexpr bool IsFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits)noexcept {
-    return method>=1u && method<=15u && (result_bits&0x80000000u)!=0u;
+    return method>=1u && method<=20u && (result_bits&0x80000000u)!=0u;
 }
 inline constexpr std::uint32_t FailedOriginalD3D9SurfaceSourceKind(
     std::uint32_t method)noexcept {
     // Separate from Draw 17..20 and Clear 21.
-    return method>=1u && method<=15u?21u+method:0u;
+    return method>=1u && method<=20u?21u+method:0u;
 }
 } // namespace m2vr::vrbridge

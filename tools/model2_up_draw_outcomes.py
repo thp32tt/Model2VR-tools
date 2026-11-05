@@ -268,7 +268,7 @@ def audit_csv(path):
             if event == "model2_d3d9_original_surface_failed":
                 if (not 0 < a0 <= 0xffffffff or
                     a0 <= observed_present_frame or
-                    a1 not in (1, 2, 3) or a2 > 0xffffffff or
+                    not 1 <= a1 <= 20 or a2 > 0xffffffff or
                     (a2 & 0x80000000) == 0 or
                     not 0 < a3 <= 0xffffffff):
                     raise ValueError("invalid original surface failure")

@@ -3,7 +3,7 @@
 #include <cassert>
 int main(){
     using namespace m2vr::drawprobe;
-    static_assert(kOriginalLineageKinds==14);
+    static_assert(kOriginalLineageKinds==19);
     OriginalLineageStamp initial{77,{}};
     assert(!OriginalLineageUsable(initial));
     assert(OriginalLineageNonce(initial)==0);
@@ -20,7 +20,7 @@ int main(){
         assert(!SameOriginalLineage(initial,next));
         assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(next));
     }
-    // All stream, layout and shader mutations change the same-Draw nonce.
+    // Geometry, shader, texture and raster mutations change the Draw nonce.
     for(std::size_t kind=8;kind<kOriginalLineageKinds;++kind){
         auto next=initial;
         ++next.successful_writes[kind];
@@ -59,7 +59,7 @@ int main(){
     rule.expected_lineage_nonce=OriginalLineageNonce(initial);
     assert(one_shot.Arm(rule));
     auto rebound=initial;
-    ++rebound.successful_writes[static_cast<std::size_t>(OriginalLineageKind::PixelShader)];
+    ++rebound.successful_writes[static_cast<std::size_t>(OriginalLineageKind::RenderState)];
     assert(!one_shot.Take(77u,5u,2u,0x345u,3u,true,accepted,
                          OriginalLineageNonce(rebound),&mismatch));
     assert(mismatch && !one_shot.Pending());

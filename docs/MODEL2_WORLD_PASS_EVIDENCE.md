@@ -1,5 +1,23 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Original texture/material and PS-constant Draw lineage (2026-11-05)
+
+The authentic primary-device Win32 D3D9 `SetPixelShaderConstantF` (109),
+`SetTexture` (65), `SetTextureStageState` (67), `SetSamplerState` (69)
+and `SetRenderState` (57) run once each with original HRESULT. EXE-owned
+successful calls advance five additional per-Present state revisions (19).
+Same physical Draw/scene/ordinal admission validates the full nonce;
+an intervening material mutation revokes previously armed stereo source.
+Failed original calls 16..20 discard CPU/GPU speculative stereo epochs,
+leaving original mono, Draw/Present, emulator logic and FFB unchanged.
+
+Sampled Draw logs record bounded `model2_d3d9_source_material_lineage`
+and `model2_d3d9_source_render_lineage` counters without any texture,
+shader constant, game pixel or original pointer data. This does not prove
+Daytona World3D identity, headset pose calibration or actual Quest output.
+Capture genuine race A/B and independent menu/HUD/sky controls privately.
+
+
 ## Original D3D9 Clear and surface mutation integrity + scheduling report (2026-11-05)
 
 The physical *original game executable* primary D3D9 method calls `Clear` (43),

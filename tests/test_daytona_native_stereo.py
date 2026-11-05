@@ -147,8 +147,8 @@ class NativeStereoTest(unittest.TestCase):
     def test_failed_original_viewport_scissor_revoke_gpu_eyes(self):
         source=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         header=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
-        self.assertIn("method>15u", source)
-        self.assertIn("method<=15u", header)
+        self.assertIn("method>20u", source)
+        self.assertIn("method<=20u", header)
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,8u,rva)", (
             ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8"))
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,9u,rva)", (
@@ -184,9 +184,9 @@ class NativeStereoTest(unittest.TestCase):
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         source=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
         gate=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
-        self.assertIn("kOriginalLineageKinds=14",source)
-        self.assertIn("method<=15u",gate)
-        self.assertIn("method>15u",gpu)
+        self.assertIn("kOriginalLineageKinds=19",source)
+        self.assertIn("method<=20u",gate)
+        self.assertIn("method>20u",gpu)
         for method,slot,kind,fail in (
             ("SetStreamSource",100,"StreamSource",10),
             ("SetIndices",104,"IndexBuffer",11),
@@ -207,6 +207,32 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("w[13]",hooks)
         self.assertIn("OriginalLineageNonce(lineage),permission",hooks)
 
+    def test_original_material_state_lineage_and_failed_call_atomicity(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        gate=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
+        for method,slot,kind,source,fail in (
+            ("SetPSConstantF",109,"PixelConstants","g_set_ps_constant_f",16),
+            ("SetTexture",65,"TextureBinding","g_set_texture",17),
+            ("SetTextureStageState",67,"TextureStage","g_set_texture_stage",18),
+            ("SetSamplerState",69,"SamplerState","g_set_sampler_state",19),
+            ("SetRenderState",57,"RenderState","g_set_render_state",20),
+        ):
+            body=hooks.split(f"HRESULT STDMETHODCALLTYPE {method}Hook(")[1].split(
+                "HRESULT STDMETHODCALLTYPE ",1)[0]
+            self.assertEqual(body.count(f"const HRESULT hr={source}("),1)
+            self.assertIn("g_primary_device.Owns(d)",body)
+            self.assertIn("CallerRva(caller)",body)
+            self.assertIn(f"OriginalLineageKind::{kind}",body)
+            self.assertIn(f"TrackFailedOriginalD3D9Surface(hr,{fail}u,rva)",body)
+            self.assertIn(f"vtable[{slot}]",hooks)
+            self.assertIn(f"MH_RemoveHook(vtable[{slot}]);",hooks)
+        self.assertIn("model2_d3d9_source_material_lineage",hooks)
+        self.assertIn("model2_d3d9_source_render_lineage",hooks)
+        self.assertIn("method>20u",gpu)
+        self.assertIn("method<=20u",gate)
+        self.assertIn("&&ps_constants&&texture&&texture_stage&&sampler&&render_state",hooks)
+
     def test_original_exe_scene_boundaries_are_optional_and_readonly(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         self.assertIn("using SceneFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);", hooks)
@@ -214,7 +240,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("vtable[42],reinterpret_cast<void*>(&EndSceneHook)", hooks)
         self.assertEqual(hooks.count("const HRESULT hr=g_begin_scene(d);"),1)
         self.assertEqual(hooks.count("const HRESULT hr=g_end_scene(d);"),1)
-        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),18)  # 12 original sources plus six vertex/shader bindings
+        self.assertEqual(hooks.count("void* const caller=_ReturnAddress();"),23)  # original sources plus five new bindings
         self.assertEqual(hooks.count("TrackFailedOriginalD3D9Scene(hr,"),2)
         self.assertIn("g_original_scene_poisoned.store(true",hooks)
         self.assertEqual(hooks.count("g_original_scene_poisoned.store(false"),2)
@@ -356,7 +382,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("&&fill&&rt&&depth",hooks)
         self.assertIn("model2_d3d9_original_target_bind_phase",hooks)
         self.assertIn("g_original_target_bind_samples",hooks)
-        self.assertIn("method>15u",gpu)
+        self.assertIn("method>20u",gpu)
         self.assertIn("model2_d3d9_target_hook_rollback",hooks)
 
     def test_release_bundles_private_log_only_up_source_evidence_helper(self):

@@ -2,6 +2,13 @@
 
 Updated: 2026-11-05 KST
 
+## 2026-11-05 — original D3D9 material/sampler/render/PS-constant Draw lineage (implementation)
+
+- Observe five authentic Win32 original-device calls: SetPixelShaderConstantF, SetTexture, SetTextureStageState, SetSamplerState, SetRenderState. Every successful original EXE write joins the physical original Draw's 19-state source nonce and bounded private-only evidence; original HRESULT, draw, mono and FFB unchanged.
+- Genuine state failures revoke speculative CPU/GPU eyes on that Present. No automatic World3D promotion; no shader constant values, textures, ROMs or private trace bytes committed publicly.
+- Physical Quest3/VDXR status remains `RUNTIME_VALIDATION=UNTESTED`. NEXT: two independent private race captures plus title/menu/sky/HUD controls, actual same-draw CPU projector/camera/geometry verification and HMD axes/meters-per-unit calibration.
+
+
 ## 2026-11-05 — real original D3D9 geometry/shader binding Draw-lineage + private race gate (exact native CI 4/4)
 
 - **Connected native source capability:** primary original EXE-owned D3D9 SetStreamSource (100), SetIndices (104), SetVertexDeclaration (87), SetFVF (89), SetVertexShader (92), SetPixelShader (107) each execute the original COM method exactly once and preserve HRESULT. Successful calls advance six bounded per-Present state revisions, extending the previous eight camera/target/viewport counters to **14**; genuine sampled Draw witnesses now contain same-frame geometry and shader binding revision metadata. No original source vertex bytes, shader code, pointers, ROMs or textures enter public logs.
