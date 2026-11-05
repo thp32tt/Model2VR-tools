@@ -93,7 +93,8 @@ jobs:
           Copy-Item tools/model2_draw_source_report.py $root/
           Copy-Item tools/model2_world_pass_evidence.py $root/
           foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")){
-            $fake=Join-Path $inputs ($label+".csv")
+            $filename=if($label -eq "aux"){"auxiliary.csv"}else{$label+".csv"}
+            $fake=Join-Path $inputs $filename
             [IO.File]::WriteAllText($fake,
               ("seq,qpc,thread,event,a0,a1,a2,a3" + "`n" +
                "1,1,1,synthetic_unproven_" + $label + ",0,0,0,0" + "`n"))
@@ -110,7 +111,8 @@ jobs:
           $archives=@(Get-ChildItem (Join-Path $root "logs") -Directory)
           if($archives.Count -ne 1){ throw "Expected exactly one local private archive" }
           foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")){
-            if(!(Test-Path (Join-Path $archives[0].FullName ($label+".csv")))){
+            $filename=if($label -eq "aux"){"auxiliary.csv"}else{$label+".csv"}
+            if(!(Test-Path (Join-Path $archives[0].FullName $filename))){
               throw "Missing locally archived synthetic session $label"
             }
           }

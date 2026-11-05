@@ -196,7 +196,7 @@ python tools/model2_world_pass_evidence.py \
   --control menu private/menu.csv \
   --control sky private/sky.csv \
   --control hud private/hud.csv \
-  --control aux private/aux.csv \
+  --control aux private/auxiliary.csv \
   --output private/world_caller_candidates.json
 ```
 

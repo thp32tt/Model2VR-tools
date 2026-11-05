@@ -26,15 +26,21 @@ $copies = @{}
 $hashes = @{}
 $knownPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 $knownDigests = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+# AUX is a reserved Windows DOS device basename even with .csv extension.
+# Label "aux" remains the same audit class, disk filename is auxiliary.csv.
+function SessionCsvName([string]$label) {
+  if ($label -eq "aux") { return "auxiliary.csv" }
+  return $label + ".csv"
+}
 
 Write-Host "LOCAL / PRIVATE: Daytona original evidence capture. No uploads."
 Write-Host "Always close the original emulator BEFORE pressing Enter. Each"
 Write-Host "label needs a genuinely separate run; labels are user assertions only."
 foreach ($label in $labels) {
   if ($ExistingSessionFolder) {
-    $candidate = Join-Path $ExistingSessionFolder ($label + ".csv")
+    $candidate = Join-Path $ExistingSessionFolder (SessionCsvName $label)
     if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) {
-      throw "Missing original session file: $label.csv (source folder unchanged)."
+      throw "Missing original session file: $(SessionCsvName $label) (source folder unchanged)."
     }
     $source = Get-Item -LiteralPath $candidate -ErrorAction Stop
   } else {
@@ -63,7 +69,7 @@ foreach ($label in $labels) {
   if (!$knownDigests.Add($digest)) {
     throw "Duplicate original source bytes for $label; independent sessions required."
   }
-  $target = Join-Path $destination ($label + ".csv")
+  $target = Join-Path $destination (SessionCsvName $label)
   Copy-Item -LiteralPath $originalPath -Destination $target -ErrorAction Stop
   $copiedHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
   if ($copiedHash -ne $digest) { throw "Source copy changed during $label; close original game." }

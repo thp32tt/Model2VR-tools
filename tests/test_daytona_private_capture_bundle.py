@@ -45,6 +45,8 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('if ($LASTEXITCODE -ne 0)',self.ps)
         self.assertIn('PRIVATE_WORLD_CANDIDATES.json',self.ps)
         self.assertIn('PRIVATE_MANIFEST.json',self.ps)
+        self.assertIn('return "auxiliary.csv"',self.ps)
+        self.assertIn('SessionCsvName $label',self.ps)
         self.assertIn('-ExistingSessionFolder',self.docs)
 
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):

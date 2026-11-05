@@ -190,7 +190,9 @@ chooses only a newly written, distinct `logs/daytona_vr_startup_*.csv`,
 checks source path/size/SHA256, makes a sealed local copy under
 `logs/private_original_evidence_<UTC>`, then runs the fail-closed
 four-family original Draw+Present candidate triage. For previously
-collected distinct CSVs named `race_a.csv` etc, run
+collected distinct CSVs named `race_a.csv`, `race_b.csv`,
+`title.csv`, `menu.csv`, `sky.csv`, `hud.csv`, and
+`auxiliary.csv` (Windows reserves `AUX`), run
 `Collect-Daytona-Original-Evidence.cmd -ExistingSessionFolder "D:\\private-daytona"`.
 No automatic scene labelling or gameplay World3D authorization is inferred:
 labels are supplied by the human tester. The archive and any candidate
