@@ -33,15 +33,16 @@ namespace m2vr::vrbridge {
 // 70=original SetDialogBoxMode (COM 20) failure; SetGammaRamp (21) is void.
 // 71=original SetCursorProperties (COM 10) failure; COM 11/12 return void/BOOL.
 // 72=CreateQuery (COM 118), 73=Query Issue (COM 6), 74=Query GetData (COM 7).
+// 75=EvictManagedResources (Device9 COM 5) HRESULT failure.
 // S_FALSE means pending query, not failure.
 // original source-state and resource operation failures.
 inline constexpr bool IsFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits)noexcept {
-    return method>=1u && method<=74u && (result_bits&0x80000000u)!=0u;
+    return method>=1u && method<=75u && (result_bits&0x80000000u)!=0u;
 }
 inline constexpr std::uint32_t FailedOriginalD3D9SurfaceSourceKind(
     std::uint32_t method)noexcept {
     // Separate from Draw 17..20 and Clear 21.
-    return method>=1u && method<=74u?21u+method:0u;
+    return method>=1u && method<=75u?21u+method:0u;
 }
 } // namespace m2vr::vrbridge

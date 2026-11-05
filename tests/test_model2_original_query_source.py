@@ -78,9 +78,9 @@ class OriginalQuerySourceTest(unittest.TestCase):
         self.assertIn("g_original_query_source_unproven.store(true",self.hooks)
         self.assertIn("QueryIssue=54",self.lineage)
         self.assertIn("QueryReady=55",self.lineage)
-        self.assertIn("kOriginalLineageKinds=56",self.lineage)
-        self.assertIn("method<=74u",self.failure)
-        self.assertIn("method>74u",self.gpu)
+        self.assertIn("kOriginalLineageKinds=57",self.lineage)
+        self.assertIn("method<=75u",self.failure)
+        self.assertIn("method>75u",self.gpu)
         for code in (72,73,74):
             self.assertIn(f"TrackFailedOriginalD3D9Surface(hr,{code}u,rva)",self.hooks)
 

@@ -55,7 +55,8 @@ enum class OriginalSourceFailure : std::uint32_t {
     OriginalSwapChainPresentUnverified=30u,
     OriginalPresentationStateUnproven=31u,
     OriginalQuerySourceUnproven=32u,
-    OriginalDeviceValidationUnproven=33u
+    OriginalDeviceValidationUnproven=33u,
+    OriginalManagedResidencyUnproven=34u
 };
 inline thread_local OriginalSourceFailure g_current_original_source_failure=
     OriginalSourceFailure::Unknown;

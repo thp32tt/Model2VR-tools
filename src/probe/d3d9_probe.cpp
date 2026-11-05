@@ -64,6 +64,7 @@ using SetCursorPropertiesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,
 using SetCursorPositionFn=void (STDMETHODCALLTYPE*)(IDirect3DDevice9*,int,int,DWORD);
 using ShowCursorFn=BOOL (STDMETHODCALLTYPE*)(IDirect3DDevice9*,BOOL);
 using ValidateDeviceFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT*);
+using EvictManagedResourcesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*);
 using SetDialogBoxModeFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,BOOL);
 using SetGammaRampFn=void (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT,DWORD,const D3DGAMMARAMP*);
 using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -226,6 +227,9 @@ std::atomic<bool> g_original_gamma_unproven{false};
 std::atomic<bool> g_original_external_presentation_unproven{false};
 std::array<std::atomic<std::uint32_t>,2> g_original_presentation_controls{};
 ValidateDeviceFn g_validate_device=nullptr;
+EvictManagedResourcesFn g_evict_managed_resources=nullptr;
+std::atomic<bool> g_residency_foreign_unproven{false};
+std::atomic<std::uint64_t> g_residency_rejected_present{0u};
 std::atomic<bool> g_original_validation_unproven{false};
 std::atomic<bool> g_original_validation_foreign_caller{false};
 std::atomic<std::uint64_t> g_original_validation_rejected_present{0u};
@@ -515,6 +519,9 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9QueryUse(
     unsigned long long physical_present,unsigned int original_caller_rva,
     unsigned long long preceding_draw_ordinal,unsigned int reason);
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9ValidationUse(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int reason);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9ManagedResidency(
     unsigned long long physical_present,unsigned int original_caller_rva,
     unsigned long long preceding_draw_ordinal,unsigned int reason);
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9BufferMutation(
@@ -2362,6 +2369,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 #include "original_d3d9_swap_chain_hooks.inl"
 #include "original_d3d9_query_hooks.inl"
 #include "original_d3d9_validation_hooks.inl"
+#include "original_d3d9_residency_hooks.inl"
 #include "original_d3d9_presentation_hooks.inl"
 #include "original_d3d9_cursor_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
@@ -2800,6 +2808,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // count even if a later Draw supplied an otherwise matching camera nonce.
     if(g_original_validation_unproven.load(std::memory_order_acquire))
         OriginalValidationSourceBoundary(0u,5u);
+    if(g_residency_foreign_unproven.load(std::memory_order_acquire))
+        OriginalResidencySourceBoundary(0u,3u);
     if(g_original_dialog_box_active.load(std::memory_order_acquire))
         BeforeOriginalPresentationControl(0u,3u);
     if(g_original_gamma_unproven.load(std::memory_order_acquire))
@@ -3158,6 +3168,9 @@ bool HookDevice(IDirect3DDevice9* dev){
     // Safe startup after original hardware Query crashes: opt-in only.
     const bool validate=Hook(vtable[70],
         reinterpret_cast<void*>(&OriginalValidateDeviceHook),g_validate_device);
+    const bool evict=Hook(vtable[5],
+        reinterpret_cast<void*>(&OriginalEvictManagedResourcesHook),
+        g_evict_managed_resources);
     const bool create_query=!g_query_hooks_enabled || Hook(vtable[118],
         reinterpret_cast<void*>(&OriginalCreateQueryHook),g_create_query);
     const bool dp=Hook(vtable[81],reinterpret_cast<void*>(&DrawHook),g_draw);
@@ -3278,7 +3291,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_begin_scene=nullptr;g_end_scene=nullptr;
         m2vr::LogEvent("model2_d3d9_scene_hooks_unavailable",sb,se,0u,0u);
     }
-    if(!(p&&cursor_image&&cursor_position&&cursor_visibility&&dialog&&gamma&&create_swap_chain&&get_swap_chain&&validate&&create_query&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch)){
+    if(!(p&&cursor_image&&cursor_position&&cursor_visibility&&dialog&&gamma&&create_swap_chain&&get_swap_chain&&validate&&create_query&&dp&&di&&du&&iu&&reset&&clear&&make_tex&&make_volume&&make_cube&&make_vb&&make_ib&&make_rt&&make_depth_surface&&make_offscreen&&get_back&&get_rt&&get_depth&&read_rt&&read_front&&update&&texture_upload&&palette_entries&&current_palette&&stretch&&fill&&rt&&depth&&transform&&multiply_transform&&vs_constants&&viewport&&scissor&&stream_source&&get_stream&&indices&&get_indices&&vertex_declaration&&f_v_f&&vertex_shader&&pixel_shader&&ps_constants&&texture&&get_texture&&texture_stage&&sampler&&render_state&&create_block&&begin_block&&end_block&&vs_i&&vs_b&&ps_i&&ps_b&&freq&&material&&light&&light_enable&&clip_plane&&clip_status&&software_vp&&npatch&&process_vertices&&rect_patch&&tri_patch&&delete_patch&&evict)){
         // Transactional rollback: partial GPU hooks must never be left armed
         // after hook setup fails. Keep the emulator's normal render path.
         if(p){MH_DisableHook(vtable[17]);MH_RemoveHook(vtable[17]);}
@@ -3291,6 +3304,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         if(get_swap_chain){MH_DisableHook(vtable[14]);MH_RemoveHook(vtable[14]);}
         if(create_query && g_query_hooks_enabled){MH_DisableHook(vtable[118]);MH_RemoveHook(vtable[118]);}
         if(validate){MH_DisableHook(vtable[70]);MH_RemoveHook(vtable[70]);}
+        if(evict){MH_DisableHook(vtable[5]);MH_RemoveHook(vtable[5]);}
         if(dp){MH_DisableHook(vtable[81]);MH_RemoveHook(vtable[81]);}
         if(di){MH_DisableHook(vtable[82]);MH_RemoveHook(vtable[82]);}
         if(du){MH_DisableHook(vtable[83]);MH_RemoveHook(vtable[83]);}
@@ -3369,6 +3383,7 @@ bool HookDevice(IDirect3DDevice9* dev){
         g_original_set_dialog_box_mode=nullptr;g_original_set_gamma_ramp=nullptr;
         g_create_additional_swap_chain=nullptr;g_get_swap_chain=nullptr;
         g_create_query=nullptr;g_validate_device=nullptr;
+        g_evict_managed_resources=nullptr;
         g_reset=nullptr;g_clear=nullptr;
         g_create_vertex_buffer=nullptr;g_create_index_buffer=nullptr;
         g_create_texture=nullptr;g_create_volume_texture=nullptr;
