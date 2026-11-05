@@ -35,6 +35,7 @@ META = {
     "model2_d3d9_source_palette_lineage": "palette_lineage",
     "model2_d3d9_source_fixed_function_lineage": "fixed_function_lineage",
     "model2_d3d9_source_raster_mode_lineage": "raster_mode_lineage",
+    "model2_d3d9_source_buffer_content_lineage": "buffer_content_lineage",
     "model2_d3d9_up_layout_frame": "layout_frame",
     "model2_d3d9_source_pass_context": "context",
     "model2_d3d9_cpu_up_matrix_identity": "matrix",
@@ -272,6 +273,8 @@ def audit_csv(path):
                 "model2_d3d9_original_instancing_unsupported",
                 "model2_d3d9_original_instancing_active",
                 "model2_d3d9_original_texture_upload_rejected",
+                "model2_d3d9_original_buffer_mutation_rejected",
+                "model2_d3d9_original_buffer_hook_unobserved",
                 "model2_d3d9_original_palette_mutation_rejected",
                 "model2_d3d9_original_raster_mode_unsupported",
                 "model2_d3d9_original_unmirrored_geometry",
@@ -370,6 +373,26 @@ def audit_csv(path):
                     raise ValueError("original texture upload capacity")
                 failed_original_surface_frames.add(a0)
                 continue
+            if event == "model2_d3d9_original_buffer_mutation_rejected":
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or
+                    not 0 < a1 <= 0xffffffff or
+                    a2 > 10_000_000 or a3 not in (1,2)):
+                    raise ValueError("invalid original buffer mutation")
+                failed_original_surface_frames.add(a0)
+                if len(failed_original_surface_frames)>MAX_PENDING:
+                    raise ValueError("original buffer mutation capacity")
+                continue
+            if event == "model2_d3d9_original_buffer_hook_unobserved":
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or
+                    a1 > 0xffffffff or a2 not in (0,1,2) or a3 != 0 or
+                    (a2 == 0 and a1 != 0) or (a2 != 0 and a1 == 0)):
+                    raise ValueError("invalid original buffer hook coverage")
+                failed_original_surface_frames.add(a0)
+                if len(failed_original_surface_frames)>MAX_PENDING:
+                    raise ValueError("original buffer hook coverage capacity")
+                continue
             if event in ("model2_d3d9_original_surface_failed",
                           "model2_d3d9_original_lineage_drift"):
                 if event == "model2_d3d9_original_lineage_drift":
@@ -380,7 +403,7 @@ def audit_csv(path):
                 else:
                     valid = (0 < a0 <= 0xffffffff and
                              a0 > observed_present_frame and
-                             1 <= a1 <= 36 and a2 <= 0xffffffff and
+                             1 <= a1 <= 40 and a2 <= 0xffffffff and
                              (a2 & 0x80000000) != 0 and
                              0 < a3 <= 0xffffffff)
                 if not valid:
@@ -513,6 +536,14 @@ def audit_csv(path):
                         any(n > 1_000_000 for n in revs) or
                         a3 != 0 or key in rec):
                         raise ValueError("invalid original UP palette lineage")
+                    once(rec,key,(a1,a2,a3),a0)
+                elif key == "buffer_content_lineage":
+                    revisions = halves(a2)
+                    if (not 0 < a1 <= 0xffffffff or
+                        a1 <= observed_present_frame or
+                        any(n > 1_000_000 for n in revisions) or a3 != 0 or
+                        key in rec):
+                        raise ValueError("invalid original UP buffer content lineage")
                     once(rec,key,(a1,a2,a3),a0)
                 elif key == "raster_mode_lineage":
                     revisions = halves(a2) + (a3,)

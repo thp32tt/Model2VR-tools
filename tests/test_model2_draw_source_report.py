@@ -356,7 +356,7 @@ class SourceAuditTests(unittest.TestCase):
                  0, 0x1234, pack(17, 1)),
             ]
             original_present=("model2_d3d9_original_present_result", 17, 0, 1, 0)
-            for method in range(1, 37):
+            for method in range(1, 41):
                 failure=("model2_d3d9_original_surface_failed",17,
                          method,0x8876086C,0x4321)
                 self.write_log(p,prefix+[failure,original_present])
@@ -367,6 +367,30 @@ class SourceAuditTests(unittest.TestCase):
                 self.write_log(p,prefix+[original_present])
                 self.assertEqual(REPORT.audit_csv(p)["sources"][0]
                                  ["original_surface_failure_witnesses"],0)
+            for family in (1,2):
+                event=("model2_d3d9_original_buffer_mutation_rejected",
+                       17,0x1234,12,family)
+                self.write_log(p,prefix+[event,original_present])
+                got=REPORT.audit_csv(p)["sources"][0]
+                self.assertEqual(got["original_surface_failure_witnesses"],1)
+                for bad in ((17,0,12,family),(17,0x1234,10000001,family),
+                            (17,0x1234,12,3)):
+                    self.write_log(p,prefix+[(
+                        "model2_d3d9_original_buffer_mutation_rejected",*bad),
+                        original_present])
+                    with self.assertRaisesRegex(ValueError,"invalid original buffer mutation"):
+                        REPORT.audit_csv(p)
+            unobserved=("model2_d3d9_original_buffer_hook_unobserved",
+                        17,0,0,0)
+            self.write_log(p,prefix+[unobserved,original_present])
+            self.assertEqual(REPORT.audit_csv(p)["sources"][0]
+                             ["original_surface_failure_witnesses"],1)
+            for bad in ((17,0,1,0),(17,123,0,0),(17,0,0,1)):
+                self.write_log(p,prefix+[(
+                    "model2_d3d9_original_buffer_hook_unobserved",*bad),
+                    original_present])
+                with self.assertRaisesRegex(ValueError,"invalid original buffer hook coverage"):
+                    REPORT.audit_csv(p)
             drift=("model2_d3d9_original_lineage_drift",17,1,0x1234,12)
             self.write_log(p,prefix+[drift,original_present])
             source=REPORT.audit_csv(p)["sources"][0]
@@ -422,7 +446,7 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original stateblock mutation"):
                     REPORT.audit_csv(p)
             for bad in ((0,0x8876086C,0x4321),
-                        (37,0x8876086C,0x4321),
+                        (41,0x8876086C,0x4321),
                         (1,0,0x4321),
                         (2,0x8876086C,0)):
                 failure=("model2_d3d9_original_surface_failed",17,*bad)

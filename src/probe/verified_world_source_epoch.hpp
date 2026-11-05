@@ -48,7 +48,9 @@ enum class OriginalSourceFailure : std::uint32_t {
     OriginalTextureUploadAfterStereo=23u,
     OriginalPaletteMutationAfterStereo=24u,
     OriginalRasterModeUnknown=25u,
-    OriginalUnmirroredGeometry=26u
+    OriginalUnmirroredGeometry=26u,
+    OriginalBufferContentAfterStereo=27u,
+    OriginalBufferHookCoverageUnknown=28u
 };
 inline thread_local OriginalSourceFailure g_current_original_source_failure=
     OriginalSourceFailure::Unknown;

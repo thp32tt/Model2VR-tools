@@ -910,6 +910,62 @@ extern "C" void __stdcall Model2VR_ObserveOriginalD3D9TextureUpload(
             physical_present,original_caller_rva,preceding_draw_ordinal,0u);
     m2vr::daytona::MarkOriginalTextureUploadAfterEyes();
 }
+// Authentic writable original VB/IB Lock may change already-bound geometry
+// without another device stream/index setter. No buffer bytes cross into IPC.
+// Existing eye frames are revoked before the game can modify the buffer.
+extern "C" void __stdcall Model2VR_ObserveOriginalD3D9BufferMutation(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned long long preceding_draw_ordinal,unsigned int family){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || !original_caller_rva ||
+       (family!=1u && family!=2u) ||
+       preceding_draw_ordinal>10000000u ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool rejected=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.frame==physical_present && (g.active || g.pending_present)){
+            const auto prior=g_current_original_source_failure;
+            g_current_original_source_failure=
+                OriginalSourceFailure::OriginalBufferContentAfterStereo;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=prior;
+            g.source_epoch.Revoke(physical_present);
+            rejected=true;
+        }
+    }
+    if(rejected)
+        m2vr::LogEvent("model2_d3d9_original_buffer_mutation_rejected",
+            physical_present,original_caller_rva,
+            preceding_draw_ordinal,family);
+    m2vr::daytona::MarkOriginalBufferMutationAfterEyes(family);
+}
+// The original resource COM runtime did not expose a complete Lock+Unlock
+// hook pair. Unknown resource writes are unsafe for this AND future
+// original source Presents, while the game's untouched mono remains valid.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9BufferHookCoverage(
+    unsigned long long physical_present,unsigned int original_caller_rva,
+    unsigned int family){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || family>2u ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool first=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.frame==physical_present && (g.active || g.pending_present)){
+            const auto prior=g_current_original_source_failure;
+            g_current_original_source_failure=
+                OriginalSourceFailure::OriginalBufferHookCoverageUnknown;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=prior;
+        }
+        first=g.source_epoch.Revoke(physical_present);
+    }
+    if(first)
+        m2vr::LogEvent("model2_d3d9_original_buffer_hook_unobserved",
+            physical_present,original_caller_rva,family,0u);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Palette writes may change already drawn eye texels without a binding call.
 // They never alter the original emulator Draw or mono backbuffer.
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9PaletteMutation(

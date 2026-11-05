@@ -116,6 +116,15 @@ public:
         m2vr::LogEvent("model2_vr_gpu_original_texture_upload_stale",
             scene_draws_,mirrored_draws_,mirrored_stretches_,0u);
     }
+    void MarkOriginalBufferMutationAfterEyes(std::uint32_t family)noexcept{
+        if(family<1u || family>2u)return;
+        std::lock_guard lock(mu_);
+        if(!enabled_ || source_original_failed_ ||
+           (mirrored_draws_==0u && mirrored_stretches_==0u))return;
+        source_original_failed_=true;
+        m2vr::LogEvent("model2_vr_gpu_original_buffer_mutation_stale",
+            family,scene_draws_,mirrored_draws_,mirrored_stretches_);
+    }
     void MarkOriginalPaletteMutationAfterEyes(std::uint32_t method)noexcept{
         if(method<1u || method>2u)return;
         std::lock_guard lock(mu_);
@@ -139,7 +148,7 @@ public:
         // 16..25=material/constants/instancing; 26..29=fixed-function,
         // 30=real UpdateTexture; 31/32=palette; 33..35=raster.
         // A failed original state mutation cannot publish GPU binocular eyes.
-        if(method<1u || method>36u ||
+        if(method<1u || method>40u ||
            !(original_hresult&0x80000000u))return;
         std::lock_guard lock(mu_);
         if(!enabled_ || source_original_failed_)return;
@@ -1280,6 +1289,9 @@ void MarkOriginalTextureUploadAfterEyes()noexcept{
 }
 void MarkOriginalPaletteMutationAfterEyes(std::uint32_t method)noexcept{
     g_eye.MarkOriginalPaletteMutationAfterEyes(method);
+}
+void MarkOriginalBufferMutationAfterEyes(std::uint32_t family)noexcept{
+    g_eye.MarkOriginalBufferMutationAfterEyes(family);
 }
 void MarkFailedOriginalClear(std::uint32_t flags,
                              std::uint32_t original_hresult)noexcept{

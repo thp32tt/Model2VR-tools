@@ -17,6 +17,7 @@
 #include "original_d3d9_stream_frequency.hpp"
 #include "original_d3d9_raster_mode.hpp"
 #include "original_d3d9_unmirrored_geometry.hpp"
+#include "original_d3d9_buffer_mutation.hpp"
 #include "original_d3d9_authenticated_draw.hpp"
 #include "verified_world_bridge.h"
 #include "d3d9_world_source.hpp"
@@ -72,6 +73,8 @@ using SetVSConstantFFn=HRESULT (STDMETHODCALLTYPE*)(
 using SetViewportFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,const D3DVIEWPORT9*);
 using SetScissorFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,const RECT*);
 using SetStreamSourceFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,UINT stream,IDirect3DVertexBuffer9* buffer,UINT offset,UINT stride);
+using BufferLockFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DResource9*,UINT,UINT,void**,DWORD);
+using BufferUnlockFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DResource9*);
 using SetIndicesFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDirect3DIndexBuffer9* buffer);
 using SetVertexDeclarationFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,IDirect3DVertexDeclaration9* declaration);
 using SetFVFFn=HRESULT (STDMETHODCALLTYPE*)(IDirect3DDevice9*,DWORD fvf);
@@ -137,6 +140,15 @@ SetVSConstantFFn g_set_vs_constant_f=nullptr;
 SetViewportFn g_set_viewport=nullptr;
 SetScissorFn g_set_scissor=nullptr;
 SetStreamSourceFn g_set_stream_source=nullptr;
+BufferLockFn g_vb_lock=nullptr,g_ib_lock=nullptr;
+BufferUnlockFn g_vb_unlock=nullptr,g_ib_unlock=nullptr;
+void* g_vb_lock_target=nullptr;
+void* g_ib_lock_target=nullptr;
+void* g_vb_unlock_target=nullptr;
+void* g_ib_unlock_target=nullptr;
+std::mutex g_buffer_hook_mutex;
+std::atomic<bool> g_buffer_hook_unknown{false};
+std::array<std::atomic<std::uint32_t>,2> g_original_buffer_writes{};
 SetIndicesFn g_set_indices=nullptr;
 SetVertexDeclarationFn g_set_vertex_declaration=nullptr;
 SetFVFFn g_set_f_v_f=nullptr;
@@ -253,6 +265,12 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9InstancedStream(
     unsigned int original_caller_rva,unsigned int frequency);
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9ActiveInstancing(
     unsigned long long physical_present,unsigned int active_stream_mask);
+extern "C" void __stdcall Model2VR_ObserveOriginalD3D9BufferMutation(
+    unsigned long long physical_present,unsigned int caller_rva,
+    unsigned long long ordinal,unsigned int family);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9BufferHookCoverage(
+    unsigned long long physical_present,unsigned int caller_rva,
+    unsigned int family);
 extern "C" void __stdcall Model2VR_ObserveOriginalD3D9TextureUpload(
     unsigned long long physical_present,unsigned int caller_rva,
     unsigned long long preceding_draw_ordinal);
@@ -1488,6 +1506,8 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
             original_frame,(std::uint64_t{w[30]}<<32)|w[31],0u);
         m2vr::LogEvent("model2_d3d9_source_raster_mode_lineage",witness,
             original_frame,(std::uint64_t{w[32]}<<32)|w[33],w[34]);
+        m2vr::LogEvent("model2_d3d9_source_buffer_content_lineage",witness,
+            original_frame,(std::uint64_t{w[38]}<<32)|w[39],0u);
     }
     g_original_source_result_samples.fetch_add(1u,std::memory_order_relaxed);
 }
@@ -1501,8 +1521,9 @@ bool ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
     const m2vr::drawprobe::OriginalLineageStamp& lineage,Submit&& submit){
     if(g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
        g_original_stream_frequency_state.UnsupportedMask() ||
-       g_original_raster_mode_state.UnsupportedMask())
-        return false; // unknown Apply or persistent instanced geometry
+       g_original_raster_mode_state.UnsupportedMask() ||
+       g_buffer_hook_unknown.load(std::memory_order_acquire))
+        return false; // unknown original resource bytes are not stereo proof
     m2vr::vrbridge::ArmedOriginalDraw permission{};
     if(!m2vr::vrbridge::TryTakeAuthenticatedOriginalDraw(
           frame,ordinal,family,CallerRva(caller),scene,
@@ -1975,6 +1996,9 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
     }
     return hr;
 }
+// Native original bound buffer Lock/Unlock hooks join one physical Present
+// camera/geometry nonce and reject stale partial OpenXR stereo eye frames.
+#include "original_d3d9_buffer_hooks.inl"
 // Primary EXE-owned original COM bindings execute once; their HRESULTs are
 // preserved, while failures poison only speculative binocular output.
 HRESULT STDMETHODCALLTYPE SetStreamSourceHook(IDirect3DDevice9* d,UINT stream,IDirect3DVertexBuffer9* buffer,UINT offset,UINT stride){
@@ -1984,6 +2008,8 @@ HRESULT STDMETHODCALLTYPE SetStreamSourceHook(IDirect3DDevice9* d,UINT stream,ID
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,10u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::StreamSource,rva,hr);
+    if(rva && SUCCEEDED(hr) && buffer)
+        ObserveOriginalBoundBuffer(buffer,1u,rva);
     return hr;
 }
 HRESULT STDMETHODCALLTYPE SetIndicesHook(IDirect3DDevice9* d,IDirect3DIndexBuffer9* buffer){
@@ -1993,6 +2019,8 @@ HRESULT STDMETHODCALLTYPE SetIndicesHook(IDirect3DDevice9* d,IDirect3DIndexBuffe
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,11u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::IndexBuffer,rva,hr);
+    if(rva && SUCCEEDED(hr) && buffer)
+        ObserveOriginalBoundBuffer(buffer,2u,rva);
     return hr;
 }
 HRESULT STDMETHODCALLTYPE SetVertexDeclarationHook(IDirect3DDevice9* d,IDirect3DVertexDeclaration9* declaration){
@@ -2390,6 +2418,9 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
                            seen,0u,0u,0u);
         return CallOriginalPresentOnce(d,a,b,w,dirty);
     }
+    if(g_buffer_hook_unknown.load(std::memory_order_acquire))
+        Model2VR_RejectOriginalD3D9BufferHookCoverage(
+            g_present_count.load(std::memory_order_acquire)+1u,0u,0u);
     // Check persisted source stream dividers BEFORE advancing Present ID:
     // reject speculative eyes even with no SetStreamSourceFreq this frame.
     if(g_unmirrored_geometry_state.HasProcessedVertices())
@@ -2425,6 +2456,14 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     for(std::size_t i=0;i<unmirrored_counts.size();++i)
         unmirrored_counts[i]=g_original_unmirrored_calls[i].exchange(
             0u,std::memory_order_relaxed);
+    const auto vb_write=g_original_buffer_writes[0].exchange(
+        0u,std::memory_order_relaxed);
+    const auto ib_write=g_original_buffer_writes[1].exchange(
+        0u,std::memory_order_relaxed);
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_buffer_lock_counts",
+            frame,vb_write,ib_write,
+            g_buffer_hook_unknown.load(std::memory_order_acquire)?1u:0u);
     if(frame==1u || frame%120u==0u){
         // Physical Present aggregate: rect patch, tri patch, delete patch,
         // ProcessVertices. This is diagnostic only, never World3D evidence.
@@ -2510,6 +2549,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     for(auto& sample:g_original_region_samples)sample.store(0u,std::memory_order_relaxed);
     for(auto& sample:g_original_unmirrored_samples)sample.store(0u,std::memory_order_relaxed);
     for(auto& calls:g_original_unmirrored_calls)calls.store(0u,std::memory_order_relaxed);
+    for(auto& count:g_original_buffer_writes)count.store(0u,std::memory_order_relaxed);
     for(auto& revision:g_original_lineage_writes)
         revision.store(0u,std::memory_order_release);
     g_original_scene_poisoned.store(false,std::memory_order_release);
@@ -2823,6 +2863,7 @@ Model2VR_CurrentOriginalD3D9LineageNonce(){
        g_original_stream_frequency_state.UnsupportedMask() ||
        g_original_raster_mode_state.UnsupportedMask() ||
        g_unmirrored_geometry_state.HasProcessedVertices() ||
+       g_buffer_hook_unknown.load(std::memory_order_acquire) ||
        !Model2VR_CurrentOriginalD3D9SceneOrdinal())return 0u;
     return m2vr::drawprobe::OriginalLineageNonce(ReadOriginalLineage(
         Model2VR_NextOriginalD3D9PresentFrameId()));

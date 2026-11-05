@@ -1,4 +1,5 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
+#include "../src/probe/original_d3d9_buffer_mutation.hpp"
 #include "../src/probe/original_d3d9_transform_lineage.hpp"
 #include "../src/probe/original_d3d9_stateblock_audit.hpp"
 #include "../src/probe/original_d3d9_stream_frequency.hpp"
@@ -30,10 +31,20 @@ int main(){
     assert(!audit.Claim(76u));
     assert(audit.Claim(78u));
     assert(!audit.Claim(77u));
-    static_assert(kOriginalLineageKinds==38);
+    static_assert(kOriginalLineageKinds==40);
     static_assert(static_cast<unsigned>(OriginalLineageKind::ProcessVertices)==35u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::TextureTransform)==36u);
     static_assert(static_cast<unsigned>(OriginalLineageKind::OtherTransform)==37u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::VertexBufferContent)==38u);
+    static_assert(static_cast<unsigned>(OriginalLineageKind::IndexBufferContent)==39u);
+    static_assert(IsWritableBufferLock(0u));
+    static_assert(IsWritableBufferLock(0x2000u)); // DISCARD
+    static_assert(IsWritableBufferLock(0x1000u)); // NOOVERWRITE
+    static_assert(!IsWritableBufferLock(0x10u)); // READONLY
+    static_assert(OriginalBufferFailureMethodValid(37u));
+    static_assert(OriginalBufferFailureMethodValid(40u));
+    static_assert(!OriginalBufferFailureMethodValid(36u));
+    static_assert(!OriginalBufferFailureMethodValid(41u));
     static_assert(ClassifyOriginalTransform(2u)==OriginalTransformCategory::View);
     static_assert(ClassifyOriginalTransform(3u)==OriginalTransformCategory::Projection);
     static_assert(ClassifyOriginalTransform(256u)==OriginalTransformCategory::World);
@@ -106,6 +117,14 @@ int main(){
     auto unclassified_changed=initial;
     ++unclassified_changed.successful_writes[static_cast<std::size_t>(OriginalLineageKind::OtherTransform)];
     assert(!SameOriginalLineage(initial,unclassified_changed));
+    auto vertex_contents=initial;
+    ++vertex_contents.successful_writes[38];
+    assert(!SameOriginalLineage(initial,vertex_contents));
+    assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(vertex_contents));
+    auto index_contents=initial;
+    ++index_contents.successful_writes[39];
+    assert(!SameOriginalLineage(initial,index_contents));
+    assert(OriginalLineageNonce(initial)!=OriginalLineageNonce(index_contents));
     auto new_frame=initial;
     ++new_frame.physical_present;
     assert(!SameOriginalLineage(initial,new_frame));
