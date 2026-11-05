@@ -68,6 +68,18 @@ jobs:
         run: python -m unittest discover -s tests -p test_model2_gpu_readback_source.py -v
       - name: Verify local-only private seven-session capture bundle
         run: python -m unittest discover -s tests -p test_daytona_private_capture_bundle.py -v
+      - name: Parse user-shipped Windows PowerShell capture workflow
+        shell: pwsh
+        run: |
+          $tokens=$null
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/Collect-Daytona-Original-Evidence.ps1'),
+            [ref]$tokens,[ref]$errors) | Out-Null
+          if($errors -and $errors.Count) {
+            throw ("Private original capture PowerShell parse errors: " +
+              ($errors | ForEach-Object { $_.Message } | Out-String))
+          }
       - name: Audit original texture/vertex/index getter aliases
         run: python -m unittest discover -s tests -p test_model2_getter_resource_source.py -v
       - name: Configure original game x86 hook
