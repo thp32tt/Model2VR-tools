@@ -450,7 +450,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("Model2VR_ObserveOriginalD3D9TextureUpload(",body)
         self.assertIn("vtable[31]",hooks)
         self.assertIn("MH_RemoveHook(vtable[31]);",hooks)
-        self.assertIn("&&update&&texture_upload&&stretch",hooks)
+        self.assertIn("&&update&&texture_upload&&palette_entries&&current_palette&&stretch",hooks)
         self.assertIn("w[29],0u",hooks)
         self.assertIn("g.frame==physical_present && (g.active || g.pending_present)",bridge)
         self.assertIn("OriginalSourceFailure::OriginalTextureUploadAfterStereo",bridge)

@@ -202,6 +202,41 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"invalid original Clear failure"):
                     REPORT.audit_csv(p)
 
+    def test_real_palette_lineage_and_late_rejection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/"original_palette.csv"
+            rows=[
+                ("model2_d3d9_vb_present_frame",501,17,1,0),
+                ("model2_d3d9_vb_source",501,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",501,17,12,pack(0x1234,1)),
+                ("model2_d3d9_source_palette_lineage",501,17,pack(2,3),0),
+                ("model2_d3d9_vb_original_result",501,0,0x1234,pack(17,1)),
+                ("model2_d3d9_original_present_result",17,0,1,0)]
+            self.write_log(p,rows)
+            good=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(good["original_palette_lineage_witnesses"],1)
+            self.assertEqual(good["original_surface_failure_witnesses"],0)
+            reject=("model2_d3d9_original_palette_mutation_rejected",17,0x1234,12,2)
+            self.write_log(p,rows[:-1]+[reject,rows[-1]])
+            blocked=REPORT.audit_csv(p)["sources"][0]
+            self.assertEqual(blocked["original_surface_failure_witnesses"],1)
+            for bad in ((18,pack(2,3),0),(17,pack(1000001,3),0),
+                        (17,pack(2,3),1)):
+                modified=list(rows)
+                modified[3]=("model2_d3d9_source_palette_lineage",501,*bad)
+                self.write_log(p,modified)
+                with self.assertRaisesRegex(ValueError,"palette"):
+                    REPORT.audit_csv(p)
+            self.write_log(p,rows[:4]+[rows[3]]+rows[4:])
+            with self.assertRaisesRegex(ValueError,"palette"):
+                REPORT.audit_csv(p)
+            for invalid in ((0,0x1234,12,1),(17,0,12,1),
+                            (17,0x1234,10000001,1),(17,0x1234,12,3)):
+                self.write_log(p,rows[:-1]+[
+                    ("model2_d3d9_original_palette_mutation_rejected",*invalid),rows[-1]])
+                with self.assertRaisesRegex(ValueError,"palette"):
+                    REPORT.audit_csv(p)
+
     def test_real_texture_upload_lineage_and_late_stale_eye_rejection(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"original_texture_upload.csv"

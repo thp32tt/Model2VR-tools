@@ -45,6 +45,7 @@ NAMES = {
     "model2_d3d9_source_fill",
     "model2_d3d9_source_fixed_function_lineage",
     "model2_d3d9_source_texture_upload_lineage",
+    "model2_d3d9_source_palette_lineage",
 }
 
 def number(raw):
@@ -571,6 +572,20 @@ def audit_csv(path):
                 if len(original_surface_failures) > MAX_WITNESSES:
                     raise ValueError("original stateblock mutation capacity")
                 continue
+            if event == "model2_d3d9_original_palette_mutation_rejected":
+                try:
+                    frame, caller, ordinal, method = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError,TypeError) as exc:
+                    raise ValueError("invalid original palette mutation row") from exc
+                if (not 0 < frame <= 0xffffffff or
+                    not 0 < caller <= 0xffffffff or
+                    ordinal > 10_000_000 or method not in (1,2)):
+                    raise ValueError("invalid original palette mutation rejection")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures)>MAX_WITNESSES:
+                    raise ValueError("original palette mutation capacity")
+                continue
             if event == "model2_d3d9_original_texture_upload_rejected":
                 try:
                     frame, caller, ordinal, reserved = (
@@ -598,7 +613,7 @@ def audit_csv(path):
                              0 < caller <= 10000000)
                 else:
                     valid = (0 < frame <= 0xffffffff and
-                             1 <= method <= 30 and
+                             1 <= method <= 32 and
                              result <= 0xffffffff and
                              (result & 0x80000000) != 0 and
                              0 < caller <= 0xffffffff)
@@ -701,6 +716,14 @@ def audit_csv(path):
                     "texture_upload_lineage" in fields):
                     raise ValueError("invalid original texture upload Draw lineage")
                 fields["texture_upload_lineage"] = values
+            elif event == "model2_d3d9_source_palette_lineage":
+                frame,packed,reserved = values
+                revs = halves(packed)
+                if (not 0 < frame <= 0xffffffff or
+                    any(n > 1_000_000 for n in revs) or reserved != 0 or
+                    "palette_lineage" in fields):
+                    raise ValueError("invalid original palette Draw lineage")
+                fields["palette_lineage"] = values
             elif event == "model2_d3d9_vb_source":
                 if "origin" in fields:
                     raise ValueError(f"duplicate source witness {witness}")
@@ -796,6 +819,7 @@ def audit_csv(path):
         "original_source_fill_status": set(),
         "original_fixed_function_lineage_witnesses": 0,
         "original_texture_upload_lineage_witnesses": 0,
+        "original_palette_lineage_witnesses": 0,
         "original_material_stage_states": set(),
         "original_material_complete_witnesses": 0,
         "projected_material_correlated_candidates": 0,
@@ -875,7 +899,8 @@ def audit_csv(path):
                                    "source_phase",
                                    "source_scene_phase",
                                     "fixed_function_lineage",
-                                    "texture_upload_lineage"}):
+                                    "texture_upload_lineage",
+                                    "palette_lineage"}):
                 ignored["non_vb_material_witnesses"] += 1
             else:
                 ignored["orphan_metadata"] += 1
@@ -909,6 +934,11 @@ def audit_csv(path):
             if texture_upload[0] != present_frame:
                 raise ValueError("texture upload original Draw frame mismatch")
             entry["original_texture_upload_lineage_witnesses"] += 1
+        palette = data.get("palette_lineage")
+        if palette is not None:
+            if palette[0] != present_frame:
+                raise ValueError("palette original Draw frame mismatch")
+            entry["original_palette_lineage_witnesses"] += 1
         # The physical Draw ordinal is independently recorded on the exact
         # witness, not guessed from the 1/1024 sampling cadence.
         phase = data.get("source_phase")
