@@ -1934,7 +1934,8 @@ bool ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
     std::uint64_t frame,std::uint64_t ordinal,unsigned family,
     void* caller,unsigned scene,bool original_scene_open,
     const m2vr::drawprobe::OriginalLineageStamp& lineage,Submit&& submit){
-    if(g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
+    if(!g_original_target_draw_coverage.CanAttemptVerifiedWorldDraw() ||
+       g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
        g_original_stream_frequency_state.UnsupportedMask() ||
        g_original_raster_mode_state.UnsupportedMask() ||
        g_buffer_hook_unknown.load(std::memory_order_acquire) ||
