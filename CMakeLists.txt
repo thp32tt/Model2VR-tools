@@ -148,6 +148,12 @@ target_compile_features(model2_original_d3d9_surface_result_test PRIVATE cxx_std
 add_test(NAME model2_original_d3d9_failed_surface_transfer_revocation
          COMMAND model2_original_d3d9_surface_result_test)
 
+# Real original D3D9 camera / target / region source-state lineage.
+add_executable(model2_original_lineage_test tests/model2_original_lineage_test.cpp)
+target_compile_features(model2_original_lineage_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_d3d9_source_lineage_nonce
+         COMMAND model2_original_lineage_test)
+
 add_executable(model2_original_d3d9_clear_result_test
     tests/original_d3d9_clear_result_gate_test.cpp)
 target_compile_features(model2_original_d3d9_clear_result_test PRIVATE cxx_std_20)
