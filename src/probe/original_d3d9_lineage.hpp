@@ -28,9 +28,10 @@ enum class OriginalLineageKind : std::uint32_t {
     GpuSurfaceContents=48, DeviceDialogBoxMode=49, DeviceGammaRamp=50,
     DeviceCursorProperties=51, DeviceCursorPosition=52, DeviceCursorVisibility=53,
     QueryIssue=54, QueryReady=55,
-    DeviceEvictManagedResources=56
+    DeviceEvictManagedResources=56,
+    ResourceSetPriority=57, ResourcePreLoad=58
 };
-inline constexpr std::size_t kOriginalLineageKinds=57;
+inline constexpr std::size_t kOriginalLineageKinds=59;
 inline constexpr std::uint32_t kMaxLineageWritesPerPresent=1000000u;
 struct OriginalLineageStamp {
     std::uint64_t physical_present=0;

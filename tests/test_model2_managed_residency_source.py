@@ -40,7 +40,7 @@ class ManagedResidencyTests(unittest.TestCase):
         h=self.s["src/probe/original_d3d9_residency_hooks.inl"]
         self.assertIn("TrackFailedOriginalD3D9Surface(hr,75u,rva)",h)
         self.assertIn("DeviceEvictManagedResources=56",self.s["src/probe/original_d3d9_lineage.hpp"])
-        self.assertIn("kOriginalLineageKinds=57",self.s["src/probe/original_d3d9_lineage.hpp"])
+        self.assertIn("kOriginalLineageKinds=59",self.s["src/probe/original_d3d9_lineage.hpp"])
         self.assertIn("method<=75u",self.s["src/probe/original_d3d9_surface_result_gate.hpp"])
         self.assertIn("method>75u",self.s["src/probe/daytona_native_stereo.cpp"])
         for p in ("tools/model2_draw_source_report.py","tools/model2_up_draw_outcomes.py"):

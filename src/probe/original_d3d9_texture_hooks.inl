@@ -49,6 +49,12 @@ HRESULT STDMETHODCALLTYPE OriginalTextureUnlockRectHook(IDirect3DTexture9* textu
 bool ObserveOriginalBoundTexture(IDirect3DBaseTexture9* texture,
                                  std::uint32_t caller_rva){
     if(!texture || !caller_rva)return true;
+    // Track actual resource residency before any 2D/cube/volume mip
+    // can be uploaded through PreLoad without another Texture LockRect.
+    if(!EnsureOriginalResourceResidencyObserved(texture,caller_rva)){
+        OriginalTextureCoverageUnknown(caller_rva);
+        return false;
+    }
     const auto shape=texture->GetType();
     if(shape==D3DRTYPE_CUBETEXTURE || shape==D3DRTYPE_VOLUMETEXTURE)
         return ObserveOriginalBoundShapeTexture(texture,caller_rva,shape);

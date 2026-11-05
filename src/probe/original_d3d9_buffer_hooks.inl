@@ -81,6 +81,12 @@ void OriginalBufferCoverageUnknown(std::uint32_t caller_rva,unsigned family) noe
 bool ObserveOriginalBoundBuffer(IDirect3DResource9* resource,
     unsigned family,std::uint32_t caller_rva) {
     if(!resource || !caller_rva || family<1u || family>2u)return true;
+    // Original VB/IB may PreLoad or SetPriority before SetStreamSource;
+    // follow the actual COM object, not a guessed game Draw phase.
+    if(!EnsureOriginalResourceResidencyObserved(resource,caller_rva)){
+        OriginalBufferCoverageUnknown(caller_rva,family);
+        return false;
+    }
     std::lock_guard lock(g_buffer_hook_mutex);
     if(g_buffer_hook_unknown.load(std::memory_order_acquire))return false;
     auto** vt=*reinterpret_cast<void***>(resource);

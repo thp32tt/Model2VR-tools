@@ -75,6 +75,10 @@ HRESULT STDMETHODCALLTYPE OriginalSurfaceReleaseDCHook(IDirect3DSurface9* surf,
 bool ObserveOriginalTextureSurface(IDirect3DSurface9* surf,
                                    std::uint32_t caller_rva){
     if(!surf || !caller_rva)return false;
+    if(!EnsureOriginalResourceResidencyObserved(surf,caller_rva)){
+        OriginalTextureCoverageUnknown(caller_rva);
+        return false;
+    }
     std::lock_guard lock(g_texture_surface_hook_mutex);
     if(g_texture_hook_unknown.load(std::memory_order_acquire))return false;
     auto** vt=*reinterpret_cast<void***>(surf);

@@ -2354,6 +2354,7 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
 // Native original bound buffer Lock/Unlock hooks join one physical Present
 // camera/geometry nonce and reject stale partial OpenXR stereo eye frames.
 #include "original_d3d9_buffer_hooks.inl"
+#include "original_d3d9_resource_residency_hooks.inl"
 #include "original_d3d9_container_hooks.inl"
 #include "original_d3d9_texture_surface_hooks.inl"
 #include "original_d3d9_texture_mip_hooks.inl"
