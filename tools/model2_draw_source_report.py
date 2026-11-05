@@ -68,6 +68,23 @@ def signed32(value):
     return value - 0x100000000 if value & 0x80000000 else value
 
 
+def _original_caller_mix(value):
+    """Exactly the 32-bit x86 source hash, for integrity checks only."""
+    value=(value^(value>>16))&0xffffffff
+    value=(value*0x7feb352d)&0xffffffff
+    value^=value>>15
+    value=(value*0x846ca68b)&0xffffffff
+    return (value^(value>>16))&0xffffffff
+
+
+def _original_caller_exact_bloom(callers):
+    lo=hi=0
+    for rva in callers:
+        lo|=1<<(_original_caller_mix(rva)&63)
+        hi|=1<<(_original_caller_mix(rva^0x9e3779b9)&63)
+    return lo,hi
+
+
 def original_d3d9_separate_alpha_status(
         rgb_record, alpha_record, fvf=None, stride=None,
         color_mask=None, present_frame=None):
@@ -1704,6 +1721,10 @@ def audit_csv(path):
     if exact_inventory_count and (last_exact_inventory_frame!=last_bloom_frame or
         last_exact_inventory_frame<last_control_present):
         raise ValueError("orphan original exact Draw caller records")
+    if exact_inventory_count and exact_inventory_flags==(0,0) and (
+        _original_caller_exact_bloom(original_exact_callers)!=
+        original_all_family_bloom[:2]):
+        raise ValueError("original exact caller inventory/bloom mismatch")
     if original_all_family_bloom is not None:
         if (set(original_control_presents) != observed_control_bloom_frames or
             last_bloom_frame < last_control_present or

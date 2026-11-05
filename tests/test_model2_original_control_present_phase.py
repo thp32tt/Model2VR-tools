@@ -60,6 +60,13 @@ class OriginalControlPhysicalPresentTest(unittest.TestCase):
             "physical_present_count":8})
         self.assertEqual(result["sources"],[])
 
+    def test_original_exact_caller_and_bloom_mismatch_is_rejected(self):
+        rows=[(FIRST,1,0x004a1234,pair(3,1),0),
+              self.present(1), (BLOOM,1,1,2,0),
+              (INVENTORY,1,1,0,0)]
+        with self.assertRaisesRegex(ValueError,"inventory/bloom mismatch"):
+            self.audit(rows)
+
     def test_missing_gap_replayed_bits_or_unknown_caller_is_rejected(self):
         valid=[self.present(1), (BLOOM,1,1,2,0)]
         for rows in (
