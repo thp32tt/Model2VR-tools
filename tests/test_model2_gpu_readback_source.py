@@ -25,6 +25,11 @@ class OriginalGpuReadbackSourceTest(unittest.TestCase):
             self.assertIn(f"g_original_surface_readbacks[{index}].fetch_add(",body)
             self.assertIn("OriginalLineageKind::SurfaceTexelContent",body)
             self.assertIn("Model2VR_ObserveOriginalD3D9TextureUpload(",body)
+            self.assertEqual(body.count("Model2VR_ObserveOriginalD3D9TextureUpload("),1)
+            self.assertLess(body.index("Model2VR_ObserveOriginalD3D9TextureUpload("),
+                            body.index("const HRESULT hr="+forward+"("))
+            self.assertLess(body.index("const HRESULT hr="+forward+"("),
+                            body.index("RecordOriginalLineageWrite("))
             self.assertIn(f"LogOriginalD3D9MutationPhase({phase}u,rva,hr)",body)
             self.assertIn("ObserveOriginalTextureSurface(destination,rva)",body)
             self.assertIn("OriginalTextureCoverageUnknown(rva)",body)
