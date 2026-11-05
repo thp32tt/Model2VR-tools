@@ -2,6 +2,13 @@
 
 Updated: 2026-11-05 KST
 
+## 2026-11-05 — emulator Win32 menu mouse cursor visible in same OpenXR 2D quad (CI VERIFIED, +0)
+
+- Same pre-game menu XR implementation as `MODEL2VR-PREGAME-EMULATOR-WINDOW-XR-QUAD-20261105-426657A6`: one new actual functional cursor component, **not** another independent World3D/VR display feature or score event. Source `267da2b8776a93b3a67ca760cc564320e0e5705a` includes bounded Windows `GetCursorInfo`, `GetIconInfo` cursor hotspot mapping through the original full-window aspect-preserved letterbox, and `DrawIconEx` composition into the HMD quad before RGBA conversion. Only the genuine foreground emulator HWND cursor is drawn. No Quest controller injection, game input/FFB changes or new API permission.
+- Exact source SHA GitHub Actions **5/5 SUCCESS**: Public tools `41938975863`, ModDev toolkit `41938975805`, original game Windows x86/CTest `41938975828`, separate OpenXR Win64 host `41938975749`, combined Daytona Win32 + Win64 Quest host + ZIP `41938975786`. Matched combined ZIP `DaytonaUSA-NativeStereo-Quest3-Win32-Win64` artifact **`13376025225`** expires 2026-11-19 00:09 UTC. No Quest HMD actual GUI click visual witnessed; **`RUNTIME_VALIDATION=UNTESTED`**.
+- AI2 scoreboard SSOT already credited the independent 2D emulator menu milestone **once** as `MODEL2VR-PREGAME-EMULATOR-WINDOW-XR-QUAD-20261105-426657A6` at 2588 cumulative (per GitHub latest at implementation time). This same-feature cursor extension, CI/package, docs and follow-up are **+0**. Keep other concurrently awarded OutRun/DX11 scores independent. Next missing feature is optional Quest controller ray-based menu click input; the VR 2D screen already accepts the original PC/Virtual Desktop mouse cursor.
+- No OutRun/DX11/web-port sources, game binaries, ROMs or original emulator modifications.
+
 ## 2026-11-05 — pre-game original emulator Windows menu/ROM dialog on actual OpenXR both-eye cinema quad (BUILD VERIFIED)
 
 - **One connected new user-visible source feature:** native Win32 desktop menu capture precursor `7a2950a9570885b22b0f05dca57e1ac99ebd8970`, actual source selection/window-to-OpenXR upload/quad delivery `a51ec55ca7497452d3e33308eee24d3dce15fc01`, and static test correction `426657a602d5ef26172fca61c90e4e9aeb0e2b57` form ONE independently validated feature. Exact successful **code SHA is `426657a602d5ef26172fca61c90e4e9aeb0e2b57`**; the earlier intermediate failed its unchanged original-mono test string and was NOT accepted as build verified. No repeat validation/score.

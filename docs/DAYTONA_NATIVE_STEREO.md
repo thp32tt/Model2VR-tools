@@ -1,5 +1,48 @@
 ## Private original-UP physical Draw/Present evidence helper (2026-11-05)
 
+## Emulator first-launch GUI in Quest 3 (2026-11-05)
+
+**The game does not need to be running before the HMD can display the emulator.**
+With VDXR active, use `Run-Daytona-NativeStereo.cmd` from the matched
+Win32+Win64 package and select the user's own original `EMULATOR.EXE`
+(or drag the original EXE onto that launcher). The original emulator still
+opens in Windows windowed mode, but the OpenXR host also displays its
+**real visible Win32 window (title bar, File/ROM menu, and foreground ROM
+picker)** on a world-fixed 2D screen in the Quest. The desktop menu image
+is sampled at most 10 fps, letterboxed without stretching. It includes the
+**real Windows mouse cursor and hotspot** when the emulator window is in the
+foreground, so selecting a game remains visible while wearing the headset.
+
+- **Interaction:** use the PC mouse/keyboard or Virtual Desktop's existing
+  desktop-mouse feature to select the Daytona ROM; a dedicated OpenXR
+  controller-ray/mouse-click injector is not implemented. No synthetic game
+  keystrokes or mouse clicks are sent, and wheel FFB is unchanged.
+- **Automatic handoff:** once a fresh real x86 D3D9 game source arrives, it
+  supersedes the desktop window; verified stereo uses two projection views,
+  original game mono uses the same world-fixed 2D quad. Menu capture is
+  never mislabeled as stereo. The physical emulator window stays visible
+  on the PC and is never made fullscreen or killed.
+- **Capture limits:** the emulator/window picker must be visible and not
+  minimized. Fullscreen-exclusive windows, administrator-isolated dialogs,
+  and some occluded D3D surfaces may not be available via desktop GDI.
+  In those cases the host logs a missing capture rather than inventing 3D.
+- **Local log:** `Model2VR XR pre-game emulator 2D quad: VISIBLE` confirms
+  the host selected desktop menu pixels (not that HMD optics were tested).
+  `HIDDEN` indicates a real game image took priority or no capturable
+  original emulator HWND was found. OpenXR test ZIP, CI and regression
+  passing do **not** prove on-headset GUI visibility or game camera 6DoF;
+  `RUNTIME_VALIDATION=UNTESTED`.
+
+Latest checked native source: `267da2b8776a93b3a67ca760cc564320e0e5705a`,
+Public tools CI `41938975863`, ModDev toolkit `41938975805`,
+Windows x86 probe `41938975828`, OpenXR x64 host `41938975749`,
+Daytona original game Win32 + Quest OpenXR Win64 bundle `41938975786`,
+all **SUCCESS**. Combined native ZIP artifact `13376025225`
+(`DaytonaUSA-NativeStereo-Quest3-Win32-Win64`,
+expiration 2026-11-19 00:09 UTC). This is a same-feature mouse-visibility
+extension of the pre-game menu milestone; no additional AI score.
+
+
 The matched Win32/Win64 release ZIP now contains an optional offline tool:
 `Analyze-Daytona-UP-Source.cmd` and `Analyze-OriginalUP-Present.py`.
 After launching Daytona locally, the CMD helper locates the latest x86
