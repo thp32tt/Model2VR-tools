@@ -527,16 +527,24 @@ def audit_csv(path):
                 if len(original_draw_failures) > MAX_WITNESSES:
                     raise ValueError("original Draw failures exceeded limit")
                 continue
-            if event == "model2_d3d9_original_surface_failed":
+            if event in ("model2_d3d9_original_surface_failed",
+                         "model2_d3d9_original_lineage_drift"):
                 try:
                     frame, method, result, caller = (
                         number(row[k]) for k in ("a0", "a1", "a2", "a3"))
                 except (ValueError, TypeError) as exc:
                     raise ValueError("invalid original surface failure row") from exc
-                if (not 0 < frame <= 0xffffffff or
-                        not 1 <= method <= 20 or
-                        result > 0xffffffff or (result & 0x80000000) == 0 or
-                        not 0 < caller <= 0xffffffff):
+                if event == "model2_d3d9_original_lineage_drift":
+                    valid = (0 < frame <= 0xffffffff and 1 <= method <= 4 and
+                             0 < result <= 0xffffffff and
+                             0 < caller <= 10000000)
+                else:
+                    valid = (0 < frame <= 0xffffffff and
+                             1 <= method <= 20 and
+                             result <= 0xffffffff and
+                             (result & 0x80000000) != 0 and
+                             0 < caller <= 0xffffffff)
+                if not valid:
                     raise ValueError("invalid original surface failure")
                 original_surface_failures.add(frame)
                 if len(original_surface_failures) > MAX_WITNESSES:

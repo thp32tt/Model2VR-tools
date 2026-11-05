@@ -865,6 +865,30 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Surface(
     }
     if(failed_present)g.source_epoch.Revoke(failed_present);
 }
+// Strict original physical-Draw post-call check: a state write concurrent
+// with CPU eye raster or the genuine D3D9 Draw may change its source.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
+    unsigned long long physical_frame,unsigned long long ordinal,
+    unsigned int family,unsigned int original_caller_rva){
+    using namespace m2vr::vrbridge;
+    if(!physical_frame || !ordinal || ordinal>10000000u ||
+       family<1u || family>4u || !original_caller_rva ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_frame)return;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_frame &&
+           (g.active || g.pending_present)){
+            const auto old_reason=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalLineageMismatch;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=old_reason;
+        }
+        g.source_epoch.Revoke(physical_frame);
+    }
+    m2vr::LogEvent("model2_d3d9_original_lineage_drift",
+        physical_frame,family,original_caller_rva,ordinal);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 extern "C" void __stdcall Model2VR_DiscardPendingWorldOnReset(){
     std::scoped_lock lock(g.mutex);
     // A physical original device Reset invalidates all stored CPU-world

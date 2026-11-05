@@ -207,6 +207,19 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("w[13]",hooks)
         self.assertIn("OriginalLineageNonce(lineage),permission",hooks)
 
+    def test_original_material_post_draw_snapshot_rejects_intervening_writes(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        api=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
+        self.assertEqual(hooks.count("const bool forwarded=ForwardAuthenticatedOriginalDraw("),4)
+        self.assertEqual(hooks.count("if(forwarded && !m2vr::drawprobe::SameOriginalLineage("),4)
+        self.assertEqual(hooks.count("Model2VR_RejectOriginalD3D9SourceLineageDrift("),4)
+        self.assertIn("g.source_epoch.Revoke(physical_frame);",bridge)
+        self.assertIn("OriginalSourceFailure::OriginalLineageMismatch",bridge)
+        self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",bridge)
+        self.assertIn("model2_d3d9_original_lineage_drift",bridge)
+        self.assertIn("Model2VR_RejectOriginalD3D9SourceLineageDrift(",api)
+
     def test_original_material_state_lineage_and_failed_call_atomicity(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")

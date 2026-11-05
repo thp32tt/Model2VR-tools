@@ -1382,7 +1382,7 @@ void RecordOriginalSourceResult(std::uint64_t witness,HRESULT hr,
 // original primary-device EXE Draw to the already existing CPU-world raster.
 // The actual emulator COM Draw and steering/FFB are never replayed here.
 template<class Submit>
-void ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
+bool ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
     std::uint64_t frame,std::uint64_t ordinal,unsigned family,
     void* caller,unsigned scene,bool original_scene_open,
     const m2vr::drawprobe::OriginalLineageStamp& lineage,Submit&& submit){
@@ -1391,12 +1391,13 @@ void ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
           frame,ordinal,family,CallerRva(caller),scene,
           original_scene_open && g_original_scene_hooks_ready.load(
               std::memory_order_acquire),
-          m2vr::drawprobe::OriginalLineageNonce(lineage),permission))return;
+          m2vr::drawprobe::OriginalLineageNonce(lineage),permission))return false;
     const BOOL rendered=submit(permission.cpu_projector,
                                permission.alpha_cutoff);
     // Append exports already reject their own invalid materials. Explicitly
     // revoke if the adapter failed before it could own any eye pixels.
     if(!rendered)Model2VR_RejectVerifiedD3D9SourceDraw(family);
+    return rendered!=FALSE;
 }
 HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT start,UINT count){
     // Consume the original CPU projector witnesses once this physical
@@ -1418,7 +1419,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const std::uint64_t witness=Sample(d,1,p,count,caller)?
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
     const auto original_lineage=ReadOriginalLineage(source_frame);
-    ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+    const bool forwarded=ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         1u,caller,
         source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
@@ -1428,6 +1429,12 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
                 d,static_cast<unsigned>(p),start,count,alpha);
     });
     const HRESULT hr=g_draw(d,p,start,count);
+    // Source state must still be identical AFTER the authentic COM Draw;
+    // a concurrent EXE state writer must not publish stale CPU/XR eyes.
+    if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
+           original_lineage,ReadOriginalLineage(source_frame)))
+        Model2VR_RejectOriginalD3D9SourceLineageDrift(
+            source_frame,source_ordinal,1u,CallerRva(caller));
     RecordOriginalSourceResult(witness,hr,caller,1u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -1457,7 +1464,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const std::uint64_t witness=Sample(d,2,p,count,caller)?
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
     const auto original_lineage=ReadOriginalLineage(source_frame);
-    ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+    const bool forwarded=ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         2u,caller,
         source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
@@ -1467,6 +1474,12 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
                 d,static_cast<unsigned>(p),base,min,num,start,count,alpha);
     });
     const HRESULT hr=g_draw_indexed(d,p,base,min,num,start,count);
+    // Source state must still be identical AFTER the authentic COM Draw;
+    // a concurrent EXE state writer must not publish stale CPU/XR eyes.
+    if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
+           original_lineage,ReadOriginalLineage(source_frame)))
+        Model2VR_RejectOriginalD3D9SourceLineageDrift(
+            source_frame,source_ordinal,2u,CallerRva(caller));
     RecordOriginalSourceResult(witness,hr,caller,2u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -1496,7 +1509,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const std::uint64_t witness=Sample(d,3,p,count,caller)?
         ObserveUP(d,3,p,count,caller,verts,stride):0u;
     const auto original_lineage=ReadOriginalLineage(source_frame);
-    ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+    const bool forwarded=ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         3u,caller,
         source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
@@ -1506,6 +1519,12 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
                 d,static_cast<unsigned>(p),count,verts,stride,alpha);
     });
     const HRESULT hr=g_draw_up(d,p,count,verts,stride);
+    // Source state must still be identical AFTER the authentic COM Draw;
+    // a concurrent EXE state writer must not publish stale CPU/XR eyes.
+    if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
+           original_lineage,ReadOriginalLineage(source_frame)))
+        Model2VR_RejectOriginalD3D9SourceLineageDrift(
+            source_frame,source_ordinal,3u,CallerRva(caller));
     RecordOriginalSourceResult(witness,hr,caller,3u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);
@@ -1535,7 +1554,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const std::uint64_t witness=Sample(d,4,p,count,caller)?
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num):0u;
     const auto original_lineage=ReadOriginalLineage(source_frame);
-    ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+    const bool forwarded=ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         4u,caller,
         source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
@@ -1547,6 +1566,12 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
                 static_cast<unsigned>(fmt),verts,stride,alpha);
     });
     const HRESULT hr=g_draw_indexed_up(d,p,min,num,count,idx,fmt,verts,stride);
+    // Source state must still be identical AFTER the authentic COM Draw;
+    // a concurrent EXE state writer must not publish stale CPU/XR eyes.
+    if(forwarded && !m2vr::drawprobe::SameOriginalLineage(
+           original_lineage,ReadOriginalLineage(source_frame)))
+        Model2VR_RejectOriginalD3D9SourceLineageDrift(
+            source_frame,source_ordinal,4u,CallerRva(caller));
     RecordOriginalSourceResult(witness,hr,caller,4u,
                                source_frame,source_ordinal,
                                source_scene,source_scene_open,original_lineage);

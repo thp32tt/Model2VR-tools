@@ -265,12 +265,20 @@ def audit_csv(path):
                     raise ValueError("original Draw failure capacity exceeded")
                 failed_original_draw_frames.add(a0)
                 continue
-            if event == "model2_d3d9_original_surface_failed":
-                if (not 0 < a0 <= 0xffffffff or
-                    a0 <= observed_present_frame or
-                    not 1 <= a1 <= 20 or a2 > 0xffffffff or
-                    (a2 & 0x80000000) == 0 or
-                    not 0 < a3 <= 0xffffffff):
+            if event in ("model2_d3d9_original_surface_failed",
+                          "model2_d3d9_original_lineage_drift"):
+                if event == "model2_d3d9_original_lineage_drift":
+                    valid = (0 < a0 <= 0xffffffff and
+                             a0 > observed_present_frame and
+                             1 <= a1 <= 4 and 0 < a2 <= 0xffffffff and
+                             0 < a3 <= 10000000)
+                else:
+                    valid = (0 < a0 <= 0xffffffff and
+                             a0 > observed_present_frame and
+                             1 <= a1 <= 20 and a2 <= 0xffffffff and
+                             (a2 & 0x80000000) != 0 and
+                             0 < a3 <= 0xffffffff)
+                if not valid:
                     raise ValueError("invalid original surface failure")
                 if len(failed_original_surface_frames) >= MAX_PENDING and (
                         a0 not in failed_original_surface_frames):

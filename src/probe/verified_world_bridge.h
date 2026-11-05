@@ -391,6 +391,12 @@ __declspec(dllexport) void __stdcall Model2VR_AbortVerifiedWorldFrame();
 // original game Draw, source Present, and GPU/mono fallback are untouched.
 __declspec(dllexport) void __stdcall Model2VR_RejectVerifiedD3D9SourceDraw(
     unsigned int original_source_kind);
+// Genuine original Draw completed but an intervening material/camera write
+// changed the previously authenticated source nonce. Revoke both eye paths
+// and the physical Present epoch, never the original COM Draw or mono.
+__declspec(dllexport) void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(
+    unsigned long long physical_frame,unsigned long long ordinal,
+    unsigned int family,unsigned int original_caller_rva);
 }
 
 // Optional explicit recenter on a proven scene/device restart.
