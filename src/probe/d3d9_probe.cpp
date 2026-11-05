@@ -50,6 +50,8 @@ using GetSwapChainFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DDevice9*,UINT,IDirect3DSwapChain9**);
 using OriginalSwapChainPresentFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DSwapChain9*,const RECT*,const RECT*,HWND,const RGNDATA*,DWORD);
+using OriginalSwapChainGetFrontBufferDataFn=HRESULT (STDMETHODCALLTYPE*)(
+    IDirect3DSwapChain9*,IDirect3DSurface9*);
 using OriginalSwapChainGetBackBufferFn=HRESULT (STDMETHODCALLTYPE*)(
     IDirect3DSwapChain9*,UINT,D3DBACKBUFFER_TYPE,IDirect3DSurface9**);
 using PresentFn=HRESULT (STDMETHODCALLTYPE*)(
@@ -200,13 +202,16 @@ CreateAdditionalSwapChainFn g_create_additional_swap_chain=nullptr;
 GetSwapChainFn g_get_swap_chain=nullptr;
 OriginalSwapChainPresentFn g_original_swap_chain_present=nullptr;
 OriginalSwapChainGetBackBufferFn g_original_swap_chain_get_back_buffer=nullptr;
+OriginalSwapChainGetFrontBufferDataFn g_original_swap_chain_get_front_buffer_data=nullptr;
 void* g_original_swap_chain_present_target=nullptr;
 void* g_original_swap_chain_get_back_target=nullptr;
+void* g_original_swap_chain_get_front_target=nullptr;
 std::mutex g_original_swap_chain_hook_mutex;
 // An additional physical SwapChain Present cannot be assigned the device
 // Present's Draw/camera/source epoch. Remain mono-safe for this process.
 std::atomic<bool> g_original_swap_chain_source_unproven{false};
 std::array<std::atomic<std::uint32_t>,4> g_original_swap_chain_calls{};
+std::atomic<std::uint32_t> g_original_swap_chain_readbacks{0u};
 ResetFn g_reset=nullptr;
 SceneFn g_begin_scene=nullptr;
 SceneFn g_end_scene=nullptr;
@@ -2781,6 +2786,12 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
             (std::uint64_t{original_swap_chain_calls[0]}<<32u)|original_swap_chain_calls[1],
             (std::uint64_t{original_swap_chain_calls[2]}<<32u)|original_swap_chain_calls[3],
             g_original_swap_chain_source_unproven.load(std::memory_order_acquire)?1u:0u);
+    const auto swap_readback=g_original_swap_chain_readbacks.exchange(
+        0u,std::memory_order_relaxed);
+    if(frame==1u || frame%120u==0u)
+        m2vr::LogEvent("model2_d3d9_original_swap_chain_readback_counts",
+            frame,swap_readback,
+            g_original_swap_chain_source_unproven.load(std::memory_order_acquire)?1u:0u,0u);
     if(frame==1u || frame%120u==0u)
         m2vr::LogEvent("model2_d3d9_original_resource_getter_counts",
             frame,original_resource_getters[0],
@@ -2903,6 +2914,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         count.store(0u,std::memory_order_relaxed);
     for(auto& count:g_original_swap_chain_calls)
         count.store(0u,std::memory_order_relaxed);
+    g_original_swap_chain_readbacks.store(0u,std::memory_order_relaxed);
     // SwapChain source uncertainty persists across Reset: no remapping to
     // the primary physical Present is proven by a device Reset alone.
     g_original_texture_lock_writes.store(0u,std::memory_order_relaxed);

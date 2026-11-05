@@ -376,8 +376,8 @@ def audit_csv(path):
                 continue
             if event == "model2_d3d9_original_swap_chain_source_rejected":
                 if (not 0 < a0 <= 0xffffffff or a0 <= observed_present_frame or
-                    a1 > 0xffffffff or a2 not in (1,2) or a3 != 0 or
-                    (a2 == 1 and a1 == 0)):
+                    a1 > 0xffffffff or a2 not in (1,2,3) or a3 != 0 or
+                    (a2 in (1,3) and a1 == 0)):
                     raise ValueError("invalid original SwapChain rejection")
                 if len(failed_original_surface_frames)>=MAX_PENDING and (
                     a0 not in failed_original_surface_frames):

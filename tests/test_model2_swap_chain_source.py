@@ -17,6 +17,7 @@ class OriginalSwapChainSourceTest(unittest.TestCase):
             ("OriginalCreateAdditionalSwapChainHook","g_create_additional_swap_chain(",13),
             ("OriginalGetSwapChainHook","g_get_swap_chain(",14),
             ("OriginalSwapChainPresentHook","g_original_swap_chain_present(",3),
+            ("OriginalSwapChainGetFrontBufferDataHook","g_original_swap_chain_get_front_buffer_data(",4),
             ("OriginalSwapChainGetBackBufferHook","g_original_swap_chain_get_back_buffer(",5),
         ):
             part=self.part(name)
@@ -34,6 +35,12 @@ class OriginalSwapChainSourceTest(unittest.TestCase):
         self.assertIn("OriginalSwapChainOwner::Secondary",self.hooks)
         self.assertIn("OriginalSwapChainOwner::Unknown",self.hooks)
         self.assertIn("ObserveOriginalTextureSurface(*out,rva)",self.hooks)
+        self.assertIn("ObserveOriginalTextureSurface(destination,rva)",self.hooks)
+        readback=self.part("OriginalSwapChainGetFrontBufferDataHook")
+        self.assertEqual(readback.count("g_original_swap_chain_get_front_buffer_data("),1)
+        self.assertLess(readback.index("Model2VR_RejectOriginalD3D9SwapChainPresent("),
+                        readback.index("const HRESULT hr=g_original_swap_chain_get_front_buffer_data("))
+        self.assertIn("OriginalLineageKind::SurfaceTexelContent",readback)
         present=self.part("OriginalSwapChainPresentHook")
         self.assertLess(present.index("Model2VR_RejectOriginalD3D9SwapChainPresent("),
                         present.index("return g_original_swap_chain_present("))
@@ -51,7 +58,10 @@ class OriginalSwapChainSourceTest(unittest.TestCase):
                           else "failed_original_surface_frames.add(a0)",auditor)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",self.bridge)
     def test_transactional_hooks_reset_and_safe_payload(self):
-        self.assertIn("if(!(present&&back))",self.hooks)
+        self.assertIn("if(!(present&&front&&back))",self.hooks)
+        self.assertIn("g_original_swap_chain_get_front_target==table[4]",self.hooks)
+        self.assertIn("g_original_swap_chain_readbacks.exchange(",self.probe)
+        self.assertIn("model2_d3d9_original_swap_chain_readback_counts",self.probe)
         self.assertIn("g_original_swap_chain_present_target==table[3]",self.hooks)
         self.assertIn("&&create_swap_chain&&get_swap_chain&&dp",self.probe)
         self.assertIn("g_original_swap_chain_source_unproven.load(",self.probe)

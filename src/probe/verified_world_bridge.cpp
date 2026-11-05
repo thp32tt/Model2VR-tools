@@ -999,12 +999,13 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9BufferHookCoverage(
 // physical Present. There is no proven original Draw/eye ownership mapping,
 // so discard both speculative paths before the original COM call and keep
 // the original game's mono presentation intact. Reason 1=observed call,
-// 2=persistent unknown alternate swap-chain / unobserved source coverage.
+// 2=persistent unknown alternate swap-chain / unobserved source coverage,
+// 3=original SwapChain::GetFrontBufferData GPU-to-CPU Surface write.
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9SwapChainPresent(
     unsigned long long physical_present,unsigned int original_caller_rva,
     unsigned int reason){
     using namespace m2vr::vrbridge;
-    if(!physical_present || reason<1u || reason>2u ||
+    if(!physical_present || reason<1u || reason>3u ||
        Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
     bool first=false;
     {

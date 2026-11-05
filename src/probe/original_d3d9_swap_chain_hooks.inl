@@ -49,6 +49,35 @@ HRESULT STDMETHODCALLTYPE OriginalSwapChainPresentHook(
     }
     return g_original_swap_chain_present(chain,src,dst,window,dirty,flags);
 }
+// SwapChain9::GetFrontBufferData(4) writes genuine GPU content to a
+// CPU-visible Surface without going through Device9::GetFrontBufferData(33).
+HRESULT STDMETHODCALLTYPE OriginalSwapChainGetFrontBufferDataHook(
+    IDirect3DSwapChain9* chain,IDirect3DSurface9* destination){
+    if(!g_original_swap_chain_get_front_buffer_data)return D3DERR_INVALIDCALL;
+    void* const origin=_ReturnAddress();
+    const auto rva=CallerRva(origin);
+    const auto owner=rva?OriginalSwapChainDeviceOwner(chain):
+                         OriginalSwapChainOwner::Secondary;
+    if(rva && owner==OriginalSwapChainOwner::Primary){
+        g_original_swap_chain_source_unproven.store(
+            true,std::memory_order_release);
+        // Pre-revoke CPU-world and GPU eyes before the actual GPU copy.
+        Model2VR_RejectOriginalD3D9SwapChainPresent(
+            g_present_count.load(std::memory_order_acquire)+1u,rva,3u);
+    }else if(rva && owner==OriginalSwapChainOwner::Unknown){
+        OriginalSwapChainCoverageUnknown(rva);
+    }
+    const HRESULT hr=g_original_swap_chain_get_front_buffer_data(
+        chain,destination);
+    if(rva && owner==OriginalSwapChainOwner::Primary && SUCCEEDED(hr)){
+        g_original_swap_chain_readbacks.fetch_add(1u,std::memory_order_relaxed);
+        RecordOriginalLineageWrite(
+            m2vr::drawprobe::OriginalLineageKind::SurfaceTexelContent,rva,hr);
+        if(!destination || !ObserveOriginalTextureSurface(destination,rva))
+            OriginalSwapChainCoverageUnknown(rva);
+    }
+    return hr;
+}
 HRESULT STDMETHODCALLTYPE OriginalSwapChainGetBackBufferHook(
     IDirect3DSwapChain9* chain,UINT index,D3DBACKBUFFER_TYPE type,
     IDirect3DSurface9** out){
@@ -71,28 +100,37 @@ HRESULT STDMETHODCALLTYPE OriginalSwapChainGetBackBufferHook(
 bool EnsureOriginalSwapChainObserved(IDirect3DSwapChain9* chain) {
     if(!chain)return false;
     auto** table=*reinterpret_cast<void***>(chain);
-    if(!table || !table[3] || !table[5])return false;
+    if(!table || !table[3] || !table[4] || !table[5])return false;
     std::lock_guard lock(g_original_swap_chain_hook_mutex);
     if(g_original_swap_chain_present_target ||
+       g_original_swap_chain_get_front_target ||
        g_original_swap_chain_get_back_target)
         return g_original_swap_chain_present_target==table[3] &&
+               g_original_swap_chain_get_front_target==table[4] &&
                g_original_swap_chain_get_back_target==table[5] &&
                g_original_swap_chain_present &&
+               g_original_swap_chain_get_front_buffer_data &&
                g_original_swap_chain_get_back_buffer;
     const bool present=Hook(table[3],
         reinterpret_cast<void*>(&OriginalSwapChainPresentHook),
         g_original_swap_chain_present);
+    const bool front=Hook(table[4],
+        reinterpret_cast<void*>(&OriginalSwapChainGetFrontBufferDataHook),
+        g_original_swap_chain_get_front_buffer_data);
     const bool back=Hook(table[5],
         reinterpret_cast<void*>(&OriginalSwapChainGetBackBufferHook),
         g_original_swap_chain_get_back_buffer);
-    if(!(present&&back)){
+    if(!(present&&front&&back)){
         if(present){MH_DisableHook(table[3]);MH_RemoveHook(table[3]);}
+        if(front){MH_DisableHook(table[4]);MH_RemoveHook(table[4]);}
         if(back){MH_DisableHook(table[5]);MH_RemoveHook(table[5]);}
         g_original_swap_chain_present=nullptr;
+        g_original_swap_chain_get_front_buffer_data=nullptr;
         g_original_swap_chain_get_back_buffer=nullptr;
         return false;
     }
     g_original_swap_chain_present_target=table[3];
+    g_original_swap_chain_get_front_target=table[4];
     g_original_swap_chain_get_back_target=table[5];
     return true;
 }

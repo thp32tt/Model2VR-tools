@@ -630,8 +630,8 @@ def audit_csv(path):
                 except (ValueError, TypeError) as exc:
                     raise ValueError("invalid original SwapChain source row") from exc
                 if (not 0 < frame <= 0xffffffff or caller > 0xffffffff or
-                    reason not in (1,2) or reserved != 0 or
-                    (reason == 1 and caller == 0)):
+                    reason not in (1,2,3) or reserved != 0 or
+                    (reason in (1,3) and caller == 0)):
                     raise ValueError("invalid original SwapChain rejection")
                 original_surface_failures.add(frame)
                 if len(original_surface_failures)>MAX_WITNESSES:
