@@ -52,6 +52,11 @@ class OriginalQuerySourceTest(unittest.TestCase):
         self.assertIn("OriginalSourceFailure::OriginalQuerySourceUnproven",self.cpu)
         self.assertIn("g.source_epoch.Revoke(physical_present)",self.cpu)
         self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",self.cpu)
+        native=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        self.assertIn("const std::uint32_t prepared=coherent",native)
+        self.assertIn("source_original_failed_",native.split(
+            "void FinishPresent(",1)[1].split("void ReportVerifiedCpuWorld",1)[0])
+        self.assertIn("? m2vr::producerhealth::NoVerifiedScene",native)
         self.assertIn("model2_d3d9_original_query_source_rejected",self.cpu)
         self.assertIn("g_original_query_rejected_present.compare_exchange_weak(",self.hooks)
         before=self.body(self.hooks,"OriginalQuerySourceBoundary")

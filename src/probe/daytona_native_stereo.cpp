@@ -677,7 +677,14 @@ public:
         // A missing/mismatched pre-Present stage cannot publish a previous
         // frame just because the game completed a later Present.
         const bool coherent=pending_present_frame_==frame;
-        const std::uint32_t prepared=coherent?pending_present_reason_:4u;
+        // A genuine Query/Surface/Palette source may become invalid AFTER
+        // PreparePresent staged the eye images but BEFORE original Present
+        // completed. Never publish those stale GameStereo surfaces.
+        const std::uint32_t prepared=coherent
+            ? (source_original_failed_
+                ? m2vr::producerhealth::NoVerifiedScene
+                : pending_present_reason_)
+            : 4u;
         const bool original_ok=SUCCEEDED(original_result);
         const bool pose_live=coherent && prepared==0u && original_ok
             ? LatchedStereoPoseStillLive() : true;
