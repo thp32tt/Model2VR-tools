@@ -212,6 +212,20 @@ class SourceAuditTests(unittest.TestCase):
                     "model2_d3d9_original_lineage_drift",17,*bad),original_present])
                 with self.assertRaisesRegex(ValueError,"invalid original surface failure"):
                     REPORT.audit_csv(p)
+            for active_mask in (1,2,3,0x80000000):
+                active=("model2_d3d9_original_instancing_active",17,
+                        active_mask,0,0)
+                self.write_log(p,prefix+[active,original_present])
+                sample=REPORT.audit_csv(p)["sources"][0]
+                self.assertEqual(sample["original_surface_failure_witnesses"],1)
+                self.assertEqual(sample[
+                    "distinct_scene_attested_physically_presented_material_present_frame_count"],0)
+            for bad in ((17,0,0,0),(0,1,0,0),
+                        (17,1,1,0),(17,1,0,1)):
+                self.write_log(p,prefix+[(
+                    "model2_d3d9_original_instancing_active",*bad),original_present])
+                with self.assertRaisesRegex(ValueError,"invalid original active instancing source"):
+                    REPORT.audit_csv(p)
             for frequency in (0,2,0x40000001,0x80000001):
                 inst=("model2_d3d9_original_instancing_unsupported",17,
                       0,0x1234,frequency)

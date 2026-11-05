@@ -302,6 +302,17 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"invalid original surface failure"):
                 self.report(self.projected()+[
                     event("model2_d3d9_original_lineage_drift",7,*bad)])
+        for active_mask in (1,2,3,0x80000000):
+            frame=self.projected()+[
+                event("model2_d3d9_original_instancing_active",7,active_mask,0,0),
+                event("model2_d3d9_original_present_result",7,0,1,0)]
+            result=self.report(frame)
+            self.assertEqual(result["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",result["counts"])
+        for bad in ((7,0,0,0),(0,1,0,0),(7,1,1,0),(7,1,0,1)):
+            with self.assertRaisesRegex(ValueError,"invalid original active instancing source"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_instancing_active",*bad)])
         for frequency in (0,2,0x40000001,0x80000001):
             blocked=self.projected()+[
                 event("model2_d3d9_original_instancing_unsupported",7,0,0x4321,frequency),

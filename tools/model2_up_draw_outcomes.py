@@ -250,6 +250,7 @@ def audit_csv(path):
                 "model2_d3d9_original_lineage_drift",
                 "model2_d3d9_original_stateblock_mutation",
                 "model2_d3d9_original_instancing_unsupported",
+                "model2_d3d9_original_instancing_active",
             }):
                 continue
             try:
@@ -267,6 +268,16 @@ def audit_csv(path):
                         a0 not in failed_original_draw_frames):
                     raise ValueError("original Draw failure capacity exceeded")
                 failed_original_draw_frames.add(a0)
+                continue
+            if event == "model2_d3d9_original_instancing_active":
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or
+                    not 0 < a1 <= 0xffffffff or a2!=0 or a3!=0):
+                    raise ValueError("invalid original active instancing source")
+                if len(failed_original_surface_frames)>=MAX_PENDING and (
+                    a0 not in failed_original_surface_frames):
+                    raise ValueError("active instancing capacity exceeded")
+                failed_original_surface_frames.add(a0)
                 continue
             if event == "model2_d3d9_original_instancing_unsupported":
                 if (not 0 < a0 <= 0xffffffff or

@@ -527,6 +527,19 @@ def audit_csv(path):
                 if len(original_draw_failures) > MAX_WITNESSES:
                     raise ValueError("original Draw failures exceeded limit")
                 continue
+            if event == "model2_d3d9_original_instancing_active":
+                try:
+                    frame, mask, reserved1, reserved2 = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original active instancing row") from exc
+                if (not 0 < frame <= 0xffffffff or
+                    not 0 < mask <= 0xffffffff or reserved1!=0 or reserved2!=0):
+                    raise ValueError("invalid original active instancing source")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures)>MAX_WITNESSES:
+                    raise ValueError("active original instancing capacity")
+                continue
             if event == "model2_d3d9_original_instancing_unsupported":
                 try:
                     frame, stream, caller, frequency = (
