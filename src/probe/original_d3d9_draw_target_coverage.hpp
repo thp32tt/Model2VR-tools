@@ -48,8 +48,7 @@ public:
     };
     bool NeedsResolution() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        return state_.target==OriginalPhysicalRtClass::Unknown ||
-            state_.depth==OriginalPhysicalDepthClass::Unknown;
+        return !resolved_;
     }
     // A read-only initial D3D9 COM snapshot is not EXE source ownership.
     // Do not overwrite an authentic SetRT/SetDepth completed concurrently.
@@ -60,23 +59,22 @@ public:
     void ResolveIfUnchanged(std::uint64_t prior,
                             OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        if(prior!=revision_)return;
-        if(state_.target==OriginalPhysicalRtClass::Unknown)
-            state_.target=actual.target;
-        if(state_.depth==OriginalPhysicalDepthClass::Unknown)
-            state_.depth=actual.depth;
+        if(prior!=revision_ || resolved_)return;
+        state_=actual;
+        resolved_=true;
     }
     void RenderTargetBind(bool exe_caller,bool succeeded,bool slot_zero,
                           OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         if(!exe_caller) {
             flags_|=kForeignBind;
-            if(slot_zero){state_={};owned_target_=false;owned_depth_=false;++revision_;}
+            if(slot_zero){state_={};owned_target_=false;owned_depth_=false;
+                resolved_=false;++revision_;}
             return;
         }
         if(!succeeded){flags_|=kFailedBind;return;}
         if(!slot_zero)return; // no claim that MRT slot 1 is the RT0 owner
-        state_=actual;
+        state_=actual;resolved_=true;
         owned_target_=actual.target!=OriginalPhysicalRtClass::Unknown;
         // Changing RT0 does not prove original depth-surface ownership.
         ++revision_;
@@ -86,10 +84,10 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if(!exe_caller) {
             flags_|=kForeignBind;state_.depth=OriginalPhysicalDepthClass::Unknown;
-            owned_depth_=false;++revision_;return;
+            owned_depth_=false;resolved_=false;++revision_;return;
         }
         if(!succeeded){flags_|=kFailedBind;return;}
-        state_=actual;
+        state_=actual;resolved_=true;
         owned_depth_=actual.depth!=OriginalPhysicalDepthClass::Unknown;
         ++revision_;
     }
@@ -149,7 +147,7 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         ++epoch_;
         ++revision_;
-        state_={};owned_target_=owned_depth_=false;
+        state_={};owned_target_=owned_depth_=false;resolved_=false;
         backbuffer_=auxiliary_=unknown_=failed_=bad_depth_=flags_=0u;
         sealed_=false;
         // Keep active_: late original COM operations must still be consumed
@@ -165,6 +163,6 @@ private:
     std::uint64_t epoch_=1u,revision_=1u;
     std::uint32_t active_=0u,backbuffer_=0u,auxiliary_=0u,
         unknown_=0u,failed_=0u,bad_depth_=0u,flags_=0u;
-    bool owned_target_=false, owned_depth_=false, sealed_=false;
+    bool owned_target_=false, owned_depth_=false, sealed_=false, resolved_=false;
 };
 } // namespace m2vr::drawprobe
