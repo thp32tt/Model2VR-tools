@@ -885,7 +885,7 @@ def audit_csv(path):
                 if (not 0<frame<=0xffffffff or
                     frame!=last_scene_coverage_frame+1 or
                     any(n>10000000 for n in (begins,ends,inside,untrusted,failed)) or
-                    flags>127 or inside+untrusted+failed>10000000 or
+                    flags>511 or inside+untrusted+failed>10000000 or
                     (last_capture_frame and last_capture_frame!=frame)):
                     raise ValueError("invalid original physical Scene/Draw coverage")
                 if frame==1 or frame%8==0:
