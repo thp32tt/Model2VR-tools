@@ -9,7 +9,7 @@ int main(){
         assert(FailedOriginalD3D9SurfaceSourceKind(method)==method+21u);
     }
     static_assert(!IsFailedOriginalD3D9Surface(0u,0x80070057u));
-    static_assert(!IsFailedOriginalD3D9Surface(36u,0x80070057u));
+    static_assert(!IsFailedOriginalD3D9Surface(37u,0x80070057u));
     static_assert(static_cast<unsigned>(OriginalSourceFailure::OriginalSurfaceFailed)==19u);
     OriginalSourceFrameEpoch epoch{};
     assert(epoch.CanBegin(77u,76u));
