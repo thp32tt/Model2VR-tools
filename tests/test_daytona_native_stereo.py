@@ -423,7 +423,11 @@ class NativeStereoTest(unittest.TestCase):
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         api=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
         self.assertEqual(hooks.count("const bool forwarded=ForwardAuthenticatedOriginalDraw("),4)
-        self.assertEqual(hooks.count("if(forwarded && !m2vr::drawprobe::SameOriginalLineage("),4)
+        # The same snapshot is now shared by post-COM source witness and
+        # physical Present safety rejection instead of recomputing it.
+        self.assertEqual(hooks.count("const bool same_lineage=m2vr::drawprobe::SameOriginalLineage("),4)
+        self.assertEqual(hooks.count("if(forwarded && !same_lineage)"),4)
+        self.assertEqual(hooks.count("RecordOriginalSourceCompletion(witness,source_frame,source_ordinal,"),4)
         self.assertEqual(hooks.count("Model2VR_RejectOriginalD3D9SourceLineageDrift("),4)
         self.assertIn("g.source_epoch.Revoke(physical_frame);",bridge)
         self.assertIn("g.source_epoch.Revoke(frame);",bridge)

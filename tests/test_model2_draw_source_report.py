@@ -1787,13 +1787,22 @@ class SourceAuditTests(unittest.TestCase):
             complete=REPORT.audit_csv(path)["sources"][0]
             self.assertEqual(complete["original_draw_completion_attested_witnesses"],1)
             self.assertEqual(complete["distinct_post_com_retained_present_frame_count"],1)
-            for mask in (0,1,3,7,11,13,14):
+            for mask in (1,3,7,11,13):
                 with self.subTest(mask=mask):
                     self.write_log(path,base+[(
                         "model2_d3d9_source_draw_completion",501,17,12,mask)])
                     partial=REPORT.audit_csv(path)["sources"][0]
                     self.assertEqual(partial["original_draw_completion_untrusted_witnesses"],1)
                     self.assertEqual(partial["distinct_post_com_retained_present_frame_count"],0)
+            # A failed post-COM mask cannot contradict an independently
+            # successful original HRESULT; this is inconsistent, not merely
+            # a partially untrusted source.
+            for mask in (0,14):
+                self.write_log(path,base+[(
+                    "model2_d3d9_source_draw_completion",501,17,12,mask)])
+                contradiction=REPORT.audit_csv(path)["sources"][0]
+                self.assertEqual(
+                    contradiction["original_draw_completion_inconsistent_witnesses"],1)
             for frame,ordinal in ((18,12),(17,13)):
                 with self.subTest(frame=frame,ordinal=ordinal):
                     self.write_log(path,base+[(
@@ -1807,7 +1816,7 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(path,base+[
                 ("model2_d3d9_source_draw_completion",501,17,12,15),
                 ("model2_d3d9_source_draw_completion",501,17,12,15)])
-            with self.assertRaisesRegex(ValueError,"conflicting original Draw witness"):
+            with self.assertRaisesRegex(ValueError,"duplicate original physical Draw completion"):
                 REPORT.audit_csv(path)
 
 if __name__ == "__main__":

@@ -1082,6 +1082,8 @@ def audit_csv(path):
                 if (not 0 < frame <= 0xffffffff or
                         not 0 < ordinal <= 10000000 or mask > 15):
                     raise ValueError("invalid original physical Draw completion")
+                if "source_draw_completion" in fields:
+                    raise ValueError("duplicate original physical Draw completion")
                 store_original_draw_witness_field(
                     fields, "source_draw_completion", values, witness)
             elif event == "model2_d3d9_source_draw_phase":
