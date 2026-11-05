@@ -197,12 +197,32 @@ bool AdmitVerifiedFixedD3D9SourcePass(
 namespace m2vr::vrbridge {
 bool TryTakeAuthenticatedOriginalDraw(std::uint64_t frame,
     std::uint64_t ordinal,std::uint32_t family,std::uint32_t caller,std::uint32_t scene,
-    bool genuine_scene_open,ArmedOriginalDraw& result) noexcept {
+    bool genuine_scene_open,std::uint64_t observed_lineage_nonce,
+    ArmedOriginalDraw& result) noexcept {
     if(!g.original_draw_armed.load(std::memory_order_acquire))return false;
-    std::scoped_lock lock(g.mutex);
+    std::unique_lock lock(g.mutex);
     if(!Owner() || g.frame!=frame)return false;
+    bool lineage_mismatch=false;
     if(!g.original_draw_one_shot.Take(frame,ordinal,family,caller,scene,
-                                     genuine_scene_open,result))return false;
+                                     genuine_scene_open,result,
+                                     observed_lineage_nonce,&lineage_mismatch)){
+        if(lineage_mismatch){
+            g.original_draw_armed.store(false,std::memory_order_release);
+            const auto prior=g_current_original_source_failure;
+            g_current_original_source_failure=OriginalSourceFailure::OriginalLineageMismatch;
+            // Revoke the entire physical Present epoch, even if earlier
+            // authentic CPU-world triangles had already reached both eyes.
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=prior;
+            m2vr::LogEvent("model2_vr_original_draw_lineage_rejected",
+                frame,ordinal,(std::uint64_t{family}<<32)|caller,scene);
+            lock.unlock();
+            // A camera/target mutation after the adapter arm also
+            // invalidates speculative GPU-eye replay, but NOT original mono.
+            m2vr::daytona::MarkOriginalLineageMismatch();
+        }
+        return false;
+    }
     g.original_draw_armed.store(false,std::memory_order_release);
     // Source proof is one-use. The actual original COM Draw HRESULT still
     // decides the physical Present. Never emit game geometry or matrices.
@@ -222,6 +242,29 @@ extern "C" BOOL __stdcall Model2VR_ArmVerifiedOriginalD3D9Draw(
     rule.frame=frame;rule.ordinal=ordinal;
     rule.family=family;rule.caller=caller;rule.scene=scene;
     rule.cpu_projector=cpu_projector;rule.alpha_cutoff=alpha_cutoff;
+    if(!g.original_draw_one_shot.Arm(rule))return FALSE;
+    g.original_draw_armed.store(true,std::memory_order_release);
+    return TRUE;
+}
+// An independently authenticated source adapter can pin genuine
+// original EXE-owned camera/target/viewport revisions for ONE real Draw.
+// The opaque nonce provides state continuity, NOT World3D proof.
+extern "C" BOOL __stdcall Model2VR_ArmVerifiedOriginalD3D9DrawWithLineage(
+    unsigned long long frame,unsigned long long ordinal,
+    unsigned int family,unsigned int caller,unsigned int scene,
+    unsigned int cpu_projector,unsigned int alpha_cutoff,
+    unsigned long long expected_lineage_nonce){
+    if(!expected_lineage_nonce ||
+       Model2VR_CurrentOriginalD3D9LineageNonce()!=expected_lineage_nonce)
+        return FALSE;
+    const auto source_frame=Model2VR_NextOriginalD3D9PresentFrameId();
+    std::scoped_lock lock(g.mutex);
+    if(!Owner() || g.frame!=frame || frame!=source_frame)return FALSE;
+    m2vr::vrbridge::ArmedOriginalDraw rule{};
+    rule.frame=frame;rule.ordinal=ordinal;
+    rule.family=family;rule.caller=caller;rule.scene=scene;
+    rule.cpu_projector=cpu_projector;rule.alpha_cutoff=alpha_cutoff;
+    rule.expected_lineage_nonce=expected_lineage_nonce;
     if(!g.original_draw_one_shot.Arm(rule))return FALSE;
     g.original_draw_armed.store(true,std::memory_order_release);
     return TRUE;
