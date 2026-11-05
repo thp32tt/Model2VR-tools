@@ -65,6 +65,26 @@ class SourceAuditTests(unittest.TestCase):
             poisoned=REPORT.audit_csv(path)["original_physical_scene_draw_coverage"]
             self.assertFalse(poisoned["all_original_scene_draws_trusted"])
             self.assertEqual(poisoned["original_successful_untrusted_scene_draw_count"],1)
+            # Every real Present includes unsampled coverage. A COM call
+            # spanning Present poisons that physical frame and the next;
+            # neither flag is unknown metadata nor trusted world evidence.
+            for flags in (128, 256, 384):
+                crossing=list(events)
+                crossing[target]=(
+                    "model2_d3d9_original_scene_draw_coverage",
+                    frames-1,pack(1,1),pack(1,0),pack(0,flags))
+                self.write_log(path,crossing)
+                coverage=REPORT.audit_csv(path)["original_physical_scene_draw_coverage"]
+                self.assertFalse(coverage["all_original_scene_draws_trusted"])
+                self.assertEqual(coverage["flagged_present_count"],1)
+                self.assertEqual(coverage["trusted_scene_drawn_present_count"],frames-1)
+            # A future/undefined bit cannot be silently treated as valid.
+            crossing[target]=(
+                "model2_d3d9_original_scene_draw_coverage",
+                frames-1,pack(1,1),pack(1,0),pack(0,512))
+            self.write_log(path,crossing)
+            with self.assertRaisesRegex(ValueError,"invalid original physical Scene/Draw coverage"):
+                REPORT.audit_csv(path)
 
     def test_original_unsampled_scene_draw_matches_original_physical_counts(self):
         with tempfile.TemporaryDirectory() as temp:
