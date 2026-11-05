@@ -247,6 +247,7 @@ def audit_csv(path):
                 "model2_d3d9_original_draw_failed",
                 "model2_d3d9_original_clear_failed",
                 "model2_d3d9_original_surface_failed",
+                "model2_d3d9_original_lineage_drift",
             }):
                 continue
             try:
