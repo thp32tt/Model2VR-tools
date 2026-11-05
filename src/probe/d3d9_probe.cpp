@@ -15,6 +15,7 @@
 #include "original_d3d9_lineage.hpp"
 #include "original_d3d9_control_present.hpp"
 #include "original_d3d9_caller_bloom.hpp"
+#include "original_d3d9_caller_inventory.hpp"
 #include "original_d3d9_validation_policy.hpp"
 #include "original_d3d9_resource_owner.hpp"
 #include "original_d3d9_transform_lineage.hpp"
@@ -476,11 +477,16 @@ std::atomic<std::uint64_t> g_original_frame_draw_ordinal{0u};
 std::atomic<std::uint64_t> g_original_draw_caller_bloom_lo{0u};
 std::atomic<std::uint64_t> g_original_draw_caller_bloom_hi{0u};
 std::atomic<bool> g_original_draw_caller_unknown{false};
+m2vr::drawprobe::OriginalDrawCallerInventory g_original_caller_inventory{};
 // CallerRva is defined below, after the original-game module/image gate.
 std::uint32_t CallerRva(void* ret);
-void ObserveOriginalAllFamilyDrawCaller(void* origin) noexcept {
+void ObserveOriginalAllFamilyDrawCaller(void* origin,
+    std::uint64_t physical_frame,std::uint64_t original_ordinal,
+    std::uint32_t family) noexcept {
     const auto rva=CallerRva(origin);
-    if(!rva){
+    if(!rva || !physical_frame || physical_frame>0xffffffffu ||
+       !original_ordinal || original_ordinal>10000000u ||
+       family<1u || family>4u){
         g_original_draw_caller_unknown.store(true,std::memory_order_release);
         return;
     }
@@ -489,6 +495,13 @@ void ObserveOriginalAllFamilyDrawCaller(void* origin) noexcept {
         bits.lane0,std::memory_order_relaxed);
     g_original_draw_caller_bloom_hi.fetch_or(
         bits.lane1,std::memory_order_relaxed);
+    const auto state=g_original_caller_inventory.Observe(rva);
+    if(state==m2vr::drawprobe::OriginalCallerInsert::NewCaller)
+        m2vr::LogEvent("model2_d3d9_original_draw_caller_first",
+            physical_frame,rva,
+            (std::uint64_t{family}<<32u)|original_ordinal,0u);
+    else if(state==m2vr::drawprobe::OriginalCallerInsert::Incomplete)
+        g_original_draw_caller_unknown.store(true,std::memory_order_release);
 }
 // Optional successful original BeginScene/EndScene provenance, never a
 // substitute for independently authenticated race-world/HUD ownership.
@@ -1880,7 +1893,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
-    ObserveOriginalAllFamilyDrawCaller(caller);
+    ObserveOriginalAllFamilyDrawCaller(caller,source_frame,source_ordinal,1u);
     const bool startup_first_draw=TraceFirstOriginalDrawEntry(1u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
@@ -1930,7 +1943,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
-    ObserveOriginalAllFamilyDrawCaller(caller);
+    ObserveOriginalAllFamilyDrawCaller(caller,source_frame,source_ordinal,2u);
     const bool startup_first_draw=TraceFirstOriginalDrawEntry(2u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
@@ -1980,7 +1993,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
-    ObserveOriginalAllFamilyDrawCaller(caller);
+    ObserveOriginalAllFamilyDrawCaller(caller,source_frame,source_ordinal,3u);
     const bool startup_first_draw=TraceFirstOriginalDrawEntry(3u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
@@ -2030,7 +2043,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
-    ObserveOriginalAllFamilyDrawCaller(caller);
+    ObserveOriginalAllFamilyDrawCaller(caller,source_frame,source_ordinal,4u);
     const bool startup_first_draw=TraceFirstOriginalDrawEntry(4u,source_frame);
     const auto source_scene=g_original_scene_ordinal.load(std::memory_order_relaxed);
     const bool source_scene_open=g_original_scene_open.load(
@@ -3097,6 +3110,13 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     m2vr::LogEvent("model2_d3d9_original_all_family_caller_bloom",
         frame,g_original_draw_caller_bloom_lo.load(std::memory_order_acquire),
         g_original_draw_caller_bloom_hi.load(std::memory_order_acquire),
+        g_original_draw_caller_unknown.load(std::memory_order_acquire)?1u:0u);
+    // Exact bounded first-seen caller IDs disambiguate saturated bloom bits.
+    // Keep the original game Draw/Present/VR eyes unchanged. The private
+    // offline auditor must prove every event is accounted for each Present.
+    m2vr::LogEvent("model2_d3d9_original_caller_inventory",
+        frame,g_original_caller_inventory.Count(),
+        g_original_caller_inventory.Incomplete()?1u:0u,
         g_original_draw_caller_unknown.load(std::memory_order_acquire)?1u:0u);
     m2vr::drawprobe::NextProjectDrawEpoch();
     // Both source paths staged their images BEFORE the single physical

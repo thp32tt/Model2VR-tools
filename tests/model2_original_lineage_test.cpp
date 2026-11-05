@@ -1,6 +1,7 @@
 #include "../src/probe/original_d3d9_lineage.hpp"
 #include "../src/probe/original_d3d9_control_present.hpp"
 #include "../src/probe/original_d3d9_caller_bloom.hpp"
+#include "../src/probe/original_d3d9_caller_inventory.hpp"
 #include "../src/probe/original_d3d9_validation_policy.hpp"
 #include "../src/probe/original_d3d9_resource_owner.hpp"
 #include "../src/probe/original_d3d9_buffer_mutation.hpp"
@@ -67,6 +68,17 @@ int main(){
     static_assert(OriginalDrawCallerCouldBeInBloom(
         {caller_bits.lane0|second_bits.lane0,
          caller_bits.lane1|second_bits.lane1},0x004bb400u));
+    // Fully exact physical original Draw caller inventory, not a 128-bit
+    // bloom oracle; long sessions retain independent caller identities.
+    OriginalDrawCallerInventory exact{};
+    assert(exact.Count()==0u && !exact.Incomplete());
+    assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);
+    assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::AlreadyObserved);
+    assert(exact.Observe(0x004a1235u)==OriginalCallerInsert::NewCaller);
+    assert(exact.Count()==2u && !exact.Incomplete());
+    assert(exact.Observe(0u)==OriginalCallerInsert::Incomplete);
+    assert(exact.Incomplete());
+    assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::Incomplete);
     static_assert(kOriginalLineageKinds==61);
     static_assert(OriginalControlPresentSample(1u,0u,0u,0u,0u));
     static_assert(OriginalControlPresentSample(8u,100u,5u,21u,8u));
