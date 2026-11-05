@@ -132,7 +132,7 @@ int main(){
     assert(scene.FinishPresent(false,false,true).TotalDraws()==0u);
     // Genuine operations now carry a physical-Present epoch through the
     // ACTUAL original COM call. All four Draw families share this contract.
-    scene.ReopenAfterPhysicalPresentAdvance();
+    scene.ReopenAfterPhysicalPresentReturn();
     const auto scene_begin_ticket=scene.EnterOperation();
     scene.Begin(scene_begin_ticket,true,true);
     for(unsigned family=0u;family<4u;++family){
@@ -145,7 +145,7 @@ int main(){
     assert(ticketed_good.CompleteSourceScene() &&
            ticketed_good.successful_in_scene==4u &&
            ticketed_good.flags==0u);
-    scene.ReopenAfterPhysicalPresentAdvance();
+    scene.ReopenAfterPhysicalPresentReturn();
     // An original Draw that has entered COM but has not returned at
     // physical Present invalidates THIS frame even when earlier Draws pass.
     scene.Begin(true,true);
@@ -156,7 +156,7 @@ int main(){
     assert((in_flight_frame.flags&
             OriginalPhysicalSceneDrawCoverage::kInFlightAtPresent)!=0u);
     assert(in_flight_frame.RejectUnprovenStereoSource());
-    scene.ReopenAfterPhysicalPresentAdvance();
+    scene.ReopenAfterPhysicalPresentReturn();
     // Its late successful COM completion must NOT become a trusted Draw of
     // the next physical Present, including if source Scene appears valid.
     scene.Draw(in_flight,true,true,true);
@@ -172,7 +172,7 @@ int main(){
     const auto cut_frame=scene.FinishPresent(false,false,true);
     assert((cut_frame.flags&
             OriginalPhysicalSceneDrawCoverage::kCrossPresent)!=0u);
-    scene.ReopenAfterPhysicalPresentAdvance();
+    scene.ReopenAfterPhysicalPresentReturn();
     // Reset also invalidates an old original COM return without losing it.
     const auto reset_ticket=scene.EnterOperation();
     scene.Reset();
@@ -181,7 +181,7 @@ int main(){
     assert((reset_frame.flags&
             OriginalPhysicalSceneDrawCoverage::kCrossPresent)!=0u);
     assert(reset_frame.successful_in_scene==0u);
-    scene.ReopenAfterPhysicalPresentAdvance();
+    scene.ReopenAfterPhysicalPresentReturn();
     const auto recovered_ticket=scene.EnterOperation();
     scene.Draw(recovered_ticket,true,true,true);
     const auto recovered_frame=scene.FinishPresent(false,false,true);
