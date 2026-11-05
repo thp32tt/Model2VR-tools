@@ -573,6 +573,24 @@ def audit_csv(path):
                 if len(original_surface_failures) > MAX_WITNESSES:
                     raise ValueError("original stateblock mutation capacity")
                 continue
+            if event == "model2_d3d9_original_unmirrored_geometry":
+                try:
+                    frame, caller, packed, result = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                    method, ordinal = halves(packed)
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("invalid original unmirrored geometry row") from exc
+                if (not 0 < frame <= 0xffffffff or
+                    method not in (1,2,3,4,5) or
+                    ordinal > 10_000_000 or result > 0xffffffff or
+                    (method == 5 and (caller != 0 or ordinal != 0 or result != 0)) or
+                    (method != 5 and not 0 < caller <= 0xffffffff) or
+                    (method in (1,2) and ordinal == 0)):
+                    raise ValueError("invalid original unmirrored geometry rejection")
+                original_surface_failures.add(frame)
+                if len(original_surface_failures) > MAX_WITNESSES:
+                    raise ValueError("original unmirrored geometry capacity")
+                continue
             if event == "model2_d3d9_original_raster_mode_unsupported":
                 try:
                     frame, mask, caller, reserved = (

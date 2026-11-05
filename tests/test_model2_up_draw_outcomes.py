@@ -47,6 +47,30 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0, caller, pack(frame, 3)),
         ]
 
+    def test_unmirrored_patch_and_processed_vb_fail_closed_same_up_present(self):
+        good=self.report(self.projected()+[
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(good["counts"]["same_witness_cpu_camera_present_candidate"],1)
+        for method in range(1,6):
+            shape=(7,0,pack(5,0),0) if method==5 else (
+                7,0x4321,pack(method,12 if method in (1,2) else 0),0)
+            bad=self.report(self.projected()+[
+                event("model2_d3d9_original_unmirrored_geometry",*shape),
+                event("model2_d3d9_original_present_result",7,0,1,0)])
+            self.assertEqual(bad["counts"]["original_surface_failed"],1)
+            self.assertNotIn("same_witness_cpu_camera_present_candidate",bad["counts"])
+        for invalid in ((0,0,pack(5,0),0),
+                        (7,0x4321,pack(5,0),0),
+                        (7,0,pack(5,1),0),
+                        (7,0,pack(5,0),1),
+                        (7,0x4321,pack(1,0),0),
+                        (7,0x4321,pack(6,12),0),
+                        (7,0x4321,pack(1,10000001),0)):
+            with self.assertRaisesRegex(ValueError,"unmirrored geometry"):
+                self.report(self.projected()+[
+                    event("model2_d3d9_original_unmirrored_geometry",*invalid),
+                    event("model2_d3d9_original_present_result",7,0,1,0)])
+
     def test_raster_mode_up_source_and_late_unsafe_original(self):
         lineage=event("model2_d3d9_source_raster_mode_lineage",
                       21,7,pack(1,2),3)

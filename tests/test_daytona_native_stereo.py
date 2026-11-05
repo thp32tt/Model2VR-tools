@@ -179,12 +179,39 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("model2_d3d9_source_shader_lineage",probe)
         self.assertIn("g_original_lineage_writes",probe)
 
+
+    def test_original_unmirrored_patch_process_vertices_are_fail_closed(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        lineage=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
+        state=(ROOT/"src/probe/original_d3d9_unmirrored_geometry.hpp").read_text("utf-8")
+        for slot,kind in ((91,"ProcessVertices"),(115,"DrawRectPatch"),
+                          (116,"DrawTriPatch"),(117,"DeletePatch")):
+            self.assertIn(f"vtable[{slot}]",hooks)
+            self.assertIn(f"{kind}Hook",hooks)
+        for method in ("ProcessVertices","DrawRectPatch","DrawTriPatch","DeletePatch"):
+            body=hooks.split(f"HRESULT STDMETHODCALLTYPE {method}Hook(")[1].split(
+                "\nHRESULT STDMETHODCALLTYPE ",1)[0]
+            self.assertIn(f"g_{'process_vertices' if method=='ProcessVertices' else ('draw_rect_patch' if method=='DrawRectPatch' else ('draw_tri_patch' if method=='DrawTriPatch' else 'delete_patch'))}(",body)
+            self.assertIn("RejectUnmirrored(",body)
+        self.assertIn("OriginalLineageKind::ProcessVertices",hooks)
+        self.assertIn("ProcessVertices=35",lineage)
+        self.assertIn("kOriginalLineageKinds=36",lineage)
+        self.assertIn("g_original_unmirrored_samples",hooks)
+        self.assertIn("g.source_epoch.Revoke(physical_present);",bridge)
+        self.assertIn("OriginalSourceFailure::OriginalUnmirroredGeometry",bridge)
+        self.assertIn("m2vr::daytona::MarkOriginalLineageMismatch();",bridge)
+        self.assertIn("HasProcessedVertices()",hooks)
+        self.assertIn("AfterSuccessfulDeviceReset()",state)
+        self.assertIn("if(SUCCEEDED(result)){",hooks)
+        self.assertIn("Model2VR_RejectOriginalD3D9UnmirroredGeometry(",hooks)
+
     def test_original_geometry_shader_binding_lineage_rejects_same_present_drift(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         source=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
         gate=(ROOT/"src/probe/original_d3d9_surface_result_gate.hpp").read_text("utf-8")
-        self.assertIn("kOriginalLineageKinds=35",source)
+        self.assertIn("kOriginalLineageKinds=36",source)
         self.assertIn("method<=35u",gate)
         self.assertIn("method>35u",gpu)
         for method,slot,kind,fail in (
@@ -276,7 +303,7 @@ class NativeStereoTest(unittest.TestCase):
         bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
         policy=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
         api=(ROOT/"src/probe/verified_world_bridge.h").read_text("utf-8")
-        self.assertIn("kOriginalLineageKinds=35",policy)
+        self.assertIn("kOriginalLineageKinds=36",policy)
         self.assertIn("StateBlockApply=19",policy)
         self.assertIn("vtable[59]",hooks)
         self.assertIn("vtable[60]",hooks)
@@ -438,7 +465,7 @@ class NativeStereoTest(unittest.TestCase):
         epoch=(ROOT/"src/probe/verified_world_source_epoch.hpp").read_text("utf-8")
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
         state=(ROOT/"src/probe/original_d3d9_lineage.hpp").read_text("utf-8")
-        assert "kOriginalLineageKinds=35" in state
+        assert "kOriginalLineageKinds=36" in state
         self.assertIn("TextureUpload=29",state)
         body=hooks.split("HRESULT STDMETHODCALLTYPE UpdateTextureHook(")[1].split(
             "HRESULT STDMETHODCALLTYPE ",1)[0]

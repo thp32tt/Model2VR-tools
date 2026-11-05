@@ -189,6 +189,9 @@ std::array<std::atomic<unsigned>,2> g_original_target_bind_samples{};
 std::array<std::atomic<unsigned>,4> g_original_transform_samples{};
 std::atomic<unsigned> g_original_vs_constant_samples{0u};
 std::array<std::atomic<unsigned>,2> g_original_region_samples{};
+// Four authentic unmirrored COM families, max one private witness per family
+// in each sampled original physical Present (not per game mesh/vertex).
+std::array<std::atomic<unsigned>,4> g_original_unmirrored_samples{};
 // Monotonic state-write revisions per PHYSICAL original source Present.
 // Secondary devices and non-EXE renderer/mirror callbacks never advance.
 std::array<std::atomic<std::uint32_t>,m2vr::drawprobe::kOriginalLineageKinds>
@@ -2141,6 +2144,13 @@ void RejectUnmirrored(unsigned method,void* caller,std::uint64_t ordinal,HRESULT
     const auto frame=g_present_count.load(std::memory_order_acquire)+1u;
     Model2VR_RejectOriginalD3D9UnmirroredGeometry(
         frame,method,rva,ordinal,static_cast<std::uint32_t>(hr));
+    if(method>=1u && method<=4u &&
+       (frame==1u || frame%8u==0u) &&
+       g_original_unmirrored_samples[method-1u].fetch_add(
+           1u,std::memory_order_relaxed)==0u)
+        m2vr::LogEvent("model2_d3d9_original_unmirrored_geometry",
+            frame,rva,(std::uint64_t{method}<<32u)|ordinal,
+            static_cast<std::uint32_t>(hr));
 }
 HRESULT STDMETHODCALLTYPE ProcessVerticesHook(IDirect3DDevice9* d,UINT src,UINT dst,
     UINT count,IDirect3DVertexBuffer9* vb,IDirect3DVertexDeclaration9* decl,DWORD flags){
@@ -2401,6 +2411,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         counter.store(0u,std::memory_order_relaxed);
     g_original_vs_constant_samples.store(0u,std::memory_order_relaxed);
     for(auto& sample:g_original_region_samples)sample.store(0u,std::memory_order_relaxed);
+    for(auto& sample:g_original_unmirrored_samples)sample.store(0u,std::memory_order_relaxed);
     // Original Present runs exactly once. Preserve its HRESULT and publish
     // the staged GameStereo pair only if the real source Present succeeded.
     const HRESULT original_result=g_present(d,a,b,w,dirty);
@@ -2447,6 +2458,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
         counter.store(0u,std::memory_order_relaxed);
     g_original_vs_constant_samples.store(0u,std::memory_order_relaxed);
     for(auto& sample:g_original_region_samples)sample.store(0u,std::memory_order_relaxed);
+    for(auto& sample:g_original_unmirrored_samples)sample.store(0u,std::memory_order_relaxed);
     for(auto& revision:g_original_lineage_writes)
         revision.store(0u,std::memory_order_release);
     g_original_scene_poisoned.store(false,std::memory_order_release);

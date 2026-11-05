@@ -22,6 +22,38 @@ class SourceAuditTests(unittest.TestCase):
             for i, event in enumerate(events, 1):
                 writer.writerow([i, 1000 + i, 4, *event])
 
+    def test_unmirrored_patch_and_process_vertices_revoke_original_vb(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"unmirrored.csv"
+            rows=[
+                ("model2_d3d9_vb_present_frame",201,7,1,0),
+                ("model2_d3d9_vb_source",201,0x1234,pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_source_draw_phase",201,7,12,pack(0x1234,1)),
+                ("model2_d3d9_vb_original_result",201,0,0x1234,pack(7,1)),
+                ("model2_d3d9_original_present_result",7,0,1,0)]
+            self.write_log(path,rows)
+            good=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(good["original_surface_failure_witnesses"],0)
+            for method in range(1,6):
+                shape=(7,0,pack(5,0),0) if method==5 else (
+                    7,0x1234,pack(method,12 if method in (1,2) else 0),0)
+                self.write_log(path,rows[:-1]+[
+                    ("model2_d3d9_original_unmirrored_geometry",*shape),rows[-1]])
+                rejected=REPORT.audit_csv(path)["sources"][0]
+                self.assertEqual(rejected["original_surface_failure_witnesses"],1)
+            for invalid in ((0,0,pack(5,0),0),
+                            (7,0x1234,pack(5,0),0),
+                            (7,0,pack(5,1),0),
+                            (7,0,pack(5,0),1),
+                            (7,0x1234,pack(1,12),0),
+                            (7,0x1234,pack(6,12),0),
+                            (7,0x1234,pack(1,0),0),
+                            (7,0x1234,pack(2,10000001),0)):
+                self.write_log(path,rows[:-1]+[
+                    ("model2_d3d9_original_unmirrored_geometry",*invalid),rows[-1]])
+                with self.assertRaisesRegex(ValueError,"unmirrored geometry"):
+                    REPORT.audit_csv(path)
+
     def test_raster_mode_lineage_and_unsupported_real_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/"raster.csv"

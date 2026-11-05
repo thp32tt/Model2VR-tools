@@ -983,11 +983,13 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9UnmirroredGeometry(
         }
         g.source_epoch.Revoke(physical_present);
     }
-    // One sampled source-shape witness for private logs; never patch handle
-    // or original vertex buffer content. Caller/ordinal remain opaque.
-    if(physical_present==1u || physical_present%8u==0u)
+    // The four original COM hooks each emit only ONE event per sampled
+    // physical Present; the persistent marker (method 5) is emitted once
+    // at Present even when no ProcessVertices call occurs in that frame.
+    // Caller/ordinal remain opaque; never log patch handles or VB bytes.
+    if(method==5u && (physical_present==1u || physical_present%8u==0u))
         m2vr::LogEvent("model2_d3d9_original_unmirrored_geometry",
-            physical_present,caller_rva,(std::uint64_t{method}<<32u)|ordinal,original_hresult);
+            physical_present,0u,std::uint64_t{method}<<32u,0u);
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
 // Strict original physical-Draw post-call check: a state write concurrent

@@ -274,6 +274,7 @@ def audit_csv(path):
                 "model2_d3d9_original_texture_upload_rejected",
                 "model2_d3d9_original_palette_mutation_rejected",
                 "model2_d3d9_original_raster_mode_unsupported",
+                "model2_d3d9_original_unmirrored_geometry",
             }):
                 continue
             try:
@@ -325,6 +326,20 @@ def audit_csv(path):
                         a0 not in failed_original_surface_frames):
                     raise ValueError("original stateblock mutation capacity exceeded")
                 failed_original_surface_frames.add(a0)
+                continue
+            if event == "model2_d3d9_original_unmirrored_geometry":
+                method, ordinal = halves(a2)
+                if (not 0 < a0 <= 0xffffffff or
+                    a0 <= observed_present_frame or
+                    method not in (1,2,3,4,5) or
+                    ordinal > 10_000_000 or a3 > 0xffffffff or
+                    (method == 5 and (a1 != 0 or ordinal != 0 or a3 != 0)) or
+                    (method != 5 and not 0 < a1 <= 0xffffffff) or
+                    (method in (1,2) and ordinal == 0)):
+                    raise ValueError("invalid original unmirrored geometry rejection")
+                failed_original_surface_frames.add(a0)
+                if len(failed_original_surface_frames) > MAX_PENDING:
+                    raise ValueError("unmirrored geometry rejection capacity")
                 continue
             if event == "model2_d3d9_original_raster_mode_unsupported":
                 if (not 0 < a0 <= 0xffffffff or
