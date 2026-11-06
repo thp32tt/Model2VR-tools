@@ -15,12 +15,12 @@ import sys
 
 try:
     from .verify_daytona_private_receipt import (
-        LABELS, ReceiptError, _load_json, _matches_hash, verify_archive)
+        LABELS, ReceiptError, _digest, _load_json, _matches_hash, verify_archive)
     from .model2_world_pass_evidence import (CONTROL_TYPES, compare_sessions,
                                             preflight_original_session)
 except ImportError:  # distributed standalone scripts live side by side
     from verify_daytona_private_receipt import (
-        LABELS, ReceiptError, _load_json, _matches_hash, verify_archive)
+        LABELS, ReceiptError, _digest, _load_json, _matches_hash, verify_archive)
     from model2_world_pass_evidence import (CONTROL_TYPES, compare_sessions,
                                           preflight_original_session)
 
@@ -35,6 +35,17 @@ def verify_candidate_replay(folder: Path, *, replay_csv: bool = False) -> None:
     a World3D pass, calibrated game units, or actual HMD playback.
     """
     verify_archive(folder)
+    # Strict CSV replay may take minutes on genuine original captures. Pin
+    # active receipt/report bytes before the long scan, so a concurrently
+    # replaced and consistently rehashed receipt cannot pass after we have
+    # already audited its old reports. Raw CSVs are rechecked at the end.
+    strict_receipt_snapshot = None
+    if replay_csv:
+        names = ("PRIVATE_MANIFEST.json", "PRIVATE_WORLD_CANDIDATES.json")
+        names += tuple(f"PRIVATE_SOURCE_{label}.json" for label in LABELS)
+        strict_receipt_snapshot = {
+            name: _digest(folder / name) for name in names
+        }
     manifest = _load_json(folder / "PRIVATE_MANIFEST.json")
     hashes = manifest["source_sha256"]
     # A copied CSV renamed to another phase cannot be an independent x86
@@ -79,6 +90,14 @@ def verify_candidate_replay(folder: Path, *, replay_csv: bool = False) -> None:
                     raise ReceiptError(
                         f"archived private report not derived from raw original "
                         f"x86 CSV: {label}")
+            # Recheck the entire archive AFTER all seven scans, not only
+            # each CSV at its individual scan boundary. Otherwise an earlier
+            # stage can change while a later stage is being parsed. This
+            # also rejects rewritten, self-consistent manifests/reports
+            # before declaring a PRIVATE source replay successful.
+            verify_archive(folder)
+            for name, expected_sha in strict_receipt_snapshot.items():
+                _matches_hash(folder / name, expected_sha)
     except (ValueError, TypeError, OverflowError) as exc:
         if isinstance(exc, ReceiptError):
             raise
