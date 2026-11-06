@@ -13,7 +13,26 @@ int main(){
     assert(clean.CompleteDraw(draw));
     auto clean_frame=clean.FinishPresent();
     assert(!clean_frame.RejectStereoSource() &&
-           clean_frame.draws==1u && clean_frame.writes==1u);
+           clean_frame.draws==1u && clean_frame.writes==1u &&
+           clean_frame.camera_writes==1u && clean_frame.pixel_writes==0u &&
+           clean_frame.layout_writes==0u);
+    // Three genuine original source-side COM families retain independent
+    // pointer-free coverage and cannot be mislabelled camera matrix writes.
+    Gate families;
+    auto f1=families.EnterWrite(1u);
+    families.CompleteWrite(f1,true,true);
+    auto f2=families.EnterWrite(2u);
+    families.CompleteWrite(f2,true,true);
+    auto f3=families.EnterWrite(3u);
+    families.CompleteWrite(f3,true,true);
+    const auto result=families.FinishPresent();
+    assert(result.flags==0u && result.writes==3u &&
+           result.camera_writes==1u && result.pixel_writes==1u &&
+           result.layout_writes==1u);
+    Gate undefined;
+    auto bad_family=undefined.EnterWrite(4u);
+    undefined.CompleteWrite(bad_family,true,true);
+    assert(undefined.FinishPresent().flags&Gate::kUntrustedWriter);
     assert(!clean.MayForwardCpuWorld());
     clean.ReopenAfterPhysicalPresentReturn();
     assert(clean.MayForwardCpuWorld());

@@ -2734,7 +2734,7 @@ HRESULT STDMETHODCALLTYPE SetVertexDeclarationHook(IDirect3DDevice9* d,IDirect3D
     // Internal experimental mirrored eyes are NOT original game source
     // program/matrix writes, and must not taint real hardware Present.
     if(m2vr::daytona::IsEyeReplayActive())return g_set_vertex_declaration(d,declaration);
-    const auto source_write=g_original_camera_lifetime.EnterWrite();
+    const auto source_write=g_original_camera_lifetime.EnterWrite(3u);
     const HRESULT hr=g_set_vertex_declaration(d,declaration);
     g_original_camera_lifetime.CompleteWrite(
         source_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
@@ -2749,7 +2749,7 @@ HRESULT STDMETHODCALLTYPE SetFVFHook(IDirect3DDevice9* d,DWORD fvf){
     // Internal experimental mirrored eyes are NOT original game source
     // program/matrix writes, and must not taint real hardware Present.
     if(m2vr::daytona::IsEyeReplayActive())return g_set_f_v_f(d,fvf);
-    const auto source_write=g_original_camera_lifetime.EnterWrite();
+    const auto source_write=g_original_camera_lifetime.EnterWrite(3u);
     const HRESULT hr=g_set_f_v_f(d,fvf);
     g_original_camera_lifetime.CompleteWrite(
         source_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
@@ -2778,7 +2778,7 @@ HRESULT STDMETHODCALLTYPE SetPixelShaderHook(IDirect3DDevice9* d,IDirect3DPixelS
     // Internal experimental mirrored eyes are NOT original game source
     // program/matrix writes, and must not taint real hardware Present.
     if(m2vr::daytona::IsEyeReplayActive())return g_set_pixel_shader(d,shader);
-    const auto source_write=g_original_camera_lifetime.EnterWrite();
+    const auto source_write=g_original_camera_lifetime.EnterWrite(2u);
     const HRESULT hr=g_set_pixel_shader(d,shader);
     g_original_camera_lifetime.CompleteWrite(
         source_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
@@ -2821,7 +2821,7 @@ HRESULT STDMETHODCALLTYPE SetPSConstantIHook(IDirect3DDevice9* d,UINT start,cons
     // Internal experimental mirrored eyes are NOT original game source
     // program/matrix writes, and must not taint real hardware Present.
     if(m2vr::daytona::IsEyeReplayActive())return g_ps_i(d,start,values,count);
-    const auto source_write=g_original_camera_lifetime.EnterWrite();
+    const auto source_write=g_original_camera_lifetime.EnterWrite(2u);
     const HRESULT hr=g_ps_i(d,start,values,count);
     g_original_camera_lifetime.CompleteWrite(
         source_write,CallerRva(origin)!=0u,SUCCEEDED(hr));
@@ -2836,7 +2836,7 @@ HRESULT STDMETHODCALLTYPE SetPSConstantBHook(IDirect3DDevice9* d,UINT start,cons
     // Internal experimental mirrored eyes are NOT original game source
     // program/matrix writes, and must not taint real hardware Present.
     if(m2vr::daytona::IsEyeReplayActive())return g_ps_b(d,start,values,count);
-    const auto source_write=g_original_camera_lifetime.EnterWrite();
+    const auto source_write=g_original_camera_lifetime.EnterWrite(2u);
     const HRESULT hr=g_ps_b(d,start,values,count);
     g_original_camera_lifetime.CompleteWrite(
         source_write,CallerRva(origin)!=0u,SUCCEEDED(hr));
@@ -3013,7 +3013,7 @@ HRESULT STDMETHODCALLTYPE SetPSConstantFHook(IDirect3DDevice9* d,UINT start,
     // Internal experimental mirrored eyes are NOT original game source
     // program/matrix writes, and must not taint real hardware Present.
     if(m2vr::daytona::IsEyeReplayActive())return g_set_ps_constant_f(d,start,values,count);
-    const auto source_write=g_original_camera_lifetime.EnterWrite();
+    const auto source_write=g_original_camera_lifetime.EnterWrite(2u);
     const HRESULT hr=g_set_ps_constant_f(d,start,values,count);
     g_original_camera_lifetime.CompleteWrite(
         source_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
@@ -3543,6 +3543,13 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     m2vr::LogEvent("model2_d3d9_original_camera_com_lifetime",
         frame,camera_source_flags,camera_com_coverage.draws,
         camera_com_coverage.writes);
+    // Source-family counts distinguish genuine camera/view/projection
+    // mutations from pixel material and vertex layout updates WITHOUT
+    // exporting any game matrices, shader constants or source pointers.
+    m2vr::LogEvent("model2_d3d9_original_camera_com_families",
+        frame,camera_com_coverage.camera_writes,
+        camera_com_coverage.pixel_writes,
+        camera_com_coverage.layout_writes);
     m2vr::LogEvent("model2_d3d9_original_draw_target_coverage",
         frame,
         (std::uint64_t{original_target_coverage.backbuffer}<<32u)|
