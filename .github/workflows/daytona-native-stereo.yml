@@ -73,6 +73,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_model2_gpu_readback_source.py -v
       - name: Verify local-only private seven-session capture bundle
         run: python -m unittest discover -s tests -p test_daytona_private_capture_bundle.py -v
+      - name: Verify immutable private receipt linkage (synthetic only)
+        run: python -m unittest discover -s tests -p test_daytona_private_receipt_verifier.py -v
       - name: Verify individual original x86 physical source preflight and private A/B cross-session audit
         run: python -m unittest discover -s tests -p test_model2_world_pass_evidence.py -v
       - name: Parse user-shipped Windows PowerShell capture workflow
@@ -377,6 +379,7 @@ jobs:
             New-Item -ItemType Directory -Force -Path $inputs | Out-Null
             Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
             Copy-Item tools/model2_draw_source_report.py $root/
+            Copy-Item tools/verify_daytona_private_receipt.py $root/
             [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
               $stub,[Text.UTF8Encoding]::new($false))
             foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")) {
@@ -412,6 +415,13 @@ jobs:
                  $c.adapter_auto_enable -ne $false -or $failed.Count -ne 0){
                 throw "Candidate-only synthetic receipt incorrectly authorized World3D"
               }
+              # Actual Windows PowerShell collector -> immutable local receipt
+              # -> Python byte integrity verifier, using test-only input.
+              & python (Join-Path $root "verify_daytona_private_receipt.py") $archive
+              if($LASTEXITCODE -ne 0){throw "Seven-stage synthetic receipt verification failed"}
+              Add-Content -LiteralPath (Join-Path $archive "PRIVATE_SOURCE_hud.json") -Value 'synthetic tamper'
+              & python (Join-Path $root "verify_daytona_private_receipt.py") $archive
+              if($LASTEXITCODE -eq 0){throw "Mutated original preflight report passed receipt verifier"}
             }else{
               if(-not $rejected -or (Test-Path $manifest) -or (Test-Path $candidate)){
                 throw "Invalid original comparison falsely published success: $mode"
@@ -605,6 +615,7 @@ jobs:
           # Complete local-only, seven genuine original x86 session workflow.
           Copy-Item tools/model2_draw_source_report.py stage/
           Copy-Item tools/model2_world_pass_evidence.py stage/
+          Copy-Item tools/verify_daytona_private_receipt.py stage/
           Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 stage/
           Copy-Item scripts/Collect-Daytona-Original-Evidence.cmd stage/
           Copy-Item docs/MODEL2_WORLD_PASS_EVIDENCE.md stage/ORIGINAL-WORLD-SOURCE-EVIDENCE.md

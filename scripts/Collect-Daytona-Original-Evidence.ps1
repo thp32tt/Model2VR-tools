@@ -56,6 +56,7 @@ $knownDigests = New-Object 'System.Collections.Generic.HashSet[string]' ([String
 $knownNonces = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 $reports = @{}
 $reportHashes = @{}
+$noncesByLabel = @{}
 # Resolve Python before asking the user to run seven original x86 games.
 # Prefer the actual Python 3 interpreter. On GitHub Windows runners,
 # 'py' can resolve to a Python executable/shim that does not accept -3.
@@ -189,6 +190,7 @@ foreach ($label in $labels) {
         }
         # Move the newly audited file into the active slot only AFTER
         # validating the original physical source process identity.
+        $noncesByLabel[$label] = $resumeNonce
         Move-Item -LiteralPath $pendingPreflight -Destination $preflight -ErrorAction Stop
         $copies[$label] = $target
         $hashes[$label] = $resumeHash
@@ -281,6 +283,7 @@ foreach ($label in $labels) {
       !$knownNonces.Add($nonce)) {
     throw "PRIVATE SESSION PREFLIGHT FAIL-CLOSED: duplicate or missing original process nonce for $label. Archive kept: $destination"
   }
+  $noncesByLabel[$label] = $nonce
   Move-Item -LiteralPath $pendingPreflight -Destination $preflight -ErrorAction Stop
   $reports[$label] = $preflight
   $reportHashes[$label] = (Get-FileHash -LiteralPath $preflight -Algorithm SHA256).Hash
@@ -410,6 +413,11 @@ $manifest = [ordered]@{
   hmd_runtime_validation = "UNTESTED"
   output_directory = $destination
   source_sha256 = $hashes
+  # Bind the exact independently preflighted report bytes and physical
+  # process identity, not only the original x86 CSV input hashes.
+  # A PRIVATE receipt verifier can reject later cached JSON substitution.
+  source_report_sha256 = $reportHashes
+  original_process_nonce_by_stage = $noncesByLabel
 }
 $pendingManifest = Join-Path $destination ("PRIVATE_PENDING_MANIFEST_" +
   [guid]::NewGuid().ToString("N") + ".json")

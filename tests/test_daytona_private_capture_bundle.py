@@ -65,6 +65,20 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertGreater(self.ps.rfind('PRIVATE_MANIFEST.json'),
                            self.ps.index('$pythonExitCode = Invoke-PrivateAudit -auditArguments $argsForPython'))
 
+    def test_original_manifest_binds_each_stage_report_hash_and_process_nonce(self):
+        # The final local-only receipt must bind both x86 raw CSV and
+        # exactly audited JSON, plus all independently nonced processes.
+        self.assertIn('$noncesByLabel = @{}', self.ps)
+        self.assertIn('$noncesByLabel[$label] = $resumeNonce', self.ps)
+        self.assertIn('$noncesByLabel[$label] = $nonce', self.ps)
+        self.assertIn('source_report_sha256 = $reportHashes', self.ps)
+        self.assertIn('original_process_nonce_by_stage = $noncesByLabel', self.ps)
+        self.assertLess(self.ps.index('Assert-PrivateArchiveIntegrity\n  $manifest.candidate_sha256'),
+                        self.ps.index('Move-Item -LiteralPath $pendingManifest -Destination $finalManifest'))
+        self.assertIn('verify_daytona_private_receipt.py', self.workflow)
+        self.assertIn('PRIVATE RECEIPT BYTE-INTEGRITY PASS', (
+            ROOT/"tools/verify_daytona_private_receipt.py").read_text("utf-8"))
+
     def test_resumed_success_receipts_are_revoked_before_any_stage_preflight(self):
         # An archive may have become corrupt after an earlier successful run.
         # Old receipts cannot survive a resume that fails on its first stage.
