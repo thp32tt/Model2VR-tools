@@ -556,7 +556,7 @@ def main(argv=None):
             parser.error("--preflight cannot mix with seven-session comparison")
         try:
             result=preflight_original_session(args.preflight)
-            content=json.dumps(result,sort_keys=True,indent=2)+"\\n"
+            content=json.dumps(result,sort_keys=True,indent=2)+"\n"
             if args.output:
                 args.output.write_text(content,encoding="utf-8")
             else:
