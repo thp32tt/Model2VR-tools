@@ -42,6 +42,7 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
                         self.ps.index('Rename-Item -LiteralPath $oldPath'))
         self.assertIn('$sessionLockStream.Dispose()', self.ps)
         self.assertIn('Reject concurrent original private archive collector before receipt revocation', self.workflow)
+        self.assertIn('Where-Object { $_.Name -ne ".private_original_collection.lock" }', self.workflow)
 
     def test_seven_distinct_original_process_sessions_and_bounded_analysis(self):
         self.assertIn('("race_a","race_b","title","menu","sky","hud","aux")',self.ps)
