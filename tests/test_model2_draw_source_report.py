@@ -42,6 +42,8 @@ class SourceAuditTests(unittest.TestCase):
                      frame,0xfedcba9876543210,0,0),
                     ("model2_d3d9_original_scene_draw_coverage",
                      frame,pack(1,1),pack(1,0),pack(0,0)),
+                    ("model2_d3d9_original_camera_com_lifetime",
+                     frame,0,1,3),
                     ("model2_d3d9_original_draw_target_coverage",
                      frame,pack(1,0),pack(0,0),pack(0,0)),
                 ))
@@ -53,6 +55,11 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(scene["original_successful_in_scene_draw_count"],512)
             self.assertEqual(scene["trusted_scene_drawn_present_count"],512)
             self.assertTrue(scene["all_original_scene_draws_trusted"])
+            camera=data["original_physical_camera_com_lifetime"]
+            self.assertEqual(camera["physical_present_count"],512)
+            self.assertEqual(camera["original_com_draw_count"],512)
+            self.assertEqual(camera["original_camera_write_count"],1536)
+            self.assertTrue(camera["all_original_camera_com_lifetimes_trusted"])
             target=data["original_physical_draw_target_coverage"]
             self.assertEqual(target["physical_present_count"],512)
             self.assertEqual(target["original_backbuffer_draw_count"],512)
@@ -72,6 +79,29 @@ class SourceAuditTests(unittest.TestCase):
             poisoned=REPORT.audit_csv(path)["original_physical_scene_draw_coverage"]
             self.assertFalse(poisoned["all_original_scene_draws_trusted"])
             self.assertEqual(poisoned["original_successful_untrusted_scene_draw_count"],1)
+            # Every x86 real COM write straddling Draw/Present poisons source.
+            camera_index=next(i for i,row in enumerate(events)
+                if row[0]=="model2_d3d9_original_camera_com_lifetime"
+                and row[1]==frames-1)
+            for flag in (1,2,4,8,16,32,64,127):
+                bad=list(events)
+                bad[camera_index]=(
+                    "model2_d3d9_original_camera_com_lifetime",
+                    frames-1,flag,1,3)
+                self.write_log(path,bad)
+                state=REPORT.audit_csv(path)["original_physical_camera_com_lifetime"]
+                self.assertFalse(state["all_original_camera_com_lifetimes_trusted"])
+                self.assertEqual(state["flagged_present_count"],1)
+            for frame,flags,draws in (
+                (frames-1,128,1),(frames-1,0,0),(frames,0,1)):
+                bad=list(events)
+                bad[camera_index]=(
+                    "model2_d3d9_original_camera_com_lifetime",
+                    frame,flags,draws,3)
+                self.write_log(path,bad)
+                with self.assertRaisesRegex(
+                    ValueError,"invalid original camera COM lifetime"):
+                    REPORT.audit_csv(path)
             # Native RT0/depth event is a separate physical witness. Its
             # count/epoch must agree with the ORIGINAL unsampled Draw total.
             target_index=next(i for i,row in enumerate(events)

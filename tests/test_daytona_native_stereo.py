@@ -425,7 +425,12 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(hooks.count("const bool forwarded=ForwardAuthenticatedOriginalDraw("),4)
         # The same snapshot is now shared by post-COM source witness and
         # physical Present safety rejection instead of recomputing it.
-        self.assertEqual(hooks.count("const bool same_lineage=m2vr::drawprobe::SameOriginalLineage("),4)
+        self.assertEqual(hooks.count("const bool same_lineage=camera_retained &&"),4)
+        self.assertEqual(hooks.count("g_original_camera_lifetime.CompleteDraw("),4)
+        self.assertEqual(hooks.count("original_lineage,ReadOriginalLineage(source_frame)"),4)
+        self.assertIn("Model2VR_RejectOriginalD3D9CameraComLifetime(",hooks)
+        self.assertIn("model2_d3d9_original_camera_com_lifetime",hooks)
+        self.assertIn("Model2VR_RejectOriginalD3D9CameraComLifetime(",bridge)
         self.assertEqual(hooks.count("if(forwarded && !same_lineage)"),4)
         self.assertEqual(hooks.count("RecordOriginalSourceCompletion(witness,source_frame,source_ordinal,"),4)
         self.assertEqual(hooks.count("Model2VR_RejectOriginalD3D9SourceLineageDrift("),4)

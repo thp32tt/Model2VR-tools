@@ -557,6 +557,11 @@ def audit_csv(path):
     last_scene_draw_total = 0
     last_target_coverage_frame = 0
     target_coverage_totals = Counter()
+    # Authentic original x86 camera COM entry/return at EVERY physical Present.
+    last_camera_com_frame = 0
+    camera_com_totals = Counter()
+    camera_com_flagged_frames = 0
+    camera_com_trusted_drawn_frames = 0
     target_flagged_frames = 0
     target_valid_backbuffer_frames = 0
     last_exact_inventory_frame = 0
@@ -914,6 +919,27 @@ def audit_csv(path):
                     scene_trusted_drawn_frame_count+=1
                 last_scene_draw_total=inside+untrusted+failed
                 last_scene_coverage_frame=frame
+                continue
+            if event == "model2_d3d9_original_camera_com_lifetime":
+                try:
+                    frame,flags,draws,writes = (
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError,TypeError) as exc:
+                    raise ValueError("invalid original camera COM lifetime row") from exc
+                if (not 0<frame<=0xffffffff or
+                    frame!=last_camera_com_frame+1 or
+                    frame!=last_scene_coverage_frame or
+                    (last_capture_frame and frame!=last_capture_frame) or
+                    flags>127 or draws>10000000 or writes>10000000 or
+                    (draws!=last_scene_draw_total and not (flags&64))):
+                    raise ValueError("invalid original camera COM lifetime")
+                camera_com_totals["draws"]+=draws
+                camera_com_totals["writes"]+=writes
+                if flags:
+                    camera_com_flagged_frames+=1
+                elif draws:
+                    camera_com_trusted_drawn_frames+=1
+                last_camera_com_frame=frame
                 continue
             if event == "model2_d3d9_original_draw_target_coverage":
                 try:
@@ -1885,6 +1911,12 @@ def audit_csv(path):
         last_scene_coverage_frame!=last_exact_inventory_frame or
         last_scene_coverage_frame!=last_bloom_frame):
         raise ValueError("orphan original physical Scene/Draw evidence")
+    if last_camera_com_frame and (
+        last_camera_com_frame!=last_scene_coverage_frame or
+        (last_target_coverage_frame and
+         last_camera_com_frame!=last_target_coverage_frame) or
+        (last_capture_frame and last_camera_com_frame!=last_capture_frame)):
+        raise ValueError("orphan original camera COM lifetime evidence")
     if last_target_coverage_frame and (
         last_target_coverage_frame!=last_scene_coverage_frame or
         (last_capture_frame and last_target_coverage_frame!=last_capture_frame)):
@@ -1937,6 +1969,18 @@ def audit_csv(path):
                  scene_coverage_totals["untrusted"]==0 and
                  scene_coverage_totals["failed"]==0)}
             if last_scene_coverage_frame else None),
+        "original_physical_camera_com_lifetime": (
+            {"physical_present_count":last_camera_com_frame,
+             "first_present_frame":1,
+             "last_present_frame":last_camera_com_frame,
+             "original_com_draw_count":camera_com_totals["draws"],
+             "original_camera_write_count":camera_com_totals["writes"],
+             "flagged_present_count":camera_com_flagged_frames,
+             "trusted_camera_drawn_present_count":
+                 camera_com_trusted_drawn_frames,
+             "all_original_camera_com_lifetimes_trusted":bool(
+                 camera_com_flagged_frames==0)}
+            if last_camera_com_frame else None),
         "original_physical_draw_target_coverage": (
             {"physical_present_count":last_target_coverage_frame,
              "first_present_frame":1,
