@@ -138,6 +138,11 @@ extern "C" void __cdecl M2VR_OnProjectVertex(void* point, std::uint32_t caller) 
         g_config.d3d9_read_only_probe,g_config.daytona_native_stereo,
         g_config.project_vertex.enabled);
     if(!sampled && !source_capture)return;
+    // Capture generation BEFORE any original source reads or trampoline.
+    // Present/Reset advances this generation independently of thread-local
+    // Draw retirement. Never mint a new-frame CPU candidate on late return.
+    if(source_capture)record->source_epoch=
+        m2vr::drawprobe::CurrentProjectDrawEpoch();
 
     float x=0,y=0,z=0;
     if(!SafeReadPoint(point,x,y,z)){
@@ -230,19 +235,35 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* /*eax_after_original*/) 
                 record.geometry_command_word,
                 geometry_changed?2u:(matrix_changed?1u:0u));
         }
+        const auto completion_epoch=
+            m2vr::drawprobe::CurrentProjectDrawEpoch();
+        const bool epoch_changed=
+            !m2vr::drawprobe::OriginalCpuProjectorEpochStable(
+                record.source_epoch,completion_epoch);
         const auto original_source_gap=
             m2vr::drawprobe::OriginalCpuProjectorSourceGapFlags(
-                record,matrix_changed,geometry_changed);
+                record,matrix_changed,geometry_changed,epoch_changed);
         if(emit_log && original_source_gap)
             m2vr::LogEvent("project_original_source_gap",
                 record.source_caller_rva,original_source_gap,0u,0u);
         if(!original_source_gap){
             const float projected[3]{x,y,z};
-            m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
-                m2vr::drawprobe::CurrentProjectDrawEpoch(),
+            auto& correlator=
+                m2vr::drawprobe::ThreadProjectDrawCorrelator();
+            correlator.Capture(record.source_epoch,
                 record.source_caller_rva,record.source_xyz.data(),projected,
                 record.matrix_identity,record.matrix_fingerprint,
                 record.geometry_command_word);
+            // Physical Present can race even with the first end-of-call
+            // epoch read. Retire the just-appended sample before this thread
+            // can return to an original Draw in the newer generation.
+            const auto post_capture_epoch=
+                m2vr::drawprobe::CurrentProjectDrawEpoch();
+            if(post_capture_epoch!=record.source_epoch){
+                correlator.RetireOriginalDraw(post_capture_epoch);
+                if(emit_log)m2vr::LogEvent("project_original_source_gap",
+                    record.source_caller_rva,8u,0u,0u);
+            }
         }
     }
     if(emit_log)
