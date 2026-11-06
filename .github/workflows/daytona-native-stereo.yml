@@ -39,6 +39,8 @@ on:
       - 'tests/test_daytona_private_capture_bundle.py'
       - 'tools/model2_world_pass_evidence.py'
       - 'tests/test_model2_world_pass_evidence.py'
+      - 'tools/verify_daytona_private_candidate_replay.py'
+      - 'tests/test_daytona_private_candidate_replay.py'
       - 'src/common/daytona_host_ready.hpp'
       - 'tests/test_daytona_native_stereo.py'
       - 'tests/test_model2_up_draw_outcomes.py'
@@ -75,6 +77,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_daytona_private_capture_bundle.py -v
       - name: Verify immutable private receipt linkage (synthetic only)
         run: python -m unittest discover -s tests -p test_daytona_private_receipt_verifier.py -v
+      - name: Recompute genuine seven-report candidate semantics (synthetic-only tests)
+        run: python -m unittest discover -s tests -p test_daytona_private_candidate_replay.py -v
       - name: Verify individual original x86 physical source preflight and private A/B cross-session audit
         run: python -m unittest discover -s tests -p test_model2_world_pass_evidence.py -v
       - name: Parse user-shipped Windows PowerShell capture workflow
@@ -665,6 +669,7 @@ jobs:
           Copy-Item tools/model2_draw_source_report.py stage/
           Copy-Item tools/model2_world_pass_evidence.py stage/
           Copy-Item tools/verify_daytona_private_receipt.py stage/
+          Copy-Item tools/verify_daytona_private_candidate_replay.py stage/
           Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 stage/
           Copy-Item scripts/Collect-Daytona-Original-Evidence.cmd stage/
           Copy-Item docs/MODEL2_WORLD_PASS_EVIDENCE.md stage/ORIGINAL-WORLD-SOURCE-EVIDENCE.md
