@@ -25,6 +25,8 @@ int main(){
     CHECK(ring.Find(33) && *ring.Find(33)==next); // rejected input atomic
     ring.Clear();
     CHECK(ring.Find(2)==nullptr && ring.Find(33)==nullptr);
+    CHECK(!ring.Record(33,first)); // revoked tag is never reusable
+    CHECK(!ring.Record(1,first));
     CHECK(ring.Record(34,first));
     CHECK(ring.Find(34) && *ring.Find(34)==first);
     return 0;

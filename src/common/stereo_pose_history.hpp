@@ -19,9 +19,11 @@ public:
            full_sequence>std::numeric_limits<std::uint32_t>::max())
             return false;
         const auto sequence=static_cast<std::uint32_t>(full_sequence);
+        if(sequence<=highest_sequence_)return false;
         auto& slot=entries_[sequence%Slots];
         slot.value=pair;
         slot.sequence=sequence; // publish the tag only after the pair
+        highest_sequence_=sequence;
         return true;
     }
     const ViewPair* Find(std::uint32_t sequence)const noexcept {
@@ -34,5 +36,6 @@ public:
     }
 private:
     std::array<Entry,Slots> entries_{};
+    std::uint32_t highest_sequence_=0; // Clear revokes but never rewinds
 };
 } // namespace m2vr::transport

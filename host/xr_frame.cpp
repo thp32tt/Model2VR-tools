@@ -1,5 +1,6 @@
 #include "xr_app.h"
 #include "../src/common/stereo_eye_rig_geometry.hpp"
+#include "../src/common/stereo_pose_publication_gate.hpp"
 #include "../src/common/model2_emulator_window_policy.hpp"
 #include <filesystem>
 #include <algorithm>
@@ -226,7 +227,7 @@ void XrApp::draw_frame(XrTime display_time){
     }
     if(source_pid_!=0){
         if(!pose_writer_.Valid())pose_writer_.Create(source_pid_);
-        if(pose_writer_.Valid()){
+        {
             pose::Frame predicted{};
             predicted.sequence=++predicted_pose_sequence_;
             predicted.predicted_display_time=display_time;
@@ -250,26 +251,30 @@ void XrApp::draw_frame(XrTime display_time){
             // Validate the actual two OpenXR eye poses BEFORE publishing
             // the Win32 IPC packet, starting the emulator, or recording the
             // Win64 eye-view history. Never publish a mismatched source rig.
-            const auto rig=pose::CheckStereoRigGeometry(predicted);
-            if(!rig.valid()){
+            const bool pose_published=pose::PublishTrackedStereoPose(
+                pose_writer_,pose_history_,predicted,views);
+            if(!pose_published){
                 if(!stereo_rig_rejection_logged_){
-                    std::cerr<<"OpenXR source stereo rig rejected reason="
-                             <<static_cast<std::uint32_t>(rig.reason)
-                             <<" (not a calibrated game camera)"<<std::endl;
+                    std::cerr<<"OpenXR tracked pose transaction rejected"
+                             <<" rig_reason="<<static_cast<std::uint32_t>(
+                                 pose::CheckStereoRigGeometry(predicted).reason)
+                             <<" sequence="<<predicted.sequence
+                             <<" writer_valid="<<(pose_writer_.Valid()?1:0)
+                             <<" (no original stereo source)"<<std::endl;
                     stereo_rig_rejection_logged_=true;
                 }
+                // Revoke cached genuine game eyes and startup authorization
+                // together with a failed original Win32 source publication.
                 invalidate_source_session();
                 report_wizard_health(false,false);
                 XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
                 end.displayTime=display_time;
                 end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-                check(xrEndFrame(session_,&end),"end invalid binocular rig frame");
+                check(xrEndFrame(session_,&end),"end rejected tracked pose frame");
                 return;
             }
             stereo_rig_rejection_logged_=false;
-            const bool pose_published=pose_writer_.Publish(predicted);
-            if(pose_published)pose_history_.Record(predicted.sequence,views);
-            if(pose_published && !startup_ready_signaled_ &&
+            if(!startup_ready_signaled_ &&
                hostready::Signal(source_pid_)){
                 startup_ready_signaled_=true;
                 std::cout<<"Daytona VR startup: OPENXR_TRACKED_STEREO_READY emulator_pid="

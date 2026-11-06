@@ -2,6 +2,12 @@
 
 Updated: 2026-11-06 KST
 
+## 2026-11-06 — Source change: exact OpenXR eye history BEFORE x86-readable pose IPC, fail-closed stereo transaction
+
+- **Unfinished source handoff addressed:** real `xrLocateViews` Win64 eye views were recorded only AFTER publishing the pose tag to the original x86 D3D9 producer. A concurrent original game frame could latch a tag the compositor did not yet own; ignored history-record failures and host IPC writer failure could retain stale prior eyes.
+- **Connected implementation:** `stereo_pose_publication_gate.hpp` now enforces real tracked binocular geometry, rejects tags wider than x86's uint32, records actual host eye views **before** publishing the linked original-game pose, and invalidates both pose IPC and host history on failure. `host/xr_frame.cpp` revokes cached game-eye frame and skips OpenXR composition and startup-ready signal for a failed transaction. Host pose history preserves a high-water tag across Clear/retracking to prohibit stale duplicate tags. Windows x86/x64 native test targets exercise publish-time history, replay, tracking-loss recovery, writer rejection, impossible binocular rig and tag overflow.
+- **Proof boundary unchanged:** `RUNTIME_VALIDATION=UNTESTED`, `world_pass_proof=NOT_ESTABLISHED`, World3D auto-enable OFF. No claim of real Daytona race_a/race_b/title/menu/sky/hud/aux independent process capture, physical caller↔same original GPU Draw authorization, Quest 3 calibration or live stereo proof. No private game data added; no OutRun/web-port changes. Score not adjusted without distinct verified CI and SSOT update.
+
 ## 2026-11-06 — Original OpenXR tracked eye geometry validation BEFORE Win64 pose IPC → real Win32 D3D9 stereo source → CPU-world recenter (exact SHA 5/5 SUCCESS)
 
 - **Real unguarded stereo-source failure repaired:** The Win64 OpenXR host previously used only `xrLocateViews` tracking flags to publish binocular pose IPC and announce `OPENXR_TRACKED_STEREO_READY` to the original Win32 game. Plausibly spaced left/right views could still face radically different directions, carry unusable lens FOV, or have swapped view order. A wrong pair could enter both original D3D9 GPU-eye and physically authenticated CPU-world OpenXR paths even without an actual HMD camera calibration. This is separate from prior physical Present/Reset CPU projector epoch fence and the 64-triangle source work.

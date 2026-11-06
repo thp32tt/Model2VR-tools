@@ -196,6 +196,10 @@ set_target_properties(model2vr_stereo_diagnostic PROPERTIES
 install(TARGETS model2vr_stereo_diagnostic RUNTIME DESTINATION .)
 
 
+add_executable(model2vr_pose_publication_test tests/stereo_pose_publication_gate_test.cpp)
+target_compile_features(model2vr_pose_publication_test PRIVATE cxx_std_20)
+add_test(NAME original_tracked_pose_transaction_x86 COMMAND model2vr_pose_publication_test)
+
 add_executable(model2vr_pose_ipc_test tests/stereo_pose_ipc_test.cpp)
 target_compile_features(model2vr_pose_ipc_test PRIVATE cxx_std_20)
 add_test(NAME stereo_predicted_pose_ipc COMMAND model2vr_pose_ipc_test)
