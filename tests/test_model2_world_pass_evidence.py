@@ -2,8 +2,10 @@ import copy
 import itertools
 import unittest
 from tools.model2_world_pass_evidence import (
-    compare_sessions, CONTROL_TYPES, main, original_caller_bloom_bits)
-from contextlib import redirect_stderr
+    compare_sessions, CONTROL_TYPES, main, original_caller_bloom_bits,
+    preflight_original_session)
+from contextlib import redirect_stderr, redirect_stdout
+from unittest.mock import patch
 from pathlib import Path
 import io
 import json
@@ -153,6 +155,45 @@ def controls(**overrides):
 
 
 class OriginalWorldPassEvidenceTest(unittest.TestCase):
+    def test_single_original_process_preflight_before_seven_stage_capture(self):
+        # Standalone preflight uses the exact same original Scene, camera
+        # lifetime, target/depth, physical Present and caller inventory
+        # verifier as seven-process comparison; never authorizes World3D.
+        valid=report(witness())
+        with tempfile.TemporaryDirectory() as dirname:
+            csv=Path(dirname)/"private-original.csv"
+            csv.write_text("unreadable test bytes",encoding="utf-8")
+            cached=Path(dirname)/"private-original-report.json"
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=valid) as observed:
+                main(["--preflight",str(csv),"--output",str(cached)])
+                self.assertEqual(observed.call_count,1)
+                self.assertEqual(json.loads(cached.read_text("utf-8")),valid)
+                with io.StringIO() as output,redirect_stdout(output):
+                    main(["--preflight",str(csv)])
+                    summary=json.loads(output.getvalue())
+                self.assertEqual(summary["preflight"],"ORIGINAL_SOURCE_READABLE")
+                self.assertEqual(summary["physical_present_count"],8)
+                self.assertEqual(summary["world_pass_proof"],"NOT_ESTABLISHED")
+                self.assertEqual(summary["hmd_runtime_validation"],"UNTESTED")
+                self.assertNotIn("caller_rva_hex",output.getvalue())
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    main(["--preflight",str(csv),"--race",str(csv)])
+            # A legacy/missing unsampled physical original run cannot
+            # slip into the negative controls simply because it has
+            # sampled GPU source records.
+            bad=report(witness())
+            bad["original_capture_run"]=None
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=bad):
+                with redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        main(["--preflight",str(csv),"--output",str(cached)])
+            self.assertEqual(json.loads(cached.read_text("utf-8")),valid)
+            with self.assertRaisesRegex(ValueError,"original x86 CSV"):
+                preflight_original_session(cached)
+
     def test_sampled_race_scene_cannot_borrow_unrelated_physical_frame(self):
         race=report(witness())
         race["original_physical_scene_draw_coverage"][
