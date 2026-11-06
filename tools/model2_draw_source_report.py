@@ -28,6 +28,7 @@ NAMES = {
     "model2_d3d9_vb_raster", "model2_d3d9_vb_write_color",
     "model2_d3d9_cpu_vb_join_batch",
     "model2_d3d9_cpu_vb_source_cardinality",
+    "model2_d3d9_cpu_vb_fit_population",
     "model2_d3d9_cpu_vb_matrix_identity",
     "model2_d3d9_cpu_vb_matrix_content",
     "model2_d3d9_cpu_vb_geometry_command",
@@ -1282,6 +1283,10 @@ def audit_csv(path):
             elif event == "model2_d3d9_cpu_vb_source_cardinality":
                 store_original_draw_witness_field(fields, "source_cardinality",
                                                  values, witness)
+            elif event == "model2_d3d9_cpu_vb_fit_population":
+                if "fit_population" in fields:
+                    raise ValueError("duplicate original CPU fit population")
+                fields["fit_population"] = values
             elif event == "model2_d3d9_cpu_vb_matrix_identity":
                 store_original_draw_witness_field(fields, "matrix_identity", values, witness)
             elif event == "model2_d3d9_cpu_vb_matrix_content":
@@ -1370,6 +1375,8 @@ def audit_csv(path):
         "cpu_aliased_source_vertex_batches": 0,
         "cpu_legacy_unverified_vertex_batches": 0,
         "cpu_insufficient_source_vertex_batches": 0,
+        "cpu_fit_population_attested_batches": 0,
+        "cpu_fit_population_missing_batches": 0,
         "cpu_projector_inspected_triangles": 0,
         "cpu_projector_complete_triangles": 0,
         "cpu_projector_partial_triangles": 0,
@@ -1767,6 +1774,20 @@ def audit_csv(path):
             entry["color_write_modes"].add((srgb_write, color_mask))
         if "source_cardinality" in data and "cpu_join" not in data:
             raise ValueError("orphan original CPU source cardinality")
+        if "fit_population" in data:
+            if "source_cardinality" not in data or "cpu_join" not in data:
+                raise ValueError("orphan original CPU fit population")
+            distinct, shared, _aliases = data["source_cardinality"]
+            unique_fit, expanded_eye, shared_eye = data["fit_population"]
+            _inspected, complete = halves(data["cpu_join"][0])
+            if (unique_fit != distinct or
+                    expanded_eye != complete * 3 or
+                    shared_eye != shared or
+                    unique_fit + shared_eye != expanded_eye):
+                raise ValueError("inconsistent original CPU fit/eye population")
+            entry["cpu_fit_population_attested_batches"] += 1
+        elif "source_cardinality" in data:
+            entry["cpu_fit_population_missing_batches"] += 1
         if "cpu_join" in data:
             inspected_complete, partial_ambiguous, cpu_caller = data["cpu_join"]
             status=original_cpu_source_cardinality_status(

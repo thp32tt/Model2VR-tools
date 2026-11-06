@@ -1848,6 +1848,37 @@ class SourceAuditTests(unittest.TestCase):
             fresh=REPORT.audit_csv(path)["sources"][0]
             self.assertEqual(fresh["cpu_unique_source_vertex_batches"],1)
             self.assertEqual(fresh["cpu_aliased_source_vertex_batches"],0)
+            self.assertEqual(fresh["cpu_fit_population_missing_batches"],1)
+            population=[(
+                "model2_d3d9_cpu_vb_source_cardinality",901,6,0,0),(
+                "model2_d3d9_cpu_vb_fit_population",901,6,6,0)]
+            self.write_log(path,base+population)
+            joined=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(joined["cpu_fit_population_attested_batches"],1)
+            self.assertEqual(joined["cpu_fit_population_missing_batches"],0)
+            fan_base=[base[0],(
+                "model2_d3d9_cpu_vb_join_batch",901,pack(4,4),0,0x55)]
+            fan_population=[(
+                "model2_d3d9_cpu_vb_source_cardinality",901,6,6,0),(
+                "model2_d3d9_cpu_vb_fit_population",901,6,12,6)]
+            self.write_log(path,fan_base+fan_population)
+            self.assertEqual(REPORT.audit_csv(path)["sources"][0][
+                "cpu_fit_population_attested_batches"],1)
+            for invalid in ((12,12,6),(6,12,5),(5,12,6),(6,11,6)):
+                with self.subTest(invalid=invalid):
+                    self.write_log(path,fan_base+[fan_population[0],(
+                        "model2_d3d9_cpu_vb_fit_population",901,*invalid)])
+                    with self.assertRaisesRegex(
+                            ValueError,"inconsistent original CPU fit/eye"):
+                        REPORT.audit_csv(path)
+            self.write_log(path,base+population+[population[1]])
+            with self.assertRaisesRegex(
+                    ValueError,"duplicate original CPU fit population"):
+                REPORT.audit_csv(path)
+            self.write_log(path,base+[population[1]])
+            with self.assertRaisesRegex(
+                    ValueError,"orphan original CPU fit population"):
+                REPORT.audit_csv(path)
             self.write_log(path,base)
             legacy=REPORT.audit_csv(path)["sources"][0]
             self.assertEqual(legacy["cpu_legacy_unverified_vertex_batches"],1)
