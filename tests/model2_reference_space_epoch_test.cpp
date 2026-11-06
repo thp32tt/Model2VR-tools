@@ -16,11 +16,20 @@ int main(){
     CHECK(gate.OnPredictedFrame(200)==ReferenceSpaceFrame::SuppressTransition);
     CHECK(gate.Epoch()==2 && !gate.Pending());
     CHECK(gate.OnPredictedFrame(201)==ReferenceSpaceFrame::Ready);
+    // Two independent future LOCAL changes cannot be collapsed into
+    // the LATER changeTime. A source frame at 301 might already belong
+    // to the new origin scheduled at 300. Fail closed for this XR session.
     CHECK(gate.NotifyLocalChange(300));
+    CHECK(gate.Pending());
     CHECK(gate.NotifyLocalChange(325));
-    CHECK(gate.OnPredictedFrame(301)==ReferenceSpaceFrame::SuppressPending);
-    CHECK(gate.OnPredictedFrame(325)==ReferenceSpaceFrame::SuppressTransition);
-    CHECK(gate.Epoch()==3);
+    CHECK(gate.OverlappingChangeTime() && !gate.Pending());
+    CHECK(gate.Epoch()==2u);
+    CHECK(gate.OnPredictedFrame(299)==ReferenceSpaceFrame::Exhausted);
+    CHECK(gate.OnPredictedFrame(301)==ReferenceSpaceFrame::Exhausted);
+    CHECK(gate.OnPredictedFrame(325)==ReferenceSpaceFrame::Exhausted);
+    CHECK(!gate.NotifyLocalChange(600));
+    CHECK(gate.BeginSession() && gate.Epoch()==3u);
+    CHECK(!gate.OverlappingChangeTime() && !gate.Pending());
     CHECK(gate.OnPredictedFrame(326)==ReferenceSpaceFrame::Ready);
     // A missing transition time could hide an arbitrarily late LOCAL
     // origin change. Never switch on the next guessed positive frame.
@@ -117,6 +126,33 @@ int main(){
     CHECK(two_events.OnPredictedFrame(250)==ReferenceSpaceFrame::Exhausted);
     CHECK(two_events.BeginSession() && two_events.Epoch()==2u);
     CHECK(two_events.OnPredictedFrame(1)==ReferenceSpaceFrame::Ready);
+    // Two notifications with exactly the same changeTime are not
+    // automatically the same reference-space transform. Without transform
+    // identity in this gate, the second transition remains ambiguous.
+    ReferenceSpaceEpochGate same_effective_time;
+    CHECK(same_effective_time.BeginSession());
+    CHECK(same_effective_time.OnPredictedFrame(100)==ReferenceSpaceFrame::Ready);
+    CHECK(same_effective_time.NotifyLocalChange(200));
+    CHECK(same_effective_time.NotifyLocalChange(200));
+    CHECK(same_effective_time.OverlappingChangeTime());
+    CHECK(same_effective_time.OnPredictedFrame(200)==ReferenceSpaceFrame::Exhausted);
+    CHECK(same_effective_time.BeginSession());
+    CHECK(!same_effective_time.OverlappingChangeTime());
+    CHECK(same_effective_time.OnPredictedFrame(1)==ReferenceSpaceFrame::Ready);
+    // A second EARLIER, but still future, change is equally ambiguous;
+    // do not publish at the later stored boundary or the earlier one.
+    ReferenceSpaceEpochGate reverse_order;
+    CHECK(reverse_order.BeginSession());
+    CHECK(reverse_order.OnPredictedFrame(100)==ReferenceSpaceFrame::Ready);
+    CHECK(reverse_order.NotifyLocalChange(300));
+    CHECK(reverse_order.NotifyLocalChange(250));
+    CHECK(reverse_order.OverlappingChangeTime());
+    CHECK(reverse_order.OnPredictedFrame(200)==ReferenceSpaceFrame::Exhausted);
+    CHECK(reverse_order.OnPredictedFrame(301)==ReferenceSpaceFrame::Exhausted);
+    CHECK(reverse_order.BeginSession());
+    CHECK(reverse_order.OnPredictedFrame(1)==ReferenceSpaceFrame::Ready);
+    // A single known, non-overlapping pending change retains the original
+    // exact-time suppression and fresh LOCAL generation behavior.
     // A future timestamp that was not passed is still eligible for the
     // usual pending / exact-changeTime suppression and fresh LOCAL epoch.
     CHECK(two_events.NotifyLocalChange(200));
