@@ -19,8 +19,17 @@ int main(){
  REQUIRE(reader.Open(pid));
  REQUIRE(!reader.Read(got));
  REQUIRE(!writer.Publish(0u,NoVerifiedScene,0,0,0,zero));
- REQUIRE(!writer.Publish(1u,0x800u,0,0,0,zero));
+ REQUIRE(!writer.Publish(1u,0x1000u,0,0,0,zero));
  REQUIRE(ReasonName(CpuWorldDeferredGpuReadback)[0]=='V');
+ REQUIRE(kKnownReasons==4095u);
+ REQUIRE(ReasonName(OriginalCameraComUnsafe)[0]=='O');
+ REQUIRE(!MayPublishGameStereo(OriginalCameraComUnsafe));
+ REQUIRE(FinalPresentReason(OriginalCameraComUnsafe,true,true)==OriginalCameraComUnsafe);
+ REQUIRE(FinalPresentReason(OriginalCameraComUnsafe,false,true)==
+         (OriginalCameraComUnsafe|OriginalPresentFailed));
+ Snapshot camera_failed{};camera_failed.frame_id=4u;
+ camera_failed.reason_mask=OriginalCameraComUnsafe;
+ REQUIRE(InvalidatesCachedPair(camera_failed,true,3u,true));
  REQUIRE(FinalPresentReason(CpuWorldDeferredGpuReadback,true,true)==
          CpuWorldDeferredGpuReadback);
  REQUIRE(!MayPublishGameStereo(CpuWorldDeferredGpuReadback));

@@ -18,9 +18,12 @@ enum Reason : std::uint32_t {
     OriginalPresentFailed=256u, OriginalMonoFallback=512u,
     // Verified CPU-world pair was prepared for the physical original
     // Present, so speculative GPU two-eye readback was not performed.
-    CpuWorldDeferredGpuReadback=1024u
+    CpuWorldDeferredGpuReadback=1024u,
+    // The real original camera/PS/layout COM source SET was ambiguous
+    // across its physical Draw/Present; never treat speculative eyes as live.
+    OriginalCameraComUnsafe=2048u
 };
-constexpr std::uint32_t kKnownReasons=2047u;
+constexpr std::uint32_t kKnownReasons=4095u;
 constexpr bool OriginalMonoPublished(std::uint32_t mask) noexcept {
     return mask==OriginalMonoFallback;
 }
@@ -83,6 +86,8 @@ constexpr const char* ReasonName(std::uint32_t mask)noexcept {
     if(mask&OriginalPresentFailed)return "ORIGINAL_D3D9_PRESENT_FAILED";
     if(mask&PoseUnavailable)return "POSE_NOT_ADMITTED";
     if(mask&PoseExpired)return "POSE_STALE";
+    if(mask&OriginalCameraComUnsafe)
+        return "ORIGINAL_D3D9_CAMERA_COM_LIFETIME_UNSAFE";
     if(mask&NoVerifiedScene)return "NO_VERIFIED_WORLD_SCENE";
     if(mask&NoMirroredPass)return "NO_BACKBUFFER_REPLAY";
     if(mask&WrongDevice)return "WRONG_DEVICE";

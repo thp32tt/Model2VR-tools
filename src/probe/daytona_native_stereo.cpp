@@ -150,6 +150,21 @@ public:
         m2vr::LogEvent("model2_vr_gpu_original_lineage_mismatch",
             scene_draws_,mirrored_draws_,mirrored_stretches_,0u);
     }
+    void MarkOriginalCameraComLifetimeUnsafe()noexcept {
+        std::lock_guard lock(mu_);
+        if(!enabled_ || original_camera_com_unsafe_)return;
+        // Earlier generic rejection must NOT erase a later, more precise
+        // genuine camera/PS/layout COM source-lifetime failure.
+        source_original_failed_=true;
+        original_camera_com_unsafe_=true;
+        m2vr::LogEvent("model2_vr_gpu_original_camera_com_unsafe",
+            scene_draws_,mirrored_draws_,mirrored_stretches_,0u);
+    }
+    std::uint32_t SourceFailureReason() const noexcept {
+        return original_camera_com_unsafe_
+            ?m2vr::producerhealth::OriginalCameraComUnsafe
+            :m2vr::producerhealth::NoVerifiedScene;
+    }
     void MarkFailedOriginalSurface(std::uint32_t method,
                                    std::uint32_t original_hresult)noexcept{
         // Keep in lockstep with original_d3d9_surface_result_gate.hpp:
@@ -572,7 +587,7 @@ public:
         if(source_original_failed_){
             // Original game pixels remain valid as a flat/mono fallback;
             // never publish either speculative eye after scene/Draw failure.
-            pending_present_reason_=m2vr::producerhealth::NoVerifiedScene;
+            pending_present_reason_=SourceFailureReason();
             PrepareOriginalMono(d,frame,pending_present_reason_);
             return;
         }
@@ -682,7 +697,7 @@ public:
         // completed. Never publish those stale GameStereo surfaces.
         const std::uint32_t prepared=coherent
             ? (source_original_failed_
-                ? m2vr::producerhealth::NoVerifiedScene
+                ? SourceFailureReason()
                 : pending_present_reason_)
             : 4u;
         const bool original_ok=SUCCEEDED(original_result);
@@ -825,6 +840,7 @@ private:
     void FinishFrame()noexcept{
         pending_present_frame_=0u;pending_present_reason_=0u;
         source_original_failed_=false;
+        original_camera_com_unsafe_=false;
         pending_mono_ready_=false;pending_mono_source_reason_=0u;
         frame_started_=false;scene_draws_=0;
         main_depth_ready_=false;aux_depth_ready_=false;
@@ -1215,7 +1231,7 @@ private:
     std::mutex mu_;
     m2vr::producerhealth::Link health_;
     bool enabled_=false,frame_started_=false,writer_ready_=false;
-    bool source_original_failed_=false;
+    bool source_original_failed_=false,original_camera_com_unsafe_=false;
     std::uint64_t pending_present_frame_=0u;
     std::uint32_t pending_present_reason_=0u;
     HRESULT last_failed_present_=S_OK;
@@ -1300,6 +1316,9 @@ void MarkFailedOriginalSurface(std::uint32_t method,
 }
 void MarkOriginalLineageMismatch()noexcept{
     g_eye.MarkOriginalLineageMismatch();
+}
+void MarkOriginalCameraComLifetimeUnsafe()noexcept{
+    g_eye.MarkOriginalCameraComLifetimeUnsafe();
 }
 void MarkOriginalTextureUploadAfterEyes()noexcept{
     g_eye.MarkOriginalTextureUploadAfterEyes();

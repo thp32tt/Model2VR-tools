@@ -91,6 +91,9 @@ void MarkFailedOriginalSurface(std::uint32_t method,
 // A valid original CPU Draw permission lost camera/RT/viewport equivalence.
 // Never send half-updated speculative GPU-eye images to the x64 host.
 void MarkOriginalLineageMismatch() noexcept;
+// Genuine original x86 camera/program/layout COM lifetime rejection is
+// propagated as a distinct Win64 OpenXR producer-health source reason.
+void MarkOriginalCameraComLifetimeUnsafe() noexcept;
 // A successful source texture upload after GPU eye Draw invalidates texels.
 void MarkOriginalTextureUploadAfterEyes() noexcept;
 // Real original GPU Surface contents changed after a mirrored eye Draw.

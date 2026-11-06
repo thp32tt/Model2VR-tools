@@ -1314,7 +1314,7 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9CameraComLifetime(
     }
     if(first)m2vr::LogEvent("model2_d3d9_original_camera_com_rejected",
         physical_present,flags,source_draws,original_camera_writes);
-    m2vr::daytona::MarkOriginalLineageMismatch();
+    m2vr::daytona::MarkOriginalCameraComLifetimeUnsafe();
 }
 // Strict original physical-Draw post-call check: a state write concurrent
 // with CPU eye raster or the genuine D3D9 Draw may change its source.

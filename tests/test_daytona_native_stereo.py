@@ -481,6 +481,20 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("Model2VR_RejectOriginalD3D9CameraComLifetime(",bridge)
         self.assertIn("model2_d3d9_original_camera_com_families",hooks)
 
+    def test_original_camera_COM_unsafe_reason_reaches_win64_eye_diagnostics(self):
+        producer=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
+        header=(ROOT/"src/common/daytona_producer_health.hpp").read_text("utf-8")
+        adapter=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        api=(ROOT/"src/probe/daytona_native_stereo.hpp").read_text("utf-8")
+        self.assertIn("OriginalCameraComUnsafe=2048u",header)
+        self.assertIn("kKnownReasons=4095u",header)
+        self.assertIn("ORIGINAL_D3D9_CAMERA_COM_LIFETIME_UNSAFE",header)
+        self.assertIn("void MarkOriginalCameraComLifetimeUnsafe() noexcept;",api)
+        self.assertIn("g_eye.MarkOriginalCameraComLifetimeUnsafe();",producer)
+        self.assertIn("original_camera_com_unsafe_=false;",producer)
+        self.assertIn("pending_present_reason_=SourceFailureReason()",producer)
+        self.assertIn("m2vr::daytona::MarkOriginalCameraComLifetimeUnsafe();",adapter)
+
     def test_original_material_state_lineage_and_failed_call_atomicity(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")
