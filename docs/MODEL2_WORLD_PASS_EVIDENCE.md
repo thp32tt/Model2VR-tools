@@ -36,6 +36,16 @@ candidates must have no overlapped COM evidence and must each contain
 at least one genuine camera/VS source state write. Pixel shader and layout
 writes by themselves cannot fabricate an original race camera.
 
+For a rejected native GPU eye source, the original x86 producer now also
+publishes **reason bit 2048** (`OriginalCameraComUnsafe`) in the existing
+48-byte producer-health status (same 64-byte x86/x64 wire ABI), before Win64
+OpenXR displays a speculative pair. The host's transition log names it
+`ORIGINAL_D3D9_CAMERA_COM_LIFETIME_UNSAFE`, distinguishing it from general
+`NO_VERIFIED_WORLD_SCENE`. A genuine successful original D3D9
+mono backbuffer may instead be delivered as explicitly tagged
+`OriginalMonoFallback`; mono pixels are never promoted to World3D. Original
+COM HRESULT and game rendering remain untouched.
+
 **This does NOT prove which camera is gameplay World3D**, original emulator
 HMD axes/units/IPD alignment or real Quest3/VDXR stereo. Original x86
 gameplay process data/captures stay in `thp32tt/Model2VR-analysis-private`,
