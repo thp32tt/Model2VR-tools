@@ -34,6 +34,20 @@ if ($ResumeSessionFolder) {
   $destination = Join-Path $logRoot $folder
   New-Item -ItemType Directory -Path $destination -ErrorAction Stop | Out-Null
 }
+# Invalidate a previous successful receipt BEFORE reading or prompting for
+# another original session. If stage 1 or a later preflight fails, an old
+# manifest/candidate must never remain under its active success filename.
+# Keep prior files for local forensics; do not delete private evidence.
+if ($ResumeSessionFolder) {
+  foreach ($oldSummary in @("PRIVATE_MANIFEST.json","PRIVATE_WORLD_CANDIDATES.json")) {
+    $oldPath = Join-Path $destination $oldSummary
+    if (Test-Path -LiteralPath $oldPath -PathType Leaf) {
+      $suffix = (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmss_fff") +
+                "_" + [guid]::NewGuid().ToString("N").Substring(0,8)
+      Rename-Item -LiteralPath $oldPath -NewName ("PRIVATE_PRIOR_" + $suffix + "_" + $oldSummary) -ErrorAction Stop
+    }
+  }
+}
 $copies = @{}
 $hashes = @{}
 $knownPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
@@ -187,17 +201,6 @@ foreach ($label in $labels) {
   $reports[$label] = $preflight
   Write-Host ("Validated and archived PRIVATE " + $label + " (" +
               $source.Length + " bytes; original process nonce distinct)")
-}
-# Rotate any old summaries so they cannot appear as NEW proof if
-# cross-session comparison fails after resuming.
-if ($ResumeSessionFolder) {
-  foreach ($oldSummary in @("PRIVATE_MANIFEST.json","PRIVATE_WORLD_CANDIDATES.json")) {
-    $oldPath = Join-Path $destination $oldSummary
-    if (Test-Path -LiteralPath $oldPath -PathType Leaf) {
-      $suffix = (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmss_fff")
-      Rename-Item -LiteralPath $oldPath -NewName ("PRIVATE_PRIOR_" + $suffix + "_" + $oldSummary) -ErrorAction Stop
-    }
-  }
 }
 $argsForPython = @($analyzer,"--race",$reports["race_a"],"--race",$reports["race_b"])
 foreach ($label in @("title","menu","sky","hud","aux")) {
