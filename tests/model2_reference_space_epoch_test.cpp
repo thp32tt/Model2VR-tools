@@ -22,11 +22,23 @@ int main(){
     CHECK(gate.OnPredictedFrame(325)==ReferenceSpaceFrame::SuppressTransition);
     CHECK(gate.Epoch()==3);
     CHECK(gate.OnPredictedFrame(326)==ReferenceSpaceFrame::Ready);
-    CHECK(gate.NotifyLocalChange(0));
-    CHECK(gate.OnPredictedFrame(0)==ReferenceSpaceFrame::SuppressPending);
-    CHECK(gate.OnPredictedFrame(327)==ReferenceSpaceFrame::SuppressTransition);
-    CHECK(gate.Epoch()==4);
+    // A missing transition time could hide an arbitrarily late LOCAL
+    // origin change. Never switch on the next guessed positive frame.
+    CHECK(gate.NotifyLocalChange(0) && gate.ChangeTimeUnknown());
+    CHECK(!gate.Pending());
+    CHECK(gate.OnPredictedFrame(0)==ReferenceSpaceFrame::Exhausted);
+    CHECK(gate.OnPredictedFrame(327)==ReferenceSpaceFrame::Exhausted);
+    CHECK(gate.OnPredictedFrame(5000)==ReferenceSpaceFrame::Exhausted);
+    CHECK(!gate.NotifyLocalChange(6000)); // a later known event cannot heal it
+    CHECK(gate.Epoch()==3);
+    CHECK(gate.BeginSession() && gate.Epoch()==4 && !gate.ChangeTimeUnknown());
     CHECK(gate.OnPredictedFrame(328)==ReferenceSpaceFrame::Ready);
+    // An unknown second event cannot be overwritten by an earlier
+    // pending positive changeTime.
+    CHECK(gate.NotifyLocalChange(2000));
+    CHECK(gate.NotifyLocalChange(-1) && gate.ChangeTimeUnknown());
+    CHECK(!gate.Pending());
+    CHECK(gate.OnPredictedFrame(2000)==ReferenceSpaceFrame::Exhausted);
     CHECK(gate.BeginSession() && gate.Epoch()==5);
     CHECK(gate.NotifyLocalChange(999));
     CHECK(gate.OnPredictedFrame(400)==ReferenceSpaceFrame::SuppressPending);
