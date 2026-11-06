@@ -606,6 +606,38 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         self.assertEqual(len(got["candidates"]),1)
         self.assertFalse(got["adapter_auto_enable"])
 
+    def test_race_cached_report_cannot_bypass_exact_original_callers(self):
+        # Cached PRIVATE reports are accepted by the cross-session CLI;
+        # a race must pass the same original four-family inventory gate
+        # as the freshly preflighted run, not only the negative controls.
+        good=report(witness())
+        self.assertEqual(len(compare_sessions([good,report(witness())],
+                                              controls())["candidates"]),1)
+        mutations=[]
+        missing=copy.deepcopy(good)
+        del missing["original_all_family_exact_caller_inventory"]
+        mutations.append(missing)
+        overflow=copy.deepcopy(good)
+        overflow["original_all_family_exact_caller_inventory"]["overflow"]=True
+        mutations.append(overflow)
+        stale=copy.deepcopy(good)
+        stale["original_all_family_exact_caller_inventory"]["physical_present_count"]=7
+        mutations.append(stale)
+        unsampled=copy.deepcopy(good)
+        unsampled["original_all_family_exact_caller_inventory"]["callers"]=["0x004f5000"]
+        unsampled["original_all_family_exact_caller_inventory"]["unique_caller_count"]=1
+        mutations.append(unsampled)
+        forged=copy.deepcopy(good)
+        forged["original_all_family_caller_bloom"]["lane0"] ^= 1
+        mutations.append(forged)
+        for bad in mutations:
+            for race_position in (0,1):
+                races=[good,report(witness())]
+                races[race_position]=bad
+                with self.subTest(position=race_position,bad=bad):
+                    with self.assertRaises(ValueError):
+                        compare_sessions(races,controls())
+
     def test_missing_exact_caller_control_fails_closed(self):
         control=report()
         del control["original_all_family_exact_caller_inventory"]

@@ -412,6 +412,12 @@ def compare_sessions(race_reports, nonrace_reports):
     race=[_validate_report(report) for report in race_reports]
     nonrace={label:_validate_report(nonrace_reports[label])
              for label in sorted(CONTROL_TYPES)}
+    # A cached race JSON may bypass --preflight. Require exactly the same
+    # complete UNSAMPLED physical Draw caller inventory used to exclude
+    # title/menu/HUD/sky/aux aliases, for both races independently.
+    # Sampled VB/IB witnesses alone cannot authenticate a race process.
+    for report in race_reports:
+        _control_exact_callers(report, _control_bloom(report))
     run_nonces=[r["original_capture_run"]["nonce_hex"] for r in race_reports]
     run_nonces += [nonrace_reports[label]["original_capture_run"]["nonce_hex"]
                    for label in sorted(CONTROL_TYPES)]
