@@ -442,6 +442,45 @@ class NativeStereoTest(unittest.TestCase):
         self.assertEqual(bridge.count('m2vr::LogEvent("model2_d3d9_original_lineage_drift",'),2)
         self.assertIn("Model2VR_RejectOriginalD3D9SourceLineageDrift(",api)
 
+    def test_actual_original_camera_program_COM_lifetime_covers_twelve_setters_and_four_draws(self):
+        hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
+        bridge=(ROOT/"src/probe/verified_world_bridge.cpp").read_text("utf-8")
+        for method,original,family in (
+            ("SetTransformHook","g_set_transform(d,state,matrix)",""),
+            ("MultiplyTransformHook","g_multiply_transform(d,state,matrix)",""),
+            ("SetVSConstantFHook","g_set_vs_constant_f(d,start,values,count)",""),
+            ("SetVertexShaderHook","g_set_vertex_shader(d,shader)",""),
+            ("SetVSConstantIHook","g_vs_i(d,start,values,count)",""),
+            ("SetVSConstantBHook","g_vs_b(d,start,values,count)",""),
+            ("SetVertexDeclarationHook","g_set_vertex_declaration(d,declaration)","3u"),
+            ("SetFVFHook","g_set_f_v_f(d,fvf)","3u"),
+            ("SetPixelShaderHook","g_set_pixel_shader(d,shader)","2u"),
+            ("SetPSConstantFHook","g_set_ps_constant_f(d,start,values,count)","2u"),
+            ("SetPSConstantIHook","g_ps_i(d,start,values,count)","2u"),
+            ("SetPSConstantBHook","g_ps_b(d,start,values,count)","2u"),
+        ):
+            with self.subTest(original_method=method):
+                boundary="HRESULT STDMETHODCALLTYPE "+method+"("
+                self.assertIn(boundary,hooks)
+                body=hooks.split(boundary,1)[1].split("\n}",1)[0]
+                self.assertIn("IsEyeReplayActive()",body)
+                self.assertIn("g_original_camera_lifetime.EnterWrite("+
+                              family+")" if family else
+                              "g_original_camera_lifetime.EnterWrite()",body)
+                self.assertIn("g_original_camera_lifetime.CompleteWrite(",body)
+                self.assertIn("const HRESULT hr="+original+";",body)
+                self.assertIn("return hr;",body)
+        self.assertEqual(
+            hooks.count("g_original_camera_lifetime.EnterDraw()"),4)
+        self.assertEqual(
+            hooks.count("g_original_camera_lifetime.CompleteDraw("),4)
+        self.assertEqual(
+            hooks.count("g_original_camera_lifetime.FinishPresent()"),1)
+        self.assertIn("g_original_camera_lifetime.Reset()",hooks)
+        self.assertIn("g_original_camera_lifetime.ReopenAfterPhysicalPresentReturn()",hooks)
+        self.assertIn("Model2VR_RejectOriginalD3D9CameraComLifetime(",bridge)
+        self.assertIn("model2_d3d9_original_camera_com_families",hooks)
+
     def test_original_material_state_lineage_and_failed_call_atomicity(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
         gpu=(ROOT/"src/probe/daytona_native_stereo.cpp").read_text("utf-8")

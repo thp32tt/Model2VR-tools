@@ -123,6 +123,15 @@ class SourceAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(
                     ValueError,"invalid original camera COM family"):
                     REPORT.audit_csv(path)
+            # An incomplete family stream cannot attest the same physical
+            # original Present even if the aggregate write count is correct.
+            missing=[row for row in events if not (
+                row[0]=="model2_d3d9_original_camera_com_families"
+                and row[1]==frames)]
+            self.write_log(path,missing)
+            with self.assertRaisesRegex(
+                ValueError,"orphan original camera COM lifetime evidence"):
+                REPORT.audit_csv(path)
             # Native RT0/depth event is a separate physical witness. Its
             # count/epoch must agree with the ORIGINAL unsampled Draw total.
             target_index=next(i for i,row in enumerate(events)
