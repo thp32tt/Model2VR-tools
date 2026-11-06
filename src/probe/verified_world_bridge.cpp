@@ -45,16 +45,14 @@ struct Bridge {
     // status writer; a second Link would fail Create() on the same PID.
     m2vr::vr::Model2CameraCalibration calibration{};
     m2vr::vr::DrawEvidence evidence{};
-    std::uint64_t frame=0,last_completed=0,pose_sequence=0;
+    std::uint64_t frame=0,last_completed=0;
+    m2vr::daytona::OriginalSourcePoseTicket pose_ticket{};
     m2vr::vrbridge::OriginalSourceFrameEpoch source_epoch{};
     m2vr::vrbridge::OriginalDrawOneShot original_draw_one_shot{};
     std::atomic<bool> original_draw_armed{false};
     m2vr::vrbridge::OriginalProjectedCameraEpoch projected_camera{};
     m2vr::vrbridge::OriginalFixedCameraEpoch fixed_camera{};
     m2vr::vrbridge::OriginalCameraFamilyEpoch camera_family{};
-    std::uint64_t pose_published_qpc=0;
-    std::int64_t pose_predicted_display_time=0;
-    std::uint32_t pose_reference_epoch=0,pose_view_flags=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
     bool active=false,pending_present=false;
@@ -72,8 +70,7 @@ struct Bridge {
     }
     void Abort()noexcept{
         active=false;pending_present=false;
-        owner=0;frame=0;pose_sequence=0;pose_published_qpc=0;
-        pose_predicted_display_time=0;pose_reference_epoch=0;pose_view_flags=0;
+        owner=0;frame=0;pose_ticket={};
         draw_count=0;triangle_count=0;
         projected_camera.Reset();fixed_camera.Reset();camera_family.Reset();
         original_draw_one_shot.Reset();
@@ -145,7 +142,7 @@ bool NativeCameraFamilyAccepted() noexcept {
 }
 // A newer HMD pose cannot revive geometry drawn using an expired source.
 bool OriginalWorldPoseLive()noexcept {
-    if(!g.pose_sequence || !g.pose_published_qpc)return false;
+    if(!g.pose_ticket.sequence || !g.pose_ticket.published_qpc)return false;
     m2vr::pose::Frame latest{};
     if(!Model2VR_ReadPredictedEyeViews(&latest))return false;
     LARGE_INTEGER now{},frequency{};
@@ -153,8 +150,7 @@ bool OriginalWorldPoseLive()noexcept {
        !QueryPerformanceFrequency(&frequency) ||
        now.QuadPart<=0 || frequency.QuadPart<=0)return false;
     return m2vr::daytona::OriginalStereoPoseStillLiveAtPresent(
-        {g.pose_sequence,g.pose_published_qpc,g.pose_reference_epoch,
-         g.pose_predicted_display_time,g.pose_view_flags},latest,
+        g.pose_ticket,latest,
         static_cast<std::uint64_t>(now.QuadPart),
         static_cast<std::uint64_t>(frequency.QuadPart));
 }
@@ -348,11 +344,7 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
             m2vr::LogEvent("model2_vr_cpu_world_local_recenter",
                 frame_id,prior_local_reference,predicted.reserved,0u);
         g.frame=frame_id;
-        g.pose_sequence=predicted.sequence;
-        g.pose_published_qpc=predicted.published_qpc;
-        g.pose_predicted_display_time=predicted.predicted_display_time;
-        g.pose_reference_epoch=predicted.reserved;
-        g.pose_view_flags=predicted.view_flags;
+        g.pose_ticket=m2vr::daytona::OriginalSourcePoseTicket::FromDraw(predicted);
         g.owner=GetCurrentThreadId();
         g.calibration=cal;
         g.evidence=evidence;
@@ -670,7 +662,7 @@ extern "C" BOOL __stdcall Model2VR_EndVerifiedWorldFrame(){
     const bool success=Model2VR_OpenStereoWriter() &&
         Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(a.data(),b.data(),g.frame,
             m2vr::transport::kWidth,m2vr::transport::kHeight,
-            m2vr::transport::kPitch,g.pose_sequence);
+            m2vr::transport::kPitch,g.pose_ticket.sequence);
     if(success)g.last_completed=g.frame;
     g.Abort();
     return success?TRUE:FALSE;
@@ -747,7 +739,7 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
             Model2VR_SubmitVerifiedCpuWorldRGBAWithPose(
                 left.data(),right.data(),g.frame,
                 m2vr::transport::kWidth,m2vr::transport::kHeight,
-                m2vr::transport::kPitch,g.pose_sequence);
+                m2vr::transport::kPitch,g.pose_ticket.sequence);
         if(success)g.last_completed=g.frame;
     }
     // Publish source health through the ONE original-device producer
@@ -762,7 +754,7 @@ extern "C" BOOL __stdcall Model2VR_CompleteVerifiedWorldOriginalPresent(
     }
     if(action==m2vr::vrbridge::PendingWorldPresent::Publish && !pose_live)
         m2vr::LogEvent("model2_vr_cpu_world_source_pose_expired",
-            g.frame,g.pose_sequence,g.pose_published_qpc,0u);
+            g.frame,g.pose_ticket.sequence,g.pose_ticket.published_qpc,0u);
     m2vr::LogEvent("model2_vr_cpu_world_present_commit",g.frame,
         static_cast<unsigned int>(action),success?1u:0u,
         native_gpu_replay_enabled);

@@ -108,13 +108,15 @@ int main(){
     REQUIRE(game_pose.ReferenceSpaceEpoch()==1u);
     REQUIRE(cpu.ReferenceSpaceEpoch()==1u);
     REQUIRE(!game_pose.Read(100u,temporarily_untracked));
-    const daytona::OriginalSourcePoseTicket source_ticket{
-        earlier.sequence,earlier.published_qpc,earlier.reserved,
-        earlier.predicted_display_time,earlier.view_flags};
+    const auto source_ticket=daytona::OriginalSourcePoseTicket::FromDraw(earlier);
     constexpr std::uint64_t hz=10000000ull;
     constexpr std::uint64_t now=1000000300ull;
     REQUIRE(daytona::OriginalStereoPoseStillLiveAtPresent(
         source_ticket,earlier,now,hz));
+    auto substituted_same_tag=earlier;
+    substituted_same_tag.eyes[1].position_m[1]=0.001f;
+    REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
+        source_ticket,substituted_same_tag,now,hz));
     // OpenXR event arrives BEFORE effective changeTime: old ORIGINAL
     // game pixels and cached exact-pose history are revoked immediately.
     REQUIRE(epoch.NotifyLocalChange(200));
@@ -157,7 +159,7 @@ int main(){
     REQUIRE(!game_pose.Begin(102u,late_legacy));
     REQUIRE(!cpu.Rebase(late_legacy,cpu_eyes));
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
-        {late_legacy.sequence,late_legacy.published_qpc,0u},
+        daytona::OriginalSourcePoseTicket::FromDraw(late_legacy),
         late_legacy,now,hz));
     REQUIRE(game_pose.ReferenceSpaceEpoch()==2u);
     REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
@@ -175,8 +177,7 @@ int main(){
     const auto restart=Packet(12,epoch.Epoch(),-5.f);
     REQUIRE(pose::PublishTrackedStereoPose(writer,history,publication_order,restart,Views{3u,4u}));
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
-        {11u,new_local.published_qpc,new_local.reserved,
-         new_local.predicted_display_time,new_local.view_flags},restart,now,hz));
+        daytona::OriginalSourcePoseTicket::FromDraw(new_local),restart,now,hz));
     REQUIRE(cpu.Rebase(restart,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==3u);
     REQUIRE(game_pose.Begin(102u,restart));
@@ -201,8 +202,7 @@ int main(){
     REQUIRE(pose::PublishTrackedStereoPose(
         writer,history,publication_order,final_local,Views{7u,8u}));
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
-        {restart.sequence,restart.published_qpc,restart.reserved,
-         restart.predicted_display_time,restart.view_flags},final_local,now,hz));
+        daytona::OriginalSourcePoseTicket::FromDraw(restart),final_local,now,hz));
     REQUIRE(cpu.Rebase(final_local,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==4u);
     REQUIRE(game_pose.Begin(103u,final_local));
@@ -317,8 +317,7 @@ int main(){
     REQUIRE(overlapping_writer.published.reserved==2u);
     REQUIRE(overlapping_history.Find(51u)!=nullptr);
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
-        {pre_overlap.sequence,pre_overlap.published_qpc,pre_overlap.reserved,
-         pre_overlap.predicted_display_time,pre_overlap.view_flags},
+        daytona::OriginalSourcePoseTicket::FromDraw(pre_overlap),
          clean_overlap_recovery,now,hz));
     return 0;
 }

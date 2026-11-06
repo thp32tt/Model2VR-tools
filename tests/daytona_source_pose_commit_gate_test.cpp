@@ -4,8 +4,7 @@
 int main(){
     using namespace m2vr;
     constexpr std::uint64_t now=1000600000ull,hz=10000000ull;
-    daytona::OriginalSourcePoseTicket ticket{100u,1000000000ull,1u,100000,
-        pose::kFullSixDofTracked};
+    daytona::OriginalSourcePoseTicket ticket{};
     pose::Frame p{};
     p.sequence=102u;p.published_qpc=1000500000ull;
     p.predicted_display_time=102000;
@@ -20,7 +19,15 @@ int main(){
     }
     p.eyes[0].position_m[0]=-0.032f;
     p.eyes[1].position_m[0]=0.032f;
+    auto original_draw=p;
+    original_draw.sequence=100u;
+    original_draw.published_qpc=1000000000ull;
+    original_draw.predicted_display_time=100000;
+    ticket=daytona::OriginalSourcePoseTicket::FromDraw(original_draw);
     using daytona::OriginalStereoPoseStillLiveAtPresent;
+    auto missing_eye_capture=ticket;
+    missing_eye_capture.draw_eyes_captured=false;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(missing_eye_capture,p,now,hz));
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
     // Newly tracked Present cannot authenticate VALID-only original Draw.
     auto untracked_draw=ticket;
@@ -50,6 +57,15 @@ int main(){
     p.sequence=100u;p.predicted_display_time=100001;
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
     p.predicted_display_time=100000;
+    CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    // A same-tag substitute eye image must fail, even when both views
+    // are still individually plausible tracked binocular cameras.
+    p.eyes[0].position_m[1]=0.001f;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.eyes[0].position_m[1]=0.f;
+    p.eyes[1].fov_left_right_up_down[1]=0.79f;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.eyes[1].fov_left_right_up_down[1]=0.8f;
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
     p.sequence=102u;p.predicted_display_time=102000;
     // Physical original D3D9 Present must reject a direct tracked-world

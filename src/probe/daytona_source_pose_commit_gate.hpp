@@ -4,6 +4,7 @@
 // Read-only source evidence: does not authenticate the Daytona race world.
 #include "daytona_eye_pose_gate.hpp"
 #include <cstdint>
+#include <cstring>
 namespace m2vr::daytona {
 struct OriginalSourcePoseTicket {
     std::uint64_t sequence=0;
@@ -16,13 +17,36 @@ struct OriginalSourcePoseTicket {
     // Persist the ORIGINAL Draw tracking bits; Present's newer tracked
     // sample must never relabel an untracked image as genuine eye source.
     std::uint32_t draw_view_flags=0;
+    // Exact local C++ snapshot of the original Draw's two physical
+    // XR eye views; not an x86/x64 wire layout or world-pass proof.
+    pose::EyeView draw_eyes[2]{};
+    bool draw_eyes_captured=false;
+    static OriginalSourcePoseTicket FromDraw(const pose::Frame& draw) noexcept {
+        OriginalSourcePoseTicket ticket{};
+        ticket.sequence=draw.sequence;
+        ticket.published_qpc=draw.published_qpc;
+        ticket.reference_space_epoch=draw.reserved;
+        ticket.predicted_display_time=draw.predicted_display_time;
+        ticket.draw_view_flags=draw.view_flags;
+        ticket.draw_eyes[0]=draw.eyes[0];
+        ticket.draw_eyes[1]=draw.eyes[1];
+        ticket.draw_eyes_captured=true;
+        return ticket;
+    }
 };
 inline bool OriginalStereoPoseStillLiveAtPresent(
     OriginalSourcePoseTicket ticket,const pose::Frame& latest,
     std::uint64_t now,std::uint64_t hz) noexcept {
     // A matching zero/legacy LOCAL epoch is NOT physical source proof.
     // Win64 publishes nonzero session/recenter epochs; accept only those.
-    if(!ticket.reference_space_epoch || !latest.reserved ||
+    if(!ticket.draw_eyes_captured ||
+       // The same source sequence/time must mean the same binocular
+       // coordinates at original physical Present, byte for byte.
+       // A newer source sequence legitimately has new eye coordinates.
+       (latest.sequence==ticket.sequence &&
+        std::memcmp(ticket.draw_eyes,latest.eyes,
+                    sizeof(ticket.draw_eyes))!=0) ||
+       !ticket.reference_space_epoch || !latest.reserved ||
        !ticket.sequence || ticket.sequence>0xffffffffull ||
        !ticket.published_qpc || ticket.predicted_display_time<=0 ||
        (ticket.draw_view_flags & pose::kFullSixDofTracked)!=

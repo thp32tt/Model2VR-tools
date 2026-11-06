@@ -717,11 +717,11 @@ public:
         }else last_failed_present_=S_OK;
         if(m2vr::producerhealth::MayPublishGameStereo(reason)){
             if(!writer_ready_)writer_ready_=Model2VR_OpenStereoWriter()!=FALSE;
-            if(!writer_ready_ || !pose_sequence_ ||
+            if(!writer_ready_ || !pose_ticket_.sequence ||
                !Model2VR_SubmitStereoRGBAWithPose(
                    rgba_[0].data(),rgba_[1].data(),frame,
                    m2vr::transport::kWidth,m2vr::transport::kHeight,
-                   m2vr::transport::kPitch,pose_sequence_))reason=128u;
+                   m2vr::transport::kPitch,pose_ticket_.sequence))reason=128u;
         }
         if(reason && original_ok && pending_mono_ready_){
             // Only the original successful Present authorizes sending
@@ -801,7 +801,7 @@ private:
             static_cast<std::uint64_t>(frequency.QuadPart)).valid;
     }
     bool LatchedStereoPoseStillLive()noexcept {
-        if(!pose_admitted_ || !pose_published_qpc_)return false;
+        if(!pose_admitted_ || !pose_ticket_.published_qpc)return false;
         m2vr::pose::Frame newest{};
         if(!Model2VR_ReadPredictedEyeViews(&newest))return false;
         LARGE_INTEGER ticks{},frequency{};
@@ -809,8 +809,7 @@ private:
            !QueryPerformanceFrequency(&frequency) ||
            ticks.QuadPart<=0 || frequency.QuadPart<=0)return false;
         return m2vr::daytona::OriginalStereoPoseStillLiveAtPresent(
-            {pose_sequence_,pose_published_qpc_,pose_reference_epoch_,
-             pose_predicted_display_time_,pose_view_flags_},newest,
+            pose_ticket_,newest,
             static_cast<std::uint64_t>(ticks.QuadPart),
             static_cast<std::uint64_t>(frequency.QuadPart));
     }
@@ -818,9 +817,7 @@ private:
         if(pose_checked_)return pose_admitted_;
         pose_checked_=true;
         pose_admitted_=false;
-        pose_sequence_=0;
-        pose_published_qpc_=0u;pose_predicted_display_time_=0;
-        pose_reference_epoch_=0u;pose_view_flags_=0u;
+        pose_ticket_={};
         m2vr::pose::Frame frame{};
         if(!Model2VR_ReadPredictedEyeViews(&frame))return false;
         LARGE_INTEGER ticks{},frequency{};
@@ -835,11 +832,7 @@ private:
         pose_admitted_=admitted.valid &&
             m2vr::daytona::CanTagGameStereoPose(admitted.sequence);
         if(pose_admitted_){
-            pose_sequence_=admitted.sequence;
-            pose_published_qpc_=frame.published_qpc;
-            pose_predicted_display_time_=frame.predicted_display_time;
-            pose_reference_epoch_=frame.reserved;
-            pose_view_flags_=frame.view_flags;
+            pose_ticket_=m2vr::daytona::OriginalSourcePoseTicket::FromDraw(frame);
             ipd_scale_=admitted.ipd_scale;
         }
         return pose_admitted_;
@@ -858,9 +851,7 @@ private:
         scene_candidates_=0;
         scene_rejections_.fill(0u);
         mirrored_family_.fill(0u);
-        pose_checked_=false;pose_admitted_=false;pose_sequence_=0;
-        pose_published_qpc_=0u;pose_predicted_display_time_=0;
-        pose_reference_epoch_=0u;pose_view_flags_=0u;
+        pose_checked_=false;pose_admitted_=false;pose_ticket_={};
     }
     static D3DVIEWPORT9 Clip(D3DVIEWPORT9 vp,UINT w,UINT h)noexcept {
         if(vp.X>=w||vp.Y>=h){vp.X=0;vp.Y=0;vp.Width=w;vp.Height=h;}
@@ -1244,9 +1235,7 @@ private:
     std::uint32_t pending_present_reason_=0u;
     HRESULT last_failed_present_=S_OK;
     bool pose_checked_=false,pose_admitted_=false;
-    std::uint64_t pose_sequence_=0,pose_published_qpc_=0;
-    std::int64_t pose_predicted_display_time_=0;
-    std::uint32_t pose_reference_epoch_=0u,pose_view_flags_=0u;
+    m2vr::daytona::OriginalSourcePoseTicket pose_ticket_{};
     bool first_stereo_published_=false,first_mono_published_=false;
     bool pending_mono_ready_=false;
     std::uint32_t pending_mono_source_reason_=0u;
