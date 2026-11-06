@@ -78,6 +78,22 @@ class CandidateReplayTest(unittest.TestCase):
         self.assertEqual(self.candidate["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertFalse(self.candidate["adapter_auto_enable"])
 
+
+    def test_candidate_replay_rejects_rehashed_duplicate_members(self):
+        # Strict report->candidate comparison must not normalize away two
+        # contradictory source authorization members in the receipt.
+        candidate_path = self.archive / "PRIVATE_WORLD_CANDIDATES.json"
+        encoded = candidate_path.read_text(encoding="utf-8")
+        self.assertIn('"adapter_auto_enable": false', encoded)
+        candidate_path.write_text(encoded.replace(
+            '"adapter_auto_enable": false',
+            '"adapter_auto_enable": true, "adapter_auto_enable": false', 1),
+            encoding="utf-8")
+        self.manifest["candidate_sha256"] = sha(candidate_path)
+        self._write_manifest()
+        with self.assertRaisesRegex(ReceiptError, "duplicate JSON key"):
+            verify_candidate_replay(self.archive)
+
     def test_rehashed_forged_candidate_is_rejected_by_semantic_replay(self):
         self.candidate["candidates"][0]["per_race_source_present_counts"][0] += 1
         self._write_candidate()

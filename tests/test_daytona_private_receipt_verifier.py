@@ -80,6 +80,53 @@ class PrivateReceiptVerifierTest(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.ReceiptError, "changed PRIVATE_SOURCE_hud.json"):
             MODULE.verify_archive(self.archive)
 
+
+    def test_rehashed_candidate_with_duplicate_world3d_authorization_is_rejected(self):
+        # A last-key-wins reader used to accept this rehashed candidate,
+        # while a first-key-wins reader would see auto-enable=true.
+        path = self.archive / "PRIVATE_WORLD_CANDIDATES.json"
+        before = path.read_text()
+        self.assertIn('"adapter_auto_enable": false', before)
+        path.write_text(before.replace(
+            '"adapter_auto_enable": false',
+            '"adapter_auto_enable": true, "adapter_auto_enable": false', 1))
+        self.manifest["candidate_sha256"] = _sha(path)
+        self._write_manifest()
+        with self.assertRaisesRegex(MODULE.ReceiptError, "duplicate JSON key"):
+            MODULE.verify_archive(self.archive)
+
+    def test_duplicate_manifest_world_proof_is_rejected(self):
+        original = self.manifest_path.read_text()
+        self.manifest_path.write_text(original.replace(
+            '"world_pass_proof": "NOT_ESTABLISHED"',
+            '"world_pass_proof": "ESTABLISHED", '
+            '"world_pass_proof": "NOT_ESTABLISHED"', 1))
+        with self.assertRaisesRegex(MODULE.ReceiptError, "duplicate JSON key"):
+            MODULE.verify_archive(self.archive)
+
+    def test_nested_original_process_nonce_ambiguity_is_rejected(self):
+        path = self.archive / "PRIVATE_SOURCE_race_a.json"
+        original = path.read_text()
+        path.write_text(original.replace(
+            '"nonce_hex": "0x0000000000000001"',
+            '"nonce_hex": "0x1111111111111111", '
+            '"nonce_hex": "0x0000000000000001"', 1))
+        self.manifest["source_report_sha256"]["race_a"] = _sha(path)
+        self._write_manifest()
+        with self.assertRaisesRegex(MODULE.ReceiptError, "duplicate JSON key"):
+            MODULE.verify_archive(self.archive)
+
+    def test_rehashed_nonfinite_candidate_json_is_rejected(self):
+        path = self.archive / "PRIVATE_WORLD_CANDIDATES.json"
+        before = path.read_text()
+        self.assertIn('"rejected": []', before)
+        path.write_text(before.replace(
+            '"rejected": []', '"rejected": [{"diagnostic": NaN}]', 1))
+        self.manifest["candidate_sha256"] = _sha(path)
+        self._write_manifest()
+        with self.assertRaisesRegex(MODULE.ReceiptError, "nonstandard JSON numeric"):
+            MODULE.verify_archive(self.archive)
+
     def test_swapped_nonce_with_rehashed_report_is_rejected(self):
         path = self.archive / "PRIVATE_SOURCE_sky.json"
         path.write_text(json.dumps({"original_capture_run": {

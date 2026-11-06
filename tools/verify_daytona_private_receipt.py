@@ -31,9 +31,33 @@ def _file(path: Path) -> Path:
     return path
 
 
+def _unique_json_members(pairs):
+    """Reject ambiguous receipt members at EVERY nested JSON object level.
+
+    Python normally keeps the last duplicate member, whereas a second
+    consumer may use the first. No rehashed original World3D receipt may
+    contain two competing values for authorization, source identity or pose.
+    """
+    members = {}
+    for key, value in pairs:
+        if key in members:
+            raise ReceiptError(f"duplicate JSON key: {key}")
+        members[key] = value
+    return members
+
+
+def _reject_non_json_number(value):
+    # Python's permissive JSON decoder accepts NaN/Infinity although other
+    # receipt consumers reject them or interpret them inconsistently.
+    raise ReceiptError(f"nonstandard JSON numeric constant: {value}")
+
+
 def _load_json(path: Path) -> dict:
     try:
-        result = json.loads(_file(path).read_text(encoding="utf-8-sig"))
+        result = json.loads(
+            _file(path).read_text(encoding="utf-8-sig"),
+            object_pairs_hook=_unique_json_members,
+            parse_constant=_reject_non_json_number)
     except (ValueError, UnicodeError, OSError) as exc:
         raise ReceiptError(f"unreadable private JSON {path.name}: {exc}") from exc
     if type(result) is not dict:
