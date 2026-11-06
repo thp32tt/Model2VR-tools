@@ -95,6 +95,9 @@ def report(*sources):
             "last_present_frame":8,
             "original_com_draw_count":9,
             "original_camera_write_count":15,
+            "original_camera_state_write_count":5,
+            "original_pixel_program_write_count":7,
+            "original_vertex_layout_write_count":3,
             "flagged_present_count":0,
             "trusted_camera_drawn_present_count":3,
             "all_original_camera_com_lifetimes_trusted":True,
@@ -188,6 +191,8 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             ("original_physical_camera_com_lifetime",None),
             ("physical_present_count",7),
             ("original_com_draw_count",10),
+            ("original_camera_state_write_count",6),
+            ("original_pixel_program_write_count",8),
             ("flagged_present_count",9),
             ("all_original_camera_com_lifetimes_trusted",1),
         ):
@@ -208,6 +213,16 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         self.assertEqual(decision["candidates"],[])
         self.assertEqual(decision["rejected"][0]["reason"],
                          "race_original_camera_com_lifetime_untrusted")
+        # A report can contain genuine pixel shader and vertex-layout
+        # changes while ZERO original view/projection source calls occurred.
+        race=report(witness())
+        camera=race["original_physical_camera_com_lifetime"]
+        camera["original_camera_state_write_count"]=0
+        camera["original_pixel_program_write_count"]=12
+        decision=compare_sessions([race,report(witness())],controls())
+        self.assertEqual(decision["candidates"],[])
+        self.assertEqual(decision["rejected"][0]["reason"],
+                         "race_original_camera_state_write_missing")
 
     def test_original_rt0_depth_all_family_source_required_for_seven_sessions(self):
         # New original producer always emits physical RT0/depth evidence,

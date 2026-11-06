@@ -169,7 +169,11 @@ def _validate_report(report):
     camera=report.get("original_physical_camera_com_lifetime")
     camera_keys={"physical_present_count","first_present_frame",
                  "last_present_frame","original_com_draw_count",
-                 "original_camera_write_count","flagged_present_count",
+                 "original_camera_write_count",
+                 "original_camera_state_write_count",
+                 "original_pixel_program_write_count",
+                 "original_vertex_layout_write_count",
+                 "flagged_present_count",
                  "trusted_camera_drawn_present_count",
                  "all_original_camera_com_lifetimes_trusted"}
     ints=camera_keys-{"all_original_camera_com_lifetimes_trusted"}
@@ -181,6 +185,10 @@ def _validate_report(report):
         camera["last_present_frame"]!=run["physical_present_count"] or
         camera["physical_present_count"]!=run["physical_present_count"] or
         camera["flagged_present_count"]>camera["physical_present_count"] or
+        (camera["original_camera_state_write_count"]+
+         camera["original_pixel_program_write_count"]+
+         camera["original_vertex_layout_write_count"]!=
+         camera["original_camera_write_count"]) or
         camera["trusted_camera_drawn_present_count"]>
             camera["physical_present_count"] or
         (camera["flagged_present_count"]==0 and
@@ -437,6 +445,9 @@ def compare_sessions(race_reports, nonrace_reports):
         elif any(not r["original_physical_camera_com_lifetime"][
                 "all_original_camera_com_lifetimes_trusted"] for r in race_reports):
             reason="race_original_camera_com_lifetime_untrusted"
+        elif any(r["original_physical_camera_com_lifetime"][
+                 "original_camera_state_write_count"]==0 for r in race_reports):
+            reason="race_original_camera_state_write_missing"
         elif any(not r["original_physical_draw_target_coverage"][
                 "all_original_draw_targets_trusted"] for r in race_reports):
             reason="race_original_rt0_depth_draw_provenance_untrusted"
