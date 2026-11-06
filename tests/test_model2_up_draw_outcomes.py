@@ -54,19 +54,30 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
         self.assertEqual(old["counts"]["same_witness_cpu_camera_present_candidate"],1)
         self.assertNotIn("same_witness_unique_cpu_camera_present_candidate",
                          old["counts"])
-        source=event("model2_d3d9_cpu_up_source_cardinality",21,6,6,0)
-        optical=event("model2_d3d9_cpu_up_fit_population",21,6,12,6)
+        source=event("model2_d3d9_cpu_up_source_cardinality",21,6,0,0)
+        optical=event("model2_d3d9_cpu_up_fit_population",21,6,6,0)
         actual=self.report(base+[source,optical,
             event("model2_d3d9_original_present_result",7,0,1,0)])
         self.assertEqual(actual["counts"]["original_up_unique_fit_population_witness"],1)
         self.assertEqual(actual["counts"]["same_witness_unique_cpu_camera_present_candidate"],1)
-        for incorrect in ((6,12,5),(6,11,6),(5,12,6),(12,12,6)):
+        for incorrect in ((6,6,1),(6,5,0),(5,6,0),(7,6,0)):
             with self.subTest(incorrect=incorrect):
                 with self.assertRaisesRegex(
                         ValueError,"inconsistent original UP fit/eye"):
                     self.report(base+[source,
                         event("model2_d3d9_cpu_up_fit_population",21,*incorrect),
                         event("model2_d3d9_original_present_result",7,0,1,0)])
+        # Four real fan triangles retain twelve expanded GPU vertices while
+        # only six original CPU projector points enter camera least-squares.
+        fan=[event("model2_d3d9_cpu_up_join_batch",21,
+                   pack(4,4),pack(0,0),0xABCD)
+             if row[0]=="model2_d3d9_cpu_up_join_batch" else row
+             for row in base]
+        fan_source=event("model2_d3d9_cpu_up_source_cardinality",21,6,6,0)
+        fan_fit=event("model2_d3d9_cpu_up_fit_population",21,6,12,6)
+        observed=self.report(fan+[fan_source,fan_fit,
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(observed["counts"]["same_witness_unique_cpu_camera_present_candidate"],1)
         with self.assertRaisesRegex(ValueError,"incomplete original UP fit"):
             self.report(base+[optical,
                 event("model2_d3d9_original_present_result",7,0,1,0)])
