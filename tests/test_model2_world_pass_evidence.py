@@ -171,12 +171,13 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 self.assertEqual(json.loads(cached.read_text("utf-8")),valid)
                 with io.StringIO() as output,redirect_stdout(output):
                     main(["--preflight",str(csv)])
-                    summary=json.loads(output.getvalue())
+                    captured=output.getvalue()
+                    summary=json.loads(captured)
                 self.assertEqual(summary["preflight"],"ORIGINAL_SOURCE_READABLE")
                 self.assertEqual(summary["physical_present_count"],8)
                 self.assertEqual(summary["world_pass_proof"],"NOT_ESTABLISHED")
                 self.assertEqual(summary["hmd_runtime_validation"],"UNTESTED")
-                self.assertNotIn("caller_rva_hex",output.getvalue())
+                self.assertNotIn("caller_rva_hex",captured)
             with redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     main(["--preflight",str(csv),"--race",str(csv)])
