@@ -20,7 +20,7 @@ try:
                                             preflight_original_session)
 except ImportError:  # distributed standalone scripts live side by side
     from verify_daytona_private_receipt import (
-        LABELS, ReceiptError, _load_json, verify_archive)
+        LABELS, ReceiptError, _load_json, _matches_hash, verify_archive)
     from model2_world_pass_evidence import (CONTROL_TYPES, compare_sessions,
                                           preflight_original_session)
 
