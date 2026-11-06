@@ -44,6 +44,25 @@ int main(){
                 float(i+1),float(i+2),5.f);
     const auto full_batch=multi.MatchTriangleList(43u,two_faces,6u);
     CHECK(full_batch.inspected==2u && full_batch.complete==2u);
+    CHECK(full_batch.distinct_captures==6u &&
+          full_batch.alias_violations==0u);
+    // Six GPU vertices that reuse only three genuine CPU projections
+    // must NOT be mistaken for a six-point camera fit.
+    ProjectDrawCorrelator recycled{};
+    for(unsigned i=0;i<3u;++i)
+        Capture(recycled,91u,0x55u,two_faces[i].x,two_faces[i].y,
+                float(i+1),float(i+2),5.f,0x1000u,0xAABBCCDDu,0x12u);
+    ProjectedDrawVertex recycled_faces[6]{};
+    for(unsigned i=0;i<6u;++i)recycled_faces[i]=two_faces[i%3u];
+    const auto borrowed=recycled.MatchTriangleList(
+        91u,recycled_faces,6u);
+    CHECK(borrowed.inspected==2u && borrowed.complete==1u &&
+          borrowed.alias_violations==1u && borrowed.ambiguous==1u);
+    CHECK(!borrowed.CompleteSameSource() &&
+          !borrowed.StableOriginalProjectionProvenance());
+    const std::uint32_t forged_indices[6]{0u,1u,2u,3u,4u,5u};
+    CHECK(recycled.MatchTriangleList(91u,recycled_faces,6u,
+        forged_indices).alias_violations==1u);
     CHECK(full_batch.partial==0u && full_batch.ambiguous==0u);
     CHECK(full_batch.common_source_caller_rva==0x55u);
     CHECK(multi.MatchTriangleList(44u,two_faces,6u).complete==0u);
@@ -198,15 +217,41 @@ int main(){
     for(std::size_t i=0;i<triangle_order.size();++i)
         ordered[i]=strip_vertices[triangle_order[i]];
     const auto strip_join=strip_source.MatchTriangleList(
-        61u,ordered.data(),triangle_order.size());
-    CHECK(strip_join.CompleteSameSource());
-    CHECK(strip_join.complete==3u && strip_join.common_source_caller_rva==0x456u);
+        61u,ordered.data(),triangle_order.size(),triangle_order.data());
+    // Three strip triangles share two original vertices; five distinct
+    // projector calls cannot support the required six-point camera fit.
+    CHECK(!strip_join.CompleteSameSource());
+    CHECK(strip_join.complete==3u && strip_join.distinct_captures==5u &&
+          strip_join.legitimate_shared_vertices==4u &&
+          strip_join.alias_violations==0u);
+    CHECK(strip_source.MatchTriangleList(
+        61u,ordered.data(),triangle_order.size()).alias_violations>0u);
+    // A fourth genuine strip triangle introduces a sixth independent
+    // projection and can now retain source topology without recycling.
+    const ProjectedDrawVertex extra{92.f,78.f};
+    Capture(strip_source,61u,0x456u,extra.x,extra.y,6.f,7.f,8.f);
+    const ProjectedDrawVertex strip6[6]{
+        strip_vertices[0],strip_vertices[1],strip_vertices[2],
+        strip_vertices[3],strip_vertices[4],extra};
+    CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLESTRIP,4u,
+        {0u,1u,2u,3u,4u,5u},triangle_order));
+    std::array<ProjectedDrawVertex,12> order4{};
+    for(std::size_t i=0;i<triangle_order.size();++i)
+        order4[i]=strip6[triangle_order[i]];
+    const auto authentic_strip=strip_source.MatchTriangleList(
+        61u,order4.data(),triangle_order.size(),triangle_order.data());
+    CHECK(authentic_strip.CompleteSameSource() &&
+          authentic_strip.distinct_captures==6u &&
+          authentic_strip.legitimate_shared_vertices==6u);
     CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLEFAN,3u,
         {0u,1u,2u,3u,4u},triangle_order));
     for(std::size_t i=0;i<triangle_order.size();++i)
         ordered[i]=strip_vertices[triangle_order[i]];
+    CHECK(!strip_source.MatchTriangleList(
+        61u,ordered.data(),triangle_order.size(),
+        triangle_order.data()).CompleteSameSource());
     CHECK(strip_source.MatchTriangleList(
-        61u,ordered.data(),triangle_order.size()).CompleteSameSource());
+        61u,order4.data(),triangle_order.size()).alias_violations>0u);
     CHECK(!strip_source.MatchTriangleList(
         62u,ordered.data(),triangle_order.size()).CompleteSameSource());
     // A different CPU caller may not be disguised as one proven pass.

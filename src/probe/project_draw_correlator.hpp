@@ -46,6 +46,13 @@ struct ProjectedTriangleBatchJoin {
     std::uint32_t complete=0;
     std::uint32_t partial=0;
     std::uint32_t ambiguous=0;
+    // Original projected CPU calls must be injectively owned by this
+    // physical Draw's vertices. Reused XY is not a second CPU call.
+    // Shared strip/fan/indexed vertices count only if their ORIGINAL
+    // vertex index is identical; six unique captures are needed to fit.
+    std::uint32_t distinct_captures=0;
+    std::uint32_t legitimate_shared_vertices=0;
+    std::uint32_t alias_violations=0;
     std::uint32_t common_source_caller_rva=0;
     std::uint32_t common_matrix_identity=0;
     std::uint32_t common_matrix_fingerprint=0;
@@ -59,6 +66,7 @@ struct ProjectedTriangleBatchJoin {
     std::size_t camera_sample_count=0u;
     bool CompleteSameSource() const noexcept {
         return inspected>=2u && complete==inspected &&
+            distinct_captures>=6u && alias_violations==0u &&
             ambiguous==0u && partial==0u && !mixed_matrix_identity &&
             !mixed_matrix_fingerprint &&
             common_source_caller_rva!=0u &&
@@ -85,6 +93,12 @@ struct ProjectedSourceJoin {
     bool mixed_matrix_identity=false;
     bool mixed_matrix_fingerprint=false;
     std::array<std::array<float,3>,3> source_xyz{};
+    // Internal ring identities (not game addresses) for batch-wide
+    // source uniqueness. Never exported over log or Win32/Win64 IPC.
+    std::array<std::size_t,3> capture_slots{
+        static_cast<std::size_t>(-1),
+        static_cast<std::size_t>(-1),
+        static_cast<std::size_t>(-1)};
     // Three distinct, unambiguous matches are a correlation candidate;
     // they do NOT independently authenticate a world pass or camera units.
     bool Complete() const noexcept {
@@ -169,6 +183,7 @@ public:
                 if(chosen[j]==match_index){reused=true;break;}
             if(reused){++result.ambiguous;continue;}
             chosen[v]=match_index;
+            result.capture_slots[v]=match_index;
             const auto& sample=entries_[match_index];
             result.source_xyz[v]=sample.source;
             if(!result.matched){
@@ -210,8 +225,15 @@ public:
     static_assert(kMaxOriginalProjectionSamples<=kCapacity);
     ProjectedTriangleBatchJoin MatchTriangleList(
         std::uint64_t epoch,const ProjectedDrawVertex* vertices,
-        std::size_t vertex_count) const noexcept {
+        std::size_t vertex_count,
+        const std::uint32_t* original_vertex_ids=nullptr) const noexcept {
         ProjectedTriangleBatchJoin batch{};
+        // The same original CPU capture can be shared by an indexed,
+        // strip or fan triangle ONLY for the same authentic source vertex.
+        // With no index provenance, every expanded vertex is distinct.
+        // No heap allocation and no original pointer/geometry exposure.
+        std::array<std::uint8_t,kCapacity> visited{};
+        std::array<std::uint32_t,kCapacity> source_vertex_ids{};
         if(!vertices || !epoch || vertex_count<3u ||
            vertex_count%3u || vertex_count>3u*kMaxJoinTriangles)
             return batch;
@@ -219,6 +241,38 @@ public:
             const auto join=Match(epoch,vertices+i,3u);
             ++batch.inspected;
             if(join.Complete()){
+                // All-or-nothing per-triangle slot ownership. Do not
+                // accept three locally complete matches if any CPU
+                // projector invocation already belonged to a DIFFERENT
+                // vertex in this same original physical Draw.
+                bool alias=false;
+                for(std::size_t v=0;v<3u;++v) {
+                    const auto slot=join.capture_slots[v];
+                    const auto source_id=original_vertex_ids
+                        ?original_vertex_ids[i+v]
+                        :static_cast<std::uint32_t>(i+v);
+                    if(slot>=kCapacity ||
+                       (visited[slot] && source_vertex_ids[slot]!=source_id))
+                        alias=true;
+                }
+                if(alias){
+                    ++batch.alias_violations;
+                    ++batch.ambiguous;
+                    ++batch.partial;
+                    continue;
+                }
+                for(std::size_t v=0;v<3u;++v) {
+                    const auto slot=join.capture_slots[v];
+                    if(visited[slot]) {
+                        ++batch.legitimate_shared_vertices;
+                    } else {
+                        visited[slot]=1u;
+                        source_vertex_ids[slot]=original_vertex_ids
+                            ?original_vertex_ids[i+v]
+                            :static_cast<std::uint32_t>(i+v);
+                        ++batch.distinct_captures;
+                    }
+                }
                 if(!batch.complete){
                     batch.common_source_caller_rva=join.source_caller_rva;
                     batch.common_matrix_identity=join.matrix_identity;
@@ -248,6 +302,11 @@ public:
             if(join.mixed_matrix_fingerprint)batch.mixed_matrix_fingerprint=true;
             if(join.mixed_geometry_command)batch.mixed_geometry_command=true;
         }
+        // A fitted camera needs at least six INDEPENDENT original CPU
+        // projections. No offline report may claim a complete source
+        // caller from a 2-triangle fan repeating only four samples.
+        if(batch.distinct_captures<6u || batch.alias_violations)
+            batch.common_source_caller_rva=0u;
         return batch;
     }
 private:
