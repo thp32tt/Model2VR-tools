@@ -141,5 +141,65 @@ int main(){
         reinterpret_cast<const std::uint8_t*>(color_vertices.data()),
         sizeof(color_vertices)-1u,argb_fvf,32u,window,expanded));
     CHECK(expanded==last_valid);
+
+    // A real DrawIndexedPrimitiveUP points at MinVertexIndex; the proof-
+    // owned path must compact its genuine 16/32-bit source IDs while
+    // expanding ALL 64 original fan triangles into independent-eye data.
+    std::vector<std::uint16_t> large_indices16(66u);
+    std::vector<std::array<float,6>> large_vertices(66u);
+    for(std::size_t i=0u;i<66u;++i){
+        large_indices16[i]=static_cast<std::uint16_t>(500u+i);
+        large_vertices[i]={
+            50.f+float(i)*5.f,40.f+float(i)*2.f,0.4f,0.5f,
+            float(i%11u)*0.1f,float(i%13u)*0.05f};
+    }
+    CHECK(RemapIndexedUPSourceElements(
+        reinterpret_cast<const std::uint8_t*>(large_indices16.data()),
+        large_indices16.size()*2u,D3DFMT_INDEX16,500u,66u,66u,
+        ordered_source));
+    CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLEFAN,64u,
+        ordered_source,topology));
+    CHECK(topology.size()==192u && topology[0]==0u &&
+          topology[3]==0u && topology[191]==65u);
+    CHECK(CompactIndexedUPIndexWindow(topology,66u,compact));
+    CHECK(compact.count==66u && compact.source_offset==0u);
+    window.first=0u;window.count=compact.count;
+    window.indices=compact.indices;
+    const auto* bytes=reinterpret_cast<const std::uint8_t*>(
+        large_vertices.data());
+    CHECK(!ExpandProjectedVBWindow(bytes,large_vertices.size()*24u,
+        fvf,24u,window,expanded));
+    CHECK(ExpandProjectedVBWindow(bytes,large_vertices.size()*24u,
+        fvf,24u,window,expanded,ProjectedExpansionUse::AuthenticatedWorld));
+    CHECK(expanded.size()==192u*24u);
+    CHECK(std::memcmp(expanded.data()+3u*24u,
+        large_vertices[0].data(),24u)==0);
+    CHECK(std::memcmp(expanded.data()+191u*24u,
+        large_vertices[65].data(),24u)==0);
+    const auto accepted_eye=expanded;
+    std::vector<std::uint32_t> large_indices32(66u);
+    for(std::size_t i=0;i<66u;++i)
+        large_indices32[i]=65536u+static_cast<std::uint32_t>(i);
+    CHECK(RemapIndexedUPSourceElements(
+        reinterpret_cast<const std::uint8_t*>(large_indices32.data()),
+        large_indices32.size()*4u,D3DFMT_INDEX32,65536u,66u,66u,
+        ordered_source));
+    CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLESTRIP,64u,
+        ordered_source,topology));
+    CHECK(CompactIndexedUPIndexWindow(topology,66u,compact));
+    window.indices=compact.indices;
+    CHECK(ExpandProjectedVBWindow(bytes,large_vertices.size()*24u,
+        fvf,24u,window,expanded,ProjectedExpansionUse::AuthenticatedWorld));
+    CHECK(expanded.size()==192u*24u);
+    CHECK(window.indices[3]==2u && window.indices[4]==1u);
+    // An invalid original index must reject the whole source with no
+    // partial right-eye geometry or accidental fallback to a guessed ID.
+    large_indices32[65]=65536u+66u;
+    const auto previous_eye=expanded;
+    CHECK(!RemapIndexedUPSourceElements(
+        reinterpret_cast<const std::uint8_t*>(large_indices32.data()),
+        large_indices32.size()*4u,D3DFMT_INDEX32,65536u,66u,66u,
+        ordered_source));
+    CHECK(expanded==previous_eye && accepted_eye.size()==192u*24u);
     return 0;
 }

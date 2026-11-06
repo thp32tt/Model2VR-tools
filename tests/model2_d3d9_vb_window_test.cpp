@@ -241,5 +241,88 @@ int main(){
         reinterpret_cast<const std::uint8_t*>(colored.data()),
         sizeof(colored),colored_fvf,24u,projected,ordered));
     CHECK(ordered.size()==6u*32u); // failed read preserves valid batch
+
+    // A separately authenticated original World3D source may expand one
+    // complete 64-triangle physical Draw into 192 stereo corners. The
+    // unsanctioned passive original-D3D9 probe remains at eight triangles,
+    // including when the source fan/strip has only 66 unique vertices.
+    std::vector<std::array<float,6>> world_vertices(192u);
+    for(std::size_t i=0;i<world_vertices.size();++i)
+        world_vertices[i]={
+            80.f+float(i)*4.f,130.f+float(i),
+            0.4f,0.5f,float(i%17u)/17.f,float(i%19u)/19.f};
+    VBVertexWindow world_window{};
+    const auto* world_bytes=reinterpret_cast<const std::uint8_t*>(
+        world_vertices.data());
+    const auto world_bytes_size=world_vertices.size()*24u;
+    const auto world_use=m2vr::drawprobe::ProjectedExpansionUse::AuthenticatedWorld;
+    CHECK(m2vr::drawprobe::RemapSequentialTopology(
+        100u,D3DPT_TRIANGLELIST,9u,world_window));
+    CHECK(world_window.count==27u && world_window.indices.size()==27u);
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        world_bytes,world_bytes_size,projected_fvf,24u,world_window,ordered));
+    CHECK(m2vr::drawprobe::ExpandProjectedVBWindow(
+        world_bytes,world_bytes_size,projected_fvf,24u,world_window,
+        ordered,world_use));
+    CHECK(ordered.size()==27u*24u);
+    CHECK(m2vr::drawprobe::RemapSequentialTopology(
+        100u,D3DPT_TRIANGLELIST,64u,world_window));
+    CHECK(world_window.indices.size()==192u);
+    CHECK(m2vr::drawprobe::ExpandProjectedVBWindow(
+        world_bytes,world_bytes_size,projected_fvf,24u,world_window,
+        ordered,world_use));
+    CHECK(ordered.size()==192u*24u);
+    CHECK(std::memcmp(ordered.data()+191u*24u,
+        world_vertices[191].data(),24u)==0);
+    const auto max_approved=ordered;
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        world_bytes,world_bytes_size,projected_fvf,24u,world_window,
+        ordered,static_cast<m2vr::drawprobe::ProjectedExpansionUse>(9u)));
+    CHECK(ordered==max_approved);
+    CHECK(m2vr::drawprobe::RemapSequentialTopology(
+        100u,D3DPT_TRIANGLELIST,65u,world_window));
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        world_bytes,world_bytes_size,projected_fvf,24u,world_window,
+        ordered,world_use));
+    CHECK(ordered==max_approved);
+    // Indexed original fan + signed BaseVertexIndex uses only 66 distinct
+    // source elements, but the L/R eye needs ALL 192 original corners.
+    std::vector<std::uint32_t> physical_ib(66u);
+    for(std::size_t i=0;i<physical_ib.size();++i)
+        physical_ib[i]=500u+static_cast<std::uint32_t>(i);
+    CHECK(m2vr::drawprobe::RemapIndexedTopology(
+        reinterpret_cast<const std::uint8_t*>(physical_ib.data()),
+        physical_ib.size()*4u,D3DFMT_INDEX32,D3DPT_TRIANGLEFAN,
+        -500,500u,66u,64u,world_window));
+    CHECK(world_window.first==0u && world_window.count==66u &&
+          world_window.indices.size()==192u);
+    CHECK(world_window.indices[0]==0u &&
+          world_window.indices[3]==0u &&
+          world_window.indices[191]==65u);
+    CHECK(!m2vr::drawprobe::ExpandProjectedVBWindow(
+        world_bytes,world_bytes_size,projected_fvf,24u,world_window,ordered));
+    CHECK(m2vr::drawprobe::ExpandProjectedVBWindow(
+        world_bytes,world_bytes_size,projected_fvf,24u,world_window,
+        ordered,world_use));
+    CHECK(ordered.size()==192u*24u);
+    CHECK(std::memcmp(ordered.data()+3u*24u,
+        world_vertices[0].data(),24u)==0);
+    CHECK(std::memcmp(ordered.data()+191u*24u,
+        world_vertices[65].data(),24u)==0);
+    // Original indexed strip winding alternates and cannot be rewritten
+    // when the authenticated x86 source is forwarded to Win64 XR eyes.
+    CHECK(m2vr::drawprobe::RemapIndexedTopology(
+        reinterpret_cast<const std::uint8_t*>(physical_ib.data()),
+        physical_ib.size()*4u,D3DFMT_INDEX32,D3DPT_TRIANGLESTRIP,
+        -500,500u,66u,64u,world_window));
+    CHECK(world_window.indices.size()==192u);
+    CHECK(world_window.indices[3]==2u &&
+          world_window.indices[4]==1u &&
+          world_window.indices[5]==3u);
+    CHECK(m2vr::drawprobe::ExpandProjectedVBWindow(
+        world_bytes,world_bytes_size,projected_fvf,24u,world_window,
+        ordered,world_use));
+    CHECK(std::memcmp(ordered.data()+4u*24u,
+        world_vertices[1].data(),24u)==0);
     return 0;
 }
