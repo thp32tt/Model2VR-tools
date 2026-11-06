@@ -521,16 +521,58 @@ def _load_report(path):
         return json.load(handle)
 
 
+def preflight_original_session(path):
+    """Prove one genuine original x86 process run is analyzable BEFORE next run.
+
+    This makes no claim about the USER's scene label, calibrated camera or
+    gameplay World3D. A validated, strictly bounded private full report can
+    be reused in the seven-process cross-session comparison without parsing
+    the same large original D3D9 CSV twice. Never upload either file.
+    """
+    if path.suffix.lower() != ".csv":
+        raise ValueError("single-session preflight requires original x86 CSV")
+    report=audit_csv(path)
+    sources=_validate_report(report)
+    bloom=_control_bloom(report)
+    _control_exact_callers(report,bloom)
+    _control_projector_callers(sources)
+    return report
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--race",action="append",required=True,type=Path,
+    parser.add_argument("--preflight",type=Path,
+                        help="validate ONE original x86 CSV now; keep full report PRIVATE")
+    parser.add_argument("--race",action="append",type=Path,
                         help="private original race CSV/report; provide at least two")
-    parser.add_argument("--control",action="append",nargs=2,required=True,
+    parser.add_argument("--control",action="append",nargs=2,
                         metavar=("CLASS","PRIVATE_CSV_OR_JSON"),
                         help="exactly one for each title/menu/sky/hud/aux")
     parser.add_argument("--output",type=Path,
-                        help="PRIVATE local-only JSON candidate report")
+                        help="PRIVATE local-only JSON candidate/preflight report")
     args=parser.parse_args(argv)
+    if args.preflight is not None:
+        if args.race or args.control:
+            parser.error("--preflight cannot mix with seven-session comparison")
+        try:
+            result=preflight_original_session(args.preflight)
+            content=json.dumps(result,sort_keys=True,indent=2)+"\\n"
+            if args.output:
+                args.output.write_text(content,encoding="utf-8")
+            else:
+                # Without explicit PRIVATE file, never print the original
+                # game's sampled caller/source records to the terminal.
+                run=result["original_capture_run"]
+                print(json.dumps({
+                    "schema":1,"preflight":"ORIGINAL_SOURCE_READABLE",
+                    "physical_present_count":run["physical_present_count"],
+                    "world_pass_proof":"NOT_ESTABLISHED",
+                    "hmd_runtime_validation":"UNTESTED"}))
+        except (ValueError,OSError,UnicodeError,json.JSONDecodeError) as exc:
+            parser.error(str(exc))
+        return
+    if not args.race:
+        parser.error("two independent --race captures required")
     controls={}
     for label,raw in args.control:
         if label not in CONTROL_TYPES or label in controls:
