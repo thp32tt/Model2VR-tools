@@ -230,10 +230,11 @@ int main(){
     REQUIRE(late_event.BeginSession() && late_event.Epoch()==1u);
     REQUIRE(late_event.OnPredictedFrame(500)==pose::ReferenceSpaceFrame::Ready);
     Ring late_history;
+    pose::StereoPosePublicationOrder late_publication_order;
     FakeHostWriter late_writer{&late_history};
     const auto old_pair=Packet(20u,late_event.Epoch(),15.f);
     REQUIRE(pose::PublishTrackedStereoPose(
-        late_writer,late_history,old_pair,Views{41u,42u}));
+        late_writer,late_history,late_publication_order,old_pair,Views{41u,42u}));
     REQUIRE(late_history.Find(20u)!=nullptr);
     REQUIRE(late_event.NotifyLocalChange(450) && late_event.LateChangeTime());
     REQUIRE(late_writer.Invalidate());
@@ -245,10 +246,11 @@ int main(){
             pose::ReferenceSpaceFrame::Exhausted);
     REQUIRE(!late_event.NotifyLocalChange(900));
     REQUIRE(late_event.BeginSession() && late_event.Epoch()==2u);
+    late_publication_order.BeginSession(); // actual xrBeginSession boundary
     REQUIRE(late_event.OnPredictedFrame(1)==pose::ReferenceSpaceFrame::Ready);
     const auto recovered_pair=Packet(21u,late_event.Epoch(),-15.f);
     REQUIRE(pose::PublishTrackedStereoPose(
-        late_writer,late_history,recovered_pair,Views{51u,52u}));
+        late_writer,late_history,late_publication_order,recovered_pair,Views{51u,52u}));
     REQUIRE(late_writer.published.reserved==2u);
     REQUIRE(late_history.Find(21u)!=nullptr);
     // A higher source sequence cannot resurrect an older runtime frame
