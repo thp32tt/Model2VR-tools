@@ -40,7 +40,7 @@ int main() {
         original_xyz[i]={x,y,z};
         original_indices[i]=static_cast<std::uint16_t>(500u+i);
         const float after[3]{screen_x,screen_y,0.5f};
-        projector.Capture(73u,0x004bb400u,original_xyz[i].data(),after,
+        projector.Capture(73u,0x1357u,original_xyz[i].data(),after,
                           0x1000u,0x12345678u,0x44u);
     }
     VBVertexWindow window{};
