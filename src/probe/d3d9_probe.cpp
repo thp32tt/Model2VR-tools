@@ -2731,7 +2731,13 @@ HRESULT STDMETHODCALLTYPE SetIndicesHook(IDirect3DDevice9* d,IDirect3DIndexBuffe
 HRESULT STDMETHODCALLTYPE SetVertexDeclarationHook(IDirect3DDevice9* d,IDirect3DVertexDeclaration9* declaration){
     if(!g_primary_device.Owns(d))return g_set_vertex_declaration(d,declaration);
     void* const caller=_ReturnAddress();
+    // Internal experimental mirrored eyes are NOT original game source
+    // program/matrix writes, and must not taint real hardware Present.
+    if(m2vr::daytona::IsEyeReplayActive())return g_set_vertex_declaration(d,declaration);
+    const auto source_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_set_vertex_declaration(d,declaration);
+    g_original_camera_lifetime.CompleteWrite(
+        source_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,12u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::VertexDeclaration,rva,hr);
@@ -2740,7 +2746,13 @@ HRESULT STDMETHODCALLTYPE SetVertexDeclarationHook(IDirect3DDevice9* d,IDirect3D
 HRESULT STDMETHODCALLTYPE SetFVFHook(IDirect3DDevice9* d,DWORD fvf){
     if(!g_primary_device.Owns(d))return g_set_f_v_f(d,fvf);
     void* const caller=_ReturnAddress();
+    // Internal experimental mirrored eyes are NOT original game source
+    // program/matrix writes, and must not taint real hardware Present.
+    if(m2vr::daytona::IsEyeReplayActive())return g_set_f_v_f(d,fvf);
+    const auto source_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_set_f_v_f(d,fvf);
+    g_original_camera_lifetime.CompleteWrite(
+        source_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,13u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::VertexFVF,rva,hr);
@@ -2763,7 +2775,13 @@ HRESULT STDMETHODCALLTYPE SetVertexShaderHook(IDirect3DDevice9* d,IDirect3DVerte
 HRESULT STDMETHODCALLTYPE SetPixelShaderHook(IDirect3DDevice9* d,IDirect3DPixelShader9* shader){
     if(!g_primary_device.Owns(d))return g_set_pixel_shader(d,shader);
     void* const caller=_ReturnAddress();
+    // Internal experimental mirrored eyes are NOT original game source
+    // program/matrix writes, and must not taint real hardware Present.
+    if(m2vr::daytona::IsEyeReplayActive())return g_set_pixel_shader(d,shader);
+    const auto source_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_set_pixel_shader(d,shader);
+    g_original_camera_lifetime.CompleteWrite(
+        source_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,15u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelShader,rva,hr);
@@ -2800,7 +2818,13 @@ HRESULT STDMETHODCALLTYPE SetVSConstantBHook(IDirect3DDevice9* d,UINT start,cons
 HRESULT STDMETHODCALLTYPE SetPSConstantIHook(IDirect3DDevice9* d,UINT start,const int* values,UINT count){
     if(!g_primary_device.Owns(d))return g_ps_i(d,start,values,count);
     void* const origin=_ReturnAddress();
+    // Internal experimental mirrored eyes are NOT original game source
+    // program/matrix writes, and must not taint real hardware Present.
+    if(m2vr::daytona::IsEyeReplayActive())return g_ps_i(d,start,values,count);
+    const auto source_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_ps_i(d,start,values,count);
+    g_original_camera_lifetime.CompleteWrite(
+        source_write,CallerRva(origin)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(origin);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,23u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelConstantInt,rva,hr);
@@ -2809,7 +2833,13 @@ HRESULT STDMETHODCALLTYPE SetPSConstantIHook(IDirect3DDevice9* d,UINT start,cons
 HRESULT STDMETHODCALLTYPE SetPSConstantBHook(IDirect3DDevice9* d,UINT start,const BOOL* values,UINT count){
     if(!g_primary_device.Owns(d))return g_ps_b(d,start,values,count);
     void* const origin=_ReturnAddress();
+    // Internal experimental mirrored eyes are NOT original game source
+    // program/matrix writes, and must not taint real hardware Present.
+    if(m2vr::daytona::IsEyeReplayActive())return g_ps_b(d,start,values,count);
+    const auto source_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_ps_b(d,start,values,count);
+    g_original_camera_lifetime.CompleteWrite(
+        source_write,CallerRva(origin)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(origin);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,24u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelConstantBool,rva,hr);
@@ -2980,7 +3010,13 @@ HRESULT STDMETHODCALLTYPE SetPSConstantFHook(IDirect3DDevice9* d,UINT start,
                                              const float* values,UINT count){
     if(!g_primary_device.Owns(d))return g_set_ps_constant_f(d,start,values,count);
     void* const caller=_ReturnAddress();
+    // Internal experimental mirrored eyes are NOT original game source
+    // program/matrix writes, and must not taint real hardware Present.
+    if(m2vr::daytona::IsEyeReplayActive())return g_set_ps_constant_f(d,start,values,count);
+    const auto source_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_set_ps_constant_f(d,start,values,count);
+    g_original_camera_lifetime.CompleteWrite(
+        source_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,16u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::PixelConstants,rva,hr);
