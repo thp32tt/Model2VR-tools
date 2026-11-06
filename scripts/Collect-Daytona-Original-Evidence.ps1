@@ -5,7 +5,8 @@
 param(
   [string]$PackageRoot = $PSScriptRoot,
   [string]$ExistingSessionFolder = "",
-  [string]$ResumeSessionFolder = ""
+  [string]$ResumeSessionFolder = "",
+  [ValidateRange(1,3600)][int]$AuditTimeoutSeconds = 900
 )
 $ErrorActionPreference = "Stop"
 $labels = @("race_a","race_b","title","menu","sky","hud","aux")
@@ -86,13 +87,35 @@ function Invoke-PrivateAudit([string[]]$auditArguments) {
   $child = [System.Diagnostics.Process]::Start($startInfo)
   if ($null -eq $child) { throw "Could not launch Python 3 for PRIVATE source audit." }
   try {
-    $childOutput = $child.StandardOutput.ReadToEnd()
-    $childError = $child.StandardError.ReadToEnd()
+    # Drain stdout and stderr CONCURRENTLY. Reading one to completion
+    # before the other can deadlock when Python fills the other pipe.
+    $stdoutTask = $child.StandardOutput.ReadToEndAsync()
+    $stderrTask = $child.StandardError.ReadToEndAsync()
+    # Python may hang on a malformed/huge original CSV. Never trap the
+    # operator indefinitely; no manifest or next session on timeout.
+    if (!$child.WaitForExit($AuditTimeoutSeconds * 1000)) {
+      try { $child.Kill() } catch { }
+      [void]$child.WaitForExit(5000)
+      throw "PRIVATE AUDIT TIMEOUT FAIL-CLOSED: Python audit exceeded $AuditTimeoutSeconds seconds. Private archive kept."
+    }
     $child.WaitForExit()
+    $childOutput = $stdoutTask.GetAwaiter().GetResult()
+    $childError = $stderrTask.GetAwaiter().GetResult()
     if ($childOutput) { Write-Host $childOutput }
-    if ($childError) { Write-Warning $childError.Trim() }
+    if ($childError) {
+      # Avoid flooding the interactive Windows terminal or exposing
+      # unbounded original-game diagnostic text on audit errors.
+      $diagnostic = $childError.Trim()
+      if ($diagnostic.Length -gt 2048) {
+        $diagnostic = $diagnostic.Substring(0,2048) + " ... [truncated PRIVATE audit stderr]"
+      }
+      Write-Warning $diagnostic
+    }
     $pythonExitCode = $child.ExitCode
   } finally {
+    if (!$child.HasExited) {
+      try { $child.Kill() } catch { }
+    }
     $child.Dispose()
   }
   return $pythonExitCode

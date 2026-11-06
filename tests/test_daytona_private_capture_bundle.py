@@ -125,6 +125,20 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertLess(self.ps.index('Get-Command python -ErrorAction SilentlyContinue'),
                         self.ps.index('Get-Command py -ErrorAction SilentlyContinue'))
 
+    def test_private_audit_child_drains_two_pipes_and_has_bounded_lifetime(self):
+        # A verbose failing original-game audit must not deadlock the
+        # collector before it can reject the stage and keep its archive.
+        self.assertIn("[ValidateRange(1,3600)][int]$AuditTimeoutSeconds = 900", self.ps)
+        self.assertIn("$child.StandardOutput.ReadToEndAsync()", self.ps)
+        self.assertIn("$child.StandardError.ReadToEndAsync()", self.ps)
+        self.assertIn("$child.WaitForExit($AuditTimeoutSeconds * 1000)", self.ps)
+        self.assertIn('PRIVATE AUDIT TIMEOUT FAIL-CLOSED', self.ps)
+        self.assertIn('$child.Kill()', self.ps)
+        self.assertIn('truncated PRIVATE audit stderr', self.ps)
+        self.assertNotIn('StandardOutput.ReadToEnd()', self.ps)
+        self.assertNotIn('StandardError.ReadToEnd()', self.ps)
+        self.assertIn('Reject blocked or flooded original private Python auditors', self.workflow)
+
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)
         self.assertIn('"%~dp0Collect-Daytona-Original-Evidence.ps1"',self.cmd)

@@ -264,6 +264,56 @@ jobs:
               throw "Comparison must not run after raw original CSV mutation"
             }
           }
+      - name: Reject blocked or flooded original private Python auditors
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference="Stop"
+          # Only synthetic Python process behavior, not real Daytona frames.
+          $stub=@'
+          import os, sys, time
+          mode=os.environ["MODEL2_AUDIT_CHILD_SMOKE"]
+          if mode=="flood":
+              sys.stderr.write("synthetic audit error " * 20000)
+              sys.stderr.flush()
+              sys.exit(9)
+          if mode=="hang":
+              time.sleep(30)
+              sys.exit(0)
+          raise RuntimeError("unknown test-only Python auditor mode")
+          '@
+          foreach($mode in @("flood","hang")) {
+            $root=Join-Path $env:RUNNER_TEMP ("original-audit-child-"+$mode)
+            $inputs=Join-Path $root "inputs"
+            New-Item -ItemType Directory -Force -Path $inputs | Out-Null
+            Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+            Copy-Item tools/model2_draw_source_report.py $root/
+            [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
+              $stub,[Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText((Join-Path $inputs "race_a.csv"),
+              "synthetic 7-stage error-path data, NOT original x86 scene evidence")
+            $env:MODEL2_AUDIT_CHILD_SMOKE=$mode
+            $timer=[Diagnostics.Stopwatch]::StartNew()
+            $rejected=$false
+            try {
+              & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ExistingSessionFolder $inputs -AuditTimeoutSeconds 2
+            } catch {
+              $reason=if($mode -eq "hang"){"PRIVATE AUDIT TIMEOUT FAIL-CLOSED"}else{"PRIVATE SESSION PREFLIGHT FAIL-CLOSED"}
+              if($_.Exception.Message -notmatch $reason) { throw }
+              $rejected=$true
+            } finally {
+              $env:MODEL2_AUDIT_CHILD_SMOKE=$null
+              $timer.Stop()
+            }
+            if(-not $rejected){throw "Unproven Python auditor accepted: $mode"}
+            if($timer.Elapsed.TotalSeconds -gt 15){throw "Original Python audit stalled: $mode"}
+            $archives=@(Get-ChildItem -LiteralPath (Join-Path $root "logs") -Directory -Filter "private_original_evidence_*")
+            if($archives.Count -ne 1){throw "Missing private original archive: $mode"}
+            if(!(Test-Path (Join-Path $archives[0].FullName "race_a.csv"))){throw "Failed original stage CSV lost: $mode"}
+            foreach($name in @("PRIVATE_MANIFEST.json","PRIVATE_WORLD_CANDIDATES.json")) {
+              if(Test-Path (Join-Path $archives[0].FullName $name)){throw "False original success from $mode"}
+            }
+          }
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
       - name: Build original game hook/loader
