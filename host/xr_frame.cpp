@@ -140,6 +140,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"openxr_local_reference_pending="<<(local_reference_epoch_.Pending()?1:0)<<"\n"
           <<"openxr_local_change_time_unknown="<<(local_reference_epoch_.ChangeTimeUnknown()?1:0)<<"\n"
           <<"openxr_local_change_time_late="<<(local_reference_epoch_.LateChangeTime()?1:0)<<"\n"
+          <<"openxr_local_change_time_overlapping="<<(local_reference_epoch_.OverlappingChangeTime()?1:0)<<"\n"
           <<"latest_original_receipt_frame="<<latest_receipt_frame_<<"\n"
           <<"latest_original_receipt_verdict="
           <<static_cast<unsigned>(latest_receipt_verdict_)<<"\n"
@@ -750,8 +751,10 @@ void XrApp::run(int max_frames){
                     invalidate_source_session();
                     if(!change_accepted ||
                        local_reference_epoch_.ChangeTimeUnknown() ||
-                       local_reference_epoch_.LateChangeTime()){
+                       local_reference_epoch_.LateChangeTime() ||
+                       local_reference_epoch_.OverlappingChangeTime()){
                         std::cerr<<"OpenXR LOCAL reference changeTime untrusted"
+                                 <<" overlap="<<(local_reference_epoch_.OverlappingChangeTime()?1:0)
                                  <<" change_time="<<change.changeTime
                                  <<" previous_epoch="<<local_reference_epoch_.Epoch()
                                  <<" (original CPU/GPU eyes quarantined until XR session restart)"
