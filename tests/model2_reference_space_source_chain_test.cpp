@@ -270,5 +270,55 @@ int main(){
     REQUIRE(cpu_time_latch.Begin(201u,stale_clock));
     REQUIRE(cpu_time_recenter.Rebase(stale_clock,cpu_rebased));
     REQUIRE(cpu_rebased.sequence==22u);
+    // Two future LOCAL recenter events may be queued before either
+    // effective time. Never let the second event overwrite the first
+    // and then publish x86 source eyes during the uncertain interval.
+    pose::ReferenceSpaceEpochGate overlapping_local;
+    Ring overlapping_history;
+    pose::StereoPosePublicationOrder overlapping_order;
+    FakeHostWriter overlapping_writer{&overlapping_history};
+    REQUIRE(overlapping_local.BeginSession());
+    REQUIRE(overlapping_local.OnPredictedFrame(100)==
+            pose::ReferenceSpaceFrame::Ready);
+    const auto pre_overlap=Packet(50u,overlapping_local.Epoch(),5.f);
+    REQUIRE(pose::PublishTrackedStereoPose(
+        overlapping_writer,overlapping_history,overlapping_order,
+        pre_overlap,Views{71u,72u}));
+    REQUIRE(overlapping_history.Find(50u)!=nullptr);
+    REQUIRE(overlapping_local.NotifyLocalChange(200));
+    // Mirror the real Win64 event-handler revocation transaction.
+    REQUIRE(overlapping_writer.Invalidate());
+    overlapping_history.Clear();
+    REQUIRE(overlapping_local.NotifyLocalChange(240));
+    REQUIRE(overlapping_writer.Invalidate());
+    overlapping_history.Clear();
+    REQUIRE(overlapping_local.OverlappingChangeTime());
+    REQUIRE(!overlapping_local.Pending());
+    REQUIRE(overlapping_writer.published.sequence==0u);
+    REQUIRE(overlapping_history.Find(50u)==nullptr);
+    REQUIRE(overlapping_local.OnPredictedFrame(199)==
+            pose::ReferenceSpaceFrame::Exhausted);
+    REQUIRE(overlapping_local.OnPredictedFrame(200)==
+            pose::ReferenceSpaceFrame::Exhausted);
+    REQUIRE(overlapping_local.OnPredictedFrame(240)==
+            pose::ReferenceSpaceFrame::Exhausted);
+    // Recovery needs an actual xrBeginSession and a new LOCAL origin,
+    // not merely a higher pose sequence/time in the same uncertain run.
+    REQUIRE(overlapping_local.BeginSession() &&
+            !overlapping_local.OverlappingChangeTime());
+    overlapping_order.BeginSession();
+    REQUIRE(overlapping_local.OnPredictedFrame(1)==
+            pose::ReferenceSpaceFrame::Ready);
+    const auto clean_overlap_recovery=Packet(
+        51u,overlapping_local.Epoch(),-5.f);
+    REQUIRE(pose::PublishTrackedStereoPose(
+        overlapping_writer,overlapping_history,overlapping_order,
+        clean_overlap_recovery,Views{81u,82u}));
+    REQUIRE(overlapping_writer.published.reserved==2u);
+    REQUIRE(overlapping_history.Find(51u)!=nullptr);
+    REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
+        {pre_overlap.sequence,pre_overlap.published_qpc,pre_overlap.reserved,
+         pre_overlap.predicted_display_time,pre_overlap.view_flags},
+         clean_overlap_recovery,now,hz));
     return 0;
 }
