@@ -17,13 +17,15 @@ public:
         events_lost_=false;
         unknown_change_time_=false;
         late_change_time_=false;
+        overlapping_change_time_=false;
         time_discontinuity_=false;
         last_predicted_display_time_=0;
         return Advance();
     }
     bool NotifyLocalChange(std::int64_t change_time) noexcept {
         if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_ ||
-           time_discontinuity_ || late_change_time_)return false;
+           time_discontinuity_ || late_change_time_ ||
+           overlapping_change_time_)return false;
         // An absent/nonpositive changeTime does NOT authorize guessing the
         // first post-recenter xrLocateViews frame. Its true transition could
         // still be in the future, including after another queued event.
@@ -46,8 +48,20 @@ public:
             late_change_time_=true;
             return true;
         }
-        if(!pending_)change_time_=change_time;
-        else if(change_time>change_time_)change_time_=change_time;
+        // A second LOCAL change event, even with an identical effective
+        // time, may describe another physical reference-space origin.
+        // This one-slot gate cannot order two distinct transitions or
+        // prove their transforms are identical. Choosing the *later* time
+        // would be especially unsafe: a frame between the two changes
+        // could be published with an OLD LOCAL epoch and new XR coordinates.
+        // Quarantine until a genuine xrBeginSession instead of guessing.
+        if(pending_){
+            pending_=false;
+            change_time_=0;
+            overlapping_change_time_=true;
+            return true;
+        }
+        change_time_=change_time;
         pending_=true;
         return true;
     }
@@ -64,7 +78,8 @@ public:
     }
     ReferenceSpaceFrame OnPredictedFrame(std::int64_t display_time) noexcept {
         if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_ ||
-           time_discontinuity_ || late_change_time_)
+           time_discontinuity_ || late_change_time_ ||
+           overlapping_change_time_)
             return ReferenceSpaceFrame::Exhausted;
         // XrTime is runtime-owned and strictly forward-moving for these
         // published views. A zero, duplicate, or reversed predicted time
@@ -94,6 +109,7 @@ public:
     bool EventsLost()const noexcept{return events_lost_;}
     bool ChangeTimeUnknown()const noexcept{return unknown_change_time_;}
     bool LateChangeTime()const noexcept{return late_change_time_;}
+    bool OverlappingChangeTime()const noexcept{return overlapping_change_time_;}
     bool TimeDiscontinuity()const noexcept{return time_discontinuity_;}
 private:
     bool Advance() noexcept {
@@ -108,6 +124,7 @@ private:
     std::int64_t change_time_=0;
     std::int64_t last_predicted_display_time_=0;
     bool pending_=false,events_lost_=false,unknown_change_time_=false,
-         late_change_time_=false,time_discontinuity_=false,exhausted_=false;
+         late_change_time_=false,overlapping_change_time_=false,
+         time_discontinuity_=false,exhausted_=false;
 };
 } // namespace m2vr::pose
