@@ -167,6 +167,21 @@ class CandidateReplayTest(unittest.TestCase):
             verify_candidate_replay(self.archive, replay_csv=True)
         self.assertEqual(main([str(self.archive), "--replay-csv"]), 1)
 
+    def test_raw_csv_nonce_must_equal_archived_source_report_nonce(self):
+        # Synthetic audit double models an original process nonce that was
+        # changed in CSV but never reflected in the signed JSON report.
+        # The immutable report/candidate chain alone cannot discover it.
+        def different_raw_source(csv_path):
+            derived = self._derived_report_for_csv(csv_path)
+            if csv_path.name == "race_a.csv":
+                derived["original_capture_run"]["nonce_hex"] = "0x123456789abcdef0"
+            return derived
+        self.assertIsNone(verify_candidate_replay(self.archive))
+        with patch("tools.verify_daytona_private_candidate_replay.preflight_original_session",
+                   side_effect=different_raw_source):
+            with self.assertRaisesRegex(ReceiptError, "not derived from raw"):
+                verify_candidate_replay(self.archive, replay_csv=True)
+
     def test_strict_replay_detects_csv_rewrite_during_long_preflight(self):
         def mutate(csv_path):
             if csv_path.name == "race_a.csv":
