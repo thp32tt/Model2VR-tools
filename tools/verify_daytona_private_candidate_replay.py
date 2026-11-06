@@ -8,27 +8,31 @@ Neither test proves the labels, game World3D, calibrated axes/IPD or Quest3.
 Do not upload private original evidence or enable stereo automatically.
 """
 import argparse
+import csv
 import json
 from pathlib import Path
 import sys
 
 try:
     from .verify_daytona_private_receipt import (
-        LABELS, ReceiptError, _load_json, verify_archive)
-    from .model2_world_pass_evidence import CONTROL_TYPES, compare_sessions
+        LABELS, ReceiptError, _load_json, _matches_hash, verify_archive)
+    from .model2_world_pass_evidence import (CONTROL_TYPES, compare_sessions,
+                                            preflight_original_session)
 except ImportError:  # distributed standalone scripts live side by side
     from verify_daytona_private_receipt import (
         LABELS, ReceiptError, _load_json, verify_archive)
-    from model2_world_pass_evidence import CONTROL_TYPES, compare_sessions
+    from model2_world_pass_evidence import (CONTROL_TYPES, compare_sessions,
+                                          preflight_original_session)
 
 
-def verify_candidate_replay(folder: Path) -> None:
+def verify_candidate_replay(folder: Path, *, replay_csv: bool = False) -> None:
     """Fail closed if the candidate is not the exact seven-report result.
 
-    No second CSV parse, network access, machine-generated scene approval,
-    original emulator, or VR runtime is needed. The immutable verifier checks
-    the raw CSV/report/candidate hashes before these immutable report inputs
-    can be replayed by the same strict cross-session source auditor.
+    By default, preserve fast report-to-candidate verification. With
+    replay_csv=True, re-audit all seven original x86 CSVs and require exact
+    reconstructed preflight reports, closing the CSV-to-report provenance
+    gap. Both modes remain local-only and never authenticate user scene labels,
+    a World3D pass, calibrated game units, or actual HMD playback.
     """
     verify_archive(folder)
     manifest = _load_json(folder / "PRIVATE_MANIFEST.json")
@@ -54,6 +58,27 @@ def verify_candidate_replay(folder: Path) -> None:
         if canonical(archived) != canonical(recomputed):
             raise ReceiptError(
                 "candidate content does not match the seven original x86 reports")
+        if replay_csv:
+            # Hashes alone do not bind an audited JSON report to its raw
+            # source. Re-run the exact shipped preflight on the original CSV,
+            # not a cached report or a user-provided JSON replacement.
+            for label in LABELS:
+                csv_name = "auxiliary.csv" if label == "aux" else f"{label}.csv"
+                csv_path = folder / csv_name
+                _matches_hash(csv_path, hashes[label])
+                try:
+                    derived = preflight_original_session(csv_path)
+                except (ValueError, OSError, UnicodeError, csv.Error) as exc:
+                    raise ReceiptError(
+                        f"raw original x86 CSV preflight failed for {label}: "
+                        f"{type(exc).__name__}") from exc
+                # Detect source replacement while the long offline preflight
+                # scans it; no stale/changed capture can pass this replay.
+                _matches_hash(csv_path, hashes[label])
+                if canonical(derived) != canonical(reports[label]):
+                    raise ReceiptError(
+                        f"archived private report not derived from raw original "
+                        f"x86 CSV: {label}")
     except (ValueError, TypeError, OverflowError) as exc:
         if isinstance(exc, ReceiptError):
             raise
@@ -65,13 +90,19 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archive", type=Path,
                         help="local private_original_evidence_* archive")
+    parser.add_argument("--replay-csv", action="store_true",
+                        help="also re-audit all seven original x86 CSVs (strict, slow)")
     args = parser.parse_args(argv)
     try:
-        verify_candidate_replay(args.archive)
+        verify_candidate_replay(args.archive, replay_csv=args.replay_csv)
     except (ReceiptError, OSError) as exc:
         print(f"PRIVATE CANDIDATE REPLAY FAIL-CLOSED: {exc}", file=sys.stderr)
         return 1
-    print("PRIVATE CANDIDATE REPLAY PASS: seven report-derived results match.")
+    if args.replay_csv:
+        print("PRIVATE CSV/REPORT/CANDIDATE REPLAY PASS: seven raw CSV preflights "
+              "and candidate semantics agree.")
+    else:
+        print("PRIVATE CANDIDATE REPLAY PASS: seven report-derived results match.")
     print("World3D NOT_ESTABLISHED; real HMD/Daytona runtime UNTESTED.")
     return 0
 
