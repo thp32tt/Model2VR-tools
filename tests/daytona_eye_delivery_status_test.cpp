@@ -41,6 +41,15 @@ int main(){
     e.mono_anchor_rejected=true;
     assert(Classify(e)==Status::MonoQuadAnchorRejected);
     e.mono_anchor_rejected=false;
+    e.present_receipt_pending=true;
+    assert(Classify(e)==Status::OriginalPresentReceiptPending);
+    assert(Name(Classify(e))[0]=='A');
+    e.present_receipt_rejected=true;
+    assert(Classify(e)==Status::OriginalPresentReceiptRejected);
+    e.paired_frame_fresh=true;
+    assert(Classify(e)==Status::LiveGameStereo);
+    e.paired_frame_fresh=false;
+    e.present_receipt_rejected=false;e.present_receipt_pending=false;
     TransitionGate gate;
     assert(gate.Changed(Status::NoFrameTransport));
     assert(!gate.Changed(Status::NoFrameTransport));

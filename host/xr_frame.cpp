@@ -134,6 +134,9 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"eye_delivery_status="<<delivery::Name(eye_delivery_status_)<<"\n"
           <<"eye_delivery_action="<<delivery::NextAction(eye_delivery_status_)<<"\n"
           <<"source_pose_rejection="<<static_cast<unsigned>(last_pose_rejection_)<<"\n"
+          <<"latest_original_receipt_frame="<<latest_receipt_frame_<<"\n"
+          <<"latest_original_receipt_verdict="
+          <<static_cast<unsigned>(latest_receipt_verdict_)<<"\n"
           <<"frame_transport_open="<<(shared_frames_.Valid()?1:0)<<"\n"
           <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::VerifiedCpuWorldStereo
                 ?"VerifiedCpuWorldStereo":
@@ -180,6 +183,8 @@ void XrApp::invalidate_source_session() noexcept {
     producer_health_last_reason_=0xffffffffu;
     warned_unmatched_game_pose_=false;
     warned_original_receipt_rejection_=false;
+    latest_receipt_verdict_=receipt::Verdict::AwaitHealth;
+    latest_receipt_frame_=0u;
     last_pose_rejection_=0u;
     eye_delivery_status_=delivery::Status::NoProducerHealth;
     eye_delivery_gate_.Reset();
@@ -299,6 +304,10 @@ void XrApp::draw_frame(XrTime display_time){
                     stamp.frame_id,stamp.kind,stamp.timestamp_qpc,
                     producer_health_status_,
                     producer_health_fresh_);
+                if(stamp.kind!=transport::FrameKind::Diagnostic){
+                    latest_receipt_verdict_=receipt_verdict;
+                    latest_receipt_frame_=stamp.frame_id;
+                }
                 if(receipt_verdict==receipt::Verdict::Reject &&
                    !warned_original_receipt_rejection_){
                     std::cerr<<"Daytona VR original Present receipt REJECTED:"
@@ -349,6 +358,10 @@ void XrApp::draw_frame(XrTime display_time){
                     const auto staged_receipt=receipt::Authorize(
                         staging_frame_.frame_id,staging_frame_.kind,
                         staging_frame_.timestamp_qpc,producer_health_status_,producer_health_fresh_);
+                    if(staging_frame_.kind!=transport::FrameKind::Diagnostic){
+                        latest_receipt_verdict_=staged_receipt;
+                        latest_receipt_frame_=staging_frame_.frame_id;
+                    }
                     const auto tag=staging_frame_.pose_sequence;
                     const auto* exact_views=pose_history_.Find(tag);
                     const bool matched=transport::SourcePoseMatchesFrame(
@@ -473,6 +486,12 @@ void XrApp::draw_frame(XrTime display_time){
     delivery_evidence.mono_anchor_rejected=mono_anchor_rejected;
     delivery_evidence.missing_original_pose_tag=last_pose_rejection_==1u;
     delivery_evidence.expired_original_pose_tag=last_pose_rejection_==2u;
+    delivery_evidence.present_receipt_pending=
+        latest_receipt_frame_!=0u &&
+        latest_receipt_verdict_==receipt::Verdict::AwaitHealth;
+    delivery_evidence.present_receipt_rejected=
+        latest_receipt_frame_!=0u &&
+        latest_receipt_verdict_==receipt::Verdict::Reject;
     eye_delivery_status_=delivery::Classify(delivery_evidence);
     if(eye_delivery_gate_.Changed(eye_delivery_status_)){
         std::cout<<"Daytona VR eye delivery: "

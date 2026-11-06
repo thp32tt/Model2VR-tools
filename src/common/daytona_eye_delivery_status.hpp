@@ -10,7 +10,8 @@ enum class Status : std::uint8_t {
     NoEmulatorPid, NoProducerHealth, NoFrameTransport, AwaitingGameFrame,
     ProducerRejected, MissingOriginalPoseTag, ExpiredOriginalPoseTag,
     SourcePairStale, DiagnosticOnly, HostEyeSizeMismatch, LiveGameStereo, LiveVerifiedCpuWorld, LiveOriginalMonoFallback,
-    MonoQuadAnchorRejected
+    MonoQuadAnchorRejected,
+    OriginalPresentReceiptPending, OriginalPresentReceiptRejected
 };
 struct Evidence {
     bool emulator_selected=false;
@@ -26,6 +27,8 @@ struct Evidence {
     bool missing_original_pose_tag=false;
     bool expired_original_pose_tag=false;
     bool mono_anchor_rejected=false;
+    bool present_receipt_pending=false;
+    bool present_receipt_rejected=false;
 };
 constexpr Status Classify(const Evidence& e) noexcept {
     if(!e.emulator_selected)return Status::NoEmulatorPid;
@@ -42,11 +45,13 @@ constexpr Status Classify(const Evidence& e) noexcept {
     // frame was published. If it becomes stale, diagnose frame timing,
     // not an imaginary original D3D9 render failure.
     if(e.mono_anchor_rejected)return Status::MonoQuadAnchorRejected;
+    if(e.present_receipt_rejected)return Status::OriginalPresentReceiptRejected;
     if(e.producer_health_fresh && e.producer_reason_mask!=0u &&
        e.producer_reason_mask!=512u)
         return Status::ProducerRejected;
     if(e.missing_original_pose_tag)return Status::MissingOriginalPoseTag;
     if(e.expired_original_pose_tag)return Status::ExpiredOriginalPoseTag;
+    if(e.present_receipt_pending)return Status::OriginalPresentReceiptPending;
     if(!e.producer_health_fresh && !e.frame_transport_open)
         return Status::NoProducerHealth;
     if(!e.frame_transport_open)return Status::NoFrameTransport;
@@ -69,6 +74,8 @@ constexpr const char* Name(Status s) noexcept {
     case Status::LiveVerifiedCpuWorld:return "LIVE_CPU_WORLD_SOURCE_HMD_UNTESTED";
     case Status::LiveOriginalMonoFallback:return "LIVE_ORIGINAL_GAME_2D_FALLBACK";
     case Status::MonoQuadAnchorRejected:return "ORIGINAL_MONO_QUAD_HEAD_POSE_REJECTED";
+    case Status::OriginalPresentReceiptPending:return "AWAIT_ORIGINAL_PRESENT_HEALTH_RECEIPT";
+    case Status::OriginalPresentReceiptRejected:return "ORIGINAL_PRESENT_FRAME_RECEIPT_REJECTED";
     }
     return "UNKNOWN";
 }
@@ -88,6 +95,8 @@ constexpr const char* NextAction(Status s) noexcept {
     case Status::LiveVerifiedCpuWorld:return "Verify source-world camera and optics on Quest 3 HMD";
     case Status::LiveOriginalMonoFallback:return "Original game pixels visible; source VR world pass still unverified";
     case Status::MonoQuadAnchorRejected:return "Check tracked HMD stereo view positions and orientations";
+    case Status::OriginalPresentReceiptPending:return "Wait for same-frame original x86 Present health report";
+    case Status::OriginalPresentReceiptRejected:return "Inspect x86 Present frame, kind and health/QPC ordering";
     }
     return "Inspect host and original x86 producer logs";
 }

@@ -82,6 +82,8 @@ private:
     transport::StereoFrameGate frame_gate_;
     bool warned_unmatched_game_pose_=false;
     bool warned_original_receipt_rejection_=false;
+    receipt::Verdict latest_receipt_verdict_=receipt::Verdict::AwaitHealth;
+    std::uint64_t latest_receipt_frame_=0u;
     std::uint8_t last_pose_rejection_=0u; // 1=untagged, 2=expired
     delivery::Status eye_delivery_status_=delivery::Status::NoProducerHealth;
     delivery::TransitionGate eye_delivery_gate_{};
