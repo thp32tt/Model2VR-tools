@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <utility>
 #define REQUIRE(x) do{if(!(x)){std::fprintf(stderr,"Model2 calibrated eye projection FAILED %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 using namespace m2vr;
 using namespace m2vr::vr;
@@ -49,5 +50,31 @@ int main(){
     cal.view_to_xr={1,0,0,0,1,0,0,0,-1};
     xr.eyes[0].orientation_xyzw[3]=0.f;
     REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr.eyes[0].orientation_xyzw[3]=1.f;
+    const auto real_pair=xr;
+    // Same-eye mono or swapped OpenXR indices must NEVER be labeled as
+    // two independently projected physical game-world views.
+    xr.eyes[1].position_m[0]=xr.eyes[0].position_m[0];
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr=real_pair;
+    std::swap(xr.eyes[0].position_m[0],xr.eyes[1].position_m[0]);
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr=real_pair;
+    xr.eyes[1].fov_left_right_up_down[0]=-0.21f;
+    xr.eyes[1].fov_left_right_up_down[1]=0.22f;
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr=real_pair;
+    xr.eyes[1].orientation_xyzw[1]=1.f;
+    xr.eyes[1].orientation_xyzw[3]=0.f;
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr=real_pair;
+    REQUIRE(ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    // Mildly canted real HMD lenses remain valid independent eye poses.
+    const float cant=8.f*3.14159265358979323846f/180.f;
+    xr.eyes[0].orientation_xyzw[1]=std::sin(cant*0.5f);
+    xr.eyes[0].orientation_xyzw[3]=std::cos(cant*0.5f);
+    xr.eyes[1].orientation_xyzw[1]=-std::sin(cant*0.5f);
+    xr.eyes[1].orientation_xyzw[3]=std::cos(cant*0.5f);
+    REQUIRE(ProjectModel2Stereo(front,xr,cal,pass).stereo);
     return 0;
 }

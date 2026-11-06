@@ -3,6 +3,7 @@
 // No game code executes here: it operates on immutable CPU vertices already
 // transformed by the emulator. No global model, texture, HUD or FFB mutation.
 #include "../common/stereo_pose_ipc.h"
+#include "../common/stereo_eye_rig_geometry.hpp"
 #include "model2_render_policy.hpp"
 #include <algorithm>
 #include <array>
@@ -65,7 +66,11 @@ inline ProjectedPair ProjectModel2Stereo(
        !Finite(already_transformed_game_point.z) ||
        !(latched_predicted_views.view_flags&pose::kOrientationValid) ||
        !(latched_predicted_views.view_flags&pose::kPositionValid) ||
-       latched_predicted_views.sequence==0)return out;
+       latched_predicted_views.sequence==0 ||
+       // Defense in depth: a direct CPU world projection may receive a
+       // frame without going through the Win64 tracked-pose publisher.
+       // Do not call two identical/reversed/unrelated view cameras stereo.
+       !pose::CheckStereoRigGeometry(latched_predicted_views).valid())return out;
     const auto& b=calibration.view_to_xr;
     const float u=calibration.units_per_meter;
     const CpuPoint world{

@@ -27,6 +27,7 @@ int main() {
  CHECK(!latch.Begin(100,p)); // never relatch the same game frame
  CHECK(!latch.Read(100,snapshot)); // fail closed, no stale pair
  CHECK(!latch.Begin(101,p)); // pose sequence must advance
+ p.eyes[0].position_m[0]=-0.032f; // undo deliberately changed external packet
  p.sequence=8;
  CHECK(latch.Begin(101,p));
  p.sequence=9;p.eyes[0].orientation_xyzw[3]=0.f;
@@ -42,5 +43,28 @@ int main() {
  CHECK(latch.Begin(102,p));
  latch.Reset();CHECK(!latch.Read(102,snapshot));
  CHECK(latch.Begin(1,p)); // device reset starts a fresh frame epoch
+ // The latch is a CPU-world entry point too, not only a Win64 host
+ // publication consumer. Reject a forged single eye and revoke any old
+ // pose for the failed frame, then recover with the next genuine pair.
+ p.sequence=10;
+ p.eyes[1].position_m[0]=p.eyes[0].position_m[0];
+ CHECK(!latch.Begin(2,p));
+ CHECK(!latch.Read(1,snapshot));
+ p.eyes[1].position_m[0]=0.032f;
+ CHECK(latch.Begin(2,p));
+ p.sequence=11;
+ p.eyes[0].position_m[0]=0.032f;
+ p.eyes[1].position_m[0]=-0.032f;
+ CHECK(!latch.Begin(3,p));
+ p.eyes[0].position_m[0]=-0.032f;
+ p.eyes[1].position_m[0]=0.032f;
+ CHECK(latch.Begin(3,p));
+ p.sequence=12;
+ p.eyes[1].fov_left_right_up_down[0]=-0.21f;
+ p.eyes[1].fov_left_right_up_down[1]=0.22f;
+ CHECK(!latch.Begin(4,p));
+ p.eyes[1].fov_left_right_up_down[0]=-0.8f;
+ p.eyes[1].fov_left_right_up_down[1]=0.8f;
+ CHECK(latch.Begin(4,p));
  return 0;
 }

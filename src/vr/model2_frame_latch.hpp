@@ -1,6 +1,7 @@
 #pragma once
 // One coherent OpenXR view pair per emulated frame; no simulation callbacks.
 #include "model2_cpu_stereo.hpp"
+#include "../common/stereo_eye_rig_geometry.hpp"
 #include <cstdint>
 namespace m2vr::vr {
 class Model2FramePoseLatch {
@@ -10,7 +11,10 @@ public:
   if(!game_frame||game_frame<=last_game_frame_||
      !predicted.sequence||predicted.sequence<=last_pose_sequence_||
      (predicted.view_flags&(pose::kOrientationValid|pose::kPositionValid))!=
-      (pose::kOrientationValid|pose::kPositionValid))return false;
+      (pose::kOrientationValid|pose::kPositionValid) ||
+     // Validate the two eyes as one physical OpenXR rig before retaining
+     // a pose for a real original-game frame. Bad refresh revokes old pose.
+     !pose::CheckStereoRigGeometry(predicted).valid())return false;
   for(const auto& eye:predicted.eyes) {
    if(!QuaternionValid(eye.orientation_xyzw))return false;
    for(float v:eye.position_m)if(!Finite(v))return false;
