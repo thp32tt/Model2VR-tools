@@ -230,8 +230,13 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* /*eax_after_original*/) 
                 record.geometry_command_word,
                 geometry_changed?2u:(matrix_changed?1u:0u));
         }
-        if(m2vr::drawprobe::OriginalCpuProjectorRecordSafeToJoin(
-               record,matrix_changed,geometry_changed)){
+        const auto original_source_gap=
+            m2vr::drawprobe::OriginalCpuProjectorSourceGapFlags(
+                record,matrix_changed,geometry_changed);
+        if(emit_log && original_source_gap)
+            m2vr::LogEvent("project_original_source_gap",
+                record.source_caller_rva,original_source_gap,0u,0u);
+        if(!original_source_gap){
             const float projected[3]{x,y,z};
             m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
                 m2vr::drawprobe::CurrentProjectDrawEpoch(),

@@ -44,11 +44,16 @@ int main(){
     // available at BOTH ends of the same call. Missing geometry command
     // or unknown matrix may not enter the 64-triangle XR source fitter.
     CHECK(OriginalCpuProjectorRecordSafeToJoin(completed,false,false));
+    CHECK(OriginalCpuProjectorSourceGapFlags(completed,false,false)==0u);
+    CHECK(OriginalCpuProjectorSourceGapFlags(completed,true,false)==2u);
+    CHECK(OriginalCpuProjectorSourceGapFlags(completed,false,true)==4u);
+    CHECK(OriginalCpuProjectorSourceGapFlags(completed,true,true)==6u);
     CHECK(!OriginalCpuProjectorRecordSafeToJoin(completed,true,false));
     CHECK(!OriginalCpuProjectorRecordSafeToJoin(completed,false,true));
     auto unavailable=completed;
     unavailable.geometry_command_valid=false;
     CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
+    CHECK(OriginalCpuProjectorSourceGapFlags(unavailable,false,false)==4u);
     unavailable=completed;
     unavailable.geometry_stream_pointer=0u;
     CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
@@ -61,6 +66,7 @@ int main(){
     unavailable=completed;
     unavailable.source_caller_rva=0u;
     CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
+    CHECK(OriginalCpuProjectorSourceGapFlags(unavailable,false,false)==1u);
     unavailable=completed;
     unavailable.geometry_command_word=0u; // genuine zero is allowed
     CHECK(OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));

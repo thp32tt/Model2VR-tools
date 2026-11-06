@@ -30,16 +30,29 @@ struct ProjectCaptureRecord {
 // word were actually readable throughout the same native invocation.
  // A legitimately zero command word is allowed only when its *readability*
  // bit is true; an unavailable stream must not become a fake zero command.
+// Bounded pointer-free original projector source gap codes. Only the
+// public numeric mask is logged for sampled PRIVATE original-game runs.
+ // Bit 1: missing original caller/input; 2: matrix not readable/stable;
+ // bit 4: active geometry command not readable/stable. These never
+ // authenticate a gameplay world or give a caller World3D permission.
+inline constexpr std::uint32_t OriginalCpuProjectorSourceGapFlags(
+    const ProjectCaptureRecord& record,
+    bool matrix_changed,bool geometry_changed) noexcept {
+    std::uint32_t mask=0u;
+    if(!record.capture || !record.original_point || !record.source_caller_rva)
+        mask|=1u;
+    if(!record.matrix_identity || !record.matrix_fingerprint || matrix_changed)
+        mask|=2u;
+    if(!record.geometry_stream_pointer || !record.geometry_command_valid ||
+       geometry_changed)
+        mask|=4u;
+    return mask;
+}
 inline constexpr bool OriginalCpuProjectorRecordSafeToJoin(
     const ProjectCaptureRecord& record,
     bool matrix_changed,bool geometry_changed) noexcept {
-    return record.capture && record.original_point &&
-        record.source_caller_rva!=0u &&
-        record.matrix_identity!=0u &&
-        record.matrix_fingerprint!=0u &&
-        record.geometry_stream_pointer!=0u &&
-        record.geometry_command_valid &&
-        !matrix_changed && !geometry_changed;
+    return OriginalCpuProjectorSourceGapFlags(
+        record,matrix_changed,geometry_changed)==0u;
 }
 class ProjectCaptureStack final {
 public:
