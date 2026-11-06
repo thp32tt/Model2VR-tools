@@ -112,7 +112,7 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn("Get-FileHash -LiteralPath $reportPath -Algorithm SHA256", self.ps)
         self.assertIn("$csvHash -cne $hashes[$auditedLabel]", self.ps)
         self.assertIn("$reportHash -cne $reportHashes[$auditedLabel]", self.ps)
-        self.assertEqual(self.ps.count("Assert-PrivateArchiveIntegrity"), 3)
+        self.assertEqual(self.ps.count("Assert-PrivateArchiveIntegrity"), 4)
         self.assertLess(self.ps.index("Assert-PrivateArchiveIntegrity\n$argsForPython"),
                         self.ps.index("$pythonExitCode = Invoke-PrivateAudit"))
         self.assertGreater(self.ps.index("try { Assert-PrivateArchiveIntegrity }"),
@@ -187,6 +187,9 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('hmd_runtime_validation -cne "UNTESTED"', self.ps)
         self.assertIn('entry.world_pass_authorized -ne $false', self.ps)
         self.assertIn('PRIVATE SESSION COMPARE RECEIPT INVALID FAIL-CLOSED', self.ps)
+        self.assertIn('$manifest.candidate_sha256 = (Get-FileHash -LiteralPath $pendingCandidate -Algorithm SHA256).Hash', self.ps)
+        self.assertLess(self.ps.index('$manifest.candidate_sha256 ='),
+                        self.ps.index('Move-Item -LiteralPath $pendingCandidate -Destination $candidateOutput'))
         self.assertIn('Move-PrivateFailedCandidate $pendingCandidate', self.ps)
         self.assertIn('Move-PrivateFailedCandidate $candidateOutput', self.ps)
         self.assertLess(self.ps.index('Move-Item -LiteralPath $pendingCandidate -Destination $candidateOutput'),

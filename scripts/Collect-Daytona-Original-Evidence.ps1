@@ -396,6 +396,8 @@ $pendingManifest = Join-Path $destination ("PRIVATE_PENDING_MANIFEST_" +
   [guid]::NewGuid().ToString("N") + ".json")
 $finalManifest = Join-Path $destination "PRIVATE_MANIFEST.json"
 try {
+  Assert-PrivateArchiveIntegrity
+  $manifest.candidate_sha256 = (Get-FileHash -LiteralPath $pendingCandidate -Algorithm SHA256).Hash
   $json = ConvertTo-Json -InputObject $manifest -Depth 5
   [IO.File]::WriteAllText($pendingManifest,
     $json + [Environment]::NewLine,(New-Object System.Text.UTF8Encoding($false)))
