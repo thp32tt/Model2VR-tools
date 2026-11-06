@@ -114,14 +114,22 @@ jobs:
           if(-not $rejected){ throw "Synthetic controls incorrectly authorized original World3D" }
           $archives=@(Get-ChildItem (Join-Path $root "logs") -Directory)
           if($archives.Count -ne 1){ throw "Expected exactly one local private archive" }
-          foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")){
+          # New fail-fast behavior: the first fake x86 process must be
+          # rejected BEFORE prompting for the other six sessions.
+          if(!(Test-Path (Join-Path $archives[0].FullName "race_a.csv"))){
+            throw "First original x86 capture was not preserved for diagnosis"
+          }
+          foreach($label in @("race_b","title","menu","sky","hud","aux")){
             $filename=if($label -eq "aux"){"auxiliary.csv"}else{$label+".csv"}
-            if(!(Test-Path (Join-Path $archives[0].FullName $filename))){
-              throw "Missing locally archived synthetic session $label"
+            if(Test-Path (Join-Path $archives[0].FullName $filename)){
+              throw "Invalid first original run should stop before $label"
             }
           }
-          if(!(Test-Path (Join-Path $archives[0].FullName "PRIVATE_MANIFEST.json"))){
-            throw "Missing local private hash manifest"
+          if(Test-Path (Join-Path $archives[0].FullName "PRIVATE_MANIFEST.json")){
+            throw "Invalid first x86 run created final provenance manifest"
+          }
+          if(Test-Path (Join-Path $archives[0].FullName "PRIVATE_WORLD_CANDIDATES.json")){
+            throw "Invalid first x86 run created a false World3D candidate"
           }
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
