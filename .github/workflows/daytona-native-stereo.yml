@@ -137,6 +137,12 @@ jobs:
           # Resuming a corrupt original process MUST re-audit its raw CSV,
           # preserve it and require a fresh original process, not accept
           # an old cached source JSON or misrepresent the scene.
+          # A previously completed archive may lose original CSV integrity.
+          # The first corrupt re-audit must not leave historical success live.
+          $oldManifest=Join-Path $archives[0].FullName "PRIVATE_MANIFEST.json"
+          $oldCandidates=Join-Path $archives[0].FullName "PRIVATE_WORLD_CANDIDATES.json"
+          [IO.File]::WriteAllText($oldManifest,'{"stale":"previous_complete_run"}')
+          [IO.File]::WriteAllText($oldCandidates,'{"stale":"previous_complete_run"}')
           $resumeFailed=$false
           try {
             & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") `
@@ -153,7 +159,16 @@ jobs:
             throw "Invalid stage archive was not preserved by resume"
           }
           if(Test-Path (Join-Path $archives[0].FullName "PRIVATE_MANIFEST.json")){
-            throw "Invalid resumed original source created a final manifest"
+            throw "Old manifest survived failed resume"
+          }
+          if(Test-Path (Join-Path $archives[0].FullName "PRIVATE_WORLD_CANDIDATES.json")){
+            throw "Old candidate survived failed resume"
+          }
+          foreach($oldName in @("PRIVATE_MANIFEST.json","PRIVATE_WORLD_CANDIDATES.json")){
+            $prior=@(Get-ChildItem -LiteralPath $archives[0].FullName -Filter ("PRIVATE_PRIOR_*_"+$oldName))
+            if($prior.Count -ne 1){ throw "Historical receipt not preserved: $oldName" }
+            $oldContent=Get-Content -LiteralPath $prior[0].FullName -Raw
+            if($oldContent -notmatch "previous_complete_run"){ throw "Historical receipt unexpectedly rewritten: $oldName" }
           }
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
