@@ -98,7 +98,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopolog
         window.indices=std::move(indices);
         std::vector<std::uint8_t> ordered;
         if(!m2vr::drawprobe::ExpandProjectedVBWindow(
-            original.data(),original.size(),fvf,stride,window,ordered))
+            original.data(),original.size(),fvf,stride,window,ordered,
+            m2vr::drawprobe::ProjectedExpansionUse::AuthenticatedWorld))
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyPrimitiveUP);

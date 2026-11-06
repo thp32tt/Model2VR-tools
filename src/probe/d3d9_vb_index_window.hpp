@@ -134,16 +134,30 @@ inline bool RemapSequentialTopology(
 // triangle-list order before same-Present CPU projection correlation. No
 // index remapping or reused vertex can skip independent screen-XY proof.
 // This is only a bounded read-only source extraction, NOT world admission.
+// Passive original hardware Draw sampling is intentionally capped at 8
+// triangles. A separately proof-owned original game world transaction is
+// allowed the bounded 64-triangle/192-corner *same-Draw* stereo source.
+enum class ProjectedExpansionUse : std::uint8_t {
+    PassiveDiagnostic=0u,
+    AuthenticatedWorld=1u
+};
+inline constexpr std::size_t kMaxPassiveProjectedCorners=24u;
+inline constexpr std::size_t kMaxAuthenticatedProjectedCorners=192u;
 inline bool ExpandProjectedVBWindow(
     const std::uint8_t* bytes,std::size_t available,
     std::uint32_t fvf,std::uint32_t stride,
     const VBVertexWindow& window,
-    std::vector<std::uint8_t>& expanded) {
-    constexpr std::size_t kMaxSourceJoinIndices=24u; // 8 triangles
-    if(!bytes || !ExactProjectedUPWorldFVF(fvf,stride) ||
+    std::vector<std::uint8_t>& expanded,
+    ProjectedExpansionUse use=ProjectedExpansionUse::PassiveDiagnostic) {
+    const std::size_t max_corners=
+        use==ProjectedExpansionUse::PassiveDiagnostic
+            ? kMaxPassiveProjectedCorners
+            : use==ProjectedExpansionUse::AuthenticatedWorld
+                ? kMaxAuthenticatedProjectedCorners : 0u;
+    if(!max_corners || !bytes || !ExactProjectedUPWorldFVF(fvf,stride) ||
        !window.count || window.count>kMaxVBBridgeVertices ||
        window.indices.size()<6u ||
-       window.indices.size()>kMaxSourceJoinIndices ||
+       window.indices.size()>max_corners ||
        window.indices.size()%3u ||
        std::uint64_t(window.count)*stride>available)
         return false;

@@ -134,7 +134,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyT
         window.first=0u;window.count=copied_count;
         window.indices=std::move(relative);
         if(!m2vr::drawprobe::ExpandProjectedVBWindow(
-            source.data(),source.size(),fvf,stride,window,expanded))
+            source.data(),source.size(),fvf,stride,window,expanded,
+            m2vr::drawprobe::ProjectedExpansionUse::AuthenticatedWorld))
             return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);

@@ -170,7 +170,8 @@ BOOL SubmitProjectedBufferWindow(
         if(FAILED(device->GetFVF(&fvf)))return FALSE;
         std::vector<std::uint8_t> ordered;
         if(!m2vr::drawprobe::ExpandProjectedVBWindow(
-             vertices.data(),vertices.size(),fvf,stride,window,ordered))
+             vertices.data(),vertices.size(),fvf,stride,window,ordered,
+             m2vr::drawprobe::ProjectedExpansionUse::AuthenticatedWorld))
             return FALSE;
         return Model2VR_AppendVerifiedProjectedD3D9UPTexturedWithSourceIds(
             device,ordered.data(),

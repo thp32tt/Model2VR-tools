@@ -1573,9 +1573,16 @@ std::uint64_t ObserveUP(IDirect3DDevice9* dev,unsigned family,
         const auto join=correlator.Match(epoch,screen.data(),3u);
         m2vr::LogEvent("model2_d3d9_cpu_up_join",sample_id,
             join.matched,join.ambiguous,join.source_caller_rva);
+        // For DrawIndexedPrimitiveUP, triangle_ids are positions into the
+        // original index stream, NOT genuine GPU vertex IDs. Repeated 16/32-
+        // bit indices must resolve back to the same original source vertex
+        // before the one-to-one CPU projector alias/camera admission gate.
+        std::array<std::uint32_t,kJoinSampleVertices> original_vertex_ids{};
+        for(std::size_t i=0;i<triangle_ids.size();++i)
+            original_vertex_ids[i]=observations[triangle_ids[i]].index;
         const auto batch=correlator.MatchTriangleList(
             epoch,screen.data(),triangle_ids.size(),
-            triangle_ids.data()); // authentic original topology aliases
+            original_vertex_ids.data()); // real original indexed-UP IDs
         m2vr::LogEvent("model2_d3d9_cpu_up_join_batch",sample_id,
             (std::uint64_t{batch.inspected}<<32)|batch.complete,
             (std::uint64_t{batch.partial}<<32)|batch.ambiguous,
