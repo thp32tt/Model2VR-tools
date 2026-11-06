@@ -8,6 +8,9 @@ namespace m2vr::daytona {
 struct OriginalSourcePoseTicket {
     std::uint64_t sequence=0;
     std::uint64_t published_qpc=0;
+    // The original x86 Draw and its physical Present must see the same
+    // real OpenXR LOCAL coordinate origin, not just a fresh pose sequence.
+    std::uint32_t reference_space_epoch=0;
 };
 inline bool OriginalStereoPoseStillLiveAtPresent(
     OriginalSourcePoseTicket ticket,const pose::Frame& latest,
@@ -18,6 +21,7 @@ inline bool OriginalStereoPoseStillLiveAtPresent(
        now-ticket.published_qpc>hz/8u ||
        latest.sequence<ticket.sequence ||
        latest.sequence-ticket.sequence>=32u ||
+       latest.reserved!=ticket.reference_space_epoch ||
        latest.published_qpc<ticket.published_qpc ||
        latest.published_qpc>now)return false;
     return AdmitTrackedWorldEyePose(latest,now,hz).valid &&

@@ -19,6 +19,16 @@ int main(){
     p.eyes[1].position_m[0]=0.032f;
     using daytona::OriginalStereoPoseStillLiveAtPresent;
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    // A tracked and fresh HMD packet from another LOCAL origin cannot
+    // certify an earlier genuine original D3D9 Draw at physical Present.
+    ticket.reference_space_epoch=1u;
+    p.reserved=1u;
+    CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.reserved=2u;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.reserved=0u;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.reserved=1u;
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,1001250000ull,hz));
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,1001250001ull,hz));
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,999999999ull,hz));

@@ -53,6 +53,7 @@ struct Bridge {
     m2vr::vrbridge::OriginalFixedCameraEpoch fixed_camera{};
     m2vr::vrbridge::OriginalCameraFamilyEpoch camera_family{};
     std::uint64_t pose_published_qpc=0;
+    std::uint32_t pose_reference_epoch=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
     bool active=false,pending_present=false;
@@ -71,6 +72,7 @@ struct Bridge {
     void Abort()noexcept{
         active=false;pending_present=false;
         owner=0;frame=0;pose_sequence=0;pose_published_qpc=0;
+        pose_reference_epoch=0;
         draw_count=0;triangle_count=0;
         projected_camera.Reset();fixed_camera.Reset();camera_family.Reset();
         original_draw_one_shot.Reset();
@@ -150,7 +152,7 @@ bool OriginalWorldPoseLive()noexcept {
        !QueryPerformanceFrequency(&frequency) ||
        now.QuadPart<=0 || frequency.QuadPart<=0)return false;
     return m2vr::daytona::OriginalStereoPoseStillLiveAtPresent(
-        {g.pose_sequence,g.pose_published_qpc},latest,
+        {g.pose_sequence,g.pose_published_qpc,g.pose_reference_epoch},latest,
         static_cast<std::uint64_t>(now.QuadPart),
         static_cast<std::uint64_t>(frequency.QuadPart));
 }
@@ -342,6 +344,7 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         g.frame=frame_id;
         g.pose_sequence=predicted.sequence;
         g.pose_published_qpc=predicted.published_qpc;
+        g.pose_reference_epoch=predicted.reserved;
         g.owner=GetCurrentThreadId();
         g.calibration=cal;
         g.evidence=evidence;
