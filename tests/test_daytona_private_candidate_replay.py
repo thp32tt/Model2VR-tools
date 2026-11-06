@@ -192,6 +192,42 @@ class CandidateReplayTest(unittest.TestCase):
             with self.assertRaisesRegex(ReceiptError, "changed race_a.csv"):
                 verify_candidate_replay(self.archive, replay_csv=True)
 
+    def test_strict_replay_rejects_earlier_csv_mutated_during_later_stage(self):
+        # race_a has already passed its own before/after SHA checks when
+        # auxiliary is parsed. The final archive audit must catch this late
+        # change rather than returning a false seven-stage PASS.
+        def late_change(csv_path):
+            report = self._derived_report_for_csv(csv_path)
+            if csv_path.name == "auxiliary.csv":
+                prior = self.archive / "race_a.csv"
+                prior.write_bytes(prior.read_bytes() + b"\\nLATE SYNTHETIC MUTATION")
+            return report
+
+        with patch("tools.verify_daytona_private_candidate_replay.preflight_original_session",
+                   side_effect=late_change):
+            with self.assertRaisesRegex(ReceiptError, "changed race_a.csv"):
+                verify_candidate_replay(self.archive, replay_csv=True)
+
+    def test_strict_replay_rejects_consistently_rehashed_late_report(self):
+        # A writer can mutate a prior JSON and rewrite its manifest SHA
+        # after we read the report but before the last CSV finishes.
+        # The final ordinary receipt would be self-consistent; strict
+        # replay must compare it with the originally audited byte snapshot.
+        def rehash_report(csv_path):
+            report = self._derived_report_for_csv(csv_path)
+            if csv_path.name == "auxiliary.csv":
+                prior = self.archive / "PRIVATE_SOURCE_race_a.json"
+                prior.write_text(prior.read_text(encoding="utf-8") + " ",
+                                 encoding="utf-8")
+                self.manifest["source_report_sha256"]["race_a"] = sha(prior)
+                self._write_manifest()
+            return report
+
+        with patch("tools.verify_daytona_private_candidate_replay.preflight_original_session",
+                   side_effect=rehash_report):
+            with self.assertRaisesRegex(ReceiptError, "changed PRIVATE_"):
+                verify_candidate_replay(self.archive, replay_csv=True)
+
 
 if __name__ == "__main__":
     unittest.main()
