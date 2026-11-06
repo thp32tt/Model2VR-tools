@@ -199,6 +199,23 @@ void XrApp::invalidate_source_session() noexcept {
                   chain.uploaded_frame_ids.end(),0u);
 }
 void XrApp::draw_frame(XrTime display_time){
+    // A queued LOCAL-space origin change must not mix earlier original
+    // x86 D3D9 eye pixels with later real xrLocateViews coordinates.
+    const auto local_action=local_reference_epoch_.OnPredictedFrame(display_time);
+    if(local_action!=pose::ReferenceSpaceFrame::Ready){
+        if(local_action==pose::ReferenceSpaceFrame::SuppressTransition){
+            invalidate_source_session();
+            std::cout<<"OpenXR LOCAL reference space reanchored epoch="
+                     <<local_reference_epoch_.Epoch()
+                     <<" (old original game eyes discarded)"<<std::endl;
+        }
+        report_wizard_health(false,false);
+        XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
+        end.displayTime=display_time;
+        end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+        check(xrEndFrame(session_,&end),"end reference-space quarantine frame");
+        return;
+    }
     std::array<XrView,2> views{XrView{XR_TYPE_VIEW},XrView{XR_TYPE_VIEW}};
     XrViewLocateInfo locate{XR_TYPE_VIEW_LOCATE_INFO};
     locate.displayTime=display_time;
@@ -231,6 +248,7 @@ void XrApp::draw_frame(XrTime display_time){
             pose::Frame predicted{};
             predicted.sequence=++predicted_pose_sequence_;
             predicted.predicted_display_time=display_time;
+            predicted.reserved=local_reference_epoch_.Epoch();
             predicted.view_flags=static_cast<std::uint32_t>(state.viewStateFlags);
             for(std::size_t eye=0;eye<2;++eye){
                 const auto& p=views[eye].pose;
@@ -694,6 +712,9 @@ void XrApp::run(int max_frames){
                     XrSessionBeginInfo begin{XR_TYPE_SESSION_BEGIN_INFO};
                     begin.primaryViewConfigurationType=XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
                     check(xrBeginSession(session_,&begin),"begin XR session");
+                    if(!local_reference_epoch_.BeginSession())
+                        throw std::runtime_error("OpenXR LOCAL source generation exhausted");
+                    invalidate_source_session();
                     running=true;
                     std::cout<<"OpenXR session_begin=SUCCESS"<<std::endl;
                 }else if(s.state==XR_SESSION_STATE_STOPPING){
@@ -705,6 +726,28 @@ void XrApp::run(int max_frames){
                     invalidate_source_session();
                     exit=true;
                 }
+            }else if(event.type==XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING){
+                const auto& change=*reinterpret_cast<
+                    const XrEventDataReferenceSpaceChangePending*>(&event);
+                if(change.session==session_ &&
+                   change.referenceSpaceType==XR_REFERENCE_SPACE_TYPE_LOCAL){
+                    // Khronos: the new LOCAL origin takes effect only from
+                    // changeTime. Quarantine now; publish a fresh epoch after
+                    // the exact boundary, never an old-space stereo pair.
+                    local_reference_epoch_.NotifyLocalChange(change.changeTime);
+                    invalidate_source_session();
+                    std::cout<<"OpenXR LOCAL reference space recenter pending"
+                             <<" change_time="<<change.changeTime
+                             <<" previous_epoch="<<local_reference_epoch_.Epoch()
+                             <<" (original CPU/GPU eyes revoked)"<<std::endl;
+                }
+            }else if(event.type==XR_TYPE_EVENT_DATA_EVENTS_LOST){
+                // Events lost may include a LOCAL-space recenter. Reanchor
+                // conservatively even when the runtime lost the detail.
+                local_reference_epoch_.NotifyLocalChange(0);
+                invalidate_source_session();
+                std::cerr<<"OpenXR event loss: LOCAL source forced to reanchor"
+                         <<std::endl;
             }else if(event.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING){
                 invalidate_source_session();
                 exit=true;

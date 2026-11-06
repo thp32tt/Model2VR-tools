@@ -15,12 +15,20 @@ public:
         anchored_=false;
         center_={};
         orientation_={0.f,0.f,0.f,1.f};
+        reference_space_epoch_=0u;
     }
     bool Anchored() const noexcept { return anchored_; }
+    std::uint32_t ReferenceSpaceEpoch()const noexcept{return reference_space_epoch_;}
 
     // Atomic: an invalid packet cannot change the current origin or output.
     // Callers must also check tracking age and game-frame sequence.
     bool Rebase(const pose::Frame& input,pose::Frame& output) noexcept {
+        // A LOCAL recenter changes the meaning of every absolute eye
+        // position. Reject older/legacy epochs after a new one is latched.
+        // Do not mutate the old origin until the whole rebase succeeds.
+        if(reference_space_epoch_ &&
+           (!input.reserved || input.reserved<reference_space_epoch_))
+            return false;
         if(!pose::CheckStereoRigGeometry(input).valid())return false;
         for(const auto& eye:input.eyes){
             if(!QuaternionValid(eye.orientation_xyzw))return false;
@@ -40,9 +48,12 @@ public:
             squared_ipd+=d*d;
         }
         if(squared_ipd<0.02*0.02 || squared_ipd>0.11*0.11)return false;
-        auto center=center_;
-        auto orientation=orientation_;
-        if(!anchored_){
+        const bool changed_epoch=input.reserved!=reference_space_epoch_;
+        const bool already_anchored=anchored_ && !changed_epoch;
+        auto center=changed_epoch ? std::array<float,3>{} : center_;
+        auto orientation=changed_epoch ?
+            std::array<float,4>{0.f,0.f,0.f,1.f} : orientation_;
+        if(!already_anchored){
             for(int i=0;i<3;++i)
                 center[i]=static_cast<float>(
                     (double(left.position_m[i])+right.position_m[i])*0.5);
@@ -82,11 +93,12 @@ public:
             for(int i=0;i<4;++i)eye.orientation_xyzw[i]=local_q[i];
         }
         output=candidate;
-        if(!anchored_){
+        if(!already_anchored){
             center_=center;
             orientation_=orientation;
             anchored_=true;
         }
+        reference_space_epoch_=input.reserved;
         return true;
     }
 private:
@@ -96,6 +108,7 @@ private:
         const float inv=static_cast<float>(1./std::sqrt(squared));
         for(auto& v:q)v*=inv;
     }
+    std::uint32_t reference_space_epoch_=0u;
     bool anchored_=false;
     std::array<float,3> center_{};
     std::array<float,4> orientation_{0.f,0.f,0.f,1.f};

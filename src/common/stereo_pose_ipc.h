@@ -32,6 +32,8 @@ struct Frame {
     std::uint64_t published_qpc=0;
     EyeView eyes[2]{};
     std::uint32_t view_flags=0;
+    // Existing ABI slot: 0 means legacy/no LOCAL recenter provenance;
+    // nonzero increments on XR session restart or LOCAL changeTime.
     std::uint32_t reserved=0;
 };
 static_assert(sizeof(Frame)==120);

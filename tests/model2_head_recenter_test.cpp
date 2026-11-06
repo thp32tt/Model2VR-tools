@@ -97,6 +97,40 @@ int main(){
     CHECK(rebase.Rebase(moved,output));
     CHECK(Near(output.eyes[0].position_m[0],-0.032f));
     CHECK(Near(output.eyes[0].orientation_xyzw[3],1.f));
+    // The real Win64 XR host now tags LOCAL-space generations in the
+    // formerly reserved x86/x64 pose IPC field. A 6DoF re-center must
+    // invalidate the anchored old LOCAL origin without changing any game
+    // camera calibration, renderer or original D3D9 draw.
+    auto local_one=Eyes(pi*0.5f,5.f,1.f,10.f,20u);
+    local_one.reserved=1u;
+    CHECK(rebase.Rebase(local_one,output));
+    CHECK(rebase.ReferenceSpaceEpoch()==1u);
+    auto local_move=Eyes(pi*0.5f,5.f,1.f,9.f,21u);
+    local_move.reserved=1u;
+    CHECK(rebase.Rebase(local_move,output));
+    CHECK(Near(output.eyes[0].position_m[0],1.f-0.032f));
+    // Headset LOCAL moved. New source positions can numerically resemble
+    // older coordinates but must be treated as a new physical origin.
+    auto recentered=Eyes(0.f,0.f,1.f,0.f,22u);
+    recentered.reserved=2u;
+    CHECK(rebase.Rebase(recentered,output));
+    CHECK(rebase.ReferenceSpaceEpoch()==2u);
+    CHECK(Near(output.eyes[0].position_m[0],-0.032f));
+    CHECK(Near(output.eyes[1].position_m[0],0.032f));
+    const auto kept=output;
+    CHECK(!rebase.Rebase(local_move,output));
+    CHECK(!rebase.Rebase(Eyes(0.f,0.f,1.f,0.f,23u),output));
+    CHECK(rebase.ReferenceSpaceEpoch()==2u);
+    CHECK(output.sequence==kept.sequence);
+    auto invalid_epoch=Eyes(0.f,0.f,1.f,0.f,24u);
+    invalid_epoch.reserved=3u;
+    invalid_epoch.eyes[1].orientation_xyzw[3]=0.f;
+    CHECK(!rebase.Rebase(invalid_epoch,output));
+    CHECK(rebase.ReferenceSpaceEpoch()==2u);
+    auto moved_in_new_origin=Eyes(0.f,0.5f,1.f,0.f,25u);
+    moved_in_new_origin.reserved=2u;
+    CHECK(rebase.Rebase(moved_in_new_origin,output));
+    CHECK(Near(output.eyes[0].position_m[0],0.5f-0.032f));
     // Source camera-axis and world scale are immutable for an emulated
     // race camera epoch, not automatically inferred from the headset.
     Model2CameraEpochContract camera_epoch;
