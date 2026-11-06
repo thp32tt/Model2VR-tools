@@ -25,6 +25,7 @@ struct Writer {
 Frame Valid(std::uint64_t id){
     Frame f{};
     f.sequence=id;
+    f.reserved=1u; // source HMD must have a valid LOCAL generation
     f.view_flags=m2vr::pose::kFullSixDofTracked;
     for(auto& eye:f.eyes){
         eye.orientation_xyzw[3]=1.f;
@@ -43,27 +44,31 @@ int main(){
     Writer writer{&ring};
     CHECK(PublishTrackedStereoPose(writer,ring,Valid(12),Pair{1,2}));
     CHECK(writer.visible==12 && ring.Find(12) && *ring.Find(12)==Pair({1,2}));
-    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(12),Pair{3,4}));
+    auto unknown_local=Valid(13);unknown_local.reserved=0u;
+    CHECK(!PublishTrackedStereoPose(writer,ring,unknown_local,Pair{2,3}));
     CHECK(writer.invalidated && !ring.Find(12));
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(13),Pair{3,4}));
+    CHECK(PublishTrackedStereoPose(writer,ring,Valid(13),Pair{2,3}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(13),Pair{3,4}));
+    CHECK(writer.invalidated && !ring.Find(13));
+    CHECK(PublishTrackedStereoPose(writer,ring,Valid(14),Pair{3,4}));
     writer.fail=true;writer.invalidated=false;
-    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(14),Pair{5,6}));
-    CHECK(writer.invalidated && !ring.Find(13) && !ring.Find(14));
+    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(15),Pair{5,6}));
+    CHECK(writer.invalidated && !ring.Find(14) && !ring.Find(15));
     writer.fail=false;
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(15),Pair{5,6}));
-    auto mono=Valid(16);mono.eyes[1].position_m[0]=-0.032f;
+    CHECK(PublishTrackedStereoPose(writer,ring,Valid(16),Pair{5,6}));
+    auto mono=Valid(17);mono.eyes[1].position_m[0]=-0.032f;
     CHECK(!PublishTrackedStereoPose(writer,ring,mono,Pair{7,8}));
-    CHECK(!ring.Find(15) && writer.visible==0);
+    CHECK(!ring.Find(16) && writer.visible==0);
     CHECK(!PublishTrackedStereoPose(writer,ring,
         Valid(std::uint64_t{std::numeric_limits<std::uint32_t>::max()}+1u),
         Pair{7,8}));
     writer.available=false;
-    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(17),Pair{7,8}));
-    CHECK(!ring.Find(17));
+    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(18),Pair{7,8}));
+    CHECK(!ring.Find(18));
     writer.available=true;
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(18),Pair{7,8}));
+    CHECK(PublishTrackedStereoPose(writer,ring,Valid(19),Pair{7,8}));
     ring.Clear();
-    CHECK(!ring.Record(18,Pair{9,10}));
-    CHECK(ring.Record(19,Pair{9,10}));
+    CHECK(!ring.Record(19,Pair{9,10}));
+    CHECK(ring.Record(20,Pair{9,10}));
     return 0;
 }

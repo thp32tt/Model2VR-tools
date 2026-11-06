@@ -17,6 +17,7 @@ bool PublishTrackedStereoPose(
         history.Clear();
     };
     if(!CheckStereoRigGeometry(packet).valid() ||
+       !packet.reserved ||  // a new Win64 host MUST name its LOCAL epoch
        packet.sequence>std::numeric_limits<std::uint32_t>::max() ||
        !writer.Valid()){
         revoke();
