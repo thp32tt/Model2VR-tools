@@ -1,3 +1,13 @@
+## PRIVATE seven original x86 process sessions — fail-fast evidence capture (2026-11-06)
+
+The matched `Collect-Daytona-Original-Evidence.cmd` in the Win32 producer + Win64 Quest OpenXR ZIP now validates **each** original Daytona process immediately after you close the emulator and press Enter. Start from the extracted release folder, preserve the original game executable outside the package, and follow the seven human-labelled race_a, race_b, title, menu, sky, hud and aux prompts. For existing genuine separate CSVs, `-ExistingSessionFolder` remains supported. This collector does not launch/modify the game and never changes native VR/FFB settings.
+
+A session is retained under `logs/private_original_evidence_<UTC>/` with its raw original CSV, and only a successful original x86 physical Present/Scene/Draw/camera/RT0-depth/caller-inventory audit creates `PRIVATE_SOURCE_<label>.json`. If a capture lacks authenticated original process evidence, the collector stops **before** you spend time on the next of seven sessions. It preserves the failed CSV locally for diagnosis; it does not produce a falsely successful final manifest. A duplicate original process nonce across any two stages also stops collection. Successful seven-stage comparison consumes the already validated PRIVATE JSON reports rather than parsing all original GPU CSVs twice.
+
+All original caller/source evidence is local-only; the test package and GitHub CI contain no proprietary CSV, image, ROM or EXE data. A passing preflight establishes only that one original source report is structurally valid, **not** that the human-chosen scene label or race-world Draw is independently proven. The combined `PRIVATE_WORLD_CANDIDATES.json` remains candidate-only. `world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED`, World3D auto-enable OFF until real 7-session gameplay and Quest3/VDXR physical proof.
+
+Exact source/test SHA `662c160004afb4d9d070ab9a77330758022d017b`; native matched Windows release workflow `42174672582` all game-win32/xr-win64/bundle jobs SUCCESS. Integrated artifact `DaytonaUSA-NativeStereo-Quest3-Win32-Win64` ID `13482218543`, expires 2026-11-20 UTC.
+
 ## Original D3D9 bound vertex/index buffer content epoch (2026-11-05)
 
 The native x86 probe now observes **real original resource COM Lock (slot 11)
