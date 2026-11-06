@@ -107,6 +107,11 @@ int main(){
     // formerly reserved x86/x64 pose IPC field. A 6DoF re-center must
     // invalidate the anchored old LOCAL origin without changing any game
     // camera calibration, renderer or original D3D9 draw.
+    // The prior synthetic fixture now explicitly carries LOCAL epoch 1.
+    // Begin an independent source-consumer lifetime before testing the
+    // next LOCAL recenter sequence; otherwise epoch 1 would correctly
+    // reuse the previous first anchor instead of anchoring here.
+    rebase.Reset();
     auto local_one=Eyes(pi*0.5f,5.f,1.f,10.f,20u);
     local_one.reserved=1u;
     CHECK(rebase.Rebase(local_one,output));
