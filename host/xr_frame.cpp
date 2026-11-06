@@ -138,6 +138,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"source_pose_rejection="<<static_cast<unsigned>(last_pose_rejection_)<<"\n"
           <<"openxr_local_reference_epoch="<<local_reference_epoch_.Epoch()<<"\n"
           <<"openxr_local_reference_pending="<<(local_reference_epoch_.Pending()?1:0)<<"\n"
+          <<"openxr_local_change_time_unknown="<<(local_reference_epoch_.ChangeTimeUnknown()?1:0)<<"\n"
           <<"latest_original_receipt_frame="<<latest_receipt_frame_<<"\n"
           <<"latest_original_receipt_verdict="
           <<static_cast<unsigned>(latest_receipt_verdict_)<<"\n"
@@ -736,12 +737,22 @@ void XrApp::run(int max_frames){
                     // Khronos: the new LOCAL origin takes effect only from
                     // changeTime. Quarantine now; publish a fresh epoch after
                     // the exact boundary, never an old-space stereo pair.
-                    local_reference_epoch_.NotifyLocalChange(change.changeTime);
+                    const bool change_accepted=
+                        local_reference_epoch_.NotifyLocalChange(change.changeTime);
                     invalidate_source_session();
-                    std::cout<<"OpenXR LOCAL reference space recenter pending"
-                             <<" change_time="<<change.changeTime
-                             <<" previous_epoch="<<local_reference_epoch_.Epoch()
-                             <<" (original CPU/GPU eyes revoked)"<<std::endl;
+                    if(!change_accepted ||
+                       local_reference_epoch_.ChangeTimeUnknown()){
+                        std::cerr<<"OpenXR LOCAL reference changeTime untrusted"
+                                 <<" change_time="<<change.changeTime
+                                 <<" previous_epoch="<<local_reference_epoch_.Epoch()
+                                 <<" (original CPU/GPU eyes quarantined until XR session restart)"
+                                 <<std::endl;
+                    }else{
+                        std::cout<<"OpenXR LOCAL reference space recenter pending"
+                                 <<" change_time="<<change.changeTime
+                                 <<" previous_epoch="<<local_reference_epoch_.Epoch()
+                                 <<" (original CPU/GPU eyes revoked)"<<std::endl;
+                    }
                 }
             }else if(event.type==XR_TYPE_EVENT_DATA_EVENTS_LOST){
                 // A lost XR event can hide a FUTURE LOCAL-space recenter.
