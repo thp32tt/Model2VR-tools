@@ -202,7 +202,8 @@ jobs:
           if(!(Test-Path -LiteralPath $stale)){ throw "Original stale log unexpectedly moved" }
           $archives=@(Get-ChildItem -LiteralPath $logs -Directory -Filter "private_original_evidence_*")
           if($archives.Count -ne 1){ throw "Expected one local private stage archive" }
-          if(@(Get-ChildItem -LiteralPath $archives[0].FullName -File |\n              Where-Object { $_.Name -ne ".private_original_collection.lock" }).Count -ne 0){
+          if(@(Get-ChildItem -LiteralPath $archives[0].FullName -File |
+              Where-Object { $_.Name -ne ".private_original_collection.lock" }).Count -ne 0){
             throw "False fresh log caused private source output"
           }
       - name: Smoke test archive mutation after per-stage physical preflight
