@@ -298,42 +298,91 @@ $argsForPython = @($analyzer,"--race",$reports["race_a"],"--race",$reports["race
 foreach ($label in @("title","menu","sky","hud","aux")) {
   $argsForPython += @("--control",$label,$reports[$label])
 }
+# Never let the external analyzer write an active candidate directly. A
+# zero-exit Python process may produce no JSON, truncated JSON, or output
+# that spuriously claims World3D/Quest validation. Validate a GUID-unique
+# pending receipt before any visible success filenames are published.
 $candidateOutput = Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"
-$argsForPython += @("--output",$candidateOutput)
+$pendingCandidate = Join-Path $destination ("PRIVATE_PENDING_COMPARE_" +
+  [guid]::NewGuid().ToString("N") + ".json")
+$argsForPython += @("--output",$pendingCandidate)
+function Move-PrivateFailedCandidate([string]$path) {
+  if (Test-Path -LiteralPath $path -PathType Leaf) {
+    $failedName = "PRIVATE_FAILED_COMPARE_" +
+                  (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmss_fff") +
+                  "_" + [guid]::NewGuid().ToString("N").Substring(0,8) +
+                  "_PRIVATE_WORLD_CANDIDATES.json"
+    Rename-Item -LiteralPath $path -NewName $failedName -ErrorAction Stop
+  }
+}
 $pythonExitCode = -1
 $comparisonError = $null
 try {
   $pythonExitCode = Invoke-PrivateAudit -auditArguments $argsForPython
 } catch {
   # Even a timed-out or failed-to-launch comparator may have already
-  # written a partial active candidate. Always reach the quarantine.
+  # written a partial pending candidate. Always reach quarantine.
   $comparisonError = $_.Exception.Message
 }
 # The external comparison process (or another local writer) may change
 # cached PRIVATE inputs while the seven-session report is being assembled.
-# Never leave an active candidate/manifest on such a mutation.
 $integrityError = $null
 try { Assert-PrivateArchiveIntegrity } catch { $integrityError = $_.Exception.Message }
-if ($pythonExitCode -ne 0 -or $null -ne $comparisonError -or
-    $null -ne $integrityError -or
-    !(Test-Path -LiteralPath $candidateOutput -PathType Leaf)) {
-  # A failed analyzer may have left a partial candidate JSON. Do not let
-  # an active success filename survive failed physical-source comparison.
-  if (Test-Path -LiteralPath $candidateOutput -PathType Leaf) {
-    $failedName = "PRIVATE_FAILED_COMPARE_" +
-                  (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmss_fff") +
-                  "_" + [guid]::NewGuid().ToString("N").Substring(0,8) +
-                  "_PRIVATE_WORLD_CANDIDATES.json"
-    Rename-Item -LiteralPath $candidateOutput -NewName $failedName -ErrorAction Stop
+$receiptError = $null
+if ($pythonExitCode -eq 0 -and $null -eq $comparisonError -and
+    $null -eq $integrityError -and
+    (Test-Path -LiteralPath $pendingCandidate -PathType Leaf)) {
+  try {
+    $candidate = Get-Content -LiteralPath $pendingCandidate -Raw -Encoding UTF8 |
+      ConvertFrom-Json -ErrorAction Stop
+    $controls = @($candidate.control_types)
+    if ($candidate.schema -ne 1 -or
+        $candidate.source_kind -cne "private_cross_phase_original_draw_candidate_triage" -or
+        $candidate.race_session_count -ne 2 -or
+        $candidate.nonrace_session_count -ne 5 -or
+        $controls.Count -ne 5 -or
+        ($controls -join ",") -cne "aux,hud,menu,sky,title" -or
+        $candidate.complete_negative_controls -isnot [bool] -or
+        $candidate.complete_negative_controls -ne $true -or
+        $candidate.world_pass_proof -cne "NOT_ESTABLISHED" -or
+        $candidate.camera_axes_and_meters_per_unit -cne "NOT_CALIBRATED" -or
+        $candidate.adapter_auto_enable -isnot [bool] -or
+        $candidate.adapter_auto_enable -ne $false -or
+        $candidate.hmd_runtime_validation -cne "UNTESTED" -or
+        $candidate.candidates -isnot [array] -or
+        $candidate.rejected -isnot [array]) {
+      throw "Invalid original PRIVATE candidate-only source receipt."
+    }
+    foreach ($entry in $candidate.candidates) {
+      if ($null -eq $entry -or
+          $entry.world_pass_authorized -isnot [bool] -or
+          $entry.world_pass_authorized -ne $false) {
+        throw "Original PRIVATE candidate attempted World3D authorization."
+      }
+    }
+  } catch {
+    $receiptError = $_.Exception.Message
   }
+}
+if ($pythonExitCode -ne 0 -or $null -ne $comparisonError -or
+    $null -ne $integrityError -or $null -ne $receiptError -or
+    !(Test-Path -LiteralPath $pendingCandidate -PathType Leaf)) {
+  Move-PrivateFailedCandidate $pendingCandidate
+  # No active result from this run may survive, including an unexpected
+  # competing writer in a resumed local archive.
+  Move-PrivateFailedCandidate $candidateOutput
   if ($null -ne $integrityError) { throw $integrityError }
   if ($null -ne $comparisonError) {
     throw "PRIVATE SESSION COMPARE FAIL-CLOSED: $comparisonError Archive kept for local inspection: $destination"
   }
+  if ($null -ne $receiptError) {
+    throw "PRIVATE SESSION COMPARE RECEIPT INVALID FAIL-CLOSED: $receiptError Archive kept: $destination"
+  }
   throw "Private source evidence FAIL-CLOSED. Archive kept for local inspection: $destination"
 }
-# Final manifest only after all seven full source audits and a
-# successful candidate-only cross-session comparison.
+# Publish the final receipt only after a complete validated seven-session
+# comparison; the manifest is the LAST active success filename. Stage its
+# bytes separately so a crash during serialization leaves no partial receipt.
 $manifest = [ordered]@{
   schema = 1
   source = "user-labelled_original_daytona_x86_private_sessions"
@@ -343,9 +392,24 @@ $manifest = [ordered]@{
   output_directory = $destination
   source_sha256 = $hashes
 }
-$json = ConvertTo-Json -InputObject $manifest -Depth 5
-[IO.File]::WriteAllText((Join-Path $destination "PRIVATE_MANIFEST.json"),
-  $json + [Environment]::NewLine,(New-Object System.Text.UTF8Encoding($false)))
+$pendingManifest = Join-Path $destination ("PRIVATE_PENDING_MANIFEST_" +
+  [guid]::NewGuid().ToString("N") + ".json")
+$finalManifest = Join-Path $destination "PRIVATE_MANIFEST.json"
+try {
+  $json = ConvertTo-Json -InputObject $manifest -Depth 5
+  [IO.File]::WriteAllText($pendingManifest,
+    $json + [Environment]::NewLine,(New-Object System.Text.UTF8Encoding($false)))
+  Move-Item -LiteralPath $pendingCandidate -Destination $candidateOutput -ErrorAction Stop
+  Move-Item -LiteralPath $pendingManifest -Destination $finalManifest -ErrorAction Stop
+} catch {
+  Move-PrivateFailedCandidate $pendingCandidate
+  Move-PrivateFailedCandidate $candidateOutput
+  if (Test-Path -LiteralPath $pendingManifest -PathType Leaf) {
+    Rename-Item -LiteralPath $pendingManifest -NewName (
+      "PRIVATE_FAILED_MANIFEST_" + [guid]::NewGuid().ToString("N") + ".json") -ErrorAction Stop
+  }
+  throw "PRIVATE SESSION PUBLICATION FAIL-CLOSED: no successful candidate/manifest receipt. Archive kept: $destination"
+}
 Write-Host ""
 Write-Host "Local candidate triage written. A candidate NEVER authorizes World3D."
 Write-Host "Independent original CPU camera, Quest3 pose and XR calibration remain unproven."

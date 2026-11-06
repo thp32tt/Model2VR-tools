@@ -81,7 +81,7 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('PRIVATE_FAILED_COMPARE_', self.ps)
         self.assertLess(self.ps.index('PRIVATE_FAILED_COMPARE_'),
                         self.ps.index('Local candidate triage written'))
-        self.assertIn('Rename-Item -LiteralPath $candidateOutput', self.ps)
+        self.assertIn('Move-PrivateFailedCandidate $candidateOutput', self.ps)
         self.assertIn('$pythonExitCode -ne 0', self.ps)
 
     def test_fresh_original_stage_only_accepts_one_new_path_not_a_recent_old_file(self):
@@ -166,11 +166,32 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn("$comparisonError = $_.Exception.Message", self.ps)
         self.assertIn("$null -ne $comparisonError -or", self.ps)
         self.assertLess(self.ps.index("$comparisonError = $_.Exception.Message"),
-                        self.ps.index('Rename-Item -LiteralPath $candidateOutput'))
+                        self.ps.index('Move-PrivateFailedCandidate $pendingCandidate'))
         self.assertIn('PRIVATE SESSION COMPARE FAIL-CLOSED', self.ps)
         self.assertIn('timeout_after_candidate', self.workflow)
         self.assertIn('Original timed-out comparison candidate not quarantined',
                       self.workflow)
+
+    def test_private_cross_session_output_is_pending_and_cannot_authorize_world3d(self):
+        # A zero-exit comparison must not manufacture an active JSON from
+        # silence, a truncated candidate, or forged World3D/Quest authority.
+        self.assertIn('PRIVATE_PENDING_COMPARE_', self.ps)
+        self.assertIn('"--output",$pendingCandidate', self.ps)
+        self.assertNotIn('"--output",$candidateOutput', self.ps)
+        self.assertIn('ConvertFrom-Json -ErrorAction Stop', self.ps)
+        self.assertIn('private_cross_phase_original_draw_candidate_triage', self.ps)
+        self.assertIn('"aux,hud,menu,sky,title"', self.ps)
+        self.assertIn('camera_axes_and_meters_per_unit -cne "NOT_CALIBRATED"', self.ps)
+        self.assertIn('adapter_auto_enable -ne $false', self.ps)
+        self.assertIn('world_pass_proof -cne "NOT_ESTABLISHED"', self.ps)
+        self.assertIn('hmd_runtime_validation -cne "UNTESTED"', self.ps)
+        self.assertIn('entry.world_pass_authorized -ne $false', self.ps)
+        self.assertIn('PRIVATE SESSION COMPARE RECEIPT INVALID FAIL-CLOSED', self.ps)
+        self.assertIn('Move-PrivateFailedCandidate $pendingCandidate', self.ps)
+        self.assertIn('Move-PrivateFailedCandidate $candidateOutput', self.ps)
+        self.assertLess(self.ps.index('Move-Item -LiteralPath $pendingCandidate -Destination $candidateOutput'),
+                        self.ps.index('Move-Item -LiteralPath $pendingManifest -Destination $finalManifest'))
+        self.assertIn('Reject forged or incomplete private cross-session receipt', self.workflow)
 
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)

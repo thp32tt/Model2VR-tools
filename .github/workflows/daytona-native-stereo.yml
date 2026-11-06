@@ -334,6 +334,93 @@ jobs:
               throw "Unfinished seven-stage original capture falsely published a manifest"
             }
           }
+      - name: Reject forged or incomplete private cross-session receipt
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference="Stop"
+          # Mock process behavior ONLY. This is not real original Daytona/VR evidence.
+          $stub=@'
+          import json, os, pathlib, sys
+          args=sys.argv[1:]
+          output=pathlib.Path(args[args.index("--output")+1])
+          if "--preflight" in args:
+              csv=pathlib.Path(args[args.index("--preflight")+1])
+              names=["race_a","race_b","title","menu","sky","hud","auxiliary"]
+              output.write_text(json.dumps({"original_capture_run":{
+                  "nonce_hex":f"0x{names.index(csv.stem)+1:016x}"}}),encoding="utf-8")
+          else:
+              mode=os.environ["MODEL2_RECEIPT_SMOKE"]
+              if mode=="silent":
+                  sys.exit(0)
+              if mode=="truncated":
+                  output.write_text('{"schema":1,',encoding="utf-8")
+                  sys.exit(0)
+              receipt={
+                  "schema":1,
+                  "source_kind":"private_cross_phase_original_draw_candidate_triage",
+                  "race_session_count":2,"nonrace_session_count":5,
+                  "control_types":["aux","hud","menu","sky","title"],
+                  "complete_negative_controls":True,
+                  "world_pass_proof":"NOT_ESTABLISHED",
+                  "camera_axes_and_meters_per_unit":"NOT_CALIBRATED",
+                  "adapter_auto_enable":False,"hmd_runtime_validation":"UNTESTED",
+                  "candidates":[],"rejected":[]}
+              if mode=="forged":
+                  receipt["world_pass_proof"]="ESTABLISHED"
+                  receipt["adapter_auto_enable"]=True
+              output.write_text(json.dumps(receipt),encoding="utf-8")
+          '@
+          foreach($mode in @("silent","truncated","forged","valid")) {
+            $root=Join-Path $env:RUNNER_TEMP ("original-private-receipt-"+$mode)
+            $inputs=Join-Path $root "source"
+            New-Item -ItemType Directory -Force -Path $inputs | Out-Null
+            Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+            Copy-Item tools/model2_draw_source_report.py $root/
+            [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
+              $stub,[Text.UTF8Encoding]::new($false))
+            foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")) {
+              $filename=if($label -eq "aux"){"auxiliary.csv"}else{$label+".csv"}
+              [IO.File]::WriteAllText((Join-Path $inputs $filename),
+                "synthetic collector transaction only, not physical original Daytona: $label")
+            }
+            $env:MODEL2_RECEIPT_SMOKE=$mode
+            $rejected=$false
+            try {
+              & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ExistingSessionFolder $inputs
+            } catch {
+              if($mode -eq "valid"){throw}
+              if($_.Exception.Message -notmatch "PRIVATE SESSION COMPARE"){throw}
+              $rejected=$true
+            } finally {
+              $env:MODEL2_RECEIPT_SMOKE=$null
+            }
+            $archives=@(Get-ChildItem (Join-Path $root "logs") -Directory -Filter "private_original_evidence_*")
+            if($archives.Count -ne 1){throw "Missing mock archive: $mode"}
+            $archive=$archives[0].FullName
+            $manifest=Join-Path $archive "PRIVATE_MANIFEST.json"
+            $candidate=Join-Path $archive "PRIVATE_WORLD_CANDIDATES.json"
+            $failed=@(Get-ChildItem -LiteralPath $archive -Filter "PRIVATE_FAILED_COMPARE_*" -File)
+            if($mode -eq "valid"){
+              if($rejected -or !(Test-Path $manifest) -or !(Test-Path $candidate)){
+                throw "Safe synthetic candidate-only receipt was not promoted"
+              }
+              $m=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+              $c=Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json
+              if($m.world_pass_proof -cne "NOT_ESTABLISHED" -or
+                 $c.adapter_auto_enable -ne $false -or $failed.Count -ne 0){
+                throw "Candidate-only synthetic receipt incorrectly authorized World3D"
+              }
+            }else{
+              if(-not $rejected -or (Test-Path $manifest) -or (Test-Path $candidate)){
+                throw "Invalid original comparison falsely published success: $mode"
+              }
+              $expected=if($mode -eq "silent"){0}else{1}
+              if($failed.Count -ne $expected){
+                throw "Invalid pending original comparison not quarantined: $mode"
+              }
+            }
+          }
       - name: Reject blocked or flooded original private Python auditors
         shell: pwsh
         timeout-minutes: 2
