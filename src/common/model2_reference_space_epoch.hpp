@@ -14,26 +14,30 @@ public:
     bool BeginSession() noexcept {
         pending_=false;
         change_time_=0;
+        events_lost_=false;
         return Advance();
     }
     bool NotifyLocalChange(std::int64_t change_time) noexcept {
-        if(!epoch_ || exhausted_)return false;
+        if(!epoch_ || exhausted_ || events_lost_)return false;
         if(!pending_)change_time_=change_time>0?change_time:0;
         else if(change_time>change_time_)change_time_=change_time;
         pending_=true;
         return true;
     }
-    // XR_TYPE_EVENT_DATA_EVENTS_LOST has no reliable changeTime.
-    // It may conceal an already-effective recenter, so ignore any older
-    // future threshold and force a fresh LOCAL origin on the next frame.
+    // XR_TYPE_EVENT_DATA_EVENTS_LOST gives no LOCAL changeTime. A
+    // lost event could refer to a FUTURE recenter, so reanchoring NOW
+    // would merely accept the wrong origin later. Quarantine every frame
+    // until a real XR session restart starts a fresh trusted generation.
     bool NotifyEventsLost() noexcept {
         if(!epoch_ || exhausted_)return false;
-        pending_=true;
+        pending_=false;
         change_time_=0;
+        events_lost_=true;
         return true;
     }
     ReferenceSpaceFrame OnPredictedFrame(std::int64_t display_time) noexcept {
-        if(!epoch_ || exhausted_)return ReferenceSpaceFrame::Exhausted;
+        if(!epoch_ || exhausted_ || events_lost_)
+            return ReferenceSpaceFrame::Exhausted;
         if(!pending_)return ReferenceSpaceFrame::Ready;
         if(display_time<=0 || (change_time_>0 &&
                                display_time<change_time_))
@@ -46,6 +50,7 @@ public:
     }
     std::uint32_t Epoch()const noexcept{return epoch_;}
     bool Pending()const noexcept{return pending_;}
+    bool EventsLost()const noexcept{return events_lost_;}
 private:
     bool Advance() noexcept {
         if(exhausted_ || epoch_==std::numeric_limits<std::uint32_t>::max()){
@@ -57,6 +62,6 @@ private:
     }
     std::uint32_t epoch_=0;
     std::int64_t change_time_=0;
-    bool pending_=false,exhausted_=false;
+    bool pending_=false,events_lost_=false,exhausted_=false;
 };
 } // namespace m2vr::pose

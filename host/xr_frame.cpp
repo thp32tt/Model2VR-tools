@@ -744,11 +744,12 @@ void XrApp::run(int max_frames){
                              <<" (original CPU/GPU eyes revoked)"<<std::endl;
                 }
             }else if(event.type==XR_TYPE_EVENT_DATA_EVENTS_LOST){
-                // Events lost may include a LOCAL-space recenter. Reanchor
-                // conservatively even when the runtime lost the detail.
+                // A lost XR event can hide a FUTURE LOCAL-space recenter.
+                // Its effective changeTime is unknown: do not guess.
+                // All frames stay suppressed until XR session restarts.
                 local_reference_epoch_.NotifyEventsLost();
                 invalidate_source_session();
-                std::cerr<<"OpenXR event loss: LOCAL source forced to reanchor"
+                std::cerr<<"OpenXR event loss: LOCAL source quarantined until session restart"
                          <<std::endl;
             }else if(event.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING){
                 invalidate_source_session();
