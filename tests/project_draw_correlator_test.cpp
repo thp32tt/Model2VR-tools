@@ -253,6 +253,79 @@ int main(){
     CHECK(authentic_strip.CompleteSameSource() &&
           authentic_strip.distinct_captures==6u &&
           authentic_strip.legitimate_shared_vertices==6u);
+    CHECK(authentic_strip.fit_sample_count==6u &&
+          authentic_strip.camera_sample_count==12u);
+    // The six authentic source vertices of one four-triangle indexed fan
+    // are twelve GPU triangle vertices. The eye raster requires all
+    // twelve, while camera least-squares must see each CPU call ONCE.
+    ProjectDrawCorrelator optical_fan{};
+    constexpr float ox[6]{-2.f,1.f,2.f,-1.f,1.5f,0.f};
+    constexpr float oy[6]{-1.f,2.f,-2.f,1.5f,0.7f,2.f};
+    constexpr float oz[6]{5.f,5.f,8.f,8.f,10.f,5.f};
+    std::array<ProjectedDrawVertex,6> fan_source{};
+    for(unsigned i=0;i<6u;++i){
+        fan_source[i]={
+            320.f+400.f*ox[i]/oz[i]+(i==0u?0.8f:0.f),
+            240.f-380.f*oy[i]/oz[i]};
+        Capture(optical_fan,73u,0x345u,
+            fan_source[i].x,fan_source[i].y,
+            ox[i],oy[i],oz[i],0x1000u,0xAABBCCDDu,0x12u);
+    }
+    std::vector<std::uint32_t> fan_order{};
+    CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLEFAN,4u,
+        {0u,1u,2u,3u,4u,5u},fan_order));
+    std::array<ProjectedDrawVertex,12> fan_triangles{};
+    for(std::size_t i=0;i<fan_order.size();++i)
+        fan_triangles[i]=fan_source[fan_order[i]];
+    const auto fan_join=optical_fan.MatchTriangleList(
+        73u,fan_triangles.data(),fan_triangles.size(),fan_order.data());
+    CHECK(fan_join.StableOriginalProjectionProvenance());
+    CHECK(fan_join.fit_sample_count==6u &&
+          fan_join.camera_sample_count==12u &&
+          fan_join.legitimate_shared_vertices==6u);
+    // The original source-eye geometry must retain its exact duplicate
+    // point order, while the optical fit must not bias the fan center 4x.
+    for(std::size_t i=0;i<fan_triangles.size();++i)
+        CHECK(fan_join.camera_samples[i].screen_xy[0]==fan_triangles[i].x &&
+              fan_join.camera_samples[i].screen_xy[1]==fan_triangles[i].y);
+    const auto independent_fit=FitSourcePerspective(
+        fan_join.fit_samples.data(),fan_join.fit_sample_count,
+        0u,0u,640u,480u);
+    const auto overweighted_fit=FitSourcePerspective(
+        fan_join.camera_samples.data(),fan_join.camera_sample_count,
+        0u,0u,640u,480u);
+    CHECK(independent_fit.plausible && overweighted_fit.plausible);
+    CHECK(independent_fit.accepted_samples==6u &&
+          overweighted_fit.accepted_samples==12u);
+    CHECK(std::abs(independent_fit.scale_x-overweighted_fit.scale_x)>0.1f);
+    // Maximum supported original 64-triangle fan expands 66 distinct
+    // projector calls into 192 eye vertices, never 192 fit observations.
+    ProjectDrawCorrelator full_fan{};
+    std::vector<std::uint32_t> full_fan_ids(66u);
+    std::array<ProjectedDrawVertex,66> full_fan_points{};
+    for(unsigned i=0u;i<66u;++i){
+        full_fan_ids[i]=i;
+        full_fan_points[i]={20.f+float(i)*3.f,40.f+float(i)*2.f};
+        Capture(full_fan,74u,0x345u,full_fan_points[i].x,
+                full_fan_points[i].y,float(i),float(i+1u),5.f,
+                0x1000u,0xAABBCCDDu,0x12u);
+    }
+    std::vector<std::uint32_t> full_fan_order{};
+    CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLEFAN,64u,
+        full_fan_ids,full_fan_order));
+    std::array<ProjectedDrawVertex,kMaxOriginalProjectionSamples>
+        full_fan_triangles{};
+    for(std::size_t i=0u;i<full_fan_order.size();++i)
+        full_fan_triangles[i]=full_fan_points[full_fan_order[i]];
+    const auto full_fan_join=full_fan.MatchTriangleList(
+        74u,full_fan_triangles.data(),full_fan_order.size(),
+        full_fan_order.data());
+    CHECK(full_fan_join.StableOriginalProjectionProvenance());
+    CHECK(full_fan_join.fit_sample_count==66u &&
+          full_fan_join.camera_sample_count==192u &&
+          full_fan_join.legitimate_shared_vertices==126u);
+    CHECK(!full_fan.MatchTriangleList(74u,full_fan_triangles.data(),
+        full_fan_order.size()).CompleteSameSource());
     CHECK(ExpandOriginalTriangles(D3DPT_TRIANGLEFAN,3u,
         {0u,1u,2u,3u,4u},triangle_order));
     for(std::size_t i=0;i<triangle_order.size();++i)
