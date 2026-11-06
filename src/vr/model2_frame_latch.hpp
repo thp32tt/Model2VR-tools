@@ -13,6 +13,13 @@ public:
   valid_=false; // failed refresh must never expose the previous pose
   if(!game_frame||game_frame<=last_game_frame_||
      !predicted.sequence||predicted.sequence<=last_pose_sequence_||
+     // Source sequence alone cannot certify the predicted XR frame time:
+     // a future-labelled pose can still carry old/duplicate/zero XrTime.
+     // Original CPU stereo must advance both monotonically, including
+     // across a claimed newer LOCAL epoch, until explicit consumer Reset.
+     predicted.predicted_display_time<=0 ||
+     (last_predicted_display_time_ &&
+      predicted.predicted_display_time<=last_predicted_display_time_) ||
      // A new HMD LOCAL epoch changes the meaning of every absolute eye
      // position. Sequence growth alone does not make an old epoch valid.
      // Keep the last accepted epoch even if a refresh fails so a late
@@ -41,6 +48,7 @@ public:
   frame_=predicted;
   last_game_frame_=game_frame;
   last_pose_sequence_=predicted.sequence;
+  last_predicted_display_time_=predicted.predicted_display_time;
   reference_space_epoch_=predicted.reserved;
   valid_=true;
   return true;
@@ -51,11 +59,13 @@ public:
  }
  void Reset()noexcept {
   valid_=false;last_game_frame_=last_pose_sequence_=0;
+  last_predicted_display_time_=0;
   reference_space_epoch_=0;frame_={};
  }
 private:
  pose::Frame frame_{};
  std::uint64_t last_game_frame_=0,last_pose_sequence_=0;
+ std::int64_t last_predicted_display_time_=0;
  std::uint32_t reference_space_epoch_=0;
  bool valid_=false;
 };

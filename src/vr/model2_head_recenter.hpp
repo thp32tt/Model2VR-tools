@@ -17,6 +17,7 @@ public:
         orientation_={0.f,0.f,0.f,1.f};
         reference_space_epoch_=0u;
         last_pose_sequence_=0u;
+        last_predicted_display_time_=0;
     }
     bool Anchored() const noexcept { return anchored_; }
     std::uint32_t ReferenceSpaceEpoch()const noexcept{return reference_space_epoch_;}
@@ -35,6 +36,12 @@ public:
         // A changed LOCAL epoch does not excuse source-sequence rollback.
         // Rejected samples must never advance the accepted high-water.
         if(!input.reserved ||
+           // A larger pose sequence is insufficient if the predicted
+           // XR display time is absent, repeated or older than the last
+           // original CPU-world camera accepted by this consumer.
+           input.predicted_display_time<=0 ||
+           (last_predicted_display_time_ &&
+            input.predicted_display_time<=last_predicted_display_time_) ||
            (last_pose_sequence_ && input.sequence<=last_pose_sequence_) ||
            (reference_space_epoch_ &&
             input.reserved<reference_space_epoch_))
@@ -137,6 +144,7 @@ public:
         }
         reference_space_epoch_=input.reserved;
         last_pose_sequence_=input.sequence;
+        last_predicted_display_time_=input.predicted_display_time;
         return true;
     }
 private:
@@ -148,6 +156,7 @@ private:
     }
     std::uint32_t reference_space_epoch_=0u;
     std::uint64_t last_pose_sequence_=0u;
+    std::int64_t last_predicted_display_time_=0;
     bool anchored_=false;
     std::array<float,3> center_{};
     std::array<float,4> orientation_{0.f,0.f,0.f,1.f};

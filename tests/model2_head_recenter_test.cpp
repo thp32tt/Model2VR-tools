@@ -15,6 +15,7 @@ static pose::Frame Eyes(float yaw,float head_x,float head_y,float head_z,
                         std::uint64_t sequence){
     pose::Frame p{};
     p.sequence=sequence;
+    p.predicted_display_time=static_cast<std::int64_t>(sequence)*1000;
     p.reserved=1u; // genuine source fixture with known LOCAL generation
     p.view_flags=pose::kFullSixDofTracked;
     const float s=std::sin(yaw*0.5f),c=std::cos(yaw*0.5f);
@@ -71,15 +72,15 @@ int main(){
     CHECK(!Near(latched.eyes[0].position_m[0],latched.eyes[1].position_m[0]));
     // A corrupted fresh input does not mutate output or calibration origin.
     const pose::Frame old=output;
-    auto bad=turned;bad.sequence=13u;
+    auto bad=turned;bad.sequence=13u;bad.predicted_display_time=13000;
     bad.eyes[0].position_m[0]=std::numeric_limits<float>::infinity();
     CHECK(!rebase.Rebase(bad,output));
     CHECK(output.sequence==old.sequence);
     CHECK(Near(output.eyes[0].position_m[0],old.eyes[0].position_m[0]));
-    bad=turned;bad.sequence=13u;
+    bad=turned;bad.sequence=13u;bad.predicted_display_time=13000;
     bad.eyes[0].orientation_xyzw[3]=0.f;
     CHECK(!rebase.Rebase(bad,output));
-    bad=turned;bad.sequence=13u;
+    bad=turned;bad.sequence=13u;bad.predicted_display_time=13000;
     // Guard direct native CPU recenter callers as well as the Win64 host
     // publisher and original x86 Draw/Present source gate. A physical
     // stereo rig cannot have opposite eye orientations despite good IPD.
@@ -87,7 +88,7 @@ int main(){
     bad.eyes[1].orientation_xyzw[3]=1.f;
     CHECK(!rebase.Rebase(bad,output));
     CHECK(output.sequence==old.sequence);
-    bad=turned;bad.sequence=13u;
+    bad=turned;bad.sequence=13u;bad.predicted_display_time=13000;
     bad.eyes[1].fov_left_right_up_down[0]=-0.2f;
     bad.eyes[1].fov_left_right_up_down[1]=0.2f;
     CHECK(!rebase.Rebase(bad,output));
@@ -100,7 +101,7 @@ int main(){
     CHECK(!rebase.Rebase(duplicate,output));
     CHECK(rebase.LastPoseSequence()==12u);
     CHECK(output.sequence==old.sequence);
-    bad=turned;bad.sequence=13u;
+    bad=turned;bad.sequence=13u;bad.predicted_display_time=13000;
     bad.eyes[1].position_m[0]=bad.eyes[0].position_m[0];
     bad.eyes[1].position_m[2]=bad.eyes[0].position_m[2];
     CHECK(!rebase.Rebase(bad,output)); // identical eyes are not stereo
@@ -108,7 +109,7 @@ int main(){
     CHECK(output.sequence==old.sequence);
     CHECK(rebase.LastPoseSequence()==12u);
     auto recovered_moved=moved;
-    recovered_moved.sequence=14u;
+    recovered_moved.sequence=14u;recovered_moved.predicted_display_time=14000;
     CHECK(rebase.Rebase(recovered_moved,output));
     CHECK(rebase.LastPoseSequence()==14u);
     CHECK(Near(output.eyes[0].position_m[0],1.f-0.032f));
@@ -158,13 +159,13 @@ int main(){
     CHECK(Near(output.eyes[0].position_m[0],0.5f-0.032f));
     auto rollback_new_epoch=moved_in_new_origin;
     rollback_new_epoch.reserved=3u;
-    rollback_new_epoch.sequence=24u;
+    rollback_new_epoch.sequence=24u;rollback_new_epoch.predicted_display_time=24000;
     const auto last_epoch_two=output;
     CHECK(!rebase.Rebase(rollback_new_epoch,output));
     CHECK(rebase.ReferenceSpaceEpoch()==2u);
     CHECK(rebase.LastPoseSequence()==25u);
     CHECK(output.sequence==last_epoch_two.sequence);
-    rollback_new_epoch.sequence=26u;
+    rollback_new_epoch.sequence=26u;rollback_new_epoch.predicted_display_time=26000;
     CHECK(rebase.Rebase(rollback_new_epoch,output));
     CHECK(rebase.ReferenceSpaceEpoch()==3u);
     CHECK(rebase.LastPoseSequence()==26u);
@@ -217,7 +218,7 @@ int main(){
     CHECK(Near(canted_output.eyes[0].position_m[0],-0.032f));
     CHECK(Near(canted_output.eyes[1].position_m[0],0.032f));
     auto canted_moved=canted;
-    canted_moved.sequence=41u;
+    canted_moved.sequence=41u;canted_moved.predicted_display_time=41000;
     for(auto& eye:canted_moved.eyes)eye.position_m[2]-=1.f;
     CHECK(canted_origin.Rebase(canted_moved,canted_output));
     CHECK(Near(canted_output.eyes[0].position_m[0],1.f-0.032f));
@@ -225,7 +226,7 @@ int main(){
     // A q/-q flip with the same LOCAL epoch is an identical physical
     // binocular view, not an abrupt 360-degree headset rotation.
     auto sign_same_epoch=canted_moved;
-    sign_same_epoch.sequence=42u;
+    sign_same_epoch.sequence=42u;sign_same_epoch.predicted_display_time=42000;
     for(float& q:sign_same_epoch.eyes[1].orientation_xyzw)q=-q;
     CHECK(canted_origin.Rebase(sign_same_epoch,canted_output));
     CHECK(Near(canted_output.eyes[0].orientation_xyzw[1],std::sin(cant*0.5f)));
@@ -235,7 +236,7 @@ int main(){
     // quaternion. Re-anchoring a new LOCAL epoch must not rotate the
     // driver by ~180 degrees or prefer whichever eye has positive w.
     auto sign_flipped=canted;
-    sign_flipped.sequence=43u;
+    sign_flipped.sequence=43u;sign_flipped.predicted_display_time=43000;
     sign_flipped.reserved=5u;
     for(float& q:sign_flipped.eyes[1].orientation_xyzw)q=-q;
     CHECK(pose::CheckStereoRigGeometry(sign_flipped).valid());
@@ -248,7 +249,7 @@ int main(){
     // Fail closed at native CPU recenter even if a future caller bypasses
     // Win32 tracked-source admission. Lost tracking cannot advance LOCAL.
     auto lost_tracking=sign_flipped;
-    lost_tracking.sequence=44u;lost_tracking.reserved=6u;
+    lost_tracking.sequence=44u;lost_tracking.predicted_display_time=44000;lost_tracking.reserved=6u;
     lost_tracking.view_flags &= ~pose::kPositionTracked;
     const auto last_good=canted_output;
     CHECK(!canted_origin.Rebase(lost_tracking,canted_output));
@@ -258,10 +259,35 @@ int main(){
     CHECK(canted_origin.Rebase(lost_tracking,canted_output));
     CHECK(canted_origin.ReferenceSpaceEpoch()==6u);
     CHECK(Near(canted_output.eyes[0].position_m[0],-0.032f));
-    lost_tracking.sequence=45u;
+    lost_tracking.sequence=45u;lost_tracking.predicted_display_time=45000;
     lost_tracking.view_flags &= ~pose::kOrientationTracked;
     CHECK(!canted_origin.Rebase(lost_tracking,canted_output));
     CHECK(canted_origin.ReferenceSpaceEpoch()==6u);
     CHECK(canted_output.sequence==44u);
+    // Direct original CPU head recenter cannot accept a fresh sequence
+    // with stale, equal or absent predicted time. Rejection leaves the
+    // previously committed camera, LOCAL origin and pose unchanged.
+    auto missing_time=Eyes(0.f,1.f,1.f,0.f,45u);
+    missing_time.reserved=6u;
+    missing_time.predicted_display_time=0;
+    CHECK(!canted_origin.Rebase(missing_time,canted_output));
+    CHECK(canted_origin.LastPoseSequence()==44u);
+    CHECK(canted_origin.ReferenceSpaceEpoch()==6u);
+    CHECK(canted_output.sequence==44u);
+    missing_time.predicted_display_time=44000; // repeated time
+    CHECK(!canted_origin.Rebase(missing_time,canted_output));
+    missing_time.predicted_display_time=43999; // reversed time
+    CHECK(!canted_origin.Rebase(missing_time,canted_output));
+    missing_time.reserved=7u; // claiming a fresh LOCAL epoch is insufficient
+    CHECK(!canted_origin.Rebase(missing_time,canted_output));
+    CHECK(canted_origin.ReferenceSpaceEpoch()==6u);
+    missing_time.predicted_display_time=45000;
+    CHECK(canted_origin.Rebase(missing_time,canted_output));
+    CHECK(canted_origin.ReferenceSpaceEpoch()==7u);
+    CHECK(canted_origin.LastPoseSequence()==45u);
+    CHECK(canted_output.sequence==45u);
+    canted_origin.Reset();
+    missing_time.predicted_display_time=1;
+    CHECK(canted_origin.Rebase(missing_time,canted_output));
     return 0;
 }

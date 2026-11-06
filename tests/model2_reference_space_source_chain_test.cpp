@@ -29,6 +29,7 @@ static m2vr::pose::Frame Packet(
     std::uint64_t sequence,std::uint32_t epoch,float head_x){
     m2vr::pose::Frame frame{};
     frame.sequence=sequence;
+    frame.predicted_display_time=static_cast<std::int64_t>(sequence)*1000;
     frame.reserved=epoch;
     frame.published_qpc=1000000000ull+sequence;
     frame.view_flags=m2vr::pose::kFullSixDofTracked;
@@ -213,5 +214,22 @@ int main(){
         late_writer,late_history,recovered_pair,Views{51u,52u}));
     REQUIRE(late_writer.published.reserved==2u);
     REQUIRE(late_history.Find(21u)!=nullptr);
+    // A higher source sequence cannot resurrect an older runtime frame
+    // inside the original Win32 CPU World3D latch/recenter consumers.
+    vr::Model2FramePoseLatch cpu_time_latch;
+    vr::Model2HeadRecenter cpu_time_recenter;
+    pose::Frame cpu_rebased{};
+    REQUIRE(cpu_time_latch.Begin(200u,recovered_pair));
+    REQUIRE(cpu_time_recenter.Rebase(recovered_pair,cpu_rebased));
+    auto stale_clock=Packet(22u,late_event.Epoch(),-16.f);
+    stale_clock.predicted_display_time=recovered_pair.predicted_display_time;
+    REQUIRE(!cpu_time_latch.Begin(201u,stale_clock));
+    REQUIRE(!cpu_time_recenter.Rebase(stale_clock,cpu_rebased));
+    REQUIRE(cpu_rebased.sequence==21u);
+    REQUIRE(cpu_time_latch.ReferenceSpaceEpoch()==2u);
+    stale_clock.predicted_display_time=recovered_pair.predicted_display_time+1000;
+    REQUIRE(cpu_time_latch.Begin(201u,stale_clock));
+    REQUIRE(cpu_time_recenter.Rebase(stale_clock,cpu_rebased));
+    REQUIRE(cpu_rebased.sequence==22u);
     return 0;
 }
