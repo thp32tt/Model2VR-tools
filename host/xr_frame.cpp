@@ -152,6 +152,10 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
                 transport::IsStereoGame(frame_gate_.kind())?1:0)<<"\n"
           <<"producer_health_fresh="<<(producer_health_fresh_?1:0)<<"\n"
           <<"producer_last_frame_id="<<producer_health_status_.frame_id<<"\n"
+          <<"original_present_receipt_verdict="
+          <<static_cast<unsigned>(receipt::Authorize(
+                eye_frame_.frame_id,eye_frame_.kind,eye_frame_.timestamp_qpc,
+                producer_health_status_,producer_health_fresh_))<<"\n"
           <<"producer_reason_mask="<<producer_health_status_.reason_mask<<"\n"
           <<"producer_verified_scene_draws="<<producer_health_status_.verified_scene_draws<<"\n"
           <<"producer_mirrored_draws="<<producer_health_status_.mirrored_draws<<"\n"
@@ -175,6 +179,7 @@ void XrApp::invalidate_source_session() noexcept {
     producer_health_fresh_=false;
     producer_health_last_reason_=0xffffffffu;
     warned_unmatched_game_pose_=false;
+    warned_original_receipt_rejection_=false;
     last_pose_rejection_=0u;
     eye_delivery_status_=delivery::Status::NoProducerHealth;
     eye_delivery_gate_.Reset();
@@ -291,7 +296,8 @@ void XrApp::draw_frame(XrTime display_time){
                 // A source packet alone does not establish successful original
                 // D3D9 Present. Demand the exact x86 receipt, never a newer one.
                 const auto receipt_verdict=receipt::Authorize(
-                    stamp.frame_id,stamp.kind,producer_health_status_,
+                    stamp.frame_id,stamp.kind,stamp.timestamp_qpc,
+                    producer_health_status_,
                     producer_health_fresh_);
                 if(receipt_verdict==receipt::Verdict::Reject &&
                    !warned_original_receipt_rejection_){
@@ -342,7 +348,7 @@ void XrApp::draw_frame(XrTime display_time){
                     // frame than Peek; authenticate the copied frame again.
                     const auto staged_receipt=receipt::Authorize(
                         staging_frame_.frame_id,staging_frame_.kind,
-                        producer_health_status_,producer_health_fresh_);
+                        staging_frame_.timestamp_qpc,producer_health_status_,producer_health_fresh_);
                     const auto tag=staging_frame_.pose_sequence;
                     const auto* exact_views=pose_history_.Find(tag);
                     const bool matched=transport::SourcePoseMatchesFrame(
@@ -370,7 +376,7 @@ void XrApp::draw_frame(XrTime display_time){
     // Re-use a *bounded* coherent previous pair, never clear on every
     // display tick, but stop presenting it if the producer stalls.
     const bool source_failed_after_pair=receipt::RevokesCached(
-        frame_gate_.id(),frame_gate_.kind(),
+        frame_gate_.id(),frame_gate_.kind(),eye_frame_.timestamp_qpc,
         producer_health_status_,producer_health_fresh_);
     bool usable=!source_failed_after_pair &&
         frame_gate_.Cached(now,hz) &&

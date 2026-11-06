@@ -20,11 +20,18 @@ enum class Verdict : std::uint8_t {
 // Diagnostic pixels never claim to be original game imagery.
 inline constexpr Verdict Authorize(
     std::uint64_t frame,transport::FrameKind kind,
+    std::uint64_t source_qpc,
     const producerhealth::Snapshot& health,bool fresh) noexcept {
     if(!frame || !transport::ValidSourceKind(kind))return Verdict::Reject;
     if(kind==transport::FrameKind::Diagnostic)return Verdict::Admit;
     if(!fresh || health.frame_id<frame)return Verdict::AwaitHealth;
     if(health.frame_id>frame)return Verdict::Reject;
+    // The native x86 producer writes the actual eye payload BEFORE the
+    // original physical Present receipt. Both processes share Windows QPC.
+    // A purported successful receipt timestamped before the pixels cannot
+    // attest them, even when numeric frame IDs happen to match.
+    if(!source_qpc || !health.timestamp_qpc ||
+       health.timestamp_qpc<source_qpc)return Verdict::Reject;
     if(transport::IsStereoGame(kind))
         return health.reason_mask==0u ? Verdict::Admit : Verdict::Reject;
     if(transport::IsMonoGame(kind))
@@ -40,11 +47,12 @@ inline constexpr Verdict Authorize(
 // frame-age gate and exact pose checks in the host.
 inline constexpr bool RevokesCached(
     std::uint64_t frame,transport::FrameKind kind,
+    std::uint64_t source_qpc,
     const producerhealth::Snapshot& health,bool fresh) noexcept {
     if(!fresh || !frame || kind==transport::FrameKind::Diagnostic)
         return false;
     if(health.frame_id==frame)
-        return Authorize(frame,kind,health,true)!=Verdict::Admit;
+        return Authorize(frame,kind,source_qpc,health,true)!=Verdict::Admit;
     if(health.frame_id>frame)
         return producerhealth::InvalidatesCachedPair(
             health,true,frame,transport::IsStereoGame(kind));

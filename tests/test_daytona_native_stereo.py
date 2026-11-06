@@ -1702,6 +1702,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("const auto staged_receipt=receipt::Authorize(",host)
         self.assertIn("staged_receipt==receipt::Verdict::Admit",host)
         self.assertIn("health.frame_id==frame",receipt)
+        self.assertIn("health.timestamp_qpc<source_qpc",receipt)
+        self.assertIn("staging_frame_.timestamp_qpc",host)
         self.assertIn("health.frame_id>frame",receipt)
         self.assertIn("producerhealth::OriginalMonoPublished(health.reason_mask)",receipt)
         self.assertIn("producerhealth::InvalidatesCachedPair(",receipt)
