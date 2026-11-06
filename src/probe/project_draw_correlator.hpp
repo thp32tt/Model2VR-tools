@@ -62,11 +62,21 @@ struct ProjectedTriangleBatchJoin {
     bool mixed_matrix_fingerprint=false;
     // Filled only from individually complete original triangles; never
     // admits a mixed CPU caller as calibrated camera source.
+    // Expanded per-triangle vertices feed the independent-eye raster in
+    // authentic index/winding order. They may intentionally repeat a CPU
+    // projector point when a real original strip/fan/IB shares a vertex.
     std::array<SourceProjectionSample,kMaxOriginalProjectionSamples> camera_samples{};
     std::size_t camera_sample_count=0u;
+    // Optical least-squares must use each original CPU projector invocation
+    // ONCE. Repeated triangles must not overweight an indexed fan center or
+    // manufacture an apparently high-confidence camera / stereo pose.
+    std::array<SourceProjectionSample,kMaxOriginalProjectionSamples> fit_samples{};
+    std::size_t fit_sample_count=0u;
     bool CompleteSameSource() const noexcept {
         return inspected>=2u && complete==inspected &&
-            distinct_captures>=6u && alias_violations==0u &&
+            distinct_captures>=6u &&
+            fit_sample_count==distinct_captures &&
+            alias_violations==0u &&
             ambiguous==0u && partial==0u && !mixed_matrix_identity &&
             !mixed_matrix_fingerprint &&
             common_source_caller_rva!=0u &&
@@ -297,6 +307,11 @@ public:
                         observed_ids[observed_count]=source_vertex_ids[slot];
                         observed_slots[observed_count]=slot;
                         ++observed_count;
+                        // One camera fit sample per authentic source vertex,
+                        // while the expanded world triangles retain repeats.
+                        auto& fit=batch.fit_samples[batch.fit_sample_count++];
+                        fit.source_xyz=join.source_xyz[v];
+                        fit.screen_xy={vertices[i+v].x,vertices[i+v].y};
                         ++batch.distinct_captures;
                     }
                 }

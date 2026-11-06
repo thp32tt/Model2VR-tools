@@ -455,7 +455,7 @@ static BOOL __stdcall AppendVerifiedProjectedD3D9UPTexturedCore(
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
         }
         const auto fit=m2vr::drawprobe::FitSourcePerspective(
-            joined.camera_samples.data(),joined.camera_sample_count,
+            joined.fit_samples.data(),joined.fit_sample_count,
             viewport.X,viewport.Y,viewport.Width,viewport.Height);
         if(!fit.plausible ||
            !m2vr::vrbridge::AdmitVerifiedProjectedD3D9SourcePass(

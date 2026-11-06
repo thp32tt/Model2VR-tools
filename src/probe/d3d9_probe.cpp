@@ -1611,7 +1611,7 @@ void ObserveProjectionFit(IDirect3DDevice9* dev,std::uint64_t witness,
     D3DVIEWPORT9 vp{};
     if(FAILED(dev->GetViewport(&vp)))return;
     const auto fit=m2vr::drawprobe::FitSourcePerspective(
-        batch.camera_samples.data(),batch.camera_sample_count,
+        batch.fit_samples.data(),batch.fit_sample_count,
         vp.X,vp.Y,vp.Width,vp.Height);
     if(!fit.plausible)return;
     m2vr::LogEvent("model2_d3d9_cpu_projection_fit",witness,
