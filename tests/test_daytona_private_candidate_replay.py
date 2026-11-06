@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from tools.model2_world_pass_evidence import compare_sessions
 from tools.verify_daytona_private_receipt import verify_archive
@@ -126,6 +127,55 @@ class CandidateReplayTest(unittest.TestCase):
         self.assertIsNone(verify_archive(self.archive))
         with self.assertRaisesRegex(ReceiptError, "semantic candidate replay rejected"):
             verify_candidate_replay(self.archive)
+
+
+    def _derived_report_for_csv(self, csv_path):
+        label = "aux" if csv_path.name == "auxiliary.csv" else csv_path.stem
+        return copy.deepcopy(self.reports[label])
+
+    def test_opt_in_strict_replay_requires_all_seven_raw_csv_preflights(self):
+        # Fixture CSVs are synthetic placeholders. Patch ONLY the source
+        # auditor to test the verifier's exact seven-label comparison logic;
+        # actual malformed CSV parsing is exercised separately below.
+        with patch("tools.verify_daytona_private_candidate_replay.preflight_original_session",
+                   side_effect=self._derived_report_for_csv) as audit:
+            self.assertIsNone(verify_candidate_replay(
+                self.archive, replay_csv=True))
+            self.assertEqual(audit.call_count, len(LABELS))
+            self.assertEqual(main([str(self.archive), "--replay-csv"]), 0)
+            self.assertEqual(audit.call_count, 2 * len(LABELS))
+
+    def test_rehashed_candidate_valid_report_extra_is_not_raw_csv_proof(self):
+        # Prior receipt and candidate comparators can accept an extra,
+        # consistently rehashed JSON field; raw replay must reject it.
+        report_path = self.archive / "PRIVATE_SOURCE_title.json"
+        forged = copy.deepcopy(self.reports["title"])
+        forged["forged_source_annotation"] = "not present in original CSV"
+        report_path.write_text(json.dumps(forged), encoding="utf-8")
+        self.manifest["source_report_sha256"]["title"] = sha(report_path)
+        self._write_manifest()
+        self.assertIsNone(verify_candidate_replay(self.archive))
+        with patch("tools.verify_daytona_private_candidate_replay.preflight_original_session",
+                   side_effect=self._derived_report_for_csv):
+            with self.assertRaisesRegex(ReceiptError, "not derived from raw"):
+                verify_candidate_replay(self.archive, replay_csv=True)
+
+    def test_strict_replay_rejects_fake_or_unparseable_original_csv(self):
+        # No patch: the real CSV preflight is mandatory in strict mode.
+        self.assertIsNone(verify_candidate_replay(self.archive))
+        with self.assertRaisesRegex(ReceiptError, "raw original x86 CSV preflight"):
+            verify_candidate_replay(self.archive, replay_csv=True)
+        self.assertEqual(main([str(self.archive), "--replay-csv"]), 1)
+
+    def test_strict_replay_detects_csv_rewrite_during_long_preflight(self):
+        def mutate(csv_path):
+            if csv_path.name == "race_a.csv":
+                csv_path.write_bytes(csv_path.read_bytes() + b"\nCHANGED\n")
+            return self._derived_report_for_csv(csv_path)
+        with patch("tools.verify_daytona_private_candidate_replay.preflight_original_session",
+                   side_effect=mutate):
+            with self.assertRaisesRegex(ReceiptError, "changed race_a.csv"):
+                verify_candidate_replay(self.archive, replay_csv=True)
 
 
 if __name__ == "__main__":
