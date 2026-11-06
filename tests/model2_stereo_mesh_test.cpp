@@ -15,6 +15,7 @@ int main() {
  cal.runtime_confirmed=true;
  pose::Frame frame{};
  frame.sequence=1;
+ frame.predicted_display_time=1000; // valid synthetic XR source for direct CPU projection
  frame.reserved=1u;frame.view_flags=pose::kFullSixDofTracked;
  for (int eye=0;eye<2;++eye) {
   frame.eyes[eye].orientation_xyzw[3]=1.f;
@@ -31,6 +32,14 @@ int main() {
  CHECK(result[0].eyes[0][0].ndc_x>result[0].eyes[1][0].ndc_x);
  CHECK(std::abs(result[0].eyes[0][0].depth_m-2.f)<0.0001f);
  const float preserved=result[0].eyes[0][0].ndc_x;
+ // Missing/reversed physical predicted XrTime cannot create an original
+ // World3D stereo mesh, even with valid calibration and tracked LOCAL.
+ frame.predicted_display_time=0;
+ CHECK(!BuildStereoTriangles(points.data(),points.size(),indices,6,frame,cal,pass,result));
+ CHECK(result.size()==2 && result[0].eyes[0][0].ndc_x==preserved);
+ frame.predicted_display_time=-1;
+ CHECK(!BuildStereoTriangles(points.data(),points.size(),indices,6,frame,cal,pass,result));
+ frame.predicted_display_time=1000;
  const std::uint32_t invalid[]={0,1,2,1,99,2};
  CHECK(!BuildStereoTriangles(points.data(),points.size(),invalid,6,frame,cal,pass,result));
  CHECK(result.size()==2 && result[0].eyes[0][0].ndc_x==preserved);
