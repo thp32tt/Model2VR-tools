@@ -8,7 +8,7 @@ int main() {
  pose::Frame p{},snapshot{};
  CHECK(!latch.Read(1,snapshot));
  p.sequence=7;
- p.view_flags=pose::kOrientationValid|pose::kPositionValid;
+ p.view_flags=pose::kFullSixDofTracked;
  for(auto& eye:p.eyes) {
   eye.orientation_xyzw[3]=1.f;
   auto& f=eye.fov_left_right_up_down;
@@ -95,6 +95,22 @@ int main() {
  CHECK(latch.Begin(8,p));
  CHECK(latch.ReferenceSpaceEpoch()==4u);
  CHECK(latch.Read(8,snapshot)&&snapshot.reserved==4u);
+ // OpenXR can retain VALID eyes while physical position/orientation
+ // tracking is lost. Reject and revoke both eyes without consuming
+ // the attempted frame or changing the accepted LOCAL source epoch.
+ p.sequence=20u;
+ p.view_flags=pose::kFullSixDofTracked & ~pose::kPositionTracked;
+ CHECK(!latch.Begin(9,p));
+ CHECK(!latch.Read(8,snapshot));
+ CHECK(latch.ReferenceSpaceEpoch()==4u);
+ p.view_flags=pose::kFullSixDofTracked;
+ CHECK(latch.Begin(9,p));
+ p.sequence=21u;
+ p.view_flags=pose::kFullSixDofTracked & ~pose::kOrientationTracked;
+ CHECK(!latch.Begin(10,p));
+ CHECK(!latch.Read(9,snapshot));
+ p.view_flags=pose::kFullSixDofTracked;
+ CHECK(latch.Begin(10,p));
  // Only an explicit game/device reset may intentionally start an
  // independent source-consumer lifetime with a lower epoch.
  latch.Reset();

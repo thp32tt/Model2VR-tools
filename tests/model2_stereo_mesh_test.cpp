@@ -15,7 +15,7 @@ int main() {
  cal.runtime_confirmed=true;
  pose::Frame frame{};
  frame.sequence=1;
- frame.view_flags=pose::kOrientationValid|pose::kPositionValid;
+ frame.view_flags=pose::kFullSixDofTracked;
  for (int eye=0;eye<2;++eye) {
   frame.eyes[eye].orientation_xyzw[3]=1.f;
   frame.eyes[eye].position_m[0]=eye ? 0.032f : -0.032f;

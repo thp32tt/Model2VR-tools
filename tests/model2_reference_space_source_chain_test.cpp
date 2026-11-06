@@ -63,6 +63,15 @@ int main(){
     REQUIRE(cpu.Rebase(writer.published,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==1u);
     REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
+    // The OpenXR source can retain VALID while 6DoF tracking is lost.
+    // Do not admit it even when the stereo rig geometry remains plausible.
+    auto temporarily_untracked=Packet(11u,epoch.Epoch(),9.f);
+    temporarily_untracked.view_flags &= ~pose::kPositionTracked;
+    REQUIRE(!game_pose.Begin(101u,temporarily_untracked));
+    REQUIRE(!cpu.Rebase(temporarily_untracked,cpu_eyes));
+    REQUIRE(game_pose.ReferenceSpaceEpoch()==1u);
+    REQUIRE(cpu.ReferenceSpaceEpoch()==1u);
+    REQUIRE(!game_pose.Read(100u,temporarily_untracked));
     const daytona::OriginalSourcePoseTicket source_ticket{
         earlier.sequence,earlier.published_qpc,earlier.reserved};
     constexpr std::uint64_t hz=10000000ull;

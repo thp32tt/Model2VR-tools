@@ -64,8 +64,10 @@ inline ProjectedPair ProjectModel2Stereo(
        !Finite(already_transformed_game_point.x) ||
        !Finite(already_transformed_game_point.y) ||
        !Finite(already_transformed_game_point.z) ||
-       !(latched_predicted_views.view_flags&pose::kOrientationValid) ||
-       !(latched_predicted_views.view_flags&pose::kPositionValid) ||
+       // Defense in depth for direct CPU-world callers: VALID is not
+       // TRACKED if OpenXR temporarily loses position or orientation.
+       (latched_predicted_views.view_flags&pose::kFullSixDofTracked)!=
+          pose::kFullSixDofTracked ||
        latched_predicted_views.sequence==0 ||
        // Defense in depth: a direct CPU world projection may receive a
        // frame without going through the Win64 tracked-pose publisher.

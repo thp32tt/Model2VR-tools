@@ -29,6 +29,10 @@ public:
         if(reference_space_epoch_ &&
            (!input.reserved || input.reserved<reference_space_epoch_))
             return false;
+        // A valid-but-inferred headset pose must never reanchor the
+        // original game's CPU-world camera as genuine tracked 6DoF.
+        if((input.view_flags&pose::kFullSixDofTracked)!=
+           pose::kFullSixDofTracked)return false;
         if(!pose::CheckStereoRigGeometry(input).valid())return false;
         for(const auto& eye:input.eyes){
             if(!QuaternionValid(eye.orientation_xyzw))return false;

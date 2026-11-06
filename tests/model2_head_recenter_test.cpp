@@ -15,7 +15,7 @@ static pose::Frame Eyes(float yaw,float head_x,float head_y,float head_z,
                         std::uint64_t sequence){
     pose::Frame p{};
     p.sequence=sequence;
-    p.view_flags=pose::kOrientationValid|pose::kPositionValid;
+    p.view_flags=pose::kFullSixDofTracked;
     const float s=std::sin(yaw*0.5f),c=std::cos(yaw*0.5f);
     for(int eye=0;eye<2;++eye){
         auto& e=p.eyes[eye];
@@ -208,5 +208,23 @@ int main(){
     CHECK(Near(canted_output.eyes[1].orientation_xyzw[1],-std::sin(cant*0.5f)));
     CHECK(Near(canted_output.eyes[0].position_m[0],-0.032f));
     CHECK(Near(canted_output.eyes[1].position_m[0],0.032f));
+    // Fail closed at native CPU recenter even if a future caller bypasses
+    // Win32 tracked-source admission. Lost tracking cannot advance LOCAL.
+    auto lost_tracking=sign_flipped;
+    lost_tracking.sequence=44u;lost_tracking.reserved=6u;
+    lost_tracking.view_flags &= ~pose::kPositionTracked;
+    const auto last_good=canted_output;
+    CHECK(!canted_origin.Rebase(lost_tracking,canted_output));
+    CHECK(canted_origin.ReferenceSpaceEpoch()==5u);
+    CHECK(canted_output.sequence==last_good.sequence);
+    lost_tracking.view_flags=pose::kFullSixDofTracked;
+    CHECK(canted_origin.Rebase(lost_tracking,canted_output));
+    CHECK(canted_origin.ReferenceSpaceEpoch()==6u);
+    CHECK(Near(canted_output.eyes[0].position_m[0],-0.032f));
+    lost_tracking.sequence=45u;
+    lost_tracking.view_flags &= ~pose::kOrientationTracked;
+    CHECK(!canted_origin.Rebase(lost_tracking,canted_output));
+    CHECK(canted_origin.ReferenceSpaceEpoch()==6u);
+    CHECK(canted_output.sequence==44u);
     return 0;
 }

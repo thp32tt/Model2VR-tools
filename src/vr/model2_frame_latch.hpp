@@ -19,8 +19,11 @@ public:
      // old/legacy packet cannot re-arm stereo with the wrong origin.
      (reference_space_epoch_ &&
       (!predicted.reserved || predicted.reserved<reference_space_epoch_)) ||
-     (predicted.view_flags&(pose::kOrientationValid|pose::kPositionValid))!=
-      (pose::kOrientationValid|pose::kPositionValid) ||
+     // VALID alone can survive XR tracking loss. Original CPU World3D
+     // requires a physically TRACKED 6DoF pair; legacy GPU presentation
+     // retains its separate, intentionally weaker pose policy.
+     (predicted.view_flags&pose::kFullSixDofTracked)!=
+      pose::kFullSixDofTracked ||
      // Validate the two eyes as one physical OpenXR rig before retaining
      // a pose for a real original-game frame. Bad refresh revokes old pose.
      !pose::CheckStereoRigGeometry(predicted).valid())return false;

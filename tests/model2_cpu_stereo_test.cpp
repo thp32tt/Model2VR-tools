@@ -12,7 +12,7 @@ int main(){
     DrawEvidence pass{RenderPass::World3D,true,true,true,false,false,false,false,true,true,true};
     pose::Frame xr{};
     xr.sequence=1;
-    xr.view_flags=pose::kOrientationValid|pose::kPositionValid;
+    xr.view_flags=pose::kFullSixDofTracked;
     for(int e=0;e<2;++e){
         xr.eyes[e].position_m[0]=e==0?-0.032f:0.032f;
         xr.eyes[e].fov_left_right_up_down[0]=-0.785398163f;
@@ -42,9 +42,15 @@ int main(){
     pass.depth_test_enabled=false;
     REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
     pass.depth_test_enabled=true;
+    // VALID but not TRACKED is allowed in some mono GPU fallbacks,
+    // never for independently projected physical CPU World3D eyes.
+    xr.view_flags=pose::kFullSixDofTracked & ~pose::kPositionTracked;
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr.view_flags=pose::kFullSixDofTracked & ~pose::kOrientationTracked;
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
     xr.view_flags=pose::kOrientationValid;
     REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
-    xr.view_flags=pose::kOrientationValid|pose::kPositionValid;
+    xr.view_flags=pose::kFullSixDofTracked;
     cal.view_to_xr={1,0,0,0,1,0,0,0,0};
     REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
     cal.view_to_xr={1,0,0,0,1,0,0,0,-1};
