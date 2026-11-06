@@ -1,4 +1,5 @@
 #include "xr_app.h"
+#include "xr_source_eye_coherence.hpp"
 #include "../src/common/stereo_eye_rig_geometry.hpp"
 #include "../src/common/stereo_pose_publication_gate.hpp"
 #include "../src/common/model2_emulator_window_policy.hpp"
@@ -279,14 +280,21 @@ void XrApp::draw_frame(XrTime display_time){
             // Validate the actual two OpenXR eye poses BEFORE publishing
             // the Win32 IPC packet, starting the emulator, or recording the
             // Win64 eye-view history. Never publish a mismatched source rig.
-            const bool pose_published=pose::PublishTrackedStereoPose(
-                pose_writer_,pose_history_,pose_publication_order_,predicted,views);
+            // The original Win32 pose IPC payload and Win64 compositor
+            // history must hold the SAME two xrLocateViews eye records.
+            // A changed/reordered eye or FOV is never publishable.
+            const bool exact_views=ExactSourceEyeViews(predicted,views);
+            const bool pose_published=exact_views &&
+                pose::PublishTrackedStereoPose(
+                    pose_writer_,pose_history_,pose_publication_order_,
+                    predicted,views);
             if(!pose_published){
                 if(!stereo_rig_rejection_logged_){
                     std::cerr<<"OpenXR tracked pose transaction rejected"
                              <<" rig_reason="<<static_cast<std::uint32_t>(
                                  pose::CheckStereoRigGeometry(predicted).reason)
                              <<" sequence="<<predicted.sequence
+                             <<" exact_views="<<(exact_views?1:0)
                              <<" writer_valid="<<(pose_writer_.Valid()?1:0)
                              <<" (no original stereo source)"<<std::endl;
                     stereo_rig_rejection_logged_=true;

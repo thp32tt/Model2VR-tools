@@ -143,6 +143,17 @@ target_compile_definitions(model2_head_recenter_x64_test PRIVATE NOMINMAX WIN32_
 add_test(NAME model2_verified_camera_head_recenter_x64
          COMMAND model2_head_recenter_x64_test)
 
+# Compare all 22 original Win32 eye position/rotation/FOV floats
+# to the two real Win64 xrLocateViews compositor records.
+add_executable(model2_xr_eye_coherence_x64_test
+    ../tests/model2_xr_eye_coherence_test.cpp)
+target_compile_features(model2_xr_eye_coherence_x64_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_xr_eye_coherence_x64_test PRIVATE
+    NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(model2_xr_eye_coherence_x64_test PRIVATE OpenXR::openxr_loader)
+add_test(NAME model2_openxr_original_ipc_to_compositor_eye_coherence_x64
+    COMMAND model2_xr_eye_coherence_x64_test)
+
 add_executable(model2_pose_publication_x64_test ../tests/stereo_pose_publication_gate_test.cpp)
 target_compile_features(model2_pose_publication_x64_test PRIVATE cxx_std_20)
 target_compile_definitions(model2_pose_publication_x64_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
