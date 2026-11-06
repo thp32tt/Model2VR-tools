@@ -26,6 +26,12 @@ if(MSVC)
 endif()
 install(TARGETS Model2VROpenXRHost RUNTIME DESTINATION .)
 
+add_executable(model2_original_camera_lifetime_x64_test
+    ../tests/model2_original_camera_lifetime_test.cpp)
+target_compile_features(model2_original_camera_lifetime_x64_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_camera_COM_Draw_Present_lifetime_x64
+         COMMAND model2_original_camera_lifetime_x64_test)
+
 add_executable(daytona_pose_present_x64_test ../tests/daytona_source_pose_commit_gate_test.cpp)
 target_compile_features(daytona_pose_present_x64_test PRIVATE cxx_std_20)
 add_test(NAME daytona_original_pose_at_present_x64 COMMAND daytona_pose_present_x64_test)
