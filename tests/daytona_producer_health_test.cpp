@@ -1,3 +1,4 @@
+#include "../src/common/daytona_original_present_receipt.hpp"
 #include "../src/common/daytona_producer_health.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -30,6 +31,38 @@ int main(){
  REQUIRE(!MayPublishGameStereo(FinalPresentReason(0u,false,true)));
  REQUIRE(MayPublishGameStereo(FinalPresentReason(0u,true,true)));
  REQUIRE(ReasonName(OriginalPresentFailed)[0]=='O');
+ // Both IPC mappings must certify the SAME successful physical original
+ // Present; a later successful report is not a receipt for an older pair.
+ using m2vr::transport::FrameKind;
+ using m2vr::receipt::Verdict;
+ Snapshot receipt{10u,1u,0u,3u,4u,0u,{4u,0u,0u,0u}};
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::GameStereo,receipt,true)==Verdict::Admit);
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::VerifiedCpuWorldStereo,receipt,true)==Verdict::Admit);
+ REQUIRE(m2vr::receipt::Authorize(11u,FrameKind::GameStereo,receipt,true)==Verdict::AwaitHealth);
+ REQUIRE(m2vr::receipt::Authorize(9u,FrameKind::GameStereo,receipt,true)==Verdict::Reject);
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::GameStereo,receipt,false)==Verdict::AwaitHealth);
+ REQUIRE(m2vr::receipt::Authorize(0u,FrameKind::GameStereo,receipt,true)==Verdict::Reject);
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::Invalid,receipt,true)==Verdict::Reject);
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::Diagnostic,receipt,false)==Verdict::Admit);
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::CompactMono,receipt,true)==Verdict::Reject);
+ receipt.reason_mask=OriginalMonoFallback;
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::CompactMono,receipt,true)==Verdict::Admit);
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::GameMonoFallback,receipt,true)==Verdict::Admit);
+ REQUIRE(m2vr::receipt::Authorize(10u,FrameKind::GameStereo,receipt,true)==Verdict::Reject);
+ REQUIRE(m2vr::receipt::RevokesCached(10u,FrameKind::GameStereo,receipt,true));
+ REQUIRE(!m2vr::receipt::RevokesCached(10u,FrameKind::CompactMono,receipt,true));
+ REQUIRE(!m2vr::receipt::RevokesCached(10u,FrameKind::CompactMono,receipt,false));
+ REQUIRE(!m2vr::receipt::RevokesCached(10u,FrameKind::Diagnostic,receipt,true));
+ receipt.frame_id=11u;
+ REQUIRE(m2vr::receipt::RevokesCached(10u,FrameKind::GameStereo,receipt,true));
+ REQUIRE(!m2vr::receipt::RevokesCached(10u,FrameKind::CompactMono,receipt,true));
+ receipt.reason_mask=ReadbackFailed;
+ REQUIRE(m2vr::receipt::Authorize(11u,FrameKind::GameStereo,receipt,true)==Verdict::Reject);
+ REQUIRE(m2vr::receipt::RevokesCached(10u,FrameKind::CompactMono,receipt,true));
+ receipt.reason_mask=0u;
+ REQUIRE(!m2vr::receipt::RevokesCached(10u,FrameKind::GameStereo,receipt,true));
+ receipt.frame_id=9u;
+ REQUIRE(!m2vr::receipt::RevokesCached(10u,FrameKind::GameStereo,receipt,true));
  REQUIRE(!writer.Publish(1u,NoVerifiedScene,0,11,1,first));
  REQUIRE(writer.Publish(1u,NoVerifiedScene|PoseUnavailable,0,12,1,first));
  REQUIRE(!writer.Publish(1u,0u,1,12,1,first));
