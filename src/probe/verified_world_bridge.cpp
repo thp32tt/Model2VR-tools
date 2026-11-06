@@ -1290,6 +1290,32 @@ extern "C" void __stdcall Model2VR_RejectOriginalD3D9TargetDrawCoverage(
     // The original game device/mono/2D/menu/FFB continue unchanged.
     m2vr::daytona::MarkOriginalLineageMismatch();
 }
+// Actual primary x86 camera COM mutations must remain from same Draw
+// through the original physical Present. This rejects speculative CPU/GPU
+// OpenXR eye sources while preserving original mono/gameplay/input/FFB.
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9CameraComLifetime(
+    unsigned long long physical_present,unsigned int flags,
+    unsigned int source_draws,unsigned int original_camera_writes){
+    using namespace m2vr::vrbridge;
+    if(!physical_present || !flags ||
+       Model2VR_NextOriginalD3D9PresentFrameId()!=physical_present)return;
+    bool first=false;
+    {
+        std::scoped_lock lock(g.mutex);
+        if(g.owner==GetCurrentThreadId() && g.frame==physical_present &&
+           (g.active || g.pending_present)){
+            const auto previous=g_current_original_source_failure;
+            g_current_original_source_failure=
+                OriginalSourceFailure::OriginalLineageMismatch;
+            g.Reject(CurrentOriginalSourceDrawKind());
+            g_current_original_source_failure=previous;
+        }
+        first=g.source_epoch.Revoke(physical_present);
+    }
+    if(first)m2vr::LogEvent("model2_d3d9_original_camera_com_rejected",
+        physical_present,flags,source_draws,original_camera_writes);
+    m2vr::daytona::MarkOriginalLineageMismatch();
+}
 // Strict original physical-Draw post-call check: a state write concurrent
 // with CPU eye raster or the genuine D3D9 Draw may change its source.
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9SourceLineageDrift(

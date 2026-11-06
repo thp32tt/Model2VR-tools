@@ -16,6 +16,7 @@
 #include "original_d3d9_control_present.hpp"
 #include "original_d3d9_scene_draw_coverage.hpp"
 #include "original_d3d9_draw_target_coverage.hpp"
+#include "original_d3d9_camera_com_lifetime.hpp"
 #include "original_d3d9_caller_bloom.hpp"
 #include "original_d3d9_caller_inventory.hpp"
 #include "original_d3d9_validation_policy.hpp"
@@ -532,6 +533,7 @@ std::atomic<DWORD> g_original_scene_owner_thread{0u};
 std::atomic<bool> g_original_scene_hooks_ready{false};
 m2vr::drawprobe::OriginalPhysicalSceneDrawCoverage g_original_scene_draw_coverage{};
 m2vr::drawprobe::OriginalPhysicalTargetDrawCoverage g_original_target_draw_coverage{true};
+m2vr::drawprobe::OriginalCameraComLifetime g_original_camera_lifetime{};
 // Read-only COM binding identities and descriptors, NEVER original texels.
 // No source surface pointer is serialized, exported or retained after call.
 m2vr::drawprobe::OriginalTargetSnapshot ReadPhysicalOriginalRtDepth(
@@ -698,6 +700,8 @@ extern "C" void __stdcall Model2VR_RejectFailedOriginalD3D9Surface(
     std::uint32_t method,std::uint32_t result_bits,
     std::uint32_t caller_rva);
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9TargetDrawCoverage(
+    unsigned long long,unsigned int,unsigned int,unsigned int);
+extern "C" void __stdcall Model2VR_RejectOriginalD3D9CameraComLifetime(
     unsigned long long,unsigned int,unsigned int,unsigned int);
 extern "C" void __stdcall Model2VR_RejectOriginalD3D9StateBlockMutation(
     unsigned long long physical_present,unsigned int stage,
@@ -2029,6 +2033,7 @@ bool ForwardAuthenticatedOriginalDraw(IDirect3DDevice9* device,
     void* caller,unsigned scene,bool original_scene_open,
     const m2vr::drawprobe::OriginalLineageStamp& lineage,Submit&& submit){
     if(!g_original_target_draw_coverage.CanAttemptVerifiedWorldDraw() ||
+       !g_original_camera_lifetime.MayForwardCpuWorld() ||
        g_state_block_apply_unobserved.load(std::memory_order_acquire) ||
        g_original_stream_frequency_state.UnsupportedMask() ||
        g_original_raster_mode_state.UnsupportedMask() ||
@@ -2062,6 +2067,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
     EnsurePhysicalOriginalRtDepth(d);
     const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
+    const auto camera_draw_ticket=g_original_camera_lifetime.EnterDraw();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2090,8 +2096,12 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
         static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
-    const bool same_lineage=m2vr::drawprobe::SameOriginalLineage(
-        original_lineage,ReadOriginalLineage(source_frame));
+    const bool camera_retained=g_original_camera_lifetime.CompleteDraw(
+        camera_draw_ticket);
+    const bool same_lineage=camera_retained &&
+        m2vr::drawprobe::SameOriginalLineage(
+            original_lineage,ReadOriginalLineage(source_frame));
+    if(!camera_retained)m2vr::daytona::MarkOriginalLineageMismatch();
     if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,1u,CallerRva(caller));
@@ -2124,6 +2134,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
     EnsurePhysicalOriginalRtDepth(d);
     const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
+    const auto camera_draw_ticket=g_original_camera_lifetime.EnterDraw();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2152,8 +2163,12 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
         static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
-    const bool same_lineage=m2vr::drawprobe::SameOriginalLineage(
-        original_lineage,ReadOriginalLineage(source_frame));
+    const bool camera_retained=g_original_camera_lifetime.CompleteDraw(
+        camera_draw_ticket);
+    const bool same_lineage=camera_retained &&
+        m2vr::drawprobe::SameOriginalLineage(
+            original_lineage,ReadOriginalLineage(source_frame));
+    if(!camera_retained)m2vr::daytona::MarkOriginalLineageMismatch();
     if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,2u,CallerRva(caller));
@@ -2186,6 +2201,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
     EnsurePhysicalOriginalRtDepth(d);
     const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
+    const auto camera_draw_ticket=g_original_camera_lifetime.EnterDraw();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2214,8 +2230,12 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
         static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
-    const bool same_lineage=m2vr::drawprobe::SameOriginalLineage(
-        original_lineage,ReadOriginalLineage(source_frame));
+    const bool camera_retained=g_original_camera_lifetime.CompleteDraw(
+        camera_draw_ticket);
+    const bool same_lineage=camera_retained &&
+        m2vr::drawprobe::SameOriginalLineage(
+            original_lineage,ReadOriginalLineage(source_frame));
+    if(!camera_retained)m2vr::daytona::MarkOriginalLineageMismatch();
     if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,3u,CallerRva(caller));
@@ -2248,6 +2268,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const auto source_operation=g_original_scene_draw_coverage.EnterOperation();
     EnsurePhysicalOriginalRtDepth(d);
     const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
+    const auto camera_draw_ticket=g_original_camera_lifetime.EnterDraw();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2278,8 +2299,12 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
         static_cast<std::uint32_t>(hr));
     // Source state must still be identical AFTER the authentic COM Draw;
     // a concurrent EXE state writer must not publish stale CPU/XR eyes.
-    const bool same_lineage=m2vr::drawprobe::SameOriginalLineage(
-        original_lineage,ReadOriginalLineage(source_frame));
+    const bool camera_retained=g_original_camera_lifetime.CompleteDraw(
+        camera_draw_ticket);
+    const bool same_lineage=camera_retained &&
+        m2vr::drawprobe::SameOriginalLineage(
+            original_lineage,ReadOriginalLineage(source_frame));
+    if(!camera_retained)m2vr::daytona::MarkOriginalLineageMismatch();
     if(forwarded && !same_lineage)
         Model2VR_RejectOriginalD3D9SourceLineageDrift(
             source_frame,source_ordinal,4u,CallerRva(caller));
@@ -2587,7 +2612,12 @@ HRESULT STDMETHODCALLTYPE SetTransformHook(IDirect3DDevice9* d,
     D3DTRANSFORMSTATETYPE state,const D3DMATRIX* matrix){
     if(!g_primary_device.Owns(d))return g_set_transform(d,state,matrix);
     void* const caller=_ReturnAddress();
-    const HRESULT hr=g_set_transform(d,state,matrix); // original COM once
+    // Internal eye replay is not a genuine emulator source camera SET.
+    if(m2vr::daytona::IsEyeReplayActive())return g_set_transform(d,state,matrix);
+    const auto camera_write=g_original_camera_lifetime.EnterWrite();
+    const HRESULT hr=g_set_transform(d,state,matrix);
+    g_original_camera_lifetime.CompleteWrite(
+        camera_write,CallerRva(caller)!=0u,SUCCEEDED(hr)); // original COM once
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,6u,rva);
     RecordOriginalTransformOperation(state,rva,hr,1u);
@@ -2599,7 +2629,12 @@ HRESULT STDMETHODCALLTYPE MultiplyTransformHook(IDirect3DDevice9* d,
     D3DTRANSFORMSTATETYPE state,const D3DMATRIX* matrix){
     if(!g_primary_device.Owns(d))return g_multiply_transform(d,state,matrix);
     void* const caller=_ReturnAddress();
-    const HRESULT hr=g_multiply_transform(d,state,matrix); // original COM once
+    // Internal eye replay is not a genuine emulator source camera SET.
+    if(m2vr::daytona::IsEyeReplayActive())return g_multiply_transform(d,state,matrix);
+    const auto camera_write=g_original_camera_lifetime.EnterWrite();
+    const HRESULT hr=g_multiply_transform(d,state,matrix);
+    g_original_camera_lifetime.CompleteWrite(
+        camera_write,CallerRva(caller)!=0u,SUCCEEDED(hr)); // original COM once
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,36u,rva);
     RecordOriginalTransformOperation(state,rva,hr,2u);
@@ -2612,7 +2647,12 @@ HRESULT STDMETHODCALLTYPE SetVSConstantFHook(IDirect3DDevice9* d,
     if(!g_primary_device.Owns(d))
         return g_set_vs_constant_f(d,start,values,count);
     void* const caller=_ReturnAddress();
+    // Internal eye replay is not a genuine emulator source camera SET.
+    if(m2vr::daytona::IsEyeReplayActive())return g_set_vs_constant_f(d,start,values,count);
+    const auto camera_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_set_vs_constant_f(d,start,values,count);
+    g_original_camera_lifetime.CompleteWrite(
+        camera_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,7u,rva);
     if(!rva || FAILED(hr) || start>=256u || count==0u ||
@@ -2709,7 +2749,12 @@ HRESULT STDMETHODCALLTYPE SetFVFHook(IDirect3DDevice9* d,DWORD fvf){
 HRESULT STDMETHODCALLTYPE SetVertexShaderHook(IDirect3DDevice9* d,IDirect3DVertexShader9* shader){
     if(!g_primary_device.Owns(d))return g_set_vertex_shader(d,shader);
     void* const caller=_ReturnAddress();
+    // Internal eye replay is not a genuine emulator source camera SET.
+    if(m2vr::daytona::IsEyeReplayActive())return g_set_vertex_shader(d,shader);
+    const auto camera_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_set_vertex_shader(d,shader);
+    g_original_camera_lifetime.CompleteWrite(
+        camera_write,CallerRva(caller)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(caller);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,14u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::VertexShader,rva,hr);
@@ -2727,7 +2772,12 @@ HRESULT STDMETHODCALLTYPE SetPixelShaderHook(IDirect3DDevice9* d,IDirect3DPixelS
 HRESULT STDMETHODCALLTYPE SetVSConstantIHook(IDirect3DDevice9* d,UINT start,const int* values,UINT count){
     if(!g_primary_device.Owns(d))return g_vs_i(d,start,values,count);
     void* const origin=_ReturnAddress();
+    // Internal eye replay is not a genuine emulator source camera SET.
+    if(m2vr::daytona::IsEyeReplayActive())return g_vs_i(d,start,values,count);
+    const auto camera_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_vs_i(d,start,values,count);
+    g_original_camera_lifetime.CompleteWrite(
+        camera_write,CallerRva(origin)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(origin);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,21u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::VertexConstantInt,rva,hr);
@@ -2736,7 +2786,12 @@ HRESULT STDMETHODCALLTYPE SetVSConstantIHook(IDirect3DDevice9* d,UINT start,cons
 HRESULT STDMETHODCALLTYPE SetVSConstantBHook(IDirect3DDevice9* d,UINT start,const BOOL* values,UINT count){
     if(!g_primary_device.Owns(d))return g_vs_b(d,start,values,count);
     void* const origin=_ReturnAddress();
+    // Internal eye replay is not a genuine emulator source camera SET.
+    if(m2vr::daytona::IsEyeReplayActive())return g_vs_b(d,start,values,count);
+    const auto camera_write=g_original_camera_lifetime.EnterWrite();
     const HRESULT hr=g_vs_b(d,start,values,count);
+    g_original_camera_lifetime.CompleteWrite(
+        camera_write,CallerRva(origin)!=0u,SUCCEEDED(hr));
     const auto rva=CallerRva(origin);
     if(rva && FAILED(hr))TrackFailedOriginalD3D9Surface(hr,22u,rva);
     RecordOriginalLineageWrite(m2vr::drawprobe::OriginalLineageKind::VertexConstantBool,rva,hr);
@@ -3176,6 +3231,15 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // RT0/depth evidence is bound to this very SAME physical original
     // Scene/Draw epoch, not a sampled frame or an inferred world owner.
     auto original_target_coverage=g_original_target_draw_coverage.FinishPresent();
+    const auto camera_com_coverage=g_original_camera_lifetime.FinishPresent();
+    // Lifetime counts include unsampled genuine original Draw families.
+    const auto camera_source_flags=camera_com_coverage.flags |
+        (camera_com_coverage.draws!=original_scene_coverage.TotalDraws()
+            ?m2vr::drawprobe::OriginalCameraComLifetime::kRevisionDrift:0u);
+    if(camera_source_flags)
+        Model2VR_RejectOriginalD3D9CameraComLifetime(
+            scene_source_frame,camera_source_flags,
+            camera_com_coverage.draws,camera_com_coverage.writes);
     if(original_target_coverage.TotalDraws()!=original_scene_coverage.TotalDraws())
         original_target_coverage.flags|=
             m2vr::drawprobe::OriginalPhysicalTargetDrawCoverage::kCountMismatch;
@@ -3387,6 +3451,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
     // thread could enter a new Scene/Draw while the prior Present executes.
     g_original_scene_draw_coverage.ReopenAfterPhysicalPresentReturn();
     g_original_target_draw_coverage.ReopenAfterPhysicalPresentReturn();
+    g_original_camera_lifetime.ReopenAfterPhysicalPresentReturn();
     TraceFirstOriginalPresentStage(startup_first_present,3u,frame,
         static_cast<std::uint32_t>(original_result));
     const auto source_samples=g_original_source_result_samples.exchange(
@@ -3439,6 +3504,9 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDirect3DDevice9* d,CONST RECT* a,CONST RE
         (std::uint64_t{original_scene_coverage.failed_draws}<<32u)|
             original_scene_coverage.flags);
     // Continuous source RT identity class and depth validity per Present.
+    m2vr::LogEvent("model2_d3d9_original_camera_com_lifetime",
+        frame,camera_source_flags,camera_com_coverage.draws,
+        camera_com_coverage.writes);
     m2vr::LogEvent("model2_d3d9_original_draw_target_coverage",
         frame,
         (std::uint64_t{original_target_coverage.backbuffer}<<32u)|
@@ -3527,6 +3595,7 @@ HRESULT STDMETHODCALLTYPE ResetHook(IDirect3DDevice9* d,
     g_original_scene_owner_thread.store(0u,std::memory_order_release);
     g_original_scene_draw_coverage.Reset();
     g_original_target_draw_coverage.Reset();
+    g_original_camera_lifetime.Reset();
     m2vr::drawprobe::NextProjectDrawEpoch();
     Model2VR_DiscardPendingWorldOnReset();
     if(g_native_stereo)m2vr::daytona::ResetResources();
