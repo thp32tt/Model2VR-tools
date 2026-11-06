@@ -44,6 +44,8 @@ class SourceAuditTests(unittest.TestCase):
                      frame,pack(1,1),pack(1,0),pack(0,0)),
                     ("model2_d3d9_original_camera_com_lifetime",
                      frame,0,1,3),
+                    ("model2_d3d9_original_camera_com_families",
+                     frame,1,1,1),
                     ("model2_d3d9_original_draw_target_coverage",
                      frame,pack(1,0),pack(0,0),pack(0,0)),
                 ))
@@ -59,6 +61,9 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(camera["physical_present_count"],512)
             self.assertEqual(camera["original_com_draw_count"],512)
             self.assertEqual(camera["original_camera_write_count"],1536)
+            self.assertEqual(camera["original_camera_state_write_count"],512)
+            self.assertEqual(camera["original_pixel_program_write_count"],512)
+            self.assertEqual(camera["original_vertex_layout_write_count"],512)
             self.assertTrue(camera["all_original_camera_com_lifetimes_trusted"])
             target=data["original_physical_draw_target_coverage"]
             self.assertEqual(target["physical_present_count"],512)
@@ -101,6 +106,22 @@ class SourceAuditTests(unittest.TestCase):
                 self.write_log(path,bad)
                 with self.assertRaisesRegex(
                     ValueError,"invalid original camera COM lifetime"):
+                    REPORT.audit_csv(path)
+            # A shader-only physical Present cannot impersonate a real
+            # original view/projection Write with the same total COM count.
+            family_index=next(i for i,row in enumerate(events)
+                if row[0]=="model2_d3d9_original_camera_com_families"
+                and row[1]==frames-1)
+            for frame,camera,pixel,layout in (
+                (frames-1,0,0,0),(frames-1,1,1,2),
+                (frames-1,0,1,1),(frames,1,1,1)):
+                bad=list(events)
+                bad[family_index]=(
+                    "model2_d3d9_original_camera_com_families",
+                    frame,camera,pixel,layout)
+                self.write_log(path,bad)
+                with self.assertRaisesRegex(
+                    ValueError,"invalid original camera COM family"):
                     REPORT.audit_csv(path)
             # Native RT0/depth event is a separate physical witness. Its
             # count/epoch must agree with the ORIGINAL unsampled Draw total.

@@ -559,6 +559,9 @@ def audit_csv(path):
     target_coverage_totals = Counter()
     # Authentic original x86 camera COM entry/return at EVERY physical Present.
     last_camera_com_frame = 0
+    last_camera_family_frame = 0
+    last_camera_com_write_count = 0
+    camera_family_totals = Counter()
     camera_com_totals = Counter()
     camera_com_flagged_frames = 0
     camera_com_trusted_drawn_frames = 0
@@ -940,6 +943,25 @@ def audit_csv(path):
                 elif draws:
                     camera_com_trusted_drawn_frames+=1
                 last_camera_com_frame=frame
+                last_camera_com_write_count=writes
+                continue
+            if event == "model2_d3d9_original_camera_com_families":
+                try:
+                    frame,camera,pixel,layout=(
+                        number(row[k]) for k in ("a0","a1","a2","a3"))
+                except (ValueError,TypeError) as exc:
+                    raise ValueError("invalid original camera COM family row") from exc
+                if (not 0<frame<=0xffffffff or
+                    frame!=last_camera_family_frame+1 or
+                    frame!=last_camera_com_frame or
+                    (last_capture_frame and frame!=last_capture_frame) or
+                    any(n>10000000 for n in (camera,pixel,layout)) or
+                    camera+pixel+layout!=last_camera_com_write_count):
+                    raise ValueError("invalid original camera COM family")
+                camera_family_totals["camera"]+=camera
+                camera_family_totals["pixel"]+=pixel
+                camera_family_totals["layout"]+=layout
+                last_camera_family_frame=frame
                 continue
             if event == "model2_d3d9_original_draw_target_coverage":
                 try:
@@ -1912,6 +1934,7 @@ def audit_csv(path):
         last_scene_coverage_frame!=last_bloom_frame):
         raise ValueError("orphan original physical Scene/Draw evidence")
     if last_camera_com_frame and (
+        last_camera_family_frame!=last_camera_com_frame or
         last_camera_com_frame!=last_scene_coverage_frame or
         (last_target_coverage_frame and
          last_camera_com_frame!=last_target_coverage_frame) or
@@ -1975,6 +1998,9 @@ def audit_csv(path):
              "last_present_frame":last_camera_com_frame,
              "original_com_draw_count":camera_com_totals["draws"],
              "original_camera_write_count":camera_com_totals["writes"],
+             "original_camera_state_write_count":camera_family_totals["camera"],
+             "original_pixel_program_write_count":camera_family_totals["pixel"],
+             "original_vertex_layout_write_count":camera_family_totals["layout"],
              "flagged_present_count":camera_com_flagged_frames,
              "trusted_camera_drawn_present_count":
                  camera_com_trusted_drawn_frames,
