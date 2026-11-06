@@ -6,6 +6,9 @@
 #include "d3d9_vb_index_window.hpp"
 #include "d3d9_primitive_topology.hpp"
 #include "project_draw_correlator.hpp"
+static_assert(m2vr::drawprobe::kMaxAuthenticatedProjectedCorners ==
+    m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles*3u,
+    "original projected IndexedUP native eye expansion must match CPU cap");
 #include <Windows.h>
 #include <d3d9.h>
 #include <cstddef>

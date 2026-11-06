@@ -8,6 +8,9 @@
 #include "d3d9_world_source.hpp"
 #include "projected_up_world_source.hpp"
 #include "project_draw_correlator.hpp"
+static_assert(m2vr::drawprobe::kMaxAuthenticatedProjectedCorners ==
+    m2vr::drawprobe::ProjectDrawCorrelator::kMaxJoinTriangles*3u,
+    "original projected VB/IB native eye expansion must match CPU ring cap");
 #include "d3d9_projected_vb_observer.hpp"
 #include "d3d9_vb_index_window.hpp"
 #include <Windows.h>

@@ -298,6 +298,40 @@ int main(){
     CHECK(independent_fit.accepted_samples==6u &&
           overweighted_fit.accepted_samples==12u);
     CHECK(std::abs(independent_fit.scale_x-overweighted_fit.scale_x)>0.1f);
+    // Physical DrawIndexedPrimitiveUP carries real ORIGINAL 16/32-bit
+    // vertex IDs, not sequential positions in the index stream. Genuine
+    // repeated corner IDs must survive 4-triangle fan expansion, whereas
+    // treating source stream offsets as IDs falsely invents 12 vertices.
+    std::array<std::uint32_t,12> authentic_index16{};
+    std::array<std::uint32_t,12> authentic_index32{};
+    std::array<std::uint32_t,12> fabricated_stream_ordinals{};
+    for(std::size_t i=0u;i<fan_order.size();++i){
+        authentic_index16[i]=500u+fan_order[i];
+        authentic_index32[i]=65536u+fan_order[i];
+        fabricated_stream_ordinals[i]=static_cast<std::uint32_t>(i);
+    }
+    const auto real_index16=optical_fan.MatchTriangleList(
+        73u,fan_triangles.data(),fan_triangles.size(),
+        authentic_index16.data());
+    const auto real_index32=optical_fan.MatchTriangleList(
+        73u,fan_triangles.data(),fan_triangles.size(),
+        authentic_index32.data());
+    CHECK(real_index16.StableOriginalProjectionProvenance() &&
+          real_index32.StableOriginalProjectionProvenance());
+    CHECK(real_index16.distinct_captures==6u &&
+          real_index32.distinct_captures==6u);
+    CHECK(real_index16.camera_sample_count==12u &&
+          real_index16.fit_sample_count==6u);
+    const auto fabricated_ordinal_join=optical_fan.MatchTriangleList(
+        73u,fan_triangles.data(),fan_triangles.size(),
+        fabricated_stream_ordinals.data());
+    CHECK(!fabricated_ordinal_join.CompleteSameSource() &&
+          fabricated_ordinal_join.alias_violations>0u);
+    // One source vertex ID cannot borrow a different CPU projector point.
+    authentic_index16[2]=authentic_index16[1];
+    CHECK(!optical_fan.MatchTriangleList(
+        73u,fan_triangles.data(),fan_triangles.size(),
+        authentic_index16.data()).CompleteSameSource());
     // Maximum supported original 64-triangle fan expands 66 distinct
     // projector calls into 192 eye vertices, never 192 fit observations.
     ProjectDrawCorrelator full_fan{};
