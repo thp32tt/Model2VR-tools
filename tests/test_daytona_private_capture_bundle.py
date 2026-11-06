@@ -65,6 +65,20 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertGreater(self.ps.rfind('PRIVATE_MANIFEST.json'),
                            self.ps.index('$pythonExitCode = Invoke-PrivateAudit -auditArguments $argsForPython'))
 
+    def test_resumed_success_receipts_are_revoked_before_any_stage_preflight(self):
+        # An archive may have become corrupt after an earlier successful run.
+        # Old receipts cannot survive a resume that fails on its first stage.
+        self.assertIn('PRIVATE_PRIOR_', self.ps)
+        self.assertEqual(self.ps.count('PRIVATE_PRIOR_'), 1)
+        self.assertLess(self.ps.index('PRIVATE_PRIOR_'),
+                        self.ps.index('foreach ($label in $labels)'))
+        self.assertIn('Rename-Item -LiteralPath $oldPath', self.ps)
+        self.assertLess(self.ps.index('Rename-Item -LiteralPath $oldPath'),
+                        self.ps.index('$resumeExit = Invoke-PrivateAudit'))
+        self.assertIn('[guid]::NewGuid().ToString("N")', self.ps)
+        self.assertIn('PRIVATE_PRIOR_', self.workflow)
+        self.assertIn('Old manifest survived failed resume', self.workflow)
+
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)
         self.assertIn('"%~dp0Collect-Daytona-Original-Evidence.ps1"',self.cmd)
