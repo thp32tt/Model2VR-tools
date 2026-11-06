@@ -422,6 +422,73 @@ jobs:
               }
             }
           }
+      - name: Reject raw original x86 CSV mutation during stage preflight
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference="Stop"
+          # Mock auditor changes the exact archived CSV after source-hash
+          # pin but before returning successful per-process nonce. This is
+          # NOT authentic Daytona gameplay or original physical evidence.
+          $stub=@'
+          import json, pathlib, sys
+          args=sys.argv[1:]
+          if "--preflight" not in args:
+              raise RuntimeError("comparison must not run after changed original stage")
+          csv=pathlib.Path(args[args.index("--preflight")+1])
+          out=pathlib.Path(args[args.index("--output")+1])
+          csv.write_bytes(csv.read_bytes()+b"\\nmutated during the x86 preflight")
+          out.write_text(json.dumps({"original_capture_run":{
+              "nonce_hex":"0x0000000000000001"}}),encoding="utf-8")
+          '@
+          foreach($mode in @("new","resume")) {
+            $root=Join-Path $env:RUNNER_TEMP ("original-mid-preflight-"+$mode)
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
+            Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+            Copy-Item tools/model2_draw_source_report.py $root/
+            [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
+              $stub,[Text.UTF8Encoding]::new($false))
+            $source=Join-Path $root "inputs"
+            $archive=Join-Path $root "logs/private_original_evidence_saved"
+            if($mode -eq "new") {
+              New-Item -ItemType Directory -Force -Path $source | Out-Null
+              [IO.File]::WriteAllText((Join-Path $source "race_a.csv"),
+                "synthetic first original session: no authentic game evidence")
+            } else {
+              New-Item -ItemType Directory -Force -Path $archive | Out-Null
+              [IO.File]::WriteAllText((Join-Path $archive "race_a.csv"),
+                "synthetic resumed original session: no authentic game evidence")
+              [IO.File]::WriteAllText((Join-Path $archive "PRIVATE_SOURCE_race_a.json"),
+                '{"previous":"stale original source preflight"}')
+            }
+            $rejected=$false
+            try {
+              if($mode -eq "new") {
+                & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ExistingSessionFolder $source
+              } else {
+                & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ResumeSessionFolder $archive
+              }
+            } catch {
+              if($_.Exception.Message -notmatch "PRIVATE SESSION PREFLIGHT SOURCE MUTATION FAIL-CLOSED"){throw}
+              $rejected=$true
+            }
+            if(-not $rejected){throw "Changed original x86 CSV incorrectly accepted: $mode"}
+            if($mode -eq "new") {
+              $archives=@(Get-ChildItem -LiteralPath (Join-Path $root "logs") -Directory -Filter "private_original_evidence_*")
+              if($archives.Count -ne 1){throw "Missing diagnostic original archive"}
+              $archive=$archives[0].FullName
+              if(!(Test-Path (Join-Path $source "race_a.csv"))){throw "Read-only input original CSV deleted"}
+            } else {
+              $stale=@(Get-ChildItem -LiteralPath $archive -File -Filter "PRIVATE_STALE_SOURCE_race_a_*")
+              if($stale.Count -ne 1){throw "Original cached source report not preserved during failed resume"}
+            }
+            if(!(Test-Path (Join-Path $archive "race_a.csv"))){throw "Changed private original archive lost"}
+            foreach($name in @("PRIVATE_SOURCE_race_a.json","PRIVATE_MANIFEST.json","PRIVATE_WORLD_CANDIDATES.json","race_b.csv")){
+              if(Test-Path (Join-Path $archive $name)){throw "Mutated preflight advanced to live source/candidate: $mode $name"}
+            }
+            $pending=@(Get-ChildItem -LiteralPath $archive -File -Filter "PRIVATE_PENDING_SOURCE_race_a_*")
+            if($pending.Count -ne 1){throw "Incomplete original preflight diagnostic report not retained: $mode"}
+          }
       - name: Reject blocked or flooded original private Python auditors
         shell: pwsh
         timeout-minutes: 2

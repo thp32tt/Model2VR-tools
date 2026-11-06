@@ -158,6 +158,19 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
                         self.ps.rindex('Move-Item -LiteralPath $pendingPreflight -Destination $preflight'))
         self.assertIn('Reject original resume cached preflight after silent zero-exit', self.workflow)
 
+    def test_original_csv_is_pinned_immediately_after_each_preflight(self):
+        # Late seven-session checks remain useful, but each changed raw
+        # source must stop before another costly original game process run.
+        self.assertIn('function Assert-PrivatePreflightCsvUnchanged',self.ps)
+        self.assertIn('Get-FileHash -LiteralPath $csvPath -Algorithm SHA256 -ErrorAction Stop',self.ps)
+        self.assertIn('PRIVATE SESSION PREFLIGHT SOURCE MUTATION FAIL-CLOSED',self.ps)
+        self.assertEqual(self.ps.count('Assert-PrivatePreflightCsvUnchanged $label $target'),2)
+        self.assertLess(self.ps.index('Assert-PrivatePreflightCsvUnchanged $label $target $resumeHash'),
+                        self.ps.index('$resumeReport = Get-Content'))
+        self.assertLess(self.ps.index('Assert-PrivatePreflightCsvUnchanged $label $target $digest'),
+                        self.ps.index('$sourceReport = Get-Content'))
+        self.assertIn('Reject raw original x86 CSV mutation during stage preflight',self.workflow)
+
     def test_timed_out_comparator_quarantines_partially_written_candidate(self):
         # Preflight success does not make a candidate safe when the final
         # Python process creates a JSON and then times out or cannot exit.

@@ -129,6 +129,23 @@ function SessionCsvName([string]$label) {
 # Never accept a previously cached PRIVATE_SOURCE report as the result of
 # a fresh CSV preflight. Only a uniquely named pending output produced by
 # this invocation may become the active report after the audit succeeds.
+# A per-stage original x86 raw CSV can change WHILE the Python physical
+# Draw/Scene/Present auditor reads it. Checking only after all seven runs
+# wastes the remaining operator sessions and briefly promotes an audit
+# whose exact source bytes were never pinned. Refuse before promoting a
+# PRIVATE_SOURCE JSON or requesting the next original game session.
+function Assert-PrivatePreflightCsvUnchanged([string]$label,
+                                            [string]$csvPath,
+                                            [string]$expectedSha256) {
+  try {
+    $afterAuditSha256 = (Get-FileHash -LiteralPath $csvPath -Algorithm SHA256 -ErrorAction Stop).Hash
+  } catch {
+    throw "PRIVATE SESSION PREFLIGHT SOURCE MUTATION FAIL-CLOSED: unreadable original CSV for $label; local archive preserved."
+  }
+  if ($afterAuditSha256 -cne $expectedSha256) {
+    throw "PRIVATE SESSION PREFLIGHT SOURCE MUTATION FAIL-CLOSED: original x86 CSV changed during $label audit; local archive preserved."
+  }
+}
 function New-PendingPrivateSourcePath([string]$label) {
   return Join-Path $destination ("PRIVATE_PENDING_SOURCE_" + $label + "_" +
     [guid]::NewGuid().ToString("N") + ".json")
@@ -157,6 +174,7 @@ foreach ($label in $labels) {
       $pendingPreflight = New-PendingPrivateSourcePath $label
       $resumeExit = Invoke-PrivateAudit -auditArguments @(
         $analyzer,"--preflight",$target,"--output",$pendingPreflight)
+      Assert-PrivatePreflightCsvUnchanged $label $target $resumeHash
       if ($resumeSource.Length -ge 32 -and $resumeExit -eq 0 -and
           (Test-Path -LiteralPath $pendingPreflight -PathType Leaf)) {
         $resumeReport = Get-Content -LiteralPath $pendingPreflight -Raw -Encoding UTF8 |
@@ -250,6 +268,7 @@ foreach ($label in $labels) {
   $pendingPreflight = New-PendingPrivateSourcePath $label
   $preflightExit = Invoke-PrivateAudit -auditArguments @(
     $analyzer,"--preflight",$target,"--output",$pendingPreflight)
+  Assert-PrivatePreflightCsvUnchanged $label $target $digest
   if ($preflightExit -ne 0 -or
       !(Test-Path -LiteralPath $pendingPreflight -PathType Leaf)) {
     throw "PRIVATE SESSION PREFLIGHT FAIL-CLOSED: $label original Draw/Present evidence invalid. Archive kept: $destination"
