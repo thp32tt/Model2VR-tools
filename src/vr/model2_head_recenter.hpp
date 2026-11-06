@@ -92,6 +92,16 @@ public:
                 source.orientation_xyzw[0],source.orientation_xyzw[1],
                 source.orientation_xyzw[2],source.orientation_xyzw[3]};
             Normalize(actual);
+            // OpenXR may switch between q and -q for the SAME physical
+            // eye rotation from frame to frame or after LOCAL recenter.
+            // Canonicalize each eye to the captured binocular-midpoint
+            // hemisphere so downstream per-eye interpolation sees no
+            // artificial full-turn discontinuity.
+            double agreement=0.;
+            for(int i=0;i<4;++i)
+                agreement+=double(actual[i])*orientation[i];
+            if(agreement<0.)
+                for(float& value:actual)value=-value;
             const float x=-orientation[0],y=-orientation[1],
                         z=-orientation[2],w=orientation[3];
             const float a=actual[0],b=actual[1],
