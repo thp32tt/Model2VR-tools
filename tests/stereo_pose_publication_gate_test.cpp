@@ -42,61 +42,84 @@ Frame Valid(std::uint64_t id){
 int main(){
     using m2vr::pose::PublishTrackedStereoPose;
     Ring ring;
+    m2vr::pose::StereoPosePublicationOrder order;
     Writer writer{&ring};
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(12),Pair{1,2}));
+    CHECK(PublishTrackedStereoPose(writer,ring,order,Valid(12),Pair{1,2}));
     CHECK(writer.visible==12 && ring.Find(12) && *ring.Find(12)==Pair({1,2}));
     auto unknown_local=Valid(13);unknown_local.reserved=0u;
-    CHECK(!PublishTrackedStereoPose(writer,ring,unknown_local,Pair{2,3}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,unknown_local,Pair{2,3}));
     CHECK(writer.invalidated && !ring.Find(12));
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(13),Pair{2,3}));
-    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(13),Pair{3,4}));
+    CHECK(PublishTrackedStereoPose(writer,ring,order,Valid(13),Pair{2,3}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,Valid(13),Pair{3,4}));
     CHECK(writer.invalidated && !ring.Find(13));
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(14),Pair{3,4}));
+    CHECK(PublishTrackedStereoPose(writer,ring,order,Valid(14),Pair{3,4}));
     // An independent publisher caller bypassing draw_frame's XR time
     // gate MUST NOT expose invalid XR time into original x86 IPC.
     auto missing_time=Valid(15);missing_time.predicted_display_time=0;
     writer.invalidated=false;
-    CHECK(!PublishTrackedStereoPose(writer,ring,missing_time,Pair{5,6}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,missing_time,Pair{5,6}));
     CHECK(writer.invalidated && writer.visible==0 && !ring.Find(14));
     missing_time.predicted_display_time=-1;
-    CHECK(!PublishTrackedStereoPose(writer,ring,missing_time,Pair{5,6}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,missing_time,Pair{5,6}));
     CHECK(!ring.Find(15));
     // A runtime may preserve VALID pose bits during loss of TRACKED.
     // No such source may enter the physical compositor-eye history.
     auto lost_tracking=Valid(15);
     lost_tracking.view_flags=m2vr::pose::kOrientationValid |
                              m2vr::pose::kPositionValid;
-    CHECK(!PublishTrackedStereoPose(writer,ring,lost_tracking,Pair{5,6}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,lost_tracking,Pair{5,6}));
     CHECK(!ring.Find(15) && writer.visible==0);
     lost_tracking.view_flags=m2vr::pose::kFullSixDofTracked &
                              ~m2vr::pose::kPositionTracked;
-    CHECK(!PublishTrackedStereoPose(writer,ring,lost_tracking,Pair{5,6}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,lost_tracking,Pair{5,6}));
     lost_tracking.view_flags=m2vr::pose::kFullSixDofTracked &
                              ~m2vr::pose::kOrientationTracked;
-    CHECK(!PublishTrackedStereoPose(writer,ring,lost_tracking,Pair{5,6}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,lost_tracking,Pair{5,6}));
     // Rejection cannot consume a sequence: the next genuinely tracked
     // same-ID predicted frame is still allowed to publish atomically.
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(15),Pair{5,6}));
+    CHECK(PublishTrackedStereoPose(writer,ring,order,Valid(15),Pair{5,6}));
     CHECK(writer.visible==15 && ring.Find(15) &&
           *ring.Find(15)==Pair({5,6}));
     writer.fail=true;writer.invalidated=false;
-    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(16),Pair{5,6}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,Valid(16),Pair{5,6}));
     CHECK(writer.invalidated && !ring.Find(15) && !ring.Find(16));
     writer.fail=false;
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(17),Pair{5,6}));
+    CHECK(PublishTrackedStereoPose(writer,ring,order,Valid(17),Pair{5,6}));
     auto mono=Valid(18);mono.eyes[1].position_m[0]=-0.032f;
-    CHECK(!PublishTrackedStereoPose(writer,ring,mono,Pair{7,8}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,mono,Pair{7,8}));
     CHECK(!ring.Find(17) && writer.visible==0);
-    CHECK(!PublishTrackedStereoPose(writer,ring,
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,
         Valid(std::uint64_t{std::numeric_limits<std::uint32_t>::max()}+1u),
         Pair{7,8}));
     writer.available=false;
-    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(19),Pair{7,8}));
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,Valid(19),Pair{7,8}));
     CHECK(!ring.Find(19));
     writer.available=true;
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(20),Pair{7,8}));
+    CHECK(PublishTrackedStereoPose(writer,ring,order,Valid(20),Pair{7,8}));
+    // Time cannot be replayed with a new sequence after source revocation.
+    auto same_clock=Valid(21);same_clock.predicted_display_time=20000;
+    writer.invalidated=false;
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,same_clock,Pair{8,9}));
+    CHECK(writer.invalidated && writer.visible==0 && !ring.Find(20));
+    same_clock.predicted_display_time=19999;
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,same_clock,Pair{8,9}));
+    CHECK(PublishTrackedStereoPose(writer,ring,order,Valid(21),Pair{8,9}));
+    // A newer time may not resurrect an earlier physical LOCAL origin.
+    auto new_local=Valid(22);new_local.reserved=2u;
+    CHECK(PublishTrackedStereoPose(writer,ring,order,new_local,Pair{9,10}));
+    auto old_local=Valid(23);old_local.reserved=1u;
+    CHECK(!PublishTrackedStereoPose(writer,ring,order,old_local,Pair{10,11}));
+    CHECK(writer.visible==0 && !ring.Find(22));
+    auto valid_local=Valid(23);valid_local.reserved=2u;
+    CHECK(PublishTrackedStereoPose(writer,ring,order,valid_local,Pair{10,11}));
+    // Only a genuine xrBeginSession permits a new lower runtime clock.
+    order.BeginSession();
+    auto restarted=Valid(24);restarted.reserved=3u;
+    restarted.predicted_display_time=1;
+    CHECK(PublishTrackedStereoPose(writer,ring,order,restarted,Pair{11,12}));
+    CHECK(ring.Find(24) && writer.visible==24);
     ring.Clear();
-    CHECK(!ring.Record(20,Pair{9,10}));
-    CHECK(ring.Record(21,Pair{9,10}));
+    CHECK(!ring.Record(24,Pair{9,10}));
+    CHECK(ring.Record(25,Pair{9,10}));
     return 0;
 }

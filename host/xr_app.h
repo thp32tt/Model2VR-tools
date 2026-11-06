@@ -12,6 +12,7 @@
 #include "../src/common/stereo_frame_policy.hpp"
 #include "../src/common/stereo_pose_ipc.h"
 #include "../src/common/stereo_pose_history.hpp"
+#include "../src/common/stereo_pose_publication_gate.hpp"
 #include "../src/common/model2_reference_space_epoch.hpp"
 #include "../src/common/daytona_wizard_health.hpp"
 #include "../src/common/daytona_host_ready.hpp"
@@ -75,6 +76,7 @@ private:
     std::uint64_t predicted_pose_sequence_=0;
     pose::ReferenceSpaceEpochGate local_reference_epoch_{};
     transport::StereoPoseHistory<std::array<XrView,2>,32> pose_history_{};
+    pose::StereoPosePublicationOrder pose_publication_order_{};
     std::array<XrView,2> accepted_render_pose_{};
     bool accepted_exact_pose_=false;
     transport::Snapshot eye_frame_;

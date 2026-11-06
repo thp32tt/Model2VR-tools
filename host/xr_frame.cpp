@@ -279,7 +279,7 @@ void XrApp::draw_frame(XrTime display_time){
             // the Win32 IPC packet, starting the emulator, or recording the
             // Win64 eye-view history. Never publish a mismatched source rig.
             const bool pose_published=pose::PublishTrackedStereoPose(
-                pose_writer_,pose_history_,predicted,views);
+                pose_writer_,pose_history_,pose_publication_order_,predicted,views);
             if(!pose_published){
                 if(!stereo_rig_rejection_logged_){
                     std::cerr<<"OpenXR tracked pose transaction rejected"
@@ -723,6 +723,8 @@ void XrApp::run(int max_frames){
                     check(xrBeginSession(session_,&begin),"begin XR session");
                     if(!local_reference_epoch_.BeginSession())
                         throw std::runtime_error("OpenXR LOCAL source generation exhausted");
+                    // xrBeginSession alone may reset the runtime XrTime baseline.
+                    pose_publication_order_.BeginSession();
                     invalidate_source_session();
                     running=true;
                     std::cout<<"OpenXR session_begin=SUCCESS"<<std::endl;

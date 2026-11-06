@@ -50,34 +50,48 @@ int main(){
     pose::ReferenceSpaceEpochGate epoch;
     REQUIRE(epoch.BeginSession() && epoch.Epoch()==1);
     Ring history;
+    pose::StereoPosePublicationOrder publication_order;
     FakeHostWriter writer{&history};
     vr::Model2HeadRecenter cpu;
     vr::Model2FramePoseLatch game_pose;
     const auto earlier=Packet(10,epoch.Epoch(),2.f);
     REQUIRE(pose::PublishTrackedStereoPose(
-        writer,history,earlier,Views{101u,102u}));
+        writer,history,publication_order,earlier,Views{101u,102u}));
     REQUIRE(writer.published.sequence==earlier.sequence);
     REQUIRE(history.Find(10u));
     // This direct publication contract is separate from the host's
     // OpenXR clock/LOCAL gate and the Win32 Draw/Present checks.
     Ring direct_history;
+    pose::StereoPosePublicationOrder direct_publication_order;
     FakeHostWriter direct_writer{&direct_history};
     auto untracked=Packet(30,epoch.Epoch(),2.f);
     untracked.view_flags&=~pose::kPositionTracked;
     REQUIRE(!pose::PublishTrackedStereoPose(
-        direct_writer,direct_history,untracked,Views{301u,302u}));
+        direct_writer,direct_history,direct_publication_order,untracked,Views{301u,302u}));
     REQUIRE(direct_writer.published.sequence==0u);
     REQUIRE(!direct_history.Find(30u));
     auto zero_time=Packet(30,epoch.Epoch(),2.f);
     zero_time.predicted_display_time=0;
     REQUIRE(!pose::PublishTrackedStereoPose(
-        direct_writer,direct_history,zero_time,Views{301u,302u}));
+        direct_writer,direct_history,direct_publication_order,zero_time,Views{301u,302u}));
     REQUIRE(!direct_history.Find(30u));
     REQUIRE(pose::PublishTrackedStereoPose(
-        direct_writer,direct_history,
+        direct_writer,direct_history,direct_publication_order,
         Packet(30,epoch.Epoch(),2.f),Views{301u,302u}));
     REQUIRE(direct_writer.published.sequence==30u);
     REQUIRE(direct_history.Find(30u));
+    auto repeated_xr_clock=Packet(31,epoch.Epoch(),2.f);
+    repeated_xr_clock.predicted_display_time=
+        direct_writer.published.predicted_display_time;
+    REQUIRE(!pose::PublishTrackedStereoPose(
+        direct_writer,direct_history,direct_publication_order,
+        repeated_xr_clock,Views{303u,304u}));
+    REQUIRE(direct_writer.published.sequence==0u);
+    REQUIRE(direct_history.Find(30u)==nullptr);
+    REQUIRE(pose::PublishTrackedStereoPose(
+        direct_writer,direct_history,direct_publication_order,
+        Packet(31,epoch.Epoch(),2.f),Views{303u,304u}));
+    REQUIRE(direct_writer.published.sequence==31u);
     REQUIRE(writer.published.sequence==earlier.sequence);
     REQUIRE(game_pose.Begin(100u,writer.published));
     REQUIRE(game_pose.ReferenceSpaceEpoch()==1u);
@@ -117,7 +131,7 @@ int main(){
     // unrelated to the old original game Draw's reference-space ticket.
     const auto new_local=Packet(11,epoch.Epoch(),44.f);
     REQUIRE(pose::PublishTrackedStereoPose(
-        writer,history,new_local,Views{201u,202u}));
+        writer,history,publication_order,new_local,Views{201u,202u}));
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
         source_ticket,new_local,now,hz));
     REQUIRE(cpu.Rebase(new_local,cpu_eyes));
@@ -159,7 +173,7 @@ int main(){
     REQUIRE(epoch.OnPredictedFrame(9999)==pose::ReferenceSpaceFrame::Exhausted);
     REQUIRE(epoch.BeginSession() && epoch.Epoch()==3);
     const auto restart=Packet(12,epoch.Epoch(),-5.f);
-    REQUIRE(pose::PublishTrackedStereoPose(writer,history,restart,Views{3u,4u}));
+    REQUIRE(pose::PublishTrackedStereoPose(writer,history,publication_order,restart,Views{3u,4u}));
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
         {11u,new_local.published_qpc,new_local.reserved,
          new_local.predicted_display_time,new_local.view_flags},restart,now,hz));
@@ -185,7 +199,7 @@ int main(){
     REQUIRE(epoch.OnPredictedFrame(6001)==pose::ReferenceSpaceFrame::Ready);
     const auto final_local=Packet(13,epoch.Epoch(),-20.f);
     REQUIRE(pose::PublishTrackedStereoPose(
-        writer,history,final_local,Views{7u,8u}));
+        writer,history,publication_order,final_local,Views{7u,8u}));
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
         {restart.sequence,restart.published_qpc,restart.reserved,
          restart.predicted_display_time,restart.view_flags},final_local,now,hz));
