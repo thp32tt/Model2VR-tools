@@ -420,8 +420,12 @@ jobs:
               & python (Join-Path $root "verify_daytona_private_receipt.py") $archive
               if($LASTEXITCODE -ne 0){throw "Seven-stage synthetic receipt verification failed"}
               Add-Content -LiteralPath (Join-Path $archive "PRIVATE_SOURCE_hud.json") -Value 'synthetic tamper'
-              & python (Join-Path $root "verify_daytona_private_receipt.py") $archive
-              if($LASTEXITCODE -eq 0){throw "Mutated original preflight report passed receipt verifier"}
+              # A deliberately rejected receipt must not make the GitHub
+              # PowerShell step fail merely because Python exits nonzero.
+              $verifierProcess = Start-Process -FilePath (Get-Command python).Source `
+                -ArgumentList @('"' + (Join-Path $root "verify_daytona_private_receipt.py") + '"',
+                                '"' + $archive + '"') -PassThru -Wait -NoNewWindow
+              if($verifierProcess.ExitCode -eq 0){throw "Mutated original preflight report passed receipt verifier"}
             }else{
               if(-not $rejected -or (Test-Path $manifest) -or (Test-Path $candidate)){
                 throw "Invalid original comparison falsely published success: $mode"
