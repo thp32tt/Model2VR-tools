@@ -27,6 +27,7 @@ NAMES = {
     "model2_d3d9_vb_sampler", "model2_d3d9_vb_alpha",
     "model2_d3d9_vb_raster", "model2_d3d9_vb_write_color",
     "model2_d3d9_cpu_vb_join_batch",
+    "model2_d3d9_cpu_vb_source_cardinality",
     "model2_d3d9_cpu_vb_matrix_identity",
     "model2_d3d9_cpu_vb_matrix_content",
     "model2_d3d9_cpu_vb_geometry_command",
@@ -67,6 +68,36 @@ def halves(value):
 def signed32(value):
     value &= 0xFFFFFFFF
     return value - 0x100000000 if value & 0x80000000 else value
+
+
+def original_cpu_source_cardinality_status(join, cardinality):
+    """Check one native original VB/IB Draw's pointer-free CPU ↔ vertex proof.
+
+    Replayed CPU projections are not six independent camera samples. Reusing
+    the same CPU point is legal ONLY for the same original index; native code
+    emits distinct/legitimate-shared/alias counts for one physical Draw.
+    Previous CSVs without the event are historical, NEVER ownership proof.
+    """
+    if cardinality is None:
+        return "legacy_unverified"
+    if join is None:
+        raise ValueError("orphan original CPU source cardinality")
+    inspected, complete = halves(join[0])
+    partial, ambiguous = halves(join[1])
+    distinct, shared, aliases = cardinality
+    if (not 0 < inspected <= 8 or complete > inspected or
+        partial > inspected or ambiguous > inspected or
+        complete + partial > inspected or
+        distinct > 3 * inspected or shared > 3 * inspected or
+        aliases > partial or aliases > ambiguous or
+        distinct + shared != 3 * complete):
+        raise ValueError("inconsistent original CPU source cardinality")
+    if aliases:
+        return "alias_rejected"
+    if (complete == inspected and not partial and not ambiguous and
+        distinct >= 6):
+        return "unique_source_vertices"
+    return "insufficient_source_vertices"
 
 
 def _original_caller_mix(value):
@@ -356,6 +387,10 @@ def same_witness_projection_pass_candidate(data, present_frame, gpu_caller):
     inspected, complete = halves(join[0])
     partial, ambiguous = halves(join[1])
     cpu_caller = join[2]
+    cardinality_status = original_cpu_source_cardinality_status(
+        join, data.get("source_cardinality"))
+    if cardinality_status in ("alias_rejected","insufficient_source_vertices"):
+        return None
     if (not 2 <= inspected <= 8 or complete != inspected or
             partial or ambiguous or not cpu_caller or
             cpu_caller > 0xFFFFFFFF):
@@ -1244,6 +1279,9 @@ def audit_csv(path):
                 store_original_draw_witness_field(fields, "write_color", values, witness)
             elif event == "model2_d3d9_cpu_vb_join_batch":
                 store_original_draw_witness_field(fields, "cpu_join", values, witness)
+            elif event == "model2_d3d9_cpu_vb_source_cardinality":
+                store_original_draw_witness_field(fields, "source_cardinality",
+                                                 values, witness)
             elif event == "model2_d3d9_cpu_vb_matrix_identity":
                 store_original_draw_witness_field(fields, "matrix_identity", values, witness)
             elif event == "model2_d3d9_cpu_vb_matrix_content":
@@ -1328,6 +1366,10 @@ def audit_csv(path):
         "original_material_current_result_witnesses": 0,
         "original_material_present_frames": set(),
         "cpu_projector_correlated_batches": 0,
+        "cpu_unique_source_vertex_batches": 0,
+        "cpu_aliased_source_vertex_batches": 0,
+        "cpu_legacy_unverified_vertex_batches": 0,
+        "cpu_insufficient_source_vertex_batches": 0,
         "cpu_projector_inspected_triangles": 0,
         "cpu_projector_complete_triangles": 0,
         "cpu_projector_partial_triangles": 0,
@@ -1723,8 +1765,20 @@ def audit_csv(path):
             write_mode, _, _ = data["write_color"]
             srgb_write, color_mask = halves(write_mode)
             entry["color_write_modes"].add((srgb_write, color_mask))
+        if "source_cardinality" in data and "cpu_join" not in data:
+            raise ValueError("orphan original CPU source cardinality")
         if "cpu_join" in data:
             inspected_complete, partial_ambiguous, cpu_caller = data["cpu_join"]
+            status=original_cpu_source_cardinality_status(
+                data["cpu_join"],data.get("source_cardinality"))
+            key={
+                "unique_source_vertices":"cpu_unique_source_vertex_batches",
+                "alias_rejected":"cpu_aliased_source_vertex_batches",
+                "legacy_unverified":"cpu_legacy_unverified_vertex_batches",
+                "insufficient_source_vertices":
+                    "cpu_insufficient_source_vertex_batches",
+            }[status]
+            entry[key]+=1
             inspected, complete = halves(inspected_complete)
             partial, ambiguous = halves(partial_ambiguous)
             if (inspected > 8 or complete > inspected or
@@ -1737,7 +1791,8 @@ def audit_csv(path):
             entry["cpu_projector_partial_triangles"] += partial
             entry["cpu_projector_ambiguous_triangles"] += ambiguous
             if (inspected >= 2 and complete == inspected and
-                    not partial and not ambiguous and cpu_caller):
+                    not partial and not ambiguous and cpu_caller and
+                    status not in ("alias_rejected","insufficient_source_vertices")):
                 entry["cpu_projector_correlated_batches"] += 1
                 if present_frame is not None:
                     entry["correlated_present_frames"].add(present_frame)

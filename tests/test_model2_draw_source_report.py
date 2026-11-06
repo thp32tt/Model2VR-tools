@@ -1831,6 +1831,54 @@ class SourceAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "malformed"):
                 REPORT.audit_csv(p)
 
+    def test_original_cpu_vertex_identity_cardinality_auditor(self):
+        # New real x86 VB/IB event: two triangles with six distinct CPU
+        # projector calls can remain passive candidates; three repeats
+        # cannot promote an apparently complete GPU Draw.
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"vertex_cardinality.csv"
+            base=[
+                ("model2_d3d9_vb_source",901,0x1234,pack(1,0x104),
+                 pack(4096,24)),
+                ("model2_d3d9_cpu_vb_join_batch",901,
+                 pack(2,2),0,0x55),
+            ]
+            self.write_log(path,base+[(
+                "model2_d3d9_cpu_vb_source_cardinality",901,6,0,0)])
+            fresh=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(fresh["cpu_unique_source_vertex_batches"],1)
+            self.assertEqual(fresh["cpu_aliased_source_vertex_batches"],0)
+            self.write_log(path,base)
+            legacy=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(legacy["cpu_legacy_unverified_vertex_batches"],1)
+            for card in ((3,3,0),(5,0,0),(7,0,0),(6,1,0),(6,0,1)):
+                self.write_log(path,base+[(
+                    "model2_d3d9_cpu_vb_source_cardinality",901,*card)])
+                with self.subTest(card=card),self.assertRaisesRegex(
+                    ValueError,"inconsistent original CPU source cardinality"):
+                    REPORT.audit_csv(path)
+            self.write_log(path,[base[0],(
+                "model2_d3d9_cpu_vb_join_batch",901,pack(2,1),
+                pack(1,1),0),(
+                "model2_d3d9_cpu_vb_source_cardinality",901,3,0,1)])
+            alias=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(alias["cpu_aliased_source_vertex_batches"],1)
+            self.assertEqual(alias["cpu_unique_source_vertex_batches"],0)
+            self.write_log(path,[base[0],(
+                "model2_d3d9_cpu_vb_source_cardinality",901,6,0,0)])
+            with self.assertRaisesRegex(ValueError,"orphan original CPU"):
+                REPORT.audit_csv(path)
+            self.write_log(path,base+[(
+                "model2_d3d9_cpu_vb_source_cardinality",901,6,0,0),(
+                "model2_d3d9_cpu_vb_source_cardinality",901,6,0,0)])
+            with self.assertRaisesRegex(ValueError,"conflicting original Draw witness"):
+                REPORT.audit_csv(path)
+        join=(pack(2,2),0,0x55)
+        self.assertEqual(REPORT.original_cpu_source_cardinality_status(
+            join,(6,0,0)),"unique_source_vertices")
+        self.assertEqual(REPORT.original_cpu_source_cardinality_status(
+            join,None),"legacy_unverified")
+
     def test_actual_post_com_draw_completion_source_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/"post_com_draw_source.csv"
