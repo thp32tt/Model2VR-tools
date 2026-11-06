@@ -12,6 +12,7 @@ int main(){
     DrawEvidence pass{RenderPass::World3D,true,true,true,false,false,false,false,true,true,true};
     pose::Frame xr{};
     xr.sequence=1;
+    xr.predicted_display_time=1000;
     xr.reserved=1u;
     xr.view_flags=pose::kFullSixDofTracked;
     for(int e=0;e<2;++e){
@@ -31,6 +32,13 @@ int main(){
     xr.reserved=0u;
     REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
     xr.reserved=1u;
+    // Stateless direct CPU projection must not bypass the new latch's
+    // positive XR predicted-time rule via a plausible tracked eye rig.
+    xr.predicted_display_time=0;
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr.predicted_display_time=-1000;
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr.predicted_display_time=1000;
     const auto nearPair=ProjectModel2Stereo(front,xr,cal,pass);
     REQUIRE(nearPair.stereo&&nearPair.eyes[0].valid&&nearPair.eyes[1].valid);
     REQUIRE(nearPair.eyes[0].ndc_x>nearPair.eyes[1].ndc_x);

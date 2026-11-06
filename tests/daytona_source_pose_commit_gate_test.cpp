@@ -7,6 +7,7 @@ int main(){
     daytona::OriginalSourcePoseTicket ticket{100u,1000000000ull,1u};
     pose::Frame p{};
     p.sequence=102u;p.published_qpc=1000500000ull;
+    p.predicted_display_time=102000;
     p.reserved=1u;
     p.view_flags=pose::kFullSixDofTracked;
     for(auto& e:p.eyes){
@@ -19,6 +20,14 @@ int main(){
     p.eyes[0].position_m[0]=-0.032f;
     p.eyes[1].position_m[0]=0.032f;
     using daytona::OriginalStereoPoseStillLiveAtPresent;
+    CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    // Physical original D3D9 Present must reject a direct tracked-world
+    // pose with a missing/reversed predicted XrTime, not only bad QPC age.
+    p.predicted_display_time=0;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.predicted_display_time=-1;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.predicted_display_time=102000;
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
     // No provenance can be inferred from matching zero/legacy origins.
     auto no_source_ticket=ticket;

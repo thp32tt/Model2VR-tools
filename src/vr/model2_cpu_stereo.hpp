@@ -69,6 +69,10 @@ inline ProjectedPair ProjectModel2Stereo(
        (latched_predicted_views.view_flags&pose::kFullSixDofTracked)!=
           pose::kFullSixDofTracked ||
        latched_predicted_views.sequence==0 ||
+       // Direct projector callers may bypass the per-game-frame pose latch.
+       // A zero/negative predicted XR display time is not a physical
+       // OpenXR eye source, regardless of valid 6DoF or LOCAL provenance.
+       latched_predicted_views.predicted_display_time<=0 ||
        // No original World3D projection may rely on an unknown/legacy
        // OpenXR LOCAL source, even if both eyes are physically tracked.
        latched_predicted_views.reserved==0u ||

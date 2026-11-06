@@ -17,6 +17,7 @@ using m2vr::daytona::AdmitTrackedWorldEyePose;
 static m2vr::pose::Frame ValidTestPose(){
     m2vr::pose::Frame f{};
     f.sequence=15;
+    f.predicted_display_time=15000;
     f.reserved=1u;
     f.published_qpc=1000000000ull;
     f.view_flags=m2vr::pose::kOrientationValid |
@@ -58,6 +59,16 @@ int main(){
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
     f.view_flags|=m2vr::pose::kOrientationTracked |
                   m2vr::pose::kPositionTracked;
+    CHECK(AdmitTrackedWorldEyePose(f,now,hz).valid);
+    // World3D admission cannot trust a tracked geometric pair without
+    // physical positive predicted XrTime; legacy GPU fallback still can.
+    f.predicted_display_time=0;
+    CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    CHECK(AdmitLiveEyePose(f,now,hz).valid);
+    f.predicted_display_time=-1;
+    CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    CHECK(AdmitLiveEyePose(f,now,hz).valid);
+    f.predicted_display_time=15000;
     CHECK(AdmitTrackedWorldEyePose(f,now,hz).valid);
     f.reserved=0u;
     CHECK(AdmitLiveEyePose(f,now,hz).valid); // preserve legacy GPU/mono

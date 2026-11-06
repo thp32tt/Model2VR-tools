@@ -51,6 +51,10 @@ inline EyePoseAdmission AdmitTrackedWorldEyePose(
     const pose::Frame& frame,std::uint64_t now_qpc,
     std::uint64_t qpc_hz) noexcept {
     if(!frame.reserved ||
+       // This original Win32 World3D Draw/Present entry point can be
+       // invoked independently of the CPU pose latch/recenter. Reject
+       // missing/invalid source XrTime without weakening legacy GPU/mono.
+       frame.predicted_display_time<=0 ||
        (frame.view_flags & pose::kFullSixDofTracked)!=
         pose::kFullSixDofTracked)return {};
     return AdmitLiveEyePose(frame,now_qpc,qpc_hz);
