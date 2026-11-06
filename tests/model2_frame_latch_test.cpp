@@ -66,5 +66,41 @@ int main() {
  p.eyes[1].fov_left_right_up_down[0]=-0.8f;
  p.eyes[1].fov_left_right_up_down[1]=0.8f;
  CHECK(latch.Begin(4,p));
+ // Adopt a real Win64 LOCAL source generation. Future physical game
+ // frames may advance the XR epoch but must never return to an old
+ // origin, even when that source packet has a larger pose sequence.
+ p.sequence=13;p.reserved=1u;
+ CHECK(latch.Begin(5,p));
+ CHECK(latch.ReferenceSpaceEpoch()==1u);
+ CHECK(latch.Read(5,snapshot)&&snapshot.reserved==1u);
+ p.sequence=14;p.reserved=0u; // old/legacy source after tracked LOCAL
+ CHECK(!latch.Begin(6,p));
+ CHECK(!latch.Read(5,snapshot)); // failed refresh revokes prior eyes
+ CHECK(latch.ReferenceSpaceEpoch()==1u); // origin high-water stays
+ p.sequence=15;p.reserved=1u;
+ CHECK(latch.Begin(6,p)); // reject did not consume next frame/pose
+ p.sequence=16;p.reserved=3u;
+ CHECK(latch.Begin(7,p));
+ CHECK(latch.ReferenceSpaceEpoch()==3u);
+ p.sequence=17;p.reserved=2u;
+ CHECK(!latch.Begin(8,p));
+ CHECK(!latch.Read(7,snapshot));
+ CHECK(latch.ReferenceSpaceEpoch()==3u);
+ p.sequence=18;p.reserved=4u;
+ p.eyes[1].position_m[0]=p.eyes[0].position_m[0];
+ CHECK(!latch.Begin(8,p)); // invalid prospective new epoch stays old
+ CHECK(latch.ReferenceSpaceEpoch()==3u);
+ p.sequence=19;
+ p.eyes[1].position_m[0]=0.032f;
+ CHECK(latch.Begin(8,p));
+ CHECK(latch.ReferenceSpaceEpoch()==4u);
+ CHECK(latch.Read(8,snapshot)&&snapshot.reserved==4u);
+ // Only an explicit game/device reset may intentionally start an
+ // independent source-consumer lifetime with a lower epoch.
+ latch.Reset();
+ CHECK(latch.ReferenceSpaceEpoch()==0u);
+ p.sequence=1;p.reserved=1u;
+ CHECK(latch.Begin(1,p));
+ CHECK(latch.ReferenceSpaceEpoch()==1u);
  return 0;
 }

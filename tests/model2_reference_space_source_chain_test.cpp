@@ -4,6 +4,7 @@
 #include "../src/common/stereo_pose_publication_gate.hpp"
 #include "../src/probe/daytona_source_pose_commit_gate.hpp"
 #include "../src/vr/model2_head_recenter.hpp"
+#include "../src/vr/model2_frame_latch.hpp"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -50,11 +51,14 @@ int main(){
     Ring history;
     FakeHostWriter writer{&history};
     vr::Model2HeadRecenter cpu;
+    vr::Model2FramePoseLatch game_pose;
     const auto earlier=Packet(10,epoch.Epoch(),2.f);
     REQUIRE(pose::PublishTrackedStereoPose(
         writer,history,earlier,Views{101u,102u}));
     REQUIRE(writer.published.sequence==earlier.sequence);
     REQUIRE(history.Find(10u));
+    REQUIRE(game_pose.Begin(100u,writer.published));
+    REQUIRE(game_pose.ReferenceSpaceEpoch()==1u);
     pose::Frame cpu_eyes{};
     REQUIRE(cpu.Rebase(writer.published,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==1u);
@@ -86,6 +90,18 @@ int main(){
         source_ticket,new_local,now,hz));
     REQUIRE(cpu.Rebase(new_local,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==2u);
+    REQUIRE(game_pose.Begin(101u,new_local));
+    REQUIRE(game_pose.ReferenceSpaceEpoch()==2u);
+    // A delayed old-LOCAL source with a HIGHER pose sequence remains
+    // unsafe even though the eyes are geometrically plausible.
+    const auto late_old=Packet(99u,1u,77.f);
+    REQUIRE(!game_pose.Begin(102u,late_old));
+    REQUIRE(game_pose.ReferenceSpaceEpoch()==2u);
+    pose::Frame rejected_latch{};
+    REQUIRE(!game_pose.Read(101u,rejected_latch));
+    const auto late_legacy=Packet(100u,0u,77.f);
+    REQUIRE(!game_pose.Begin(102u,late_legacy));
+    REQUIRE(game_pose.ReferenceSpaceEpoch()==2u);
     REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
     REQUIRE(Near(cpu_eyes.eyes[1].position_m[0],0.032f));
     REQUIRE(!cpu.Rebase(earlier,cpu_eyes));
@@ -104,6 +120,8 @@ int main(){
         {11u,new_local.published_qpc,new_local.reserved},restart,now,hz));
     REQUIRE(cpu.Rebase(restart,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==3u);
+    REQUIRE(game_pose.Begin(102u,restart));
+    REQUIRE(game_pose.ReferenceSpaceEpoch()==3u);
     REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
     // A second LOCAL notification without an applicable transition time
     // cannot borrow the previous known pending time or the last accepted
@@ -128,6 +146,8 @@ int main(){
         final_local,now,hz));
     REQUIRE(cpu.Rebase(final_local,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==4u);
+    REQUIRE(game_pose.Begin(103u,final_local));
+    REQUIRE(game_pose.ReferenceSpaceEpoch()==4u);
     REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
     return 0;
 }
