@@ -85,10 +85,18 @@ int main() {
     // Source identity and original GPU winding survive expansion, while
     // the two HMD eyes receive geometry in independent tracked poses.
     std::vector<CpuPoint> world_corners(kCorners);
+    std::vector<float> true_original_uv(kCorners*2u);
     std::vector<std::uint32_t> eye_indices(kCorners);
     for(std::size_t i=0;i<world_corners.size();++i) {
         const auto& src=joined.camera_samples[i].source_xyz;
         world_corners[i]={src[0],src[1],src[2]};
+        // Fixed-function XYZRHW/TEX1 uses its ACTUAL original D3D9 UV
+        // bytes even though source XYZ came from the CPU projector.
+        ProjectedUPWorldVertex source_vertex{};
+        CHECK(DecodeProjectedUPWorldVertex(
+            expanded.data()+i*24u,kFvf,24u,source_vertex));
+        true_original_uv[i*2u]=source_vertex.uv[0];
+        true_original_uv[i*2u+1u]=source_vertex.uv[1];
         eye_indices[i]=static_cast<std::uint32_t>(i);
         const auto& expected=original_xyz[window.indices[i]];
         CHECK(world_corners[i].x==expected[0] &&
@@ -134,6 +142,47 @@ int main() {
           raster.StereoPairUsable());
     CHECK(raster.Eye(0u).size()==transport::kBytesPerEye &&
           raster.Eye(1u).size()==transport::kBytesPerEye);
+    // The PRODUCTION proof-owned D3D9 material bridge uses the textured
+    // CPU-world path, not merely flat triangle colors. Reuse the authentic
+    // source TEX1 UV and unchanged original triangle winding for two
+    // genuinely offset eye images with one source texture snapshot.
+    ClippedTexturedStereoBatch textured_batch{};
+    CHECK(BuildTexturedStereoBatch(
+        world_corners.data(),true_original_uv.data(),world_corners.size(),
+        eye_indices.data(),eye_indices.size(),
+        811u,latch,calibration,pass,textured_batch));
+    CHECK(textured_batch.eyes[0].size()==kTriangles &&
+          textured_batch.eyes[1].size()==kTriangles);
+    std::array<std::uint8_t,4u*4u*4u> original_texel_snapshot{};
+    for(std::size_t y=0u;y<4u;++y)for(std::size_t x=0u;x<4u;++x){
+        const std::size_t offset=(y*4u+x)*4u;
+        original_texel_snapshot[offset]=x<2u?255u:0u;
+        original_texel_snapshot[offset+1u]=x<2u?0u:255u;
+        original_texel_snapshot[offset+2u]=y<2u?64u:128u;
+        original_texel_snapshot[offset+3u]=255u;
+    }
+    StereoWorldRaster::TextureRGBA source_texture{
+        original_texel_snapshot.data(),4u,4u,16u,128u};
+    StereoWorldRaster textured_raster{};
+    CHECK(textured_raster.DrawTextured(textured_batch,source_texture));
+    CHECK(textured_raster.WrittenEyePixels(0u)>0u &&
+          textured_raster.WrittenEyePixels(1u)>0u &&
+          textured_raster.StereoPairUsable());
+    CHECK(textured_raster.Eye(0u).size()==transport::kBytesPerEye &&
+          textured_raster.Eye(1u).size()==transport::kBytesPerEye);
+    // No dummy texel may stand in for an unknown original D3D9 texture
+    // unless the already proven material explicitly selects DIFFUSE on
+    // both RGB and alpha. An unavailable source texture fails closed.
+    StereoWorldRaster rejected_textured_raster{};
+    auto missing_source_texture=source_texture;
+    missing_source_texture.rgba=nullptr;
+    missing_source_texture.width=0u;
+    missing_source_texture.height=0u;
+    missing_source_texture.stride=0u;
+    CHECK(!rejected_textured_raster.DrawTextured(
+        textured_batch,missing_source_texture));
+    CHECK(rejected_textured_raster.WrittenEyePixels(0u)==0u &&
+          rejected_textured_raster.WrittenEyePixels(1u)==0u);
     // Reusing an earlier physical Draw's CPU pixels must never become
     // a second authentic source in this Present even if the XY is equal.
     projector.RetireOriginalDraw(73u);
