@@ -26,6 +26,42 @@ $copies = @{}
 $hashes = @{}
 $knownPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 $knownDigests = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$knownNonces = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$reports = @{}
+# Resolve Python BEFORE asking for seven expensive original emulator runs.
+$pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+$pythonPrefix = @("-3")
+if ($null -eq $pythonLauncher) {
+  $pythonLauncher = Get-Command python -ErrorAction SilentlyContinue
+  $pythonPrefix = @()
+}
+if ($null -eq $pythonLauncher) {
+  throw "Python 3 is required for per-session PRIVATE original source audit."
+}
+function Invoke-PrivateAudit([string[]]$arguments) {
+  $launchArgs = @($pythonPrefix) + @($arguments)
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $pythonLauncher.Source
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.Arguments = (($launchArgs | ForEach-Object {
+    '"' + ([string]$_) + '"'
+  }) -join ' ')
+  $child = [System.Diagnostics.Process]::Start($startInfo)
+  if ($null -eq $child) { throw "Could not launch Python 3 for PRIVATE source audit." }
+  try {
+    $childOutput = $child.StandardOutput.ReadToEnd()
+    $childError = $child.StandardError.ReadToEnd()
+    $child.WaitForExit()
+    if ($childOutput) { Write-Host $childOutput }
+    if ($childError) { Write-Warning $childError.Trim() }
+    $pythonExitCode = $child.ExitCode
+  } finally {
+    $child.Dispose()
+  }
+  return $pythonExitCode
+}
 # AUX is a reserved Windows DOS device basename even with .csv extension.
 # Label "aux" remains the same audit class, disk filename is auxiliary.csv.
 function SessionCsvName([string]$label) {
@@ -75,7 +111,54 @@ foreach ($label in $labels) {
   if ($copiedHash -ne $digest) { throw "Source copy changed during $label; close original game." }
   $copies[$label] = $target
   $hashes[$label] = $digest
-  Write-Host ("Archived PRIVATE " + $label + " (" + $source.Length + " bytes)")
+  # Validate this original x86 process before asking the user for the next.
+  # The PRIVATE full report is cached and cross-session audited at the end,
+  # avoiding seven unnecessary repeat parses of large original GPU logs.
+  $preflight = Join-Path $destination ("PRIVATE_SOURCE_" + $label + ".json")
+  $preflightExit = Invoke-PrivateAudit @($analyzer,"--preflight",$target,
+                                         "--output",$preflight)
+  if ($preflightExit -ne 0 -or
+      !(Test-Path -LiteralPath $preflight -PathType Leaf)) {
+    throw "PRIVATE_SESSION_PREFLIGHT_FAIL_CLOSED: $label original Draw/Present evidence invalid. Local archive kept: $destination"
+  }
+  $sourceReport = Get-Content -LiteralPath $preflight -Raw -Encoding UTF8 |
+    ConvertFrom-Json
+  $nonce = [string]$sourceReport.original_capture_run.nonce_hex
+  if ($nonce -notmatch '^0x[0-9a-f]{16}
+}
+$manifest = [ordered]@{
+  schema = 1
+  source = "user-labelled_original_daytona_x86_private_sessions"
+  scene_labels_verified_by = "user_only_not_automatic"
+  world_pass_proof = "NOT_ESTABLISHED"
+  hmd_runtime_validation = "UNTESTED"
+  output_directory = $destination
+  source_sha256 = $hashes
+}
+$json = ConvertTo-Json -InputObject $manifest -Depth 5
+[IO.File]::WriteAllText((Join-Path $destination "PRIVATE_MANIFEST.json"),
+  $json + [Environment]::NewLine,(New-Object System.Text.UTF8Encoding($false)))
+$argsForPython = @($analyzer,"--race",$reports["race_a"],"--race",$reports["race_b"])
+foreach ($label in @("title","menu","sky","hud","aux")) {
+  $argsForPython += @("--control",$label,$reports[$label])
+}
+$argsForPython += @("--output",(Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"))
+$pythonExitCode = Invoke-PrivateAudit $argsForPython
+if ($pythonExitCode -ne 0) {
+  throw "Private source evidence FAIL-CLOSED. Archive kept for local inspection: $destination"
+}
+Write-Host ""
+Write-Host "Local candidate triage written. A candidate NEVER authorizes World3D."
+Write-Host "Independent original CPU camera, Quest3 pose and XR calibration remain unproven."
+Write-Host "Private output: $destination"
+ -or
+      $nonce -eq "0x0000000000000000" -or
+      !$knownNonces.Add($nonce)) {
+    throw "PRIVATE_SESSION_PREFLIGHT_FAIL_CLOSED: duplicate or missing original process nonce for $label. Archive kept: $destination"
+  }
+  $reports[$label] = $preflight
+  Write-Host ("Validated and archived PRIVATE " + $label + " (" +
+              $source.Length + " bytes; original process nonce distinct)")
 }
 $manifest = [ordered]@{
   schema = 1
