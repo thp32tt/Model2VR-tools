@@ -163,6 +163,34 @@ def _validate_report(report):
             scene["physical_present_count"] or
         scene["all_original_scene_draws_trusted"] is not True):
         raise ValueError("incomplete physical original Scene/Draw ownership")
+    # A post-COM shader/transform lineage counter is insufficient if the
+    # genuine x86 COM Set operation overlaps physical Draw or Present.
+    # Require complete pointer-free original camera COM lifetime evidence.
+    camera=report.get("original_physical_camera_com_lifetime")
+    camera_keys={"physical_present_count","first_present_frame",
+                 "last_present_frame","original_com_draw_count",
+                 "original_camera_write_count","flagged_present_count",
+                 "trusted_camera_drawn_present_count",
+                 "all_original_camera_com_lifetimes_trusted"}
+    ints=camera_keys-{"all_original_camera_com_lifetimes_trusted"}
+    if (not isinstance(camera,dict) or set(camera)!=camera_keys or
+        any(type(camera.get(k)) is not int or
+            not 0<=camera[k]<=MAX_SOURCES*10000000 for k in ints) or
+        type(camera.get("all_original_camera_com_lifetimes_trusted")) is not bool or
+        camera["first_present_frame"]!=1 or
+        camera["last_present_frame"]!=run["physical_present_count"] or
+        camera["physical_present_count"]!=run["physical_present_count"] or
+        camera["flagged_present_count"]>camera["physical_present_count"] or
+        camera["trusted_camera_drawn_present_count"]>
+            camera["physical_present_count"] or
+        (camera["flagged_present_count"]==0 and
+         camera["original_com_draw_count"]!=
+            scene["original_successful_in_scene_draw_count"]+
+            scene["original_successful_untrusted_scene_draw_count"]+
+            scene["original_failed_draw_count"]) or
+        (camera["all_original_camera_com_lifetimes_trusted"] and
+         camera["flagged_present_count"]!=0)):
+        raise ValueError("incomplete original physical camera COM lifetime")
     # Every original x86 physical Present must have genuine RT0/depth
     # source Draw coverage in a NEW capture. A result from the earlier probe
     # without this continuous witness cannot assert native world ownership.
@@ -406,6 +434,9 @@ def compare_sessions(race_reports, nonrace_reports):
             reason="caller_exactly_used_outside_race"
         elif any(key not in session for session in race):
             reason="missing_in_race_capture"
+        elif any(not r["original_physical_camera_com_lifetime"][
+                "all_original_camera_com_lifetimes_trusted"] for r in race_reports):
+            reason="race_original_camera_com_lifetime_untrusted"
         elif any(not r["original_physical_draw_target_coverage"][
                 "all_original_draw_targets_trusted"] for r in race_reports):
             reason="race_original_rt0_depth_draw_provenance_untrusted"

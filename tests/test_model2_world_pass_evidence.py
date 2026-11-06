@@ -90,6 +90,15 @@ def report(*sources):
             "trusted_scene_drawn_present_count":3,
             "all_original_scene_draws_trusted":True,
         },
+        "original_physical_camera_com_lifetime":{
+            "physical_present_count":8,"first_present_frame":1,
+            "last_present_frame":8,
+            "original_com_draw_count":9,
+            "original_camera_write_count":15,
+            "flagged_present_count":0,
+            "trusted_camera_drawn_present_count":3,
+            "all_original_camera_com_lifetimes_trusted":True,
+        },
         "original_physical_draw_target_coverage":{
             "physical_present_count":8,"first_present_frame":1,
             "last_present_frame":8,
@@ -171,6 +180,34 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 self.assertEqual(result["candidates"],[])
                 self.assertEqual(result["rejected"][0]["reason"],
                     "missing_same_draw_matrix_material_or_render_evidence")
+
+    def test_original_camera_COM_lifetime_required_for_seven_sessions(self):
+        # No sampled raster pass may borrow a clean camera from a different
+        # original physical process, draw count, or completed COM epoch.
+        for field,bad in (
+            ("original_physical_camera_com_lifetime",None),
+            ("physical_present_count",7),
+            ("original_com_draw_count",10),
+            ("flagged_present_count",9),
+            ("all_original_camera_com_lifetimes_trusted",1),
+        ):
+            with self.subTest(field=field):
+                race=report(witness())
+                if field=="original_physical_camera_com_lifetime":
+                    del race[field]
+                else:
+                    race["original_physical_camera_com_lifetime"][field]=bad
+                with self.assertRaisesRegex(
+                    ValueError,"physical camera COM lifetime"):
+                    compare_sessions([race,report(witness())],controls())
+        race=report(witness())
+        race["original_physical_camera_com_lifetime"]["flagged_present_count"]=1
+        race["original_physical_camera_com_lifetime"][
+            "all_original_camera_com_lifetimes_trusted"]=False
+        decision=compare_sessions([race,report(witness())],controls())
+        self.assertEqual(decision["candidates"],[])
+        self.assertEqual(decision["rejected"][0]["reason"],
+                         "race_original_camera_com_lifetime_untrusted")
 
     def test_original_rt0_depth_all_family_source_required_for_seven_sessions(self):
         # New original producer always emits physical RT0/depth evidence,
