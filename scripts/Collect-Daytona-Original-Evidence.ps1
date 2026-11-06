@@ -56,17 +56,17 @@ $knownNonces = New-Object 'System.Collections.Generic.HashSet[string]' ([StringC
 $reports = @{}
 $reportHashes = @{}
 # Resolve Python before asking the user to run seven original x86 games.
-$pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+# Prefer the actual Python 3 interpreter. On GitHub Windows runners,
+# 'py' can resolve to a Python executable/shim that does not accept -3.
+# Fall back to the official launcher only on systems without python.exe.
+$pythonLauncher = Get-Command python -ErrorAction SilentlyContinue
 $pythonPrefix = @()
-# Some Windows Python installations alias 'py' to python.exe rather than
-# the official py.exe launcher. Only py.exe accepts the '-3' selector.
-# Otherwise the original evidence audit never runs and silently fails.
-if ($null -ne $pythonLauncher -and
-    [IO.Path]::GetFileNameWithoutExtension($pythonLauncher.Source) -ieq "py") {
-  $pythonPrefix = @("-3")
-}
 if ($null -eq $pythonLauncher) {
-  $pythonLauncher = Get-Command python -ErrorAction SilentlyContinue
+  $pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+  if ($null -ne $pythonLauncher -and
+      [IO.Path]::GetFileNameWithoutExtension($pythonLauncher.Source) -ieq "py") {
+    $pythonPrefix = @("-3")
+  }
 }
 if ($null -eq $pythonLauncher) {
   throw "Python 3 is required for per-session PRIVATE original source audit."
