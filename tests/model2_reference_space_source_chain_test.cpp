@@ -170,5 +170,20 @@ int main(){
     REQUIRE(game_pose.Begin(103u,final_local));
     REQUIRE(game_pose.ReferenceSpaceEpoch()==4u);
     REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
+    // A valid new LOCAL pose does NOT make an older predicted frame safe.
+    // The actual Win64 draw_frame branch revokes IPC and cached images on
+    // Exhausted; mirror that source transaction with synthetic records.
+    const auto bad_time=epoch.OnPredictedFrame(6000);
+    REQUIRE(bad_time==pose::ReferenceSpaceFrame::Exhausted);
+    if(bad_time==pose::ReferenceSpaceFrame::Exhausted){
+        REQUIRE(writer.Invalidate());
+        history.Clear();
+    }
+    REQUIRE(epoch.TimeDiscontinuity());
+    REQUIRE(writer.published.sequence==0u);
+    REQUIRE(history.Find(13u)==nullptr);
+    REQUIRE(epoch.OnPredictedFrame(7000)==pose::ReferenceSpaceFrame::Exhausted);
+    REQUIRE(epoch.BeginSession() && epoch.Epoch()==5u);
+    REQUIRE(epoch.OnPredictedFrame(1)==pose::ReferenceSpaceFrame::Ready);
     return 0;
 }

@@ -16,10 +16,13 @@ public:
         change_time_=0;
         events_lost_=false;
         unknown_change_time_=false;
+        time_discontinuity_=false;
+        last_predicted_display_time_=0;
         return Advance();
     }
     bool NotifyLocalChange(std::int64_t change_time) noexcept {
-        if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_)return false;
+        if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_ ||
+           time_discontinuity_)return false;
         // An absent/nonpositive changeTime does NOT authorize guessing the
         // first post-recenter xrLocateViews frame. Its true transition could
         // still be in the future, including after another queued event.
@@ -47,8 +50,21 @@ public:
         return true;
     }
     ReferenceSpaceFrame OnPredictedFrame(std::int64_t display_time) noexcept {
-        if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_)
+        if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_ ||
+           time_discontinuity_)return ReferenceSpaceFrame::Exhausted;
+        // XrTime is runtime-owned and strictly forward-moving for these
+        // published views. A zero, duplicate, or reversed predicted time
+        // can pair a NEW LOCAL epoch with OLD xrLocateViews coordinates.
+        // Quarantine this XR session rather than relabeling such eyes.
+        if(display_time<=0 ||
+           (last_predicted_display_time_ &&
+            display_time<=last_predicted_display_time_)){
+            time_discontinuity_=true;
+            pending_=false;
+            change_time_=0;
             return ReferenceSpaceFrame::Exhausted;
+        }
+        last_predicted_display_time_=display_time;
         if(!pending_)return ReferenceSpaceFrame::Ready;
         if(display_time<=0 || (change_time_>0 &&
                                display_time<change_time_))
@@ -63,6 +79,7 @@ public:
     bool Pending()const noexcept{return pending_;}
     bool EventsLost()const noexcept{return events_lost_;}
     bool ChangeTimeUnknown()const noexcept{return unknown_change_time_;}
+    bool TimeDiscontinuity()const noexcept{return time_discontinuity_;}
 private:
     bool Advance() noexcept {
         if(exhausted_ || epoch_==std::numeric_limits<std::uint32_t>::max()){
@@ -74,7 +91,8 @@ private:
     }
     std::uint32_t epoch_=0;
     std::int64_t change_time_=0;
+    std::int64_t last_predicted_display_time_=0;
     bool pending_=false,events_lost_=false,unknown_change_time_=false,
-         exhausted_=false;
+         time_discontinuity_=false,exhausted_=false;
 };
 } // namespace m2vr::pose

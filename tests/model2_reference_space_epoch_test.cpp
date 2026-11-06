@@ -54,5 +54,43 @@ int main(){
     CHECK(!gate.NotifyLocalChange(10000));
     CHECK(gate.BeginSession() && gate.Epoch()==7 && !gate.EventsLost());
     CHECK(gate.OnPredictedFrame(9001)==ReferenceSpaceFrame::Ready);
+    // Independent XR sessions: real predicted display time must advance.
+    // Duplicate time during a pending LOCAL change is not a safe way to
+    // call that frame Ready and cannot promote a guessed new origin.
+    ReferenceSpaceEpochGate duplicate;
+    CHECK(duplicate.BeginSession() && duplicate.Epoch()==1u);
+    CHECK(duplicate.OnPredictedFrame(100)==ReferenceSpaceFrame::Ready);
+    CHECK(duplicate.NotifyLocalChange(200));
+    CHECK(duplicate.OnPredictedFrame(199)==ReferenceSpaceFrame::SuppressPending);
+    CHECK(duplicate.OnPredictedFrame(199)==ReferenceSpaceFrame::Exhausted);
+    CHECK(duplicate.TimeDiscontinuity() && !duplicate.Pending());
+    CHECK(duplicate.Epoch()==1u && !duplicate.NotifyLocalChange(300));
+    CHECK(duplicate.OnPredictedFrame(500)==ReferenceSpaceFrame::Exhausted);
+    CHECK(duplicate.BeginSession() && duplicate.Epoch()==2u);
+    CHECK(!duplicate.TimeDiscontinuity());
+    CHECK(duplicate.OnPredictedFrame(1)==ReferenceSpaceFrame::Ready);
+    // A reverse timestamp after a real LOCAL boundary cannot reuse the
+    // new epoch for old stereo eyes, even when OpenXR tracking is valid.
+    ReferenceSpaceEpochGate rollback;
+    CHECK(rollback.BeginSession());
+    CHECK(rollback.OnPredictedFrame(500)==ReferenceSpaceFrame::Ready);
+    CHECK(rollback.NotifyLocalChange(600));
+    CHECK(rollback.OnPredictedFrame(600)==ReferenceSpaceFrame::SuppressTransition);
+    CHECK(rollback.Epoch()==2u);
+    CHECK(rollback.OnPredictedFrame(599)==ReferenceSpaceFrame::Exhausted);
+    CHECK(rollback.TimeDiscontinuity());
+    CHECK(rollback.OnPredictedFrame(601)==ReferenceSpaceFrame::Exhausted);
+    CHECK(rollback.BeginSession() && rollback.Epoch()==3u);
+    CHECK(rollback.OnPredictedFrame(1)==ReferenceSpaceFrame::Ready);
+    // Missing/invalid display time on the FIRST frame is also forbidden:
+    // there is no valid xrLocateViews time to associate with a CPU frame.
+    ReferenceSpaceEpochGate missing;
+    CHECK(missing.BeginSession());
+    CHECK(missing.OnPredictedFrame(0)==ReferenceSpaceFrame::Exhausted);
+    CHECK(missing.TimeDiscontinuity());
+    CHECK(missing.OnPredictedFrame(100)==ReferenceSpaceFrame::Exhausted);
+    CHECK(missing.BeginSession());
+    CHECK(missing.OnPredictedFrame(100)==ReferenceSpaceFrame::Ready);
+    CHECK(missing.OnPredictedFrame(-10)==ReferenceSpaceFrame::Exhausted);
     return 0;
 }

@@ -211,6 +211,11 @@ void XrApp::draw_frame(XrTime display_time){
             std::cout<<"OpenXR LOCAL reference space reanchored epoch="
                      <<local_reference_epoch_.Epoch()
                      <<" (old original game eyes discarded)"<<std::endl;
+        }else if(local_action==pose::ReferenceSpaceFrame::Exhausted){
+            // A predicted-time rollback (or missing LOCAL source event)
+            // must revoke BOTH old Win32 source eyes and Win64 cached
+            // images, not merely stop publishing new HMD views.
+            invalidate_source_session();
         }
         report_wizard_health(false,false);
         XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
