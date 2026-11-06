@@ -23,6 +23,15 @@ public:
         pending_=true;
         return true;
     }
+    // XR_TYPE_EVENT_DATA_EVENTS_LOST has no reliable changeTime.
+    // It may conceal an already-effective recenter, so ignore any older
+    // future threshold and force a fresh LOCAL origin on the next frame.
+    bool NotifyEventsLost() noexcept {
+        if(!epoch_ || exhausted_)return false;
+        pending_=true;
+        change_time_=0;
+        return true;
+    }
     ReferenceSpaceFrame OnPredictedFrame(std::int64_t display_time) noexcept {
         if(!epoch_ || exhausted_)return ReferenceSpaceFrame::Exhausted;
         if(!pending_)return ReferenceSpaceFrame::Ready;

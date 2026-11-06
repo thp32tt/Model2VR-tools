@@ -339,8 +339,12 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         g.projected_camera.Reset();g.fixed_camera.Reset();g.camera_family.Reset();
         g.original_draw_one_shot.Reset();
         g.original_draw_armed.store(false,std::memory_order_release);
+        const auto prior_local_reference=g.head_origin.ReferenceSpaceEpoch();
         g.head_origin=next_origin;
         g.camera_epoch=next_camera;
+        if(predicted.reserved && predicted.reserved!=prior_local_reference)
+            m2vr::LogEvent("model2_vr_cpu_world_local_recenter",
+                frame_id,prior_local_reference,predicted.reserved,0u);
         g.frame=frame_id;
         g.pose_sequence=predicted.sequence;
         g.pose_published_qpc=predicted.published_qpc;

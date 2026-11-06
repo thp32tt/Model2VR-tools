@@ -32,5 +32,11 @@ int main(){
     CHECK(gate.OnPredictedFrame(400)==ReferenceSpaceFrame::SuppressPending);
     CHECK(gate.BeginSession() && gate.Epoch()==6 && !gate.Pending());
     CHECK(gate.OnPredictedFrame(401)==ReferenceSpaceFrame::Ready);
+    CHECK(gate.NotifyLocalChange(2000));
+    CHECK(gate.OnPredictedFrame(402)==ReferenceSpaceFrame::SuppressPending);
+    CHECK(gate.NotifyEventsLost());
+    CHECK(gate.OnPredictedFrame(403)==ReferenceSpaceFrame::SuppressTransition);
+    CHECK(gate.Epoch()==7);
+    CHECK(gate.OnPredictedFrame(404)==ReferenceSpaceFrame::Ready);
     return 0;
 }
