@@ -185,5 +185,33 @@ int main(){
     REQUIRE(epoch.OnPredictedFrame(7000)==pose::ReferenceSpaceFrame::Exhausted);
     REQUIRE(epoch.BeginSession() && epoch.Epoch()==5u);
     REQUIRE(epoch.OnPredictedFrame(1)==pose::ReferenceSpaceFrame::Ready);
+    // The host event loop invalidates x86 IPC and Win64 pose cache when a
+    // LOCAL notification is received even if its effective time was already
+    // processed. The gate must forbid any fresh pair from that session.
+    pose::ReferenceSpaceEpochGate late_event;
+    REQUIRE(late_event.BeginSession() && late_event.Epoch()==1u);
+    REQUIRE(late_event.OnPredictedFrame(500)==pose::ReferenceSpaceFrame::Ready);
+    Ring late_history;
+    FakeHostWriter late_writer{&late_history};
+    const auto old_pair=Packet(20u,late_event.Epoch(),15.f);
+    REQUIRE(pose::PublishTrackedStereoPose(
+        late_writer,late_history,old_pair,Views{41u,42u}));
+    REQUIRE(late_history.Find(20u)!=nullptr);
+    REQUIRE(late_event.NotifyLocalChange(450) && late_event.LateChangeTime());
+    REQUIRE(late_writer.Invalidate());
+    late_history.Clear();
+    REQUIRE(late_writer.published.sequence==0u);
+    REQUIRE(late_history.Find(20u)==nullptr);
+    REQUIRE(late_event.Epoch()==1u && !late_event.Pending());
+    REQUIRE(late_event.OnPredictedFrame(600)==
+            pose::ReferenceSpaceFrame::Exhausted);
+    REQUIRE(!late_event.NotifyLocalChange(900));
+    REQUIRE(late_event.BeginSession() && late_event.Epoch()==2u);
+    REQUIRE(late_event.OnPredictedFrame(1)==pose::ReferenceSpaceFrame::Ready);
+    const auto recovered_pair=Packet(21u,late_event.Epoch(),-15.f);
+    REQUIRE(pose::PublishTrackedStereoPose(
+        late_writer,late_history,recovered_pair,Views{51u,52u}));
+    REQUIRE(late_writer.published.reserved==2u);
+    REQUIRE(late_history.Find(21u)!=nullptr);
     return 0;
 }

@@ -16,13 +16,14 @@ public:
         change_time_=0;
         events_lost_=false;
         unknown_change_time_=false;
+        late_change_time_=false;
         time_discontinuity_=false;
         last_predicted_display_time_=0;
         return Advance();
     }
     bool NotifyLocalChange(std::int64_t change_time) noexcept {
         if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_ ||
-           time_discontinuity_)return false;
+           time_discontinuity_ || late_change_time_)return false;
         // An absent/nonpositive changeTime does NOT authorize guessing the
         // first post-recenter xrLocateViews frame. Its true transition could
         // still be in the future, including after another queued event.
@@ -31,6 +32,18 @@ public:
             pending_=false;
             change_time_=0;
             unknown_change_time_=true;
+            return true;
+        }
+        // An event received AFTER its changeTime was already reached by a
+        // previously processed predicted frame cannot establish which LOCAL
+        // origin its binocular views used. Do not retroactively re-label
+        // original x86 game eyes under a guessed fresh epoch. This includes
+        // equal-time and older notifications while another event is pending.
+        if(last_predicted_display_time_ &&
+           change_time<=last_predicted_display_time_){
+            pending_=false;
+            change_time_=0;
+            late_change_time_=true;
             return true;
         }
         if(!pending_)change_time_=change_time;
@@ -51,7 +64,8 @@ public:
     }
     ReferenceSpaceFrame OnPredictedFrame(std::int64_t display_time) noexcept {
         if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_ ||
-           time_discontinuity_)return ReferenceSpaceFrame::Exhausted;
+           time_discontinuity_ || late_change_time_)
+            return ReferenceSpaceFrame::Exhausted;
         // XrTime is runtime-owned and strictly forward-moving for these
         // published views. A zero, duplicate, or reversed predicted time
         // can pair a NEW LOCAL epoch with OLD xrLocateViews coordinates.
@@ -79,6 +93,7 @@ public:
     bool Pending()const noexcept{return pending_;}
     bool EventsLost()const noexcept{return events_lost_;}
     bool ChangeTimeUnknown()const noexcept{return unknown_change_time_;}
+    bool LateChangeTime()const noexcept{return late_change_time_;}
     bool TimeDiscontinuity()const noexcept{return time_discontinuity_;}
 private:
     bool Advance() noexcept {
@@ -93,6 +108,6 @@ private:
     std::int64_t change_time_=0;
     std::int64_t last_predicted_display_time_=0;
     bool pending_=false,events_lost_=false,unknown_change_time_=false,
-         time_discontinuity_=false,exhausted_=false;
+         late_change_time_=false,time_discontinuity_=false,exhausted_=false;
 };
 } // namespace m2vr::pose

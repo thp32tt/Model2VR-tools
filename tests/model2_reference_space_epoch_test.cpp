@@ -92,5 +92,36 @@ int main(){
     CHECK(missing.BeginSession());
     CHECK(missing.OnPredictedFrame(100)==ReferenceSpaceFrame::Ready);
     CHECK(missing.OnPredictedFrame(-10)==ReferenceSpaceFrame::Exhausted);
+    // A LOCAL change delivered after its effective time has already been
+    // processed must not retroactively label old game eyes as a new origin.
+    ReferenceSpaceEpochGate delayed;
+    CHECK(delayed.BeginSession() && delayed.Epoch()==1u);
+    CHECK(delayed.OnPredictedFrame(100)==ReferenceSpaceFrame::Ready);
+    CHECK(delayed.NotifyLocalChange(100) && delayed.LateChangeTime());
+    CHECK(!delayed.Pending() && delayed.Epoch()==1u);
+    CHECK(delayed.OnPredictedFrame(101)==ReferenceSpaceFrame::Exhausted);
+    CHECK(!delayed.NotifyLocalChange(200));
+    CHECK(delayed.OnPredictedFrame(999)==ReferenceSpaceFrame::Exhausted);
+    CHECK(delayed.BeginSession() && delayed.Epoch()==2u);
+    CHECK(!delayed.LateChangeTime());
+    CHECK(delayed.OnPredictedFrame(1)==ReferenceSpaceFrame::Ready);
+    // A strictly older event is also late; another pending future change
+    // must not mask that we already passed an independent LOCAL boundary.
+    ReferenceSpaceEpochGate two_events;
+    CHECK(two_events.BeginSession());
+    CHECK(two_events.OnPredictedFrame(100)==ReferenceSpaceFrame::Ready);
+    CHECK(two_events.NotifyLocalChange(250));
+    CHECK(two_events.OnPredictedFrame(150)==ReferenceSpaceFrame::SuppressPending);
+    CHECK(two_events.NotifyLocalChange(149) && two_events.LateChangeTime());
+    CHECK(!two_events.Pending() && two_events.Epoch()==1u);
+    CHECK(two_events.OnPredictedFrame(250)==ReferenceSpaceFrame::Exhausted);
+    CHECK(two_events.BeginSession() && two_events.Epoch()==2u);
+    CHECK(two_events.OnPredictedFrame(1)==ReferenceSpaceFrame::Ready);
+    // A future timestamp that was not passed is still eligible for the
+    // usual pending / exact-changeTime suppression and fresh LOCAL epoch.
+    CHECK(two_events.NotifyLocalChange(200));
+    CHECK(two_events.OnPredictedFrame(199)==ReferenceSpaceFrame::SuppressPending);
+    CHECK(two_events.OnPredictedFrame(200)==ReferenceSpaceFrame::SuppressTransition);
+    CHECK(two_events.OnPredictedFrame(201)==ReferenceSpaceFrame::Ready);
     return 0;
 }
