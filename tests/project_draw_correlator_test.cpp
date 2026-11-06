@@ -63,6 +63,16 @@ int main(){
     const std::uint32_t forged_indices[6]{0u,1u,2u,3u,4u,5u};
     CHECK(recycled.MatchTriangleList(91u,recycled_faces,6u,
         forged_indices).alias_violations==1u);
+    // Reverse source alias: an original source index cannot represent
+    // two different projected CPU outputs, even if XY values differ.
+    const std::uint32_t false_same_id[6]{0u,1u,2u,0u,4u,5u};
+    const auto opposite_alias=multi.MatchTriangleList(
+        43u,two_faces,6u,false_same_id);
+    CHECK(opposite_alias.alias_violations==1u &&
+          !opposite_alias.CompleteSameSource());
+    // A real index window (no invented alias) retains six unique calls.
+    CHECK(multi.MatchTriangleList(
+        43u,two_faces,6u,forged_indices).CompleteSameSource());
     CHECK(full_batch.partial==0u && full_batch.ambiguous==0u);
     CHECK(full_batch.common_source_caller_rva==0x55u);
     CHECK(multi.MatchTriangleList(44u,two_faces,6u).complete==0u);

@@ -234,6 +234,11 @@ public:
         // No heap allocation and no original pointer/geometry exposure.
         std::array<std::uint8_t,kCapacity> visited{};
         std::array<std::uint32_t,kCapacity> source_vertex_ids{};
+        // Reverse binding is equally important: one authentic original
+        // vertex ID cannot borrow two DIFFERENT projector invocations.
+        std::array<std::uint32_t,kMaxOriginalProjectionSamples> observed_ids{};
+        std::array<std::size_t,kMaxOriginalProjectionSamples> observed_slots{};
+        std::size_t observed_count=0u;
         if(!vertices || !epoch || vertex_count<3u ||
            vertex_count%3u || vertex_count>3u*kMaxJoinTriangles)
             return batch;
@@ -254,6 +259,23 @@ public:
                     if(slot>=kCapacity ||
                        (visited[slot] && source_vertex_ids[slot]!=source_id))
                         alias=true;
+                    for(std::size_t previous=0;previous<observed_count;
+                        ++previous) {
+                        if(observed_ids[previous]==source_id &&
+                           observed_slots[previous]!=slot)
+                            alias=true;
+                    }
+                    // Also reject two distinct captures with the SAME
+                    // original vertex ID inside the current triangle,
+                    // before any of this triangle is committed.
+                    for(std::size_t previous=0;previous<v;++previous) {
+                        if((original_vertex_ids
+                                ?original_vertex_ids[i+previous]
+                                :static_cast<std::uint32_t>(i+previous))
+                            ==source_id &&
+                           join.capture_slots[previous]!=slot)
+                            alias=true;
+                    }
                 }
                 if(alias){
                     ++batch.alias_violations;
@@ -270,6 +292,11 @@ public:
                         source_vertex_ids[slot]=original_vertex_ids
                             ?original_vertex_ids[i+v]
                             :static_cast<std::uint32_t>(i+v);
+                        // Bounded by kMaxOriginalProjectionSamples: the
+                        // batch never contains more than 192 vertices.
+                        observed_ids[observed_count]=source_vertex_ids[slot];
+                        observed_slots[observed_count]=slot;
+                        ++observed_count;
                         ++batch.distinct_captures;
                     }
                 }
