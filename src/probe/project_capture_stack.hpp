@@ -11,6 +11,9 @@ struct ProjectCaptureRecord {
     const void* original_point=nullptr;
     std::array<float,3> source_xyz{};
     std::uint32_t source_caller_rva=0;
+    // Physical original Present/Reset generation at genuine CPU call ENTRY.
+    // A call that completes in another generation cannot own eye geometry.
+    std::uint64_t source_epoch=0u;
     // Original active matrix identity sampled before the CPU projector.
     std::uint32_t matrix_identity=0;
     // Snapshot of all 16 source matrix floats before the original projector.
@@ -33,11 +36,18 @@ struct ProjectCaptureRecord {
 // Bounded pointer-free original projector source gap codes. Only the
 // public numeric mask is logged for sampled PRIVATE original-game runs.
  // Bit 1: missing original caller/input; 2: matrix not readable/stable;
- // bit 4: active geometry command not readable/stable. These never
+ // bit 4: active geometry command not readable/stable;
+ // bit 8: original physical Present/Reset crossed the CPU projector call.
+ // These never
  // authenticate a gameplay world or give a caller World3D permission.
+inline constexpr bool OriginalCpuProjectorEpochStable(
+    std::uint64_t entered,std::uint64_t completed) noexcept {
+    return entered!=0u && entered==completed;
+}
 inline constexpr std::uint32_t OriginalCpuProjectorSourceGapFlags(
     const ProjectCaptureRecord& record,
-    bool matrix_changed,bool geometry_changed) noexcept {
+    bool matrix_changed,bool geometry_changed,
+    bool epoch_changed=false) noexcept {
     std::uint32_t mask=0u;
     if(!record.capture || !record.original_point || !record.source_caller_rva)
         mask|=1u;
@@ -46,13 +56,16 @@ inline constexpr std::uint32_t OriginalCpuProjectorSourceGapFlags(
     if(!record.geometry_stream_pointer || !record.geometry_command_valid ||
        geometry_changed)
         mask|=4u;
+    if(!record.source_epoch || epoch_changed)
+        mask|=8u;
     return mask;
 }
 inline constexpr bool OriginalCpuProjectorRecordSafeToJoin(
     const ProjectCaptureRecord& record,
-    bool matrix_changed,bool geometry_changed) noexcept {
+    bool matrix_changed,bool geometry_changed,
+    bool epoch_changed=false) noexcept {
     return OriginalCpuProjectorSourceGapFlags(
-        record,matrix_changed,geometry_changed)==0u;
+        record,matrix_changed,geometry_changed,epoch_changed)==0u;
 }
 class ProjectCaptureStack final {
 public:
