@@ -230,7 +230,8 @@ extern "C" void __cdecl M2VR_OnProjectVertexAfter(void* /*eax_after_original*/) 
                 record.geometry_command_word,
                 geometry_changed?2u:(matrix_changed?1u:0u));
         }
-        if(!matrix_changed && !geometry_changed){
+        if(m2vr::drawprobe::OriginalCpuProjectorRecordSafeToJoin(
+               record,matrix_changed,geometry_changed)){
             const float projected[3]{x,y,z};
             m2vr::drawprobe::ThreadProjectDrawCorrelator().Capture(
                 m2vr::drawprobe::CurrentProjectDrawEpoch(),

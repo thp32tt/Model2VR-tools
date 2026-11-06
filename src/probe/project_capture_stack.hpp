@@ -25,6 +25,22 @@ struct ProjectCaptureRecord {
     bool emit_log=false;
     bool capture=false;
 };
+// Real original x86 projector callers enter the L/R World3D source ring
+// only if BOTH original active matrix contents and the geometry command
+// word were actually readable throughout the same native invocation.
+ // A legitimately zero command word is allowed only when its *readability*
+ // bit is true; an unavailable stream must not become a fake zero command.
+inline constexpr bool OriginalCpuProjectorRecordSafeToJoin(
+    const ProjectCaptureRecord& record,
+    bool matrix_changed,bool geometry_changed) noexcept {
+    return record.capture && record.original_point &&
+        record.source_caller_rva!=0u &&
+        record.matrix_identity!=0u &&
+        record.matrix_fingerprint!=0u &&
+        record.geometry_stream_pointer!=0u &&
+        record.geometry_command_valid &&
+        !matrix_changed && !geometry_changed;
+}
 class ProjectCaptureStack final {
 public:
     static constexpr unsigned kMaxDepth=16u;

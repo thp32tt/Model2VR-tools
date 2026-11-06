@@ -15,6 +15,7 @@ int main(){
     outer->source_caller_rva=0x1234u;
     outer->source_xyz={1.f,2.f,3.f};
     outer->capture=true;
+    outer->matrix_identity=0x1008u;
     outer->matrix_fingerprint=0x12345678u;
     outer->geometry_stream_pointer=0x10000u;
     outer->geometry_command_word=0x789ABC12u;
@@ -39,6 +40,32 @@ int main(){
     CHECK(completed.geometry_stream_pointer==0x10000u);
     CHECK(completed.geometry_command_word==0x789ABC12u);
     CHECK(completed.geometry_command_valid);
+    // Actual x86 original CPU ProjectVertexToScreen evidence must be
+    // available at BOTH ends of the same call. Missing geometry command
+    // or unknown matrix may not enter the 64-triangle XR source fitter.
+    CHECK(OriginalCpuProjectorRecordSafeToJoin(completed,false,false));
+    CHECK(!OriginalCpuProjectorRecordSafeToJoin(completed,true,false));
+    CHECK(!OriginalCpuProjectorRecordSafeToJoin(completed,false,true));
+    auto unavailable=completed;
+    unavailable.geometry_command_valid=false;
+    CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
+    unavailable=completed;
+    unavailable.geometry_stream_pointer=0u;
+    CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
+    unavailable=completed;
+    unavailable.matrix_identity=0u;
+    CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
+    unavailable=completed;
+    unavailable.matrix_fingerprint=0u;
+    CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
+    unavailable=completed;
+    unavailable.source_caller_rva=0u;
+    CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
+    unavailable=completed;
+    unavailable.geometry_command_word=0u; // genuine zero is allowed
+    CHECK(OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
+    unavailable.geometry_command_valid=false;
+    CHECK(!OriginalCpuProjectorRecordSafeToJoin(unavailable,false,false));
     CHECK(!stack.Top());
     CHECK(completed.source_xyz[2]==3.f);
     CHECK(stack.Depth()==0u);
