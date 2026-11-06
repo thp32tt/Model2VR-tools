@@ -272,6 +272,68 @@ jobs:
               throw "Comparison must not run after raw original CSV mutation"
             }
           }
+      - name: Reject original resume cached preflight after silent zero-exit
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference="Stop"
+          # Synthetic private archive source transaction only; no Daytona
+          # executable, original hardware/ROM or VR runtime is exercised.
+          $auditor=@'
+          import json, os, pathlib, sys
+          args=sys.argv[1:]
+          if "--preflight" not in args:
+              raise RuntimeError("synthetic comparison must not run")
+          if os.environ.get("MODEL2_PREFLIGHT_OUTPUT_SMOKE")=="fresh":
+              out=pathlib.Path(args[args.index("--output")+1])
+              out.write_text(json.dumps({"original_capture_run":{"nonce_hex":"0x0000000000000001"}}),encoding="utf-8")
+          sys.exit(0)
+          '@
+          foreach($mode in @("silent","fresh")) {
+            $root=Join-Path $env:RUNNER_TEMP ("private-source-freshness-"+$mode)
+            $archive=Join-Path $root "logs/private_original_evidence_saved"
+            New-Item -ItemType Directory -Force -Path $archive | Out-Null
+            Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+            Copy-Item tools/model2_draw_source_report.py $root/
+            [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
+              $auditor,[Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText((Join-Path $archive "race_a.csv"),
+              "synthetic preflight report freshness test only, not original x86 frames")
+            [IO.File]::WriteAllText((Join-Path $archive "PRIVATE_SOURCE_race_a.json"),
+              '{"original_capture_run":{"nonce_hex":"0x000000000000ffff"},"stale":true}')
+            $env:MODEL2_PREFLIGHT_OUTPUT_SMOKE=$mode
+            $rejected=$false
+            try {
+              & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ResumeSessionFolder $archive
+            } catch {
+              if($_.Exception.Message -notmatch "No NEW original x86 source CSV"){throw}
+              $rejected=$true
+            } finally {
+              $env:MODEL2_PREFLIGHT_OUTPUT_SMOKE=$null
+            }
+            if(-not $rejected){throw "Synthetic incomplete original seven-stage source accepted: $mode"}
+            $old=@(Get-ChildItem -LiteralPath $archive -File -Filter "PRIVATE_STALE_SOURCE_race_a_*")
+            if($old.Count -ne 1){throw "Previous cached original report not archived: $mode"}
+            if((Get-Content -LiteralPath $old[0].FullName -Raw) -notmatch '"stale":true'){
+              throw "Prior report was not preserved without modification: $mode"
+            }
+            $active=Join-Path $archive "PRIVATE_SOURCE_race_a.json"
+            if($mode -eq "silent") {
+              if(Test-Path -LiteralPath $active){throw "Stale original report accepted after silent zero-exit"}
+              if(@(Get-ChildItem -LiteralPath $archive -Filter "PRIVATE_FAILED_race_a_*_race_a.csv").Count -ne 1){
+                throw "Silent auditor original CSV not retained for diagnostic retry"
+              }
+            } else {
+              if(!(Test-Path -LiteralPath $active)){throw "Fresh original audit not promoted"}
+              $new=Get-Content -LiteralPath $active -Raw | ConvertFrom-Json
+              if($new.original_capture_run.nonce_hex -cne "0x0000000000000001"){
+                throw "Fresh physical source nonce not promoted"
+              }
+            }
+            if(Test-Path -LiteralPath (Join-Path $archive "PRIVATE_MANIFEST.json")){
+              throw "Unfinished seven-stage original capture falsely published a manifest"
+            }
+          }
       - name: Reject blocked or flooded original private Python auditors
         shell: pwsh
         timeout-minutes: 2

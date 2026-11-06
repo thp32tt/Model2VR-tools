@@ -139,6 +139,25 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertNotIn('StandardError.ReadToEnd()', self.ps)
         self.assertIn('Reject blocked or flooded original private Python auditors', self.workflow)
 
+    def test_new_preflight_report_is_never_a_cached_success(self):
+        # Both newly captured and resumed original CSVs need their own
+        # unique pending JSON; no old PRIVATE_SOURCE JSON can masquerade
+        # as a fresh Python auditor result after timeout or silent exit 0.
+        self.assertIn("function New-PendingPrivateSourcePath", self.ps)
+        self.assertEqual(self.ps.count("New-PendingPrivateSourcePath $label"), 2)
+        self.assertIn('PRIVATE_PENDING_SOURCE_', self.ps)
+        self.assertIn('PRIVATE_STALE_SOURCE_', self.ps)
+        self.assertIn('Rename-Item -LiteralPath $preflight -NewName $staleName', self.ps)
+        self.assertLess(self.ps.index('Rename-Item -LiteralPath $preflight -NewName $staleName'),
+                        self.ps.index('$resumeExit = Invoke-PrivateAudit'))
+        self.assertIn('"--preflight",$target,"--output",$pendingPreflight', self.ps)
+        self.assertEqual(self.ps.count('Move-Item -LiteralPath $pendingPreflight -Destination $preflight'), 2)
+        self.assertLess(self.ps.index('$resumeReport = Get-Content -LiteralPath $pendingPreflight'),
+                        self.ps.index('Move-Item -LiteralPath $pendingPreflight -Destination $preflight'))
+        self.assertLess(self.ps.index('$sourceReport = Get-Content -LiteralPath $pendingPreflight'),
+                        self.ps.rindex('Move-Item -LiteralPath $pendingPreflight -Destination $preflight'))
+        self.assertIn('Reject original resume cached preflight after silent zero-exit', self.workflow)
+
     def test_timed_out_comparator_quarantines_partially_written_candidate(self):
         # Preflight success does not make a candidate safe when the final
         # Python process creates a JSON and then times out or cannot exit.

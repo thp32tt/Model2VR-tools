@@ -126,6 +126,13 @@ function SessionCsvName([string]$label) {
   if ($label -eq "aux") { return "auxiliary.csv" }
   return $label + ".csv"
 }
+# Never accept a previously cached PRIVATE_SOURCE report as the result of
+# a fresh CSV preflight. Only a uniquely named pending output produced by
+# this invocation may become the active report after the audit succeeds.
+function New-PendingPrivateSourcePath([string]$label) {
+  return Join-Path $destination ("PRIVATE_PENDING_SOURCE_" + $label + "_" +
+    [guid]::NewGuid().ToString("N") + ".json")
+}
 
 Write-Host "LOCAL / PRIVATE: Daytona original evidence capture. No uploads."
 Write-Host "Always close the original emulator BEFORE pressing Enter. Each"
@@ -139,11 +146,20 @@ foreach ($label in $labels) {
       # trust cached JSON or user-labelled source names.
       $resumeSource = Get-Item -LiteralPath $target -ErrorAction Stop
       $resumeHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+      # Invalidate the prior cached source BEFORE invoking Python. A
+      # silent zero-exit or an audit timeout cannot reuse yesterday's JSON.
+      # Preserve the old report under an unmistakably inactive name.
+      if (Test-Path -LiteralPath $preflight -PathType Leaf) {
+        $staleName = "PRIVATE_STALE_SOURCE_" + $label + "_" +
+          [guid]::NewGuid().ToString("N") + ".json"
+        Rename-Item -LiteralPath $preflight -NewName $staleName -ErrorAction Stop
+      }
+      $pendingPreflight = New-PendingPrivateSourcePath $label
       $resumeExit = Invoke-PrivateAudit -auditArguments @(
-        $analyzer,"--preflight",$target,"--output",$preflight)
+        $analyzer,"--preflight",$target,"--output",$pendingPreflight)
       if ($resumeSource.Length -ge 32 -and $resumeExit -eq 0 -and
-          (Test-Path -LiteralPath $preflight -PathType Leaf)) {
-        $resumeReport = Get-Content -LiteralPath $preflight -Raw -Encoding UTF8 |
+          (Test-Path -LiteralPath $pendingPreflight -PathType Leaf)) {
+        $resumeReport = Get-Content -LiteralPath $pendingPreflight -Raw -Encoding UTF8 |
           ConvertFrom-Json
         $resumeNonce = [string]$resumeReport.original_capture_run.nonce_hex
         if ($resumeNonce -cnotmatch '^0x[0-9a-f]{16}$' -or
@@ -153,6 +169,9 @@ foreach ($label in $labels) {
             !$knownNonces.Add($resumeNonce)) {
           throw "PRIVATE SESSION RESUME FAIL-CLOSED: duplicate or missing original source identity for $label."
         }
+        # Move the newly audited file into the active slot only AFTER
+        # validating the original physical source process identity.
+        Move-Item -LiteralPath $pendingPreflight -Destination $preflight -ErrorAction Stop
         $copies[$label] = $target
         $hashes[$label] = $resumeHash
         $reports[$label] = $preflight
@@ -228,13 +247,14 @@ foreach ($label in $labels) {
   # Verify physical Draw/Scene/Present and run identity before prompting
   # for the next private original EXE session. Cache its complete private
   # report instead of repeating the expensive CSV parse at final triage.
+  $pendingPreflight = New-PendingPrivateSourcePath $label
   $preflightExit = Invoke-PrivateAudit -auditArguments @(
-    $analyzer,"--preflight",$target,"--output",$preflight)
+    $analyzer,"--preflight",$target,"--output",$pendingPreflight)
   if ($preflightExit -ne 0 -or
-      !(Test-Path -LiteralPath $preflight -PathType Leaf)) {
+      !(Test-Path -LiteralPath $pendingPreflight -PathType Leaf)) {
     throw "PRIVATE SESSION PREFLIGHT FAIL-CLOSED: $label original Draw/Present evidence invalid. Archive kept: $destination"
   }
-  $sourceReport = Get-Content -LiteralPath $preflight -Raw -Encoding UTF8 |
+  $sourceReport = Get-Content -LiteralPath $pendingPreflight -Raw -Encoding UTF8 |
     ConvertFrom-Json
   $nonce = [string]$sourceReport.original_capture_run.nonce_hex
   if ($nonce -notmatch '^0x[0-9a-f]{16}$' -or
@@ -242,6 +262,7 @@ foreach ($label in $labels) {
       !$knownNonces.Add($nonce)) {
     throw "PRIVATE SESSION PREFLIGHT FAIL-CLOSED: duplicate or missing original process nonce for $label. Archive kept: $destination"
   }
+  Move-Item -LiteralPath $pendingPreflight -Destination $preflight -ErrorAction Stop
   $reports[$label] = $preflight
   $reportHashes[$label] = (Get-FileHash -LiteralPath $preflight -Algorithm SHA256).Hash
   Write-Host ("Validated and archived PRIVATE " + $label + " (" +
