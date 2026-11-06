@@ -47,6 +47,33 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0, caller, pack(frame, 3)),
         ]
 
+    def test_original_up_unique_optical_fit_carries_true_eye_expansion(self):
+        base=self.projected()
+        old=self.report(base+[
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(old["counts"]["same_witness_cpu_camera_present_candidate"],1)
+        self.assertNotIn("same_witness_unique_cpu_camera_present_candidate",
+                         old["counts"])
+        source=event("model2_d3d9_cpu_up_source_cardinality",21,6,6,0)
+        optical=event("model2_d3d9_cpu_up_fit_population",21,6,12,6)
+        actual=self.report(base+[source,optical,
+            event("model2_d3d9_original_present_result",7,0,1,0)])
+        self.assertEqual(actual["counts"]["original_up_unique_fit_population_witness"],1)
+        self.assertEqual(actual["counts"]["same_witness_unique_cpu_camera_present_candidate"],1)
+        for incorrect in ((6,12,5),(6,11,6),(5,12,6),(12,12,6)):
+            with self.subTest(incorrect=incorrect):
+                with self.assertRaisesRegex(
+                        ValueError,"inconsistent original UP fit/eye"):
+                    self.report(base+[source,
+                        event("model2_d3d9_cpu_up_fit_population",21,*incorrect),
+                        event("model2_d3d9_original_present_result",7,0,1,0)])
+        with self.assertRaisesRegex(ValueError,"incomplete original UP fit"):
+            self.report(base+[optical,
+                event("model2_d3d9_original_present_result",7,0,1,0)])
+        with self.assertRaisesRegex(ValueError,"duplicate or foreign original UP"):
+            self.report(base+[source,optical,optical,
+                event("model2_d3d9_original_present_result",7,0,1,0)])
+
     def test_original_validate_device_multi_pass_revokes_up_present(self):
         baseline=self.projected()+[
             event("model2_d3d9_original_present_result",7,0,1,0)]

@@ -1583,6 +1583,9 @@ std::uint64_t ObserveUP(IDirect3DDevice9* dev,unsigned family,
         m2vr::LogEvent("model2_d3d9_cpu_up_source_cardinality",sample_id,
             batch.distinct_captures,batch.legitimate_shared_vertices,
             batch.alias_violations);
+        m2vr::LogEvent("model2_d3d9_cpu_up_fit_population",sample_id,
+            batch.fit_sample_count,batch.camera_sample_count,
+            batch.legitimate_shared_vertices);
         m2vr::LogEvent("model2_d3d9_cpu_up_matrix_identity",sample_id,
             batch.common_matrix_identity,
             batch.mixed_matrix_identity?1u:0u,
@@ -1774,6 +1777,9 @@ std::uint64_t ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
             m2vr::LogEvent("model2_d3d9_cpu_shader_up_source_cardinality",id,
                 batch.distinct_captures,batch.legitimate_shared_vertices,
                 batch.alias_violations);
+            m2vr::LogEvent("model2_d3d9_cpu_shader_up_fit_population",id,
+                batch.fit_sample_count,batch.camera_sample_count,
+                batch.legitimate_shared_vertices);
             m2vr::LogEvent("model2_d3d9_cpu_shader_matrix_identity",id,
                 batch.common_matrix_identity,
                 batch.mixed_matrix_identity?1u:0u,

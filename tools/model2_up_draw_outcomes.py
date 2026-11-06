@@ -27,6 +27,44 @@ JOINS = {
     "model2_d3d9_cpu_up_join_batch": "projected_xyzrhw",
     "model2_d3d9_cpu_shader_up_join_batch": "shader_decl",
 }
+POPULATIONS = {
+    "model2_d3d9_cpu_up_source_cardinality":
+        ("projected_xyzrhw", "source_cardinality"),
+    "model2_d3d9_cpu_up_fit_population":
+        ("projected_xyzrhw", "fit_population"),
+    "model2_d3d9_cpu_shader_up_source_cardinality":
+        ("shader_decl", "source_cardinality"),
+    "model2_d3d9_cpu_shader_up_fit_population":
+        ("shader_decl", "fit_population"),
+}
+
+def unique_fit_population(rec):
+    """Native x86 per-Draw optical points must match genuine eye topology.
+
+    The result is evidence only. Six distinct original projector calls
+    cannot be manufactured from reused strip/fan/indexed GPU vertices.
+    """
+    fit = rec.get("fit_population")
+    card = rec.get("source_cardinality")
+    join = rec.get("join")
+    if fit is None and card is None:
+        return False  # historical PRIVATE traces remain diagnostically readable
+    if fit is None or card is None or join is None:
+        raise ValueError("incomplete original UP fit population")
+    inspected, complete = halves(join[0])
+    partial, ambiguous = halves(join[1])
+    unique, expanded, shared = fit
+    distinct, shared_original, aliases = card
+    if (not 0 < inspected <= 8 or complete > inspected or
+            complete + partial > inspected or ambiguous > inspected or
+            distinct > 3 * complete or shared_original > 3 * complete or
+            unique != distinct or shared != shared_original or
+            expanded != 3 * complete or unique + shared != expanded or
+            aliases > partial or aliases > ambiguous):
+        raise ValueError("inconsistent original UP fit/eye population")
+    return (complete == inspected and not partial and not ambiguous and
+            not aliases and unique >= 6)
+
 META = {
     "model2_d3d9_up_source_fvf": "fvf",
     "model2_d3d9_source_draw_phase": "draw_phase",
@@ -129,6 +167,9 @@ def audit_csv(path):
         rec = records.pop(witness, None)
         if rec is None or ("kind" not in rec and "result" not in rec):
             return  # Shared VB source-context metadata is not original UP.
+        genuine_unique_population = unique_fit_population(rec)
+        if genuine_unique_population:
+            counts["original_up_unique_fit_population_witness"] += 1
         result = rec.get("result")
         if result is None:
             status = "original_draw_result_missing"
@@ -234,6 +275,8 @@ def audit_csv(path):
                     rec["scene_phase"][2] == 1 and
                     camera_joined(rec, frame)):
                 counts["same_witness_cpu_camera_present_candidate"] += 1
+                if genuine_unique_population:
+                    counts["same_witness_unique_cpu_camera_present_candidate"] += 1
                 key = (kind, family, caller)
                 if key not in caller_frames and len(caller_frames) >= MAX_CALLERS:
                     raise ValueError("original UP caller capacity exceeded")
@@ -271,7 +314,8 @@ def audit_csv(path):
             if row_no > MAX_ROWS:
                 raise ValueError("original UP result CSV row limit exceeded")
             event = row["event"]
-            if event not in (set(UP_TYPES) | set(JOINS) | set(META) | {
+            if event not in (set(UP_TYPES) | set(JOINS) |
+                             set(POPULATIONS) | set(META) | {
                 "model2_d3d9_up_original_result",
                 "model2_d3d9_original_present_result",
                 "model2_d3d9_original_scene_failed",
@@ -607,6 +651,12 @@ def audit_csv(path):
             if event in JOINS:
                 if rec.get("kind") == JOINS[event]:
                     once(rec, "join", (a1, a2, a3), a0)
+                continue
+            if event in POPULATIONS:
+                kind, field = POPULATIONS[event]
+                if rec.get("kind") != kind or field in rec:
+                    raise ValueError("duplicate or foreign original UP fit population")
+                rec[field] = (a1, a2, a3)
                 continue
             if event in META:
                 key = META[event]
