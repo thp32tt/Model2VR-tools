@@ -198,6 +198,7 @@ install(TARGETS model2vr_stereo_diagnostic RUNTIME DESTINATION .)
 
 add_executable(model2vr_pose_publication_test tests/stereo_pose_publication_gate_test.cpp)
 target_compile_features(model2vr_pose_publication_test PRIVATE cxx_std_20)
+target_compile_definitions(model2vr_pose_publication_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME original_tracked_pose_transaction_x86 COMMAND model2vr_pose_publication_test)
 
 add_executable(model2vr_pose_ipc_test tests/stereo_pose_ipc_test.cpp)
