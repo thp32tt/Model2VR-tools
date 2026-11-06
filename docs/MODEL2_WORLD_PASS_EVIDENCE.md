@@ -1,5 +1,48 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Original x86 D3D9 camera/program COM lifetime, never inferred from a post-call counter (2026-11-06)
+
+The genuine primary emulator x86 D3D9 COM calls `SetTransform`,
+`MultiplyTransform`, vertex shader binding and float/int/boolean constant
+writes, pixel shader binding and float/int/boolean constant writes, and
+`SetVertexDeclaration`/`SetFVF` are observed from **before original COM
+entry to after its real unchanged HRESULT**. All twelve source setters preserve
+the game's real Draw, CPU simulation, steering, FFB, title/menu/HUD and mono.
+Internal OpenXR eye replay is excluded from original-source attribution.
+
+A bounded original COM write ticket carries its physical Present generation,
+source revision and family. Each of the four genuine physical Draw families
+takes a matching pre/post ticket; concurrent Set/Draw, Set/Set, Reset, physical
+Present entry/return, foreign caller, original failure or late completion
+cannot authorize speculative CPU-world or Win64 OpenXR GameStereo eyes.
+The genuine original game Draw and original physical Present still execute
+once; failed provenance rejects only the speculative two-eye path. This
+checks the exact **call lifetime**, not just a post-COM camera counter.
+
+Every original physical Present emits these pointer-free/private-CSV events:
+
+- `model2_d3d9_original_camera_com_lifetime`: physical frame, unsafe bitmask
+  (1 overlap, 2 cross-Present, 4 untrusted caller, 8 failed original HRESULT,
+  16 in-flight, 32 overflow, 64 revision/draw mismatch), true original
+  Draw total, total completed state writes
+- `model2_d3d9_original_camera_com_families`: same physical frame, genuine
+  camera/VS state writes, pixel shader/program writes, vertex-layout writes
+
+The report enforces consecutive same-process Present IDs, no undefined
+bits or forged/missing family records, matching genuine physical Draw totals,
+and exact sum of those three write categories. The 7-session evidence
+comparator requires this original camera lifetime coverage; race A/B
+candidates must have no overlapped COM evidence and must each contain
+at least one genuine camera/VS source state write. Pixel shader and layout
+writes by themselves cannot fabricate an original race camera.
+
+**This does NOT prove which camera is gameplay World3D**, original emulator
+HMD axes/units/IPD alignment or real Quest3/VDXR stereo. Original x86
+gameplay process data/captures stay in `thp32tt/Model2VR-analysis-private`,
+never in the public source repository. World3D auto-enable stays OFF;
+`world_pass_proof=NOT_ESTABLISHED`,
+`RUNTIME_VALIDATION=UNTESTED`.
+
 ## Race-world original Draw source: five-class negative-control gate (2026-11-06)
 
 Each genuine original primary D3D9 Present, including games rendering only UP
