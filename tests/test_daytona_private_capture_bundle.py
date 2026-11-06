@@ -78,6 +78,11 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('[guid]::NewGuid().ToString("N")', self.ps)
         self.assertIn('PRIVATE_PRIOR_', self.workflow)
         self.assertIn('Old manifest survived failed resume', self.workflow)
+        self.assertIn('PRIVATE_FAILED_COMPARE_', self.ps)
+        self.assertLess(self.ps.index('PRIVATE_FAILED_COMPARE_'),
+                        self.ps.index('Local candidate triage written'))
+        self.assertIn('Rename-Item -LiteralPath $candidateOutput', self.ps)
+        self.assertIn('$pythonExitCode -ne 0', self.ps)
 
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)

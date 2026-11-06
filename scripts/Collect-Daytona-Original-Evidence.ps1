@@ -206,10 +206,20 @@ $argsForPython = @($analyzer,"--race",$reports["race_a"],"--race",$reports["race
 foreach ($label in @("title","menu","sky","hud","aux")) {
   $argsForPython += @("--control",$label,$reports[$label])
 }
-$argsForPython += @("--output",(Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"))
+$candidateOutput = Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"
+$argsForPython += @("--output",$candidateOutput)
 $pythonExitCode = Invoke-PrivateAudit -auditArguments $argsForPython
 if ($pythonExitCode -ne 0 -or
-    !(Test-Path -LiteralPath (Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json") -PathType Leaf)) {
+    !(Test-Path -LiteralPath $candidateOutput -PathType Leaf)) {
+  # A failed analyzer may have left a partial candidate JSON. Do not let
+  # an active success filename survive failed physical-source comparison.
+  if (Test-Path -LiteralPath $candidateOutput -PathType Leaf) {
+    $failedName = "PRIVATE_FAILED_COMPARE_" +
+                  (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmss_fff") +
+                  "_" + [guid]::NewGuid().ToString("N").Substring(0,8) +
+                  "_PRIVATE_WORLD_CANDIDATES.json"
+    Rename-Item -LiteralPath $candidateOutput -NewName $failedName -ErrorAction Stop
+  }
   throw "Private source evidence FAIL-CLOSED. Archive kept for local inspection: $destination"
 }
 # Final manifest only after all seven full source audits and a
