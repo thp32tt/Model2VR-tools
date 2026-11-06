@@ -17,6 +17,24 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         cls.workflow=(ROOT/".github/workflows/daytona-native-stereo.yml").read_text("utf-8")
         cls.docs=(ROOT/"docs/DAYTONA_NATIVE_STEREO.md").read_text("utf-8")
 
+
+    def test_original_private_stage_checkpoint_is_incomplete_and_resumable(self):
+        # Explicit one-stage handoff avoids seven consecutive original-game
+        # runs. Every stage still requires local x86 CSV+nonce+fresh preflight.
+        # Partial archives NEVER become World3D proof or a final receipt.
+        self.assertIn('[string]$StopAfterStage = ""', self.ps)
+        self.assertIn('$StopAfterStage -cnotin $labels', self.ps)
+        self.assertIn('$partialCaptureStopped = $false', self.ps)
+        self.assertIn('if ($StopAfterStage -ceq $label -and $label -cne "aux")', self.ps)
+        self.assertEqual(self.ps.count('if ($StopAfterStage -ceq $label -and $label -cne "aux")'), 2)
+        self.assertIn('PRIVATE CHECKPOINT SAVED - INCOMPLETE', self.ps)
+        self.assertIn('CPU World3D stays AUTO-OFF', self.ps)
+        self.assertLess(self.ps.index('if ($partialCaptureStopped) {'),
+                        self.ps.index('Assert-PrivateArchiveIntegrity\n$argsForPython'))
+        self.assertIn('Smoke test resumable single-stage PRIVATE original capture checkpoint', self.workflow)
+        self.assertIn('StopAfterStage', self.cmd + self.ps)
+        self.assertIn('-StopAfterStage', self.docs)
+
     def test_original_exe_is_never_patched_or_uploaded(self):
         for forbidden in (
             "Invoke-WebRequest", "Invoke-RestMethod", "Start-BitsTransfer",

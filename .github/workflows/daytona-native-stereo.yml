@@ -95,6 +95,61 @@ jobs:
           }
       - name: Audit original texture/vertex/index getter aliases
         run: python -m unittest discover -s tests -p test_model2_getter_resource_source.py -v
+      - name: Smoke test resumable single-stage PRIVATE original capture checkpoint
+        shell: pwsh
+        run: |
+          # This is synthetic process identity only, NOT authentic Daytona
+          # gameplay/Quest evidence. Verify stage stop + resume logic.
+          $ErrorActionPreference="Stop"
+          $root=Join-Path $env:RUNNER_TEMP "private-original-stage-checkpoint"
+          $inputs=Join-Path $root "source"
+          New-Item -ItemType Directory -Force -Path $inputs | Out-Null
+          Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+          [IO.File]::WriteAllText((Join-Path $root "model2_draw_source_report.py"),
+            "# synthetic source report shim, not used in this smoke" + "`n")
+          $preflight=@'
+          import json,sys
+          from pathlib import Path
+          args=sys.argv[1:]
+          if "--preflight" not in args or "--output" not in args:
+              raise SystemExit("Unexpected full seven-stage compare in checkpoint smoke")
+          name=Path(args[args.index("--preflight")+1]).stem
+          identities={"race_a":"0x0000000000000001","race_b":"0x0000000000000002"}
+          if name not in identities:
+              raise SystemExit("Unexpected additional stage "+name)
+          target=Path(args[args.index("--output")+1])
+          target.write_text(json.dumps({"original_capture_run":{"nonce_hex":identities[name]}}),
+                            encoding="utf-8")
+          '@
+          [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),$preflight)
+          foreach($label in @("race_a","race_b")){
+            [IO.File]::WriteAllText((Join-Path $inputs ($label+".csv")),
+              ("seq,qpc,thread,event,a0,a1,a2,a3" + "`n" +
+               "1,1,1,synthetic_" + $label + ",0,0,0,0" + "`n"))
+          }
+          & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") `
+            -PackageRoot $root -ExistingSessionFolder $inputs -StopAfterStage race_a
+          $archives=@(Get-ChildItem (Join-Path $root "logs") -Directory -Filter "private_original_evidence_*")
+          if($archives.Count -ne 1){throw "Missing first stage private checkpoint"}
+          $archive=$archives[0].FullName
+          if(!(Test-Path (Join-Path $archive "PRIVATE_SOURCE_race_a.json"))){throw "No audited race_a checkpoint"}
+          if(Test-Path (Join-Path $archive "race_b.csv")){throw "Checkpoint advanced beyond race_a"}
+          # A separately supplied synthetic x86 CSV stands in for a newly
+          # observed second operator run; resume MUST independently re-audit.
+          Copy-Item -LiteralPath (Join-Path $inputs "race_b.csv") -Destination (Join-Path $archive "race_b.csv")
+          & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") `
+            -PackageRoot $root -ResumeSessionFolder $archive -StopAfterStage race_b
+          if(!(Test-Path (Join-Path $archive "PRIVATE_SOURCE_race_b.json"))){throw "Missing resumed second-stage preflight"}
+          foreach($name in @("PRIVATE_MANIFEST.json","PRIVATE_WORLD_CANDIDATES.json","title.csv")){
+            if(Test-Path (Join-Path $archive $name)){throw "Incomplete checkpoint published $name"}
+          }
+          if(@(Get-ChildItem $archive -Filter "PRIVATE_STALE_SOURCE_race_a_*").Count -lt 1){
+            throw "Resume bypassed re-auditing first physical source CSV"
+          }
+          $first=(Get-Content (Join-Path $archive "PRIVATE_SOURCE_race_a.json") -Raw | ConvertFrom-Json).original_capture_run.nonce_hex
+          $second=(Get-Content (Join-Path $archive "PRIVATE_SOURCE_race_b.json") -Raw | ConvertFrom-Json).original_capture_run.nonce_hex
+          if($first -ceq $second){throw "Resumed source identities not independent"}
+
       - name: Smoke test private session copier (synthetic CSV, fail closed)
         shell: pwsh
         run: |

@@ -6,10 +6,17 @@ param(
   [string]$PackageRoot = $PSScriptRoot,
   [string]$ExistingSessionFolder = "",
   [string]$ResumeSessionFolder = "",
+  # Collect and preflight through this user-observed label, then end as
+  # INCOMPLETE without publishing any final World3D candidate/receipt.
+  # A later -ResumeSessionFolder invocation re-audits archived stages.
+  [string]$StopAfterStage = "",
   [ValidateRange(1,3600)][int]$AuditTimeoutSeconds = 900
 )
 $ErrorActionPreference = "Stop"
 $labels = @("race_a","race_b","title","menu","sky","hud","aux")
+if ($StopAfterStage -and $StopAfterStage -cnotin $labels) {
+  throw "PRIVATE CHECKPOINT INVALID: -StopAfterStage must name race_a/race_b/title/menu/sky/hud/aux."
+}
 $PackageRoot = [IO.Path]::GetFullPath($PackageRoot)
 if ($ResumeSessionFolder -and $ExistingSessionFolder) {
   throw "Choose either -ResumeSessionFolder or -ExistingSessionFolder, not both."
@@ -170,6 +177,9 @@ function New-PendingPrivateSourcePath([string]$label) {
 Write-Host "LOCAL / PRIVATE: Daytona original evidence capture. No uploads."
 Write-Host "Always close the original emulator BEFORE pressing Enter. Each"
 Write-Host "label needs a genuinely separate run; labels are user assertions only."
+# A checkpoint is NOT a successful seven-session compare. The final aux
+# stage still performs normal full validation and manifest publication.
+$partialCaptureStopped = $false
 foreach ($label in $labels) {
   $target = Join-Path $destination (SessionCsvName $label)
   $preflight = Join-Path $destination ("PRIVATE_SOURCE_" + $label + ".json")
@@ -212,6 +222,10 @@ foreach ($label in $labels) {
         $reports[$label] = $preflight
         $reportHashes[$label] = (Get-FileHash -LiteralPath $preflight -Algorithm SHA256).Hash
         Write-Host ("Resumed original PRIVATE " + $label + " (fresh physical CSV audit PASS; no game rerun)")
+        if ($StopAfterStage -ceq $label -and $label -cne "aux") {
+          $partialCaptureStopped = $true
+          break
+        }
         continue
       }
       # Preserve incomplete or invalid diagnostic CSV/JSON and ask for
@@ -304,6 +318,24 @@ foreach ($label in $labels) {
   $reportHashes[$label] = (Get-FileHash -LiteralPath $preflight -Algorithm SHA256).Hash
   Write-Host ("Validated and archived PRIVATE " + $label + " (" +
               $source.Length + " bytes; original process nonce distinct)")
+  if ($StopAfterStage -ceq $label -and $label -cne "aux") {
+    $partialCaptureStopped = $true
+    break
+  }
+}
+if ($partialCaptureStopped) {
+  # All completed stages have fresh physical x86 process nonces, byte-pinned
+  # CSVs and fresh preflight JSONs, but NOT seven independent scene sessions.
+  # The previous success receipt was revoked at resume entry. Keep partial
+  # files private for the next invocation and DO NOT generate candidates.
+  Write-Host ""
+  Write-Host "PRIVATE CHECKPOINT SAVED - INCOMPLETE seven-session source evidence."
+  Write-Host ("Last user-labelled stage: " + $StopAfterStage)
+  Write-Host ("Resume locally: Collect-Daytona-Original-Evidence.cmd -ResumeSessionFolder `"" +
+              $destination + "`" -StopAfterStage <next-label>")
+  Write-Host "No PRIVATE_MANIFEST or World3D candidate published. CPU World3D stays AUTO-OFF."
+  Write-Host ("Private archive: " + $destination)
+  return
 }
 # A preflighted stage may sit on disk while the user completes six other
 # genuine emulator runs. Cached JSON is only trustworthy for the *same*

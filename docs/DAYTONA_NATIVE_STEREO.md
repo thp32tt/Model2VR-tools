@@ -1,3 +1,19 @@
+## PRIVATE original Daytona stage-by-stage checkpoint capture (2026-11-07)
+
+The local seven-session collector can now stop cleanly after one audited, user-labelled stage so you can collect the genuine original Daytona x86 evidence across separate operator sessions. From the extracted matched Win32/Win64 release folder:
+
+```powershell
+.\Collect-Daytona-Original-Evidence.cmd -StopAfterStage race_a
+```
+
+Complete the original race_a emulator session and exit the emulator before pressing Enter. The collector preflights the new CSV, saves its hash-bound `PRIVATE_SOURCE_race_a.json` and prints the full private archive path. It prints **INCOMPLETE** and does not create a candidate or `PRIVATE_MANIFEST.json`. For the next independently observed racing session:
+
+```powershell
+.\Collect-Daytona-Original-Evidence.cmd -ResumeSessionFolder ".\logs\private_original_evidence_<UTC>" -StopAfterStage race_b
+```
+
+The old archived CSV is re-audited, then you perform the new requested game scene. Repeat the same command with `title`, `menu`, `sky` and `hud`; for the last `aux` stage, omit `-StopAfterStage` (or specify `aux`) so the normal seven-stage candidate-only comparison runs. An interrupted session remains resumable, and stale previous success receipts are revoked before a resumed audit. This is **not automatic scene recognition**, actual gameplay proof, an HMD/Quest 3 runtime test or a World3D enable switch. The original game executable, ROM, FFB and OpenXR IPC are untouched, and all private logs stay on your PC. `world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED`; CPU World3D AUTO-OFF and original mono fallback remain mandatory.
+
 ## PRIVATE original seven-stage receipt integrity check (2026-11-06)
 
 After the LOCAL `Collect-Daytona-Original-Evidence.cmd` run completes all seven genuine original Daytona x86 sessions and writes `PRIVATE_MANIFEST.json`, run from the extracted matched release folder:
