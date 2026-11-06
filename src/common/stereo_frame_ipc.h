@@ -94,7 +94,8 @@ public:
     ~SharedFrames(){ Close(); }
     bool Create(std::uint32_t key_pid){
         Close();
-        if(!key_pid)return false;
+        // Only the genuine source process can create its own mapping.
+        if(!key_pid || key_pid!=GetCurrentProcessId())return false;
         const auto name=NameForPid(key_pid);
         mapping_=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,
                0,static_cast<DWORD>(kSharedBytes),name.c_str());
@@ -110,7 +111,8 @@ public:
         h->pixel_format=kPixelRGBA8;
         h->bytes_per_eye=static_cast<std::uint32_t>(kBytesPerEye);
         h->header_size=sizeof(Header);
-        h->writer_pid=GetCurrentProcessId();
+        h->writer_pid=key_pid;
+        key_pid_=key_pid;
         writable_=true;
         return true;
     }
@@ -122,6 +124,7 @@ public:
         if(!mapping_)return false;
         base_=static_cast<std::uint8_t*>(MapViewOfFile(mapping_,FILE_MAP_READ,0,0,kSharedBytes));
         if(!base_){Close();return false;}
+        key_pid_=key_pid;
         if(!Valid()){Close();return false;}
         return true;
     }
@@ -131,7 +134,8 @@ public:
         return h->magic==kMagic && h->version==kVersion &&
                h->width==kWidth && h->height==kHeight && h->pitch==kPitch &&
                h->pixel_format==kPixelRGBA8 && h->bytes_per_eye==kBytesPerEye &&
-               h->header_size==sizeof(Header);
+               h->header_size==sizeof(Header) &&
+               key_pid_!=0u && h->writer_pid==key_pid_;
     }
     bool Publish(const std::uint8_t* left,const std::uint8_t* right,
                  std::uint64_t frame_id,FrameKind kind,
@@ -181,7 +185,7 @@ public:
         MemoryBarrier();
         const LONG end=h->sequence;
         if(start!=end || (end&1) || stamp.frame_id==0 ||
-           !stamp.writer_pid ||
+           stamp.writer_pid!=key_pid_ ||
            !ValidSourceKind(stamp.kind))return false;
         out=stamp;
         return true;
@@ -216,7 +220,8 @@ public:
         }
         MemoryBarrier();
         const LONG end=h->sequence;
-        if(start!=end || (end&1) || frame==0u)return false;
+        if(start!=end || (end&1) || frame==0u ||
+           h->writer_pid!=key_pid_)return false;
         // Publish the metadata only once both eyes passed a single coherent
         // source generation. A rejected staging copy remains recyclable.
         staging.frame_id=frame;
@@ -235,12 +240,14 @@ public:
     void Close(){
         if(base_)UnmapViewOfFile(base_);
         if(mapping_)CloseHandle(mapping_);
-        base_=nullptr;mapping_=nullptr;writable_=false;last_written_=0;
+        base_=nullptr;mapping_=nullptr;writable_=false;
+        last_written_=0;key_pid_=0;
     }
 private:
     HANDLE mapping_=nullptr;
     std::uint8_t* base_=nullptr;
     bool writable_=false;
+    std::uint32_t key_pid_=0;
     std::uint64_t last_written_=0;
 };
 } // namespace m2vr::transport

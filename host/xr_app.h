@@ -15,6 +15,7 @@
 #include "../src/common/daytona_wizard_health.hpp"
 #include "../src/common/daytona_host_ready.hpp"
 #include "../src/common/daytona_producer_health.hpp"
+#include "../src/common/daytona_original_present_receipt.hpp"
 #include "../src/common/daytona_eye_delivery_status.hpp"
 #include "../src/common/daytona_mono_quad_anchor.hpp"
 #include "../src/common/daytona_host_pixel_format.hpp"
@@ -80,6 +81,7 @@ private:
     transport::Snapshot staging_frame_;
     transport::StereoFrameGate frame_gate_;
     bool warned_unmatched_game_pose_=false;
+    bool warned_original_receipt_rejection_=false;
     std::uint8_t last_pose_rejection_=0u; // 1=untagged, 2=expired
     delivery::Status eye_delivery_status_=delivery::Status::NoProducerHealth;
     delivery::TransitionGate eye_delivery_gate_{};

@@ -7,7 +7,8 @@
 int main(){
     using namespace m2vr::transport;
     const auto key=GetCurrentProcessId();
-    SharedFrames writer,reader;
+    SharedFrames writer,reader,wrong_pid_writer;
+    REQUIRE(!wrong_pid_writer.Create(key+1u));
     REQUIRE(writer.Create(key));
     REQUIRE(!reader.Create(key)); // no second producer
     REQUIRE(reader.Open(key));
@@ -94,6 +95,26 @@ int main(){
     REQUIRE(staging.pose_sequence==119u);
     REQUIRE(staging.eyes[0].size()==kBytesPerEye);
     REQUIRE(staging.eyes[1].size()==kBytesPerEye);
+    // A stale or polluted mapping must not impersonate the original
+    // emulator writer, even when its name/format remain unchanged.
+    HANDLE map=OpenFileMappingW(FILE_MAP_WRITE,FALSE,NameForPid(key).c_str());
+    REQUIRE(map!=nullptr);
+    auto* raw=static_cast<Header*>(MapViewOfFile(
+        map,FILE_MAP_WRITE,0,0,sizeof(Header)));
+    REQUIRE(raw!=nullptr);
+    raw->writer_pid=key+1u;
+    MemoryBarrier();
+    REQUIRE(!reader.Valid());
+    REQUIRE(!reader.Peek(metadata));
+    REQUIRE(!reader.ReadReusable(staging));
+    reader.Close();
+    REQUIRE(!reader.Open(key));
+    raw->writer_pid=key;
+    MemoryBarrier();
+    REQUIRE(reader.Open(key));
+    REQUIRE(reader.Peek(metadata));
+    REQUIRE(reader.ReadReusable(staging));
+    UnmapViewOfFile(raw);CloseHandle(map);
     reader.Close();writer.Close();
     REQUIRE(!reader.Read(snap));
     return 0;

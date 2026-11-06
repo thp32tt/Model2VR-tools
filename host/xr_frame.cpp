@@ -288,6 +288,25 @@ void XrApp::draw_frame(XrTime display_time){
             const bool stamp_ok=shared_frames_.Peek(stamp);
             const auto action=frame_gate_.Decide(stamp_ok?&stamp:nullptr,now,hz);
             if(action==transport::FrameUse::ReadNew){
+                // A source packet alone does not establish successful original
+                // D3D9 Present. Demand the exact x86 receipt, never a newer one.
+                const auto receipt_verdict=receipt::Authorize(
+                    stamp.frame_id,stamp.kind,producer_health_status_,
+                    producer_health_fresh_);
+                if(receipt_verdict==receipt::Verdict::Reject &&
+                   !warned_original_receipt_rejection_){
+                    std::cerr<<"Daytona VR original Present receipt REJECTED:"
+                             <<" frame="<<stamp.frame_id
+                             <<" kind="<<static_cast<unsigned>(stamp.kind)
+                             <<" health_frame="<<(producer_health_fresh_
+                                 ?producer_health_status_.frame_id:0u)
+                             <<" health_reason="<<(producer_health_fresh_
+                                 ?producer_health_status_.reason_mask:0u)
+                             <<std::endl;
+                    warned_original_receipt_rejection_=true;
+                }
+                if(receipt_verdict==receipt::Verdict::Admit)
+                    warned_original_receipt_rejection_=false;
                 // Never accept untagged old GameStereo as a known-pose
                 // native binocular output. The Win32 producer now tags each
                 // original Draw/Present pair with its latched OpenXR views.
@@ -316,12 +335,20 @@ void XrApp::draw_frame(XrTime display_time){
                     last_pose_rejection_=0u;
                     warned_unmatched_game_pose_=false;
                 }
-                if(known_pose && shared_frames_.ReadReusable(staging_frame_)){
+                if(known_pose &&
+                   receipt_verdict==receipt::Verdict::Admit &&
+                   shared_frames_.ReadReusable(staging_frame_)){
+                    // An 8 MiB copy may observe a later coherent source
+                    // frame than Peek; authenticate the copied frame again.
+                    const auto staged_receipt=receipt::Authorize(
+                        staging_frame_.frame_id,staging_frame_.kind,
+                        producer_health_status_,producer_health_fresh_);
                     const auto tag=staging_frame_.pose_sequence;
                     const auto* exact_views=pose_history_.Find(tag);
                     const bool matched=transport::SourcePoseMatchesFrame(
                         staging_frame_.kind,tag,tag!=0u && exact_views!=nullptr);
-                    if(matched && frame_gate_.Accept(staging_frame_,now,hz)){
+                    if(staged_receipt==receipt::Verdict::Admit &&
+                       matched && frame_gate_.Accept(staging_frame_,now,hz)){
                     if(staging_frame_.kind==transport::FrameKind::Diagnostic &&
                        !saw_diagnostic_){
                         std::cout<<"Model2VR: DIAGNOSTIC source; not native game stereo\n";
@@ -342,9 +369,9 @@ void XrApp::draw_frame(XrTime display_time){
     // The emulator can run at 60Hz with a 90Hz or 120Hz HMD.
     // Re-use a *bounded* coherent previous pair, never clear on every
     // display tick, but stop presenting it if the producer stalls.
-    const bool source_failed_after_pair=producerhealth::InvalidatesCachedPair(
-        producer_health_status_,producer_health_fresh_,frame_gate_.id(),
-        transport::IsStereoGame(frame_gate_.kind()));
+    const bool source_failed_after_pair=receipt::RevokesCached(
+        frame_gate_.id(),frame_gate_.kind(),
+        producer_health_status_,producer_health_fresh_);
     bool usable=!source_failed_after_pair &&
         frame_gate_.Cached(now,hz) &&
         eye_frame_.frame_id==frame_gate_.id() &&
