@@ -105,5 +105,29 @@ int main(){
     REQUIRE(cpu.Rebase(restart,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==3u);
     REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
+    // A second LOCAL notification without an applicable transition time
+    // cannot borrow the previous known pending time or the last accepted
+    // original x86 CPU-world pose. Only real session restart unblocks it.
+    REQUIRE(epoch.NotifyLocalChange(5000));
+    writer.Invalidate();
+    history.Clear();
+    REQUIRE(epoch.NotifyLocalChange(0) && epoch.ChangeTimeUnknown());
+    REQUIRE(!epoch.Pending());
+    REQUIRE(epoch.OnPredictedFrame(5000)==pose::ReferenceSpaceFrame::Exhausted);
+    REQUIRE(epoch.OnPredictedFrame(999999)==pose::ReferenceSpaceFrame::Exhausted);
+    REQUIRE(!epoch.NotifyLocalChange(6000));
+    REQUIRE(writer.published.sequence==0 && !history.Find(12u));
+    REQUIRE(epoch.BeginSession() && epoch.Epoch()==4u);
+    REQUIRE(!epoch.ChangeTimeUnknown());
+    REQUIRE(epoch.OnPredictedFrame(6001)==pose::ReferenceSpaceFrame::Ready);
+    const auto final_local=Packet(13,epoch.Epoch(),-20.f);
+    REQUIRE(pose::PublishTrackedStereoPose(
+        writer,history,final_local,Views{7u,8u}));
+    REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
+        {restart.sequence,restart.published_qpc,restart.reserved},
+        final_local,now,hz));
+    REQUIRE(cpu.Rebase(final_local,cpu_eyes));
+    REQUIRE(cpu.ReferenceSpaceEpoch()==4u);
+    REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
     return 0;
 }
