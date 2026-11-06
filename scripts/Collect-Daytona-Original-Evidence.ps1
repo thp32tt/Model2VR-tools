@@ -35,6 +35,21 @@ if ($ResumeSessionFolder) {
   $destination = Join-Path $logRoot $folder
   New-Item -ItemType Directory -Path $destination -ErrorAction Stop | Out-Null
 }
+
+# A resume, including one with an already-successful manifest, may be
+# started by another terminal. Acquire a Windows OS-owned exclusive file
+# handle BEFORE moving any previous success receipt or touching a CSV.
+# The handle is released on success, exception, or process termination;
+# a leftover .lock filename is not itself a stale/busy lock.
+$sessionLockPath = Join-Path $destination ".private_original_collection.lock"
+try {
+  $sessionLockStream = [System.IO.FileStream]::new(
+    $sessionLockPath, [System.IO.FileMode]::OpenOrCreate,
+    [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+} catch {
+  throw "PRIVATE SESSION LOCK FAIL-CLOSED: another collector holds this archive, or its lock is inaccessible. No prior receipt was changed."
+}
+try {
 # Invalidate a previous successful receipt BEFORE reading or prompting for
 # another original session. If stage 1 or a later preflight fails, an old
 # manifest/candidate must never remain under its active success filename.
@@ -443,3 +458,8 @@ Write-Host ""
 Write-Host "Local candidate triage written. A candidate NEVER authorizes World3D."
 Write-Host "Independent original CPU camera, Quest3 pose and XR calibration remain unproven."
 Write-Host "Private output: $destination"
+} finally {
+  # Release on every error path, including a stage-one preflight failure.
+  $sessionLockStream.Dispose()
+}
+

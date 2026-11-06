@@ -32,6 +32,17 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('"UNTESTED"',self.ps)
         self.assertIn("Copy-Item -LiteralPath $originalPath -Destination $target",self.ps)
 
+    def test_original_private_archive_is_single_writer_before_receipt_revocation(self):
+        # Two terminals may resume the same seven-stage archive. The
+        # exclusive Windows file handle must precede ALL active-file moves.
+        self.assertIn('$sessionLockPath = Join-Path $destination ".private_original_collection.lock"', self.ps)
+        self.assertIn('[System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None', self.ps)
+        self.assertIn('PRIVATE SESSION LOCK FAIL-CLOSED', self.ps)
+        self.assertLess(self.ps.index('$sessionLockStream = [System.IO.FileStream]::new('),
+                        self.ps.index('Rename-Item -LiteralPath $oldPath'))
+        self.assertIn('$sessionLockStream.Dispose()', self.ps)
+        self.assertIn('Reject concurrent original private archive collector before receipt revocation', self.workflow)
+
     def test_seven_distinct_original_process_sessions_and_bounded_analysis(self):
         self.assertIn('("race_a","race_b","title","menu","sky","hud","aux")',self.ps)
         self.assertIn('Get-ChildItem -LiteralPath $logRoot -Filter "daytona_vr_startup_*.csv"',self.ps)

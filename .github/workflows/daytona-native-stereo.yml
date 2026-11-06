@@ -336,6 +336,50 @@ jobs:
               throw "Unfinished seven-stage original capture falsely published a manifest"
             }
           }
+      - name: Reject concurrent original private archive collector before receipt revocation
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference="Stop"
+          # Only synthetic local archive contents; no real original Daytona,
+          # physical D3D9 Draw or Quest3 session is used here.
+          $root=Join-Path $env:RUNNER_TEMP "daytona-private-concurrent-lock"
+          $archive=Join-Path $root "logs/private_original_evidence_locked"
+          New-Item -ItemType Directory -Force -Path $archive | Out-Null
+          Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+          Copy-Item tools/model2_draw_source_report.py $root/
+          [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
+            "# synthetic-only, must not be invoked while locked", [Text.UTF8Encoding]::new($false))
+          $manifest=Join-Path $archive "PRIVATE_MANIFEST.json"
+          $candidate=Join-Path $archive "PRIVATE_WORLD_CANDIDATES.json"
+          [IO.File]::WriteAllText($manifest,"synthetic old manifest sentinel")
+          [IO.File]::WriteAllText($candidate,"synthetic old candidate sentinel")
+          $lockPath=Join-Path $archive ".private_original_collection.lock"
+          $holder=[IO.FileStream]::new($lockPath,[IO.FileMode]::OpenOrCreate,
+            [IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+          try {
+            $rejected=$false
+            try {
+              & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ResumeSessionFolder $archive
+            } catch {
+              if($_.Exception.Message -notmatch "PRIVATE SESSION LOCK FAIL-CLOSED"){throw}
+              $rejected=$true
+            }
+            if(-not $rejected){throw "Concurrent collector did not reject the locked PRIVATE archive"}
+            if((Get-Content -LiteralPath $manifest -Raw) -cne "synthetic old manifest sentinel" -or
+               (Get-Content -LiteralPath $candidate -Raw) -cne "synthetic old candidate sentinel"){
+              throw "Contending collector modified existing original PRIVATE success receipts"
+            }
+            if(@(Get-ChildItem -LiteralPath $archive -File -Filter "PRIVATE_PRIOR_*").Count -ne 0){
+              throw "Concurrent collector archived an active receipt before acquiring its lock"
+            }
+          } finally {
+            $holder.Dispose()
+          }
+          # An abandoned filename is not a permanently stale lock.
+          $retry=[IO.FileStream]::new($lockPath,[IO.FileMode]::OpenOrCreate,
+            [IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+          $retry.Dispose()
       - name: Reject forged or incomplete private cross-session receipt
         shell: pwsh
         timeout-minutes: 3
