@@ -501,8 +501,11 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         unknown = witness()
         unknown["caller_rva_hex"] = "0x00000000"
         unknown["caller_is_in_executable"] = False
-        got = compare_sessions([report(unknown), report(unknown)], controls())
-        self.assertEqual(got["rejected"][0]["reason"], "unknown_gpu_caller")
+        # A zero executable caller cannot appear in an authenticated
+        # original all-family race inventory, even as a rejected candidate.
+        with self.assertRaisesRegex(ValueError,
+                                    "sampled original Draw absent from exact"):
+            compare_sessions([report(unknown), report(unknown)], controls())
 
     def test_spoofed_original_caller_and_malformed_states_rejected(self):
         bad = witness()
