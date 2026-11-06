@@ -15,11 +15,22 @@ public:
         pending_=false;
         change_time_=0;
         events_lost_=false;
+        unknown_change_time_=false;
         return Advance();
     }
     bool NotifyLocalChange(std::int64_t change_time) noexcept {
-        if(!epoch_ || exhausted_ || events_lost_)return false;
-        if(!pending_)change_time_=change_time>0?change_time:0;
+        if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_)return false;
+        // An absent/nonpositive changeTime does NOT authorize guessing the
+        // first post-recenter xrLocateViews frame. Its true transition could
+        // still be in the future, including after another queued event.
+        // Keep both original x86 eyes quarantined until an XR session restart.
+        if(change_time<=0){
+            pending_=false;
+            change_time_=0;
+            unknown_change_time_=true;
+            return true;
+        }
+        if(!pending_)change_time_=change_time;
         else if(change_time>change_time_)change_time_=change_time;
         pending_=true;
         return true;
@@ -36,7 +47,7 @@ public:
         return true;
     }
     ReferenceSpaceFrame OnPredictedFrame(std::int64_t display_time) noexcept {
-        if(!epoch_ || exhausted_ || events_lost_)
+        if(!epoch_ || exhausted_ || events_lost_ || unknown_change_time_)
             return ReferenceSpaceFrame::Exhausted;
         if(!pending_)return ReferenceSpaceFrame::Ready;
         if(display_time<=0 || (change_time_>0 &&
@@ -51,6 +62,7 @@ public:
     std::uint32_t Epoch()const noexcept{return epoch_;}
     bool Pending()const noexcept{return pending_;}
     bool EventsLost()const noexcept{return events_lost_;}
+    bool ChangeTimeUnknown()const noexcept{return unknown_change_time_;}
 private:
     bool Advance() noexcept {
         if(exhausted_ || epoch_==std::numeric_limits<std::uint32_t>::max()){
@@ -62,6 +74,7 @@ private:
     }
     std::uint32_t epoch_=0;
     std::int64_t change_time_=0;
-    bool pending_=false,events_lost_=false,exhausted_=false;
+    bool pending_=false,events_lost_=false,unknown_change_time_=false,
+         exhausted_=false;
 };
 } // namespace m2vr::pose
