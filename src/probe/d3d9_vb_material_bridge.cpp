@@ -172,10 +172,11 @@ BOOL SubmitProjectedBufferWindow(
         if(!m2vr::drawprobe::ExpandProjectedVBWindow(
              vertices.data(),vertices.size(),fvf,stride,window,ordered))
             return FALSE;
-        return Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+        return Model2VR_AppendVerifiedProjectedD3D9UPTexturedWithSourceIds(
             device,ordered.data(),
             static_cast<UINT>(window.indices.size()/3u),
-            stride,expected_cpu_caller,alpha_cutoff);
+            stride,expected_cpu_caller,alpha_cutoff,
+            window.indices.data(),static_cast<UINT>(window.indices.size()));
     }catch(...){return FALSE;}
 }
 } // namespace
@@ -433,7 +434,8 @@ bool InspectProjectedD3D9VBTopologyJoin(
             screen[i]={decoded.screen_xy[0],decoded.screen_xy[1]};
         }
         output=ThreadProjectDrawCorrelator().MatchTriangleList(
-            CurrentProjectDrawEpoch(),screen.data(),count);
+            CurrentProjectDrawEpoch(),screen.data(),count,
+            window.indices.data()); // true indexed/strip/fan vertices
         return true;
     }catch(...){return false;}
 }

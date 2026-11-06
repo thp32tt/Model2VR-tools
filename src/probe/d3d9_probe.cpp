@@ -1574,11 +1574,15 @@ std::uint64_t ObserveUP(IDirect3DDevice9* dev,unsigned family,
         m2vr::LogEvent("model2_d3d9_cpu_up_join",sample_id,
             join.matched,join.ambiguous,join.source_caller_rva);
         const auto batch=correlator.MatchTriangleList(
-            epoch,screen.data(),triangle_ids.size());
+            epoch,screen.data(),triangle_ids.size(),
+            triangle_ids.data()); // authentic original topology aliases
         m2vr::LogEvent("model2_d3d9_cpu_up_join_batch",sample_id,
             (std::uint64_t{batch.inspected}<<32)|batch.complete,
             (std::uint64_t{batch.partial}<<32)|batch.ambiguous,
             batch.common_source_caller_rva);
+        m2vr::LogEvent("model2_d3d9_cpu_up_source_cardinality",sample_id,
+            batch.distinct_captures,batch.legitimate_shared_vertices,
+            batch.alias_violations);
         m2vr::LogEvent("model2_d3d9_cpu_up_matrix_identity",sample_id,
             batch.common_matrix_identity,
             batch.mixed_matrix_identity?1u:0u,
@@ -1767,6 +1771,9 @@ std::uint64_t ObserveUnknownUpLayout(IDirect3DDevice9* dev,unsigned family,
                 (std::uint64_t{batch.inspected}<<32)|batch.complete,
                 (std::uint64_t{batch.partial}<<32)|batch.ambiguous,
                 batch.common_source_caller_rva);
+            m2vr::LogEvent("model2_d3d9_cpu_shader_up_source_cardinality",id,
+                batch.distinct_captures,batch.legitimate_shared_vertices,
+                batch.alias_violations);
             m2vr::LogEvent("model2_d3d9_cpu_shader_matrix_identity",id,
                 batch.common_matrix_identity,
                 batch.mixed_matrix_identity?1u:0u,
@@ -1844,6 +1851,9 @@ std::uint64_t ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
                 (std::uint64_t{joined.inspected}<<32)|joined.complete,
                 (std::uint64_t{joined.partial}<<32)|joined.ambiguous,
                 joined.common_source_caller_rva);
+            m2vr::LogEvent("model2_d3d9_cpu_vb_source_cardinality",id,
+                joined.distinct_captures,joined.legitimate_shared_vertices,
+                joined.alias_violations);
             m2vr::LogEvent("model2_d3d9_cpu_vb_matrix_identity",id,
                 joined.common_matrix_identity,
                 joined.mixed_matrix_identity?1u:0u,

@@ -254,6 +254,17 @@ Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     unsigned int original_triangle_count,unsigned int stride_bytes,
     unsigned int authenticated_cpu_project_caller_rva,
     unsigned int alpha_cutoff);
+// Internal original-index-aware companion for the same already-authenticated
+// x86 source Draw. Relative vertex identities are not exported into IPC;
+// the adapter copies a bounded index window and fails closed on mismatch.
+__declspec(dllexport) BOOL __stdcall
+Model2VR_AppendVerifiedProjectedD3D9UPTexturedWithSourceIds(
+    void* d3d9_device,const void* original_projected_vertices,
+    unsigned int original_triangle_count,unsigned int stride_bytes,
+    unsigned int authenticated_cpu_project_caller_rva,
+    unsigned int alpha_cutoff,
+    const std::uint32_t* original_source_vertex_indices,
+    unsigned int original_source_vertex_index_count);
 // Reads *actual* fixed-function D3D9 UP XYZ+TEX1 source vertices,
 // original D3DTS_WORLD/VIEW transforms and stage-0 CPU-lockable texture.
 // It is callable only during a proven BeginVerifiedWorldFrame transaction.

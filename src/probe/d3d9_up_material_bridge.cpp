@@ -351,9 +351,13 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedD3D9UPTextured(
 // match the same-thread ProjectVertexToScreen source ring. With a separately
 // authenticated CPU-world transaction, reconstruct ONLY these proven
 // camera-space positions, never rewrite source 2D or call original Draw twice.
-extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+// The public legacy triangle-list entry has no original shared-index map.
+ // Only the original source topology adapters may pass a verified index
+ // window. The private core copies it before joining CPU projector slots.
+static BOOL __stdcall AppendVerifiedProjectedD3D9UPTexturedCore(
     void* device,const void* original_vertices,unsigned int triangles,
-    unsigned int stride,unsigned int expected_cpu_caller,unsigned int cutoff) {
+    unsigned int stride,unsigned int expected_cpu_caller,unsigned int cutoff,
+    const std::uint32_t* original_source_ids,unsigned int source_id_count) {
     const m2vr::vrbridge::ScopedOriginalSourceDrawKind source_scope(
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
     auto* d=static_cast<IDirect3DDevice9*>(device);
@@ -363,7 +367,10 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     if(!d || !Model2VR_IsOriginalPrimaryD3D9Device(d) ||
        !original_vertices || !expected_cpu_caller ||
        !Model2VR_VerifiedWorldFrameOwnedByCurrentThread() ||
-       triangles<2u || triangles>kMaxTriangles || cutoff>256u)return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+       triangles<2u || triangles>kMaxTriangles || cutoff>256u ||
+       ((original_source_ids==nullptr)!=(source_id_count==0u)) ||
+       (original_source_ids && source_id_count!=triangles*3u))
+       return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
     m2vr::vr::SamplerPolicy sampler{};
@@ -396,6 +403,16 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
     try {
         const auto count=std::size_t(triangles)*3u;
+        std::array<std::uint32_t,
+            m2vr::drawprobe::kMaxOriginalProjectionSamples> safe_source_ids{};
+        if(original_source_ids &&
+           !GuardCopy(safe_source_ids.data(),original_source_ids,
+                      count*sizeof(std::uint32_t))){
+            m2vr::vrbridge::RejectOriginalSourceMaterial(
+                m2vr::vrbridge::OriginalSourceFailure::ProjectionPass);
+            return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
+                FALSE,m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);
+        }
         std::vector<std::uint8_t> raw(count*stride);
         if(!GuardCopy(raw.data(),original_vertices,raw.size()))return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
@@ -423,7 +440,8 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
         }
         const auto joined=m2vr::drawprobe::ThreadProjectDrawCorrelator()
             .MatchTriangleList(m2vr::drawprobe::CurrentProjectDrawEpoch(),
-                               screen.data(),count);
+                               screen.data(),count,
+                               original_source_ids?safe_source_ids.data():nullptr);
         if(!joined.StableOriginalProjectionProvenance() ||
            joined.common_source_caller_rva!=expected_cpu_caller ||
            !Model2VR_OriginalCpuProjectionStillMatchesDraw(
@@ -488,4 +506,23 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
     }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedPrimitiveUP);}
+}
+
+ // Legacy independent projected-UP triangle list: all vertices distinct.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+    void* device,const void* vertices,unsigned int triangles,
+    unsigned int stride,unsigned int caller,unsigned int cutoff) {
+    return AppendVerifiedProjectedD3D9UPTexturedCore(
+        device,vertices,triangles,stride,caller,cutoff,nullptr,0u);
+}
+
+// Original indexed/strip/fan source adapters supply their exact source
+// vertex identities; six unique authentic CPU calls are still required.
+// This changes no original Draw or shared Win32/Win64 stereo IPC ABI.
+extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9UPTexturedWithSourceIds(
+    void* device,const void* vertices,unsigned int triangles,
+    unsigned int stride,unsigned int caller,unsigned int cutoff,
+    const std::uint32_t* original_ids,unsigned int id_count) {
+    return AppendVerifiedProjectedD3D9UPTexturedCore(
+        device,vertices,triangles,stride,caller,cutoff,original_ids,id_count);
 }

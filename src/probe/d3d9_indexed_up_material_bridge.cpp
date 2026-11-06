@@ -141,8 +141,9 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9IndexedUPTopologyT
         // Exact original triangle order then same-thread/Present CPU
         // projector join, perspective fit and texture/Z/pose checks.
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (Model2VR_AppendVerifiedProjectedD3D9UPTextured(
-            device,expanded.data(),triangles,stride,cpu_caller,alpha_cutoff)),
+        (Model2VR_AppendVerifiedProjectedD3D9UPTexturedWithSourceIds(
+            device,expanded.data(),triangles,stride,cpu_caller,alpha_cutoff,
+            window.indices.data(),static_cast<unsigned>(window.indices.size()))),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyIndexedUP);
     }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),

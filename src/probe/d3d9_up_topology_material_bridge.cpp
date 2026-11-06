@@ -103,9 +103,10 @@ extern "C" BOOL __stdcall Model2VR_AppendVerifiedProjectedD3D9PrimitiveUPTopolog
         (FALSE),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyPrimitiveUP);
         return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
-        (Model2VR_AppendVerifiedProjectedD3D9UPTextured(
+        (Model2VR_AppendVerifiedProjectedD3D9UPTexturedWithSourceIds(
             device,ordered.data(),triangles,stride,
-            authenticated_cpu_project_caller_rva,alpha_cutoff)),
+            authenticated_cpu_project_caller_rva,alpha_cutoff,
+            window.indices.data(),static_cast<unsigned>(window.indices.size()))),
         m2vr::vrbridge::OriginalSourceDrawKind::ProjectedTopologyPrimitiveUP);
     }catch(...){return m2vr::vrbridge::CompleteOriginalD3D9SourceDraw(
         (FALSE),
