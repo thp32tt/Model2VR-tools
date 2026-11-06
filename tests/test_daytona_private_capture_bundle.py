@@ -45,7 +45,7 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('$knownNonces.Add($nonce)',self.ps)
         self.assertIn('PRIVATE SESSION PREFLIGHT FAIL-CLOSED',self.ps)
         self.assertIn('PRIVATE_SOURCE_',self.ps)
-        self.assertIn('Invoke-PrivateAudit -arguments $argsForPython',self.ps)
+        self.assertIn('Invoke-PrivateAudit -auditArguments $argsForPython',self.ps)
         self.assertIn('@("--control",$label,$reports[$label])',self.ps)
         self.assertIn('if ($pythonExitCode -ne 0)',self.ps)
         self.assertIn('System.Diagnostics.ProcessStartInfo',self.ps)
