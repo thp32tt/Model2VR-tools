@@ -54,21 +54,25 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
             event("project_original_source_gap",0x1234,2,0,0),
             event("project_original_source_gap",0x1234,4,0,0),
             event("project_original_source_gap",0,7,0,0),
+            event("project_original_source_gap",0x1234,8,0,0),
+            event("project_original_source_gap",0x1234,14,0,0),
         ]
         outcome=self.report(log)
         self.assertEqual(outcome["counts"][
-            "original_cpu_projector_source_untrusted"],3)
+            "original_cpu_projector_source_untrusted"],5)
         self.assertEqual(outcome["counts"][
-            "original_cpu_projector_matrix_untrusted"],2)
+            "original_cpu_projector_matrix_untrusted"],3)
         self.assertEqual(outcome["counts"][
-            "original_cpu_projector_command_untrusted"],2)
+            "original_cpu_projector_command_untrusted"],3)
         self.assertEqual(outcome["counts"][
             "original_cpu_projector_missing_caller"],1)
+        self.assertEqual(outcome["counts"][
+            "original_cpu_projector_epoch_untrusted"],2)
         self.assertEqual(outcome["world_pass_proof"],"NOT_ESTABLISHED")
         self.assertNotIn("same_witness_cpu_camera_present_candidate",
                          outcome["counts"])
         for caller,mask,reserved1,reserved2 in (
-                (0x1234,0,0,0),(0x1234,8,0,0),
+                (0x1234,0,0,0),(0x1234,16,0,0),
                 (0,4,0,0),(0x100000000,2,0,0),
                 (0x1234,2,1,0),(0x1234,2,0,1)):
             with self.subTest(caller=caller,mask=mask):
