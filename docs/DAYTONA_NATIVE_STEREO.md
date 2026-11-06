@@ -1,3 +1,15 @@
+## PRIVATE seven-stage strict replay rejects post-audit archive changes (2026-11-07)
+
+After collecting all **seven genuine independently observed original x86 Daytona** stages, the optional strict offline verifier also rechecks the entire source archive at completion, not merely each CSV directly after its own scan:
+
+```powershell
+python .\verify_daytona_private_candidate_replay.py ".\logs\private_original_evidence_<UTC>" --replay-csv
+```
+
+A previous stage's CSV may be modified while the next scene is being parsed, or a report and its manifest hashes may be rewritten together during a long audit. Strict replay now freezes active candidate, seven report and manifest byte identities before its scan, then revalidates every raw CSV, report, process nonce and candidate at the end and rejects any changed JSON fingerprint. The original fast mode without `--replay-csv` is unchanged. The extra final full-archive hash pass is intentional and can take time for large PRIVATE captures. No private original bytes are uploaded; test evidence is synthetic-only. This does **not** establish the scene labels, game camera axes/metres-per-unit, original physical CPU↔GPU World3D proof or Quest3/VDXR headset tracking. `world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED`, CPU World3D AUTO-OFF, unchanged original mono fallback.
+
+Exact source/test SHA: `1bc41d7d1bd059677ede1abef9e997b72021958e`; CI Public `42308234084`, ModDev `42308234122`, Windows native x86 `42308234112`, Daytona Win32 + XR Win64 + bundle `42308234142`, all **SUCCESS**. This is documentation of one independent validated strict verifier correction, not a real-game runtime test.
+
 ## PRIVATE original Daytona stage-by-stage checkpoint capture (2026-11-07)
 
 The local seven-session collector can now stop cleanly after one audited, user-labelled stage so you can collect the genuine original Daytona x86 evidence across separate operator sessions. From the extracted matched Win32/Win64 release folder:
