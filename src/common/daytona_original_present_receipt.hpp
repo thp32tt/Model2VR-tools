@@ -32,8 +32,23 @@ inline constexpr Verdict Authorize(
     // attest them, even when numeric frame IDs happen to match.
     if(!source_qpc || !health.timestamp_qpc ||
        health.timestamp_qpc<source_qpc)return Verdict::Reject;
-    if(transport::IsStereoGame(kind))
-        return health.reason_mask==0u ? Verdict::Admit : Verdict::Reject;
+    // The original x86 producer reports GPU replay and CPU-projector
+    // outcomes differently. A zero reason mask alone MUST NOT let a
+    // repackaged GPU eye masquerade as CPU World3D (or vice versa).
+    // GPU success has original mirrored Draw families and an authentic
+    // scene. The verified CPU source sends no mirrored GPU family.
+    if(kind==transport::FrameKind::GameStereo)
+        return health.reason_mask==0u &&
+               health.verified_scene_draws!=0u &&
+               health.mirrored_draws!=0u &&
+               producerhealth::SumFamilies(health.family_draws)==
+                   health.mirrored_draws ? Verdict::Admit : Verdict::Reject;
+    if(kind==transport::FrameKind::VerifiedCpuWorldStereo)
+        return health.reason_mask==0u &&
+               health.verified_scene_draws!=0u &&
+               health.mirrored_draws==0u && health.mirrored_clears==0u &&
+               producerhealth::SumFamilies(health.family_draws)==0u
+                   ? Verdict::Admit : Verdict::Reject;
     if(transport::IsMonoGame(kind))
         return producerhealth::OriginalMonoPublished(health.reason_mask)
             ? Verdict::Admit : Verdict::Reject;
