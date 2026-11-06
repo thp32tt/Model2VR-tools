@@ -92,11 +92,25 @@ int main(){
     bad.eyes[1].fov_left_right_up_down[1]=0.2f;
     CHECK(!rebase.Rebase(bad,output));
     CHECK(output.sequence==old.sequence);
+    // A duplicate HMD sequence carrying changed but geometrically valid
+    // eye coordinates must not rewind or silently replace the CPU camera.
+    auto duplicate=turned;
+    for(auto& eye:duplicate.eyes)eye.position_m[1]+=0.5f;
+    CHECK(pose::CheckStereoRigGeometry(duplicate).valid());
+    CHECK(!rebase.Rebase(duplicate,output));
+    CHECK(rebase.LastPoseSequence()==12u);
+    CHECK(output.sequence==old.sequence);
     bad=turned;bad.sequence=13u;
     bad.eyes[1].position_m[0]=bad.eyes[0].position_m[0];
     bad.eyes[1].position_m[2]=bad.eyes[0].position_m[2];
     CHECK(!rebase.Rebase(bad,output)); // identical eyes are not stereo
-    CHECK(rebase.Rebase(moved,output));
+    CHECK(!rebase.Rebase(moved,output)); // old sequence 11 after 12
+    CHECK(output.sequence==old.sequence);
+    CHECK(rebase.LastPoseSequence()==12u);
+    auto recovered_moved=moved;
+    recovered_moved.sequence=14u;
+    CHECK(rebase.Rebase(recovered_moved,output));
+    CHECK(rebase.LastPoseSequence()==14u);
     CHECK(Near(output.eyes[0].position_m[0],1.f-0.032f));
     rebase.Reset();
     CHECK(!rebase.Anchored());
@@ -142,6 +156,18 @@ int main(){
     moved_in_new_origin.reserved=2u;
     CHECK(rebase.Rebase(moved_in_new_origin,output));
     CHECK(Near(output.eyes[0].position_m[0],0.5f-0.032f));
+    auto rollback_new_epoch=moved_in_new_origin;
+    rollback_new_epoch.reserved=3u;
+    rollback_new_epoch.sequence=24u;
+    const auto last_epoch_two=output;
+    CHECK(!rebase.Rebase(rollback_new_epoch,output));
+    CHECK(rebase.ReferenceSpaceEpoch()==2u);
+    CHECK(rebase.LastPoseSequence()==25u);
+    CHECK(output.sequence==last_epoch_two.sequence);
+    rollback_new_epoch.sequence=26u;
+    CHECK(rebase.Rebase(rollback_new_epoch,output));
+    CHECK(rebase.ReferenceSpaceEpoch()==3u);
+    CHECK(rebase.LastPoseSequence()==26u);
     // Source camera-axis and world scale are immutable for an emulated
     // race camera epoch, not automatically inferred from the headset.
     Model2CameraEpochContract camera_epoch;

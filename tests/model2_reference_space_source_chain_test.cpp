@@ -101,6 +101,14 @@ int main(){
     REQUIRE(cpu.ReferenceSpaceEpoch()==2u);
     REQUIRE(game_pose.Begin(101u,new_local));
     REQUIRE(game_pose.ReferenceSpaceEpoch()==2u);
+    // Direct CPU-world recenter is an independent native consumer; a
+    // delayed tracked packet from this SAME LOCAL generation cannot
+    // rewind the already accepted headset-camera sequence.
+    const auto delayed_same_local=Packet(10u,epoch.Epoch(),44.f);
+    REQUIRE(!cpu.Rebase(delayed_same_local,cpu_eyes));
+    REQUIRE(cpu.ReferenceSpaceEpoch()==2u);
+    REQUIRE(cpu.LastPoseSequence()==11u);
+    REQUIRE(cpu_eyes.sequence==11u);
     // A delayed old-LOCAL source with a HIGHER pose sequence remains
     // unsafe even though the eyes are geometrically plausible.
     const auto late_old=Packet(99u,1u,77.f);

@@ -16,9 +16,11 @@ public:
         center_={};
         orientation_={0.f,0.f,0.f,1.f};
         reference_space_epoch_=0u;
+        last_pose_sequence_=0u;
     }
     bool Anchored() const noexcept { return anchored_; }
     std::uint32_t ReferenceSpaceEpoch()const noexcept{return reference_space_epoch_;}
+    std::uint64_t LastPoseSequence()const noexcept{return last_pose_sequence_;}
 
     // Atomic: an invalid packet cannot change the current origin or output.
     // Callers must also check tracking age and game-frame sequence.
@@ -28,7 +30,12 @@ public:
         // Do not mutate the old origin until the whole rebase succeeds.
         // A genuine original CPU-world origin requires explicit LOCAL
         // provenance even on the very first accepted headset frame.
+        // An older/equal HMD sample from even the CURRENT LOCAL origin
+        // can move the CPU camera backwards after a newer pose was used.
+        // A changed LOCAL epoch does not excuse source-sequence rollback.
+        // Rejected samples must never advance the accepted high-water.
         if(!input.reserved ||
+           (last_pose_sequence_ && input.sequence<=last_pose_sequence_) ||
            (reference_space_epoch_ &&
             input.reserved<reference_space_epoch_))
             return false;
@@ -129,6 +136,7 @@ public:
             anchored_=true;
         }
         reference_space_epoch_=input.reserved;
+        last_pose_sequence_=input.sequence;
         return true;
     }
 private:
@@ -139,6 +147,7 @@ private:
         for(auto& v:q)v*=inv;
     }
     std::uint32_t reference_space_epoch_=0u;
+    std::uint64_t last_pose_sequence_=0u;
     bool anchored_=false;
     std::array<float,3> center_{};
     std::array<float,4> orientation_{0.f,0.f,0.f,1.f};
