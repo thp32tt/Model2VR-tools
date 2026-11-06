@@ -1854,6 +1854,13 @@ std::uint64_t ObserveBufferSource(IDirect3DDevice9* dev,unsigned family,
             m2vr::LogEvent("model2_d3d9_cpu_vb_source_cardinality",id,
                 joined.distinct_captures,joined.legitimate_shared_vertices,
                 joined.alias_violations);
+            // Actual original VB/IB projected-vertex correspondence has
+            // TWO deliberate populations: unique CPU calls for optical fit,
+            // and expanded GPU vertices for independently rasterized eyes.
+            // Pointer-free/private-session audit; it is never World3D proof.
+            m2vr::LogEvent("model2_d3d9_cpu_vb_fit_population",id,
+                joined.fit_sample_count,joined.camera_sample_count,
+                joined.legitimate_shared_vertices);
             m2vr::LogEvent("model2_d3d9_cpu_vb_matrix_identity",id,
                 joined.common_matrix_identity,
                 joined.mixed_matrix_identity?1u:0u,
