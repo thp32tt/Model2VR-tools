@@ -68,7 +68,9 @@ class OriginalQuerySourceTest(unittest.TestCase):
         self.assertIn("const std::uint32_t prepared=coherent",native)
         self.assertIn("source_original_failed_",native.split(
             "void FinishPresent(",1)[1].split("void ReportVerifiedCpuWorld",1)[0])
-        self.assertIn("? m2vr::producerhealth::NoVerifiedScene",native)
+        self.assertIn("? SourceFailureReason()",native)
+        self.assertIn("m2vr::producerhealth::NoVerifiedScene",native)
+        self.assertIn("original_camera_com_unsafe_",native)
         self.assertIn("model2_d3d9_original_query_source_rejected",self.cpu)
         self.assertIn("g_original_query_rejected_present.compare_exchange_weak(",self.hooks)
         before=self.body(self.hooks,"OriginalQuerySourceBoundary")

@@ -572,7 +572,9 @@ class NativeStereoTest(unittest.TestCase):
             "    void PreparePresent(")[0]
         self.assertIn("if(source_original_failed_)return;",replay_clear)
         self.assertIn("if(source_original_failed_){",gpu)
-        self.assertIn("pending_present_reason_=m2vr::producerhealth::NoVerifiedScene;",gpu)
+        self.assertIn("pending_present_reason_=SourceFailureReason();",gpu)
+        self.assertIn("OriginalCameraComUnsafe",gpu)
+        self.assertIn("m2vr::producerhealth::NoVerifiedScene",gpu)
         self.assertIn("PrepareOriginalMono(d,frame,pending_present_reason_);",gpu)
         self.assertIn("model2_vr_gpu_original_scene_failed",gpu)
         self.assertIn("g_original_scene_hooks_ready.store(sb&&se", hooks)
