@@ -4,7 +4,7 @@
 int main(){
     using namespace m2vr;
     constexpr std::uint64_t now=1000600000ull,hz=10000000ull;
-    daytona::OriginalSourcePoseTicket ticket{100u,1000000000ull,1u};
+    daytona::OriginalSourcePoseTicket ticket{100u,1000000000ull,1u,100000};
     pose::Frame p{};
     p.sequence=102u;p.published_qpc=1000500000ull;
     p.predicted_display_time=102000;
@@ -21,6 +21,25 @@ int main(){
     p.eyes[1].position_m[0]=0.032f;
     using daytona::OriginalStereoPoseStillLiveAtPresent;
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    // Draw-side predicted XrTime must be named, never inferred from QPC.
+    auto missing_draw_time=ticket;
+    missing_draw_time.predicted_display_time=0;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(missing_draw_time,p,now,hz));
+    missing_draw_time.predicted_display_time=-1;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(missing_draw_time,p,now,hz));
+    // A newer pose sequence cannot re-label older/equal XR geometry.
+    p.predicted_display_time=100000;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.predicted_display_time=99999;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.predicted_display_time=102000;
+    CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    // Same source sequence must keep the exact sampled display time.
+    p.sequence=100u;p.predicted_display_time=100001;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.predicted_display_time=100000;
+    CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    p.sequence=102u;p.predicted_display_time=102000;
     // Physical original D3D9 Present must reject a direct tracked-world
     // pose with a missing/reversed predicted XrTime, not only bad QPC age.
     p.predicted_display_time=0;
@@ -57,11 +76,12 @@ int main(){
     CHECK(!OriginalStereoPoseStillLiveAtPresent({0x100000000ull,ticket.published_qpc},p,now,hz));
     p.sequence=99u;
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
-    p.sequence=131u;
+    p.sequence=131u;p.predicted_display_time=131000;
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
     p.sequence=132u;
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
-    p.sequence=102u;p.published_qpc=999999999ull;
+    p.sequence=102u;p.predicted_display_time=102000;
+    p.published_qpc=999999999ull;
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
     p.published_qpc=now+1u;
     CHECK(!OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
