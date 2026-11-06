@@ -3,6 +3,7 @@
 // headset's first accepted orientation and stereo-eye midpoint. This cannot
 // establish game/world proof or calibrate the original emulator camera.
 #include "model2_cpu_stereo.hpp"
+#include "../common/stereo_eye_rig_geometry.hpp"
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -20,9 +21,7 @@ public:
     // Atomic: an invalid packet cannot change the current origin or output.
     // Callers must also check tracking age and game-frame sequence.
     bool Rebase(const pose::Frame& input,pose::Frame& output) noexcept {
-        if(!input.sequence ||
-           (input.view_flags&(pose::kOrientationValid|pose::kPositionValid))!=
-             (pose::kOrientationValid|pose::kPositionValid))return false;
+        if(!pose::CheckStereoRigGeometry(input).valid())return false;
         for(const auto& eye:input.eyes){
             if(!QuaternionValid(eye.orientation_xyzw))return false;
             for(const float p:eye.position_m)

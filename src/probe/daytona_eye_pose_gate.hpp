@@ -2,6 +2,7 @@
 // Daytona real OpenXR pose admission for the original game's independent
 // GPU-eye renderer. Does not imply that emulator camera tracking is calibrated.
 #include "../common/stereo_pose_ipc.h"
+#include "../common/stereo_eye_rig_geometry.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -36,41 +37,11 @@ inline EyePoseAdmission AdmitLiveEyePose(
        (frame.view_flags&(pose::kOrientationValid|pose::kPositionValid)) !=
          (pose::kOrientationValid|pose::kPositionValid))
         return out;
-    for(const auto& eye:frame.eyes) {
-        float qlen=0.f;
-        for(float q:eye.orientation_xyzw) {
-            if(!std::isfinite(q))return {};
-            qlen+=q*q;
-        }
-        if(!std::isfinite(qlen)||qlen<0.98f||qlen>1.02f)
-            return {};
-        for(float pos:eye.position_m)if(!std::isfinite(pos))return {};
-        const auto& fov=eye.fov_left_right_up_down;
-        for(float angle:fov)
-            if(!std::isfinite(angle) || std::abs(angle)>1.57f)return {};
-        if(fov[1]-fov[0]<0.2f || fov[2]-fov[3]<0.2f)return {};
-    }
-    const auto& l=frame.eyes[0],&r=frame.eyes[1];
-    const float dx=l.position_m[0]-r.position_m[0];
-    const float dy=l.position_m[1]-r.position_m[1];
-    const float dz=l.position_m[2]-r.position_m[2];
-    const float ipd=std::sqrt(dx*dx+dy*dy+dz*dz);
-    if(!std::isfinite(ipd)||ipd<0.02f||ipd>0.11f)
-        return {}; // no bogus stereo with identical eye poses
-    // XR_PRIMARY_STEREO view index 0 is left, index 1 right. A malformed
-    // packet can have plausible IPD length but reversed/swapped view order.
-    // Verify the right-eye baseline points broadly along the left view's
-    // tracked local +X axis in XR LOCAL coordinates (allow for canted HMDs).
-    const auto& q=l.orientation_xyzw;
-    const float bx=1.f-2.f*(q[1]*q[1]+q[2]*q[2]);
-    const float by=2.f*(q[0]*q[1]+q[3]*q[2]);
-    const float bz=2.f*(q[0]*q[2]-q[3]*q[1]);
-    const float alignment=((-dx)*bx+(-dy)*by+(-dz)*bz)/ipd;
-    if(!std::isfinite(alignment)||alignment<0.5f)
-        return {}; // reversed or non-horizontal binocular pair
+    const auto rig=pose::CheckStereoRigGeometry(frame);
+    if(!rig.valid())return out;
     out.valid=true;
     out.sequence=frame.sequence;
-    out.ipd_scale=(std::clamp)(ipd/0.064f,0.6f,1.5f);
+    out.ipd_scale=(std::clamp)(rig.ipd_m/0.064f,0.6f,1.5f);
     return out;
 }
 // The separately authenticated head-relative CPU-world path must never

@@ -94,6 +94,7 @@ private:
     bool saw_diagnostic_=false;
     bool wizard_diag_enabled_=true;
     bool startup_ready_signaled_=false;
+    bool stereo_rig_rejection_logged_=false;
     wizard::RuntimeGate wizard_gate_;
 };
 }  // namespace m2vr::host

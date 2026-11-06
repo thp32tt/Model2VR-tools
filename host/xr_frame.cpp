@@ -1,4 +1,5 @@
 #include "xr_app.h"
+#include "../src/common/stereo_eye_rig_geometry.hpp"
 #include "../src/common/model2_emulator_window_policy.hpp"
 #include <filesystem>
 #include <algorithm>
@@ -245,6 +246,27 @@ void XrApp::draw_frame(XrTime display_time){
                 dst.fov_left_right_up_down[2]=views[eye].fov.angleUp;
                 dst.fov_left_right_up_down[3]=views[eye].fov.angleDown;
             }
+            // No "tracked" status alone may signal Daytona native stereo.
+            // Validate the actual two OpenXR eye poses BEFORE publishing
+            // the Win32 IPC packet, starting the emulator, or recording the
+            // Win64 eye-view history. Never publish a mismatched source rig.
+            const auto rig=pose::CheckStereoRigGeometry(predicted);
+            if(!rig.valid()){
+                if(!stereo_rig_rejection_logged_){
+                    std::cerr<<"OpenXR source stereo rig rejected reason="
+                             <<static_cast<std::uint32_t>(rig.reason)
+                             <<" (not a calibrated game camera)"<<std::endl;
+                    stereo_rig_rejection_logged_=true;
+                }
+                invalidate_source_session();
+                report_wizard_health(false,false);
+                XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
+                end.displayTime=display_time;
+                end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+                check(xrEndFrame(session_,&end),"end invalid binocular rig frame");
+                return;
+            }
+            stereo_rig_rejection_logged_=false;
             const bool pose_published=pose_writer_.Publish(predicted);
             if(pose_published)pose_history_.Record(predicted.sequence,views);
             if(pose_published && !startup_ready_signaled_ &&

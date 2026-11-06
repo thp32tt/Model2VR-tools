@@ -74,6 +74,19 @@ int main(){
     bad.eyes[0].orientation_xyzw[3]=0.f;
     CHECK(!rebase.Rebase(bad,output));
     bad=turned;bad.sequence=13u;
+    // Guard direct native CPU recenter callers as well as the Win64 host
+    // publisher and original x86 Draw/Present source gate. A physical
+    // stereo rig cannot have opposite eye orientations despite good IPD.
+    bad.eyes[1].orientation_xyzw[1]=0.f;
+    bad.eyes[1].orientation_xyzw[3]=1.f;
+    CHECK(!rebase.Rebase(bad,output));
+    CHECK(output.sequence==old.sequence);
+    bad=turned;bad.sequence=13u;
+    bad.eyes[1].fov_left_right_up_down[0]=-0.2f;
+    bad.eyes[1].fov_left_right_up_down[1]=0.2f;
+    CHECK(!rebase.Rebase(bad,output));
+    CHECK(output.sequence==old.sequence);
+    bad=turned;bad.sequence=13u;
     bad.eyes[1].position_m[0]=bad.eyes[0].position_m[0];
     bad.eyes[1].position_m[2]=bad.eyes[0].position_m[2];
     CHECK(!rebase.Rebase(bad,output)); // identical eyes are not stereo

@@ -102,6 +102,43 @@ int main(){
     f.eyes[0].position_m[2]=0.032f;
     f.eyes[1].position_m[2]=-0.032f;
     CHECK(AdmitLiveEyePose(f,now,hz).valid);
+    // A truthful original Win32 CPU-world eye source must inherit one
+    // coherent physical XR_PRIMARY_STEREO pair, even with valid tracking.
+    // Allow a genuine canted right-eye camera (up to thirty degrees).
+    f=ValidTestPose();
+    f.eyes[1].orientation_xyzw[1]=std::sin(0.10f);
+    f.eyes[1].orientation_xyzw[3]=std::cos(0.10f);
+    CHECK(AdmitLiveEyePose(f,now,hz).valid);
+    // q and -q describe the SAME orientation, never reject by signed dot.
+    f=ValidTestPose();f.eyes[1].orientation_xyzw[3]=-1.f;
+    CHECK(AdmitLiveEyePose(f,now,hz).valid);
+    // But two mutually divergent cameras are not stereo HMD eyes.
+    f=ValidTestPose();
+    f.eyes[1].orientation_xyzw[1]=std::sin(0.50f);
+    f.eyes[1].orientation_xyzw[3]=std::cos(0.50f);
+    CHECK(!AdmitLiveEyePose(f,now,hz).valid);
+    CHECK(m2vr::pose::CheckStereoRigGeometry(f).reason==
+          m2vr::pose::StereoRigRejection::DivergentEyeRotation);
+    // Reject a wildly asymmetric lens projection and malformed FOV
+    // without ever treating different mono cameras as native stereo.
+    f=ValidTestPose();
+    f.eyes[1].fov_left_right_up_down[0]=-0.25f;
+    f.eyes[1].fov_left_right_up_down[1]=0.25f;
+    CHECK(!AdmitLiveEyePose(f,now,hz).valid);
+    CHECK(m2vr::pose::CheckStereoRigGeometry(f).reason==
+          m2vr::pose::StereoRigRejection::MismatchedEyeFov);
+    f=ValidTestPose();f.eyes[1].fov_left_right_up_down[2]=-0.8f;
+    CHECK(!AdmitLiveEyePose(f,now,hz).valid);
+    f=ValidTestPose();f.eyes[0].position_m[0]=
+        std::numeric_limits<float>::infinity();
+    CHECK(!AdmitLiveEyePose(f,now,hz).valid);
+    // A huge absolute headset yaw is fine when BOTH eyes share it.
+    f=ValidTestPose();
+    f.eyes[0].orientation_xyzw[1]=f.eyes[1].orientation_xyzw[1]=0.70710678f;
+    f.eyes[0].orientation_xyzw[3]=f.eyes[1].orientation_xyzw[3]=0.70710678f;
+    f.eyes[0].position_m[0]=f.eyes[1].position_m[0]=0.f;
+    f.eyes[0].position_m[2]=0.032f;f.eyes[1].position_m[2]=-0.032f;
+    CHECK(AdmitLiveEyePose(f,now,hz).valid);
     f=ValidTestPose();CHECK(!AdmitLiveEyePose(f,now+hz,hz).valid);
     f=ValidTestPose();CHECK(!AdmitLiveEyePose(f,now,0).valid);
     f=ValidTestPose();CHECK(!AdmitLiveEyePose(f,900000000ull,hz).valid);
