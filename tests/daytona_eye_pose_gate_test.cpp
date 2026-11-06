@@ -17,6 +17,7 @@ using m2vr::daytona::AdmitTrackedWorldEyePose;
 static m2vr::pose::Frame ValidTestPose(){
     m2vr::pose::Frame f{};
     f.sequence=15;
+    f.reserved=1u;
     f.published_qpc=1000000000ull;
     f.view_flags=m2vr::pose::kOrientationValid |
                  m2vr::pose::kPositionValid;
@@ -57,6 +58,11 @@ int main(){
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
     f.view_flags|=m2vr::pose::kOrientationTracked |
                   m2vr::pose::kPositionTracked;
+    CHECK(AdmitTrackedWorldEyePose(f,now,hz).valid);
+    f.reserved=0u;
+    CHECK(AdmitLiveEyePose(f,now,hz).valid); // preserve legacy GPU/mono
+    CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    f.reserved=1u;
     CHECK(AdmitTrackedWorldEyePose(f,now,hz).valid);
     f.view_flags&=~m2vr::pose::kPositionTracked;
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);

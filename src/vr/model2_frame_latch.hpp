@@ -17,8 +17,11 @@ public:
      // position. Sequence growth alone does not make an old epoch valid.
      // Keep the last accepted epoch even if a refresh fails so a late
      // old/legacy packet cannot re-arm stereo with the wrong origin.
+     // Zero is a legacy/unknown LOCAL origin: an untagged first
+     // physical game frame is no more trustworthy than a late old one.
+     !predicted.reserved ||
      (reference_space_epoch_ &&
-      (!predicted.reserved || predicted.reserved<reference_space_epoch_)) ||
+      predicted.reserved<reference_space_epoch_) ||
      // VALID alone can survive XR tracking loss. Original CPU World3D
      // requires a physically TRACKED 6DoF pair; legacy GPU presentation
      // retains its separate, intentionally weaker pose policy.

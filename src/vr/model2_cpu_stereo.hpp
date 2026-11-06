@@ -69,6 +69,9 @@ inline ProjectedPair ProjectModel2Stereo(
        (latched_predicted_views.view_flags&pose::kFullSixDofTracked)!=
           pose::kFullSixDofTracked ||
        latched_predicted_views.sequence==0 ||
+       // No original World3D projection may rely on an unknown/legacy
+       // OpenXR LOCAL source, even if both eyes are physically tracked.
+       latched_predicted_views.reserved==0u ||
        // Defense in depth: a direct CPU world projection may receive a
        // frame without going through the Win64 tracked-pose publisher.
        // Do not call two identical/reversed/unrelated view cameras stereo.

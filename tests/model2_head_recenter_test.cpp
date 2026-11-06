@@ -15,6 +15,7 @@ static pose::Frame Eyes(float yaw,float head_x,float head_y,float head_z,
                         std::uint64_t sequence){
     pose::Frame p{};
     p.sequence=sequence;
+    p.reserved=1u; // genuine source fixture with known LOCAL generation
     p.view_flags=pose::kFullSixDofTracked;
     const float s=std::sin(yaw*0.5f),c=std::cos(yaw*0.5f);
     for(int eye=0;eye<2;++eye){
@@ -38,6 +39,11 @@ int main(){
     pose::Frame output{};
     CHECK(!rebase.Anchored());
     auto initial=Eyes(pi*0.5f,5.f,1.f,10.f,10u);
+    auto legacy_initial=initial;
+    legacy_initial.reserved=0u;
+    CHECK(!rebase.Rebase(legacy_initial,output));
+    CHECK(!rebase.Anchored());
+    CHECK(rebase.ReferenceSpaceEpoch()==0u);
     CHECK(rebase.Rebase(initial,output));
     CHECK(rebase.Anchored()&&output.sequence==10u);
     CHECK(Near(output.eyes[0].position_m[0],-0.032f));

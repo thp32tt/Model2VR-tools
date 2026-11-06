@@ -24,7 +24,7 @@ int main() {
  cal.units_per_meter=1.f;cal.min_depth_m=0.05f;cal.runtime_confirmed=true;
  pose::Frame frame{};
  frame.sequence=9;
- frame.view_flags=pose::kFullSixDofTracked;
+ frame.reserved=1u;frame.view_flags=pose::kFullSixDofTracked;
  for (int i=0;i<2;++i) {
   auto& eye=frame.eyes[i];
   eye.position_m[0]=i?0.032f:-0.032f;

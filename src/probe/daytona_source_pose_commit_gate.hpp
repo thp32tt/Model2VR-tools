@@ -15,7 +15,10 @@ struct OriginalSourcePoseTicket {
 inline bool OriginalStereoPoseStillLiveAtPresent(
     OriginalSourcePoseTicket ticket,const pose::Frame& latest,
     std::uint64_t now,std::uint64_t hz) noexcept {
-    if(!ticket.sequence || ticket.sequence>0xffffffffull ||
+    // A matching zero/legacy LOCAL epoch is NOT physical source proof.
+    // Win64 publishes nonzero session/recenter epochs; accept only those.
+    if(!ticket.reference_space_epoch || !latest.reserved ||
+       !ticket.sequence || ticket.sequence>0xffffffffull ||
        !ticket.published_qpc || hz<8u ||
        now<ticket.published_qpc ||
        now-ticket.published_qpc>hz/8u ||

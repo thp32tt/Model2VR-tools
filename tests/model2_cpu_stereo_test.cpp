@@ -12,6 +12,7 @@ int main(){
     DrawEvidence pass{RenderPass::World3D,true,true,true,false,false,false,false,true,true,true};
     pose::Frame xr{};
     xr.sequence=1;
+    xr.reserved=1u;
     xr.view_flags=pose::kFullSixDofTracked;
     for(int e=0;e<2;++e){
         xr.eyes[e].position_m[0]=e==0?-0.032f:0.032f;
@@ -25,6 +26,11 @@ int main(){
     cal.view_to_xr={1,0,0,0,1,0,0,0,-1};
     cal.units_per_meter=1.f;cal.runtime_confirmed=true;
     REQUIRE(ValidCalibration(cal));
+    // VALID + TRACKED geometry still cannot authorize a World3D eye
+    // from an unknown/legacy OpenXR LOCAL origin.
+    xr.reserved=0u;
+    REQUIRE(!ProjectModel2Stereo(front,xr,cal,pass).stereo);
+    xr.reserved=1u;
     const auto nearPair=ProjectModel2Stereo(front,xr,cal,pass);
     REQUIRE(nearPair.stereo&&nearPair.eyes[0].valid&&nearPair.eyes[1].valid);
     REQUIRE(nearPair.eyes[0].ndc_x>nearPair.eyes[1].ndc_x);

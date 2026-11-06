@@ -29,7 +29,7 @@ int main() {
     cal.min_depth_m=0.05f;
     cal.runtime_confirmed=true;
     pose::Frame frame{};
-    frame.sequence=11;frame.view_flags=pose::kFullSixDofTracked;
+    frame.sequence=11;frame.reserved=1u;frame.view_flags=pose::kFullSixDofTracked;
     for(int i=0;i<2;++i) {
         frame.eyes[i].position_m[0]=i?0.04f:-0.04f;
         frame.eyes[i].orientation_xyzw[3]=1.f;

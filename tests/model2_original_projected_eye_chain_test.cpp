@@ -112,7 +112,7 @@ int main() {
     calibration.runtime_confirmed=true; // SYNTHETIC TEST ONLY, not game proof
     pose::Frame predicted{};
     predicted.sequence=102u;
-    predicted.view_flags=pose::kFullSixDofTracked;
+    predicted.reserved=1u;predicted.view_flags=pose::kFullSixDofTracked;
     for(std::size_t eye=0;eye<2u;++eye) {
         predicted.eyes[eye].orientation_xyzw[3]=1.f;
         predicted.eyes[eye].position_m[0]=eye?0.032f:-0.032f;

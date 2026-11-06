@@ -110,6 +110,10 @@ int main(){
     REQUIRE(!game_pose.Read(101u,rejected_latch));
     const auto late_legacy=Packet(100u,0u,77.f);
     REQUIRE(!game_pose.Begin(102u,late_legacy));
+    REQUIRE(!cpu.Rebase(late_legacy,cpu_eyes));
+    REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
+        {late_legacy.sequence,late_legacy.published_qpc,0u},
+        late_legacy,now,hz));
     REQUIRE(game_pose.ReferenceSpaceEpoch()==2u);
     REQUIRE(Near(cpu_eyes.eyes[0].position_m[0],-0.032f));
     REQUIRE(Near(cpu_eyes.eyes[1].position_m[0],0.032f));

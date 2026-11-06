@@ -16,6 +16,12 @@ int main() {
  }
  p.eyes[0].position_m[0]=-0.032f;
  p.eyes[1].position_m[0]=0.032f;
+ // Initial unknown LOCAL origin must be rejected without consuming game
+ // frame or XR sequence. The exact same tracked pair can recover once
+ // a real Win64 LOCAL session epoch is supplied.
+ CHECK(!latch.Begin(100,p));
+ CHECK(!latch.Read(100,snapshot));
+ p.reserved=1u;
  CHECK(latch.Begin(100,p));
  CHECK(latch.Read(100,snapshot));
  CHECK(snapshot.sequence==7);

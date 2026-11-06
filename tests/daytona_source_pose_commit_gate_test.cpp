@@ -4,9 +4,10 @@
 int main(){
     using namespace m2vr;
     constexpr std::uint64_t now=1000600000ull,hz=10000000ull;
-    daytona::OriginalSourcePoseTicket ticket{100u,1000000000ull};
+    daytona::OriginalSourcePoseTicket ticket{100u,1000000000ull,1u};
     pose::Frame p{};
     p.sequence=102u;p.published_qpc=1000500000ull;
+    p.reserved=1u;
     p.view_flags=pose::kFullSixDofTracked;
     for(auto& e:p.eyes){
         e.orientation_xyzw[3]=1.f;
@@ -19,6 +20,16 @@ int main(){
     p.eyes[1].position_m[0]=0.032f;
     using daytona::OriginalStereoPoseStillLiveAtPresent;
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    // No provenance can be inferred from matching zero/legacy origins.
+    auto no_source_ticket=ticket;
+    no_source_ticket.reference_space_epoch=0u;
+    auto no_source_pose=p;no_source_pose.reserved=0u;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(
+        no_source_ticket,no_source_pose,now,hz));
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(
+        no_source_ticket,p,now,hz));
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(
+        ticket,no_source_pose,now,hz));
     // A tracked and fresh HMD packet from another LOCAL origin cannot
     // certify an earlier genuine original D3D9 Draw at physical Present.
     ticket.reference_space_epoch=1u;

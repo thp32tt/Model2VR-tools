@@ -26,8 +26,11 @@ public:
         // A LOCAL recenter changes the meaning of every absolute eye
         // position. Reject older/legacy epochs after a new one is latched.
         // Do not mutate the old origin until the whole rebase succeeds.
-        if(reference_space_epoch_ &&
-           (!input.reserved || input.reserved<reference_space_epoch_))
+        // A genuine original CPU-world origin requires explicit LOCAL
+        // provenance even on the very first accepted headset frame.
+        if(!input.reserved ||
+           (reference_space_epoch_ &&
+            input.reserved<reference_space_epoch_))
             return false;
         // A valid-but-inferred headset pose must never reanchor the
         // original game's CPU-world camera as genuine tracked 6DoF.

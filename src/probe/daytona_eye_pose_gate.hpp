@@ -50,7 +50,8 @@ inline EyePoseAdmission AdmitLiveEyePose(
 inline EyePoseAdmission AdmitTrackedWorldEyePose(
     const pose::Frame& frame,std::uint64_t now_qpc,
     std::uint64_t qpc_hz) noexcept {
-    if((frame.view_flags & pose::kFullSixDofTracked)!=
+    if(!frame.reserved ||
+       (frame.view_flags & pose::kFullSixDofTracked)!=
         pose::kFullSixDofTracked)return {};
     return AdmitLiveEyePose(frame,now_qpc,qpc_hz);
 }
