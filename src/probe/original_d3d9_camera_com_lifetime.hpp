@@ -22,17 +22,56 @@ public:
     static constexpr std::uint32_t kInFlight=16u;
     static constexpr std::uint32_t kOverflow=32u;
     static constexpr std::uint32_t kRevisionDrift=64u;
+    // Read-only ORIGINAL Draw preflight GetFVF/GetTransform/GetStreamSource
+    // and source camera/geometry snapshots form ONE bounded transaction.
+    // Their return must belong to the same real physical Present and source
+    // revision as the original x86 Draw that requested them.
+    static constexpr std::uint32_t kSourceReadOverlap=128u;
+    static constexpr std::uint32_t kSourceReadInFlight=256u;
+    static constexpr std::uint32_t kSourceReadDrift=512u;
     static constexpr std::uint32_t kLimit=10000000u;
     struct Ticket {
         std::uint64_t epoch=0u,revision=0u;
         bool valid=false,eligible=false;
         std::uint32_t family=1u; // camera=1, pixel program=2, input layout=3
     };
+    struct SourceReadTicket {
+        std::uint64_t epoch=0u,revision=0u;
+        bool valid=false,eligible=false;
+    };
+    SourceReadTicket EnterSourceRead() noexcept {
+        std::lock_guard<std::mutex> lock(mu_);
+        if(active_reads_>=kLimit){flags_|=kOverflow;return {};}
+        // Exactly one original hardware Draw owns the read group. No
+        // co-running original Draw, setter, read group or physical Present
+        // can provide a stable original game camera to speculative XR eyes.
+        const bool eligible=!sealed_ && !flags_ && !active_writes_ &&
+            active_draws_==1u && active_reads_==0u;
+        if(!eligible)flags_|=sealed_?kCrossPresent:kSourceReadOverlap;
+        ++active_reads_;
+        return {epoch_,revision_,true,eligible};
+    }
+    bool CompleteSourceRead(SourceReadTicket ticket) noexcept {
+        std::lock_guard<std::mutex> lock(mu_);
+        if(!ticket.valid || !active_reads_){
+            flags_|=kSourceReadOverlap;return false;
+        }
+        --active_reads_;
+        if(ticket.epoch!=epoch_ || sealed_){
+            flags_|=kCrossPresent;return false;
+        }
+        if(ticket.revision!=revision_)flags_|=kSourceReadDrift;
+        if(active_writes_ || active_draws_!=1u || active_reads_)
+            flags_|=kSourceReadOverlap;
+        return ticket.eligible && flags_==0u;
+    }
     Ticket EnterWrite(std::uint32_t family=1u) noexcept {
         std::lock_guard<std::mutex> lock(mu_);
         if(active_writes_>=kLimit){flags_|=kOverflow;return {};}
-        const bool eligible=!sealed_ && !active_draws_ && !active_writes_;
-        if(!eligible) flags_|=sealed_?kCrossPresent:kOverlap;
+        const bool eligible=!sealed_ && !active_draws_ && !active_writes_ &&
+            !active_reads_;
+        if(!eligible)flags_|=sealed_?kCrossPresent:
+            (active_reads_?kSourceReadOverlap:kOverlap);
         if(family<1u || family>3u)flags_|=kUntrustedWriter;
         ++active_writes_;
         return {epoch_,revision_,true,eligible,family};
@@ -45,6 +84,7 @@ public:
         if(ticket.epoch!=epoch_ || sealed_){flags_|=kCrossPresent;return;}
         if(!ticket.eligible || active_draws_ || active_writes_)
             flags_|=kOverlap;
+        if(active_reads_)flags_|=kSourceReadOverlap;
         if(ticket.revision!=revision_)flags_|=kRevisionDrift;
         if(!exe_caller)flags_|=kUntrustedWriter;
         if(!succeeded)flags_|=kFailedWriter;
@@ -68,8 +108,9 @@ public:
         // camera/shader program even if no explicit COM Set was witnessed:
         // GPU execution and independent OpenXR eye mirrors can interleave.
         const bool eligible=!sealed_ && !active_writes_ &&
-            !active_draws_ && !flags_;
-        if(!eligible)flags_|=sealed_?kCrossPresent:kOverlap;
+            !active_draws_ && !active_reads_ && !flags_;
+        if(!eligible)flags_|=sealed_?kCrossPresent:
+            (active_reads_?kSourceReadOverlap:kOverlap);
         ++active_draws_;
         return {epoch_,revision_,true,eligible};
     }
@@ -85,16 +126,18 @@ public:
         }
         if(ticket.revision!=revision_)flags_|=kRevisionDrift;
         if(active_writes_)flags_|=kOverlap;
+        if(active_reads_)flags_|=kSourceReadOverlap;
         return ticket.eligible && flags_==0u;
     }
     bool MayForwardCpuWorld() noexcept {
         std::lock_guard<std::mutex> lock(mu_);
-        return !sealed_ && !active_writes_ && !flags_;
+        return !sealed_ && !active_writes_ && !active_reads_ && !flags_;
     }
     OriginalCameraComSummary FinishPresent() noexcept {
         std::lock_guard<std::mutex> lock(mu_);
         const auto safety=flags_ |
-            (active_writes_ || active_draws_?kInFlight:0u);
+            (active_writes_ || active_draws_?kInFlight:0u) |
+            (active_reads_?kSourceReadInFlight:0u);
         const OriginalCameraComSummary result{safety,draws_,writes_,
             camera_writes_,pixel_writes_,layout_writes_};
         flags_=draws_=writes_=0u;
@@ -120,7 +163,7 @@ public:
 private:
     std::mutex mu_;
     std::uint64_t epoch_=1u,revision_=1u;
-    std::uint32_t active_writes_=0u,active_draws_=0u;
+    std::uint32_t active_writes_=0u,active_draws_=0u,active_reads_=0u;
     std::uint32_t flags_=0u,draws_=0u,writes_=0u;
     std::uint32_t camera_writes_=0u,pixel_writes_=0u,layout_writes_=0u;
     bool sealed_=false;

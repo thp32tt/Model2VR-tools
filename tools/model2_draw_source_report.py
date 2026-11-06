@@ -933,7 +933,7 @@ def audit_csv(path):
                     frame!=last_camera_com_frame+1 or
                     frame!=last_scene_coverage_frame or
                     (last_capture_frame and frame!=last_capture_frame) or
-                    flags>127 or draws>10000000 or writes>10000000 or
+                    flags>1023 or draws>10000000 or writes>10000000 or
                     (draws!=last_scene_draw_total and not (flags&64))):
                     raise ValueError("invalid original camera COM lifetime")
                 camera_com_totals["draws"]+=draws

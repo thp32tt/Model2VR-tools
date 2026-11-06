@@ -88,7 +88,7 @@ class SourceAuditTests(unittest.TestCase):
             camera_index=next(i for i,row in enumerate(events)
                 if row[0]=="model2_d3d9_original_camera_com_lifetime"
                 and row[1]==frames-1)
-            for flag in (1,2,4,8,16,32,64,127):
+            for flag in (1,2,4,8,16,32,64,127,128,256,512,1023):
                 bad=list(events)
                 bad[camera_index]=(
                     "model2_d3d9_original_camera_com_lifetime",
@@ -98,7 +98,7 @@ class SourceAuditTests(unittest.TestCase):
                 self.assertFalse(state["all_original_camera_com_lifetimes_trusted"])
                 self.assertEqual(state["flagged_present_count"],1)
             for frame,flags,draws in (
-                (frames-1,128,1),(frames-1,0,0),(frames,0,1)):
+                (frames-1,1024,1),(frames-1,0,0),(frames,0,1)):
                 bad=list(events)
                 bad[camera_index]=(
                     "model2_d3d9_original_camera_com_lifetime",

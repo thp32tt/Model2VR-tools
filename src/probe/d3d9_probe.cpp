@@ -2068,6 +2068,7 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     EnsurePhysicalOriginalRtDepth(d);
     const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
     const auto camera_draw_ticket=g_original_camera_lifetime.EnterDraw();
+    const auto camera_source_read=g_original_camera_lifetime.EnterSourceRead();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2081,7 +2082,12 @@ HRESULT STDMETHODCALLTYPE DrawHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT s
     const std::uint64_t witness=Sample(d,1,p,count,caller)?
         ObserveBufferSource(d,1,p,caller,start,0,0,0,0,count):0u;
     const auto original_lineage=ReadOriginalLineage(source_frame);
-    const bool forwarded=ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+    const bool camera_preflight_retained=
+        g_original_camera_lifetime.CompleteSourceRead(camera_source_read);
+    if(!camera_preflight_retained)
+        m2vr::daytona::MarkOriginalLineageMismatch();
+    const bool forwarded=camera_preflight_retained &&
+        ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         1u,caller,
         source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
@@ -2135,6 +2141,7 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     EnsurePhysicalOriginalRtDepth(d);
     const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
     const auto camera_draw_ticket=g_original_camera_lifetime.EnterDraw();
+    const auto camera_source_read=g_original_camera_lifetime.EnterSourceRead();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2148,7 +2155,12 @@ HRESULT STDMETHODCALLTYPE IndexedHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,INT
     const std::uint64_t witness=Sample(d,2,p,count,caller)?
         ObserveBufferSource(d,2,p,caller,0,base,min,num,start,count):0u;
     const auto original_lineage=ReadOriginalLineage(source_frame);
-    const bool forwarded=ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+    const bool camera_preflight_retained=
+        g_original_camera_lifetime.CompleteSourceRead(camera_source_read);
+    if(!camera_preflight_retained)
+        m2vr::daytona::MarkOriginalLineageMismatch();
+    const bool forwarded=camera_preflight_retained &&
+        ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         2u,caller,
         source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
@@ -2202,6 +2214,7 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     EnsurePhysicalOriginalRtDepth(d);
     const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
     const auto camera_draw_ticket=g_original_camera_lifetime.EnterDraw();
+    const auto camera_source_read=g_original_camera_lifetime.EnterSourceRead();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2215,7 +2228,12 @@ HRESULT STDMETHODCALLTYPE DrawUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,UINT
     const std::uint64_t witness=Sample(d,3,p,count,caller)?
         ObserveUP(d,3,p,count,caller,verts,stride):0u;
     const auto original_lineage=ReadOriginalLineage(source_frame);
-    const bool forwarded=ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+    const bool camera_preflight_retained=
+        g_original_camera_lifetime.CompleteSourceRead(camera_source_read);
+    if(!camera_preflight_retained)
+        m2vr::daytona::MarkOriginalLineageMismatch();
+    const bool forwarded=camera_preflight_retained &&
+        ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         3u,caller,
         source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu
@@ -2269,6 +2287,7 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     EnsurePhysicalOriginalRtDepth(d);
     const auto original_target_ticket=g_original_target_draw_coverage.EnterDraw();
     const auto camera_draw_ticket=g_original_camera_lifetime.EnterDraw();
+    const auto camera_source_read=g_original_camera_lifetime.EnterSourceRead();
     const auto source_frame=g_present_count.load(std::memory_order_relaxed)+1u;
     const auto source_ordinal=g_original_frame_draw_ordinal.fetch_add(
         1u,std::memory_order_relaxed)+1u;
@@ -2282,7 +2301,12 @@ HRESULT STDMETHODCALLTYPE IndexedUPHook(IDirect3DDevice9* d,D3DPRIMITIVETYPE p,U
     const std::uint64_t witness=Sample(d,4,p,count,caller)?
         ObserveUP(d,4,p,count,caller,verts,stride,idx,fmt,min,num):0u;
     const auto original_lineage=ReadOriginalLineage(source_frame);
-    const bool forwarded=ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
+    const bool camera_preflight_retained=
+        g_original_camera_lifetime.CompleteSourceRead(camera_source_read);
+    if(!camera_preflight_retained)
+        m2vr::daytona::MarkOriginalLineageMismatch();
+    const bool forwarded=camera_preflight_retained &&
+        ForwardAuthenticatedOriginalDraw(d,source_frame,source_ordinal,
         4u,caller,
         source_scene,source_scene_open,original_lineage,[&](unsigned cpu,unsigned alpha){
         return cpu

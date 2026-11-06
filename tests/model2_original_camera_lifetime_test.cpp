@@ -36,6 +36,55 @@ int main(){
     assert(!clean.MayForwardCpuWorld());
     clean.ReopenAfterPhysicalPresentReturn();
     assert(clean.MayForwardCpuWorld());
+    // Read-only original GetTransform/GetFVF/GetStreamSource grouped under
+    // the SAME real Draw preflight, never independently promoted to stereo.
+    Gate read_clean;
+    const auto clean_draw=read_clean.EnterDraw();
+    const auto clean_read=read_clean.EnterSourceRead();
+    assert(clean_read.valid && clean_read.eligible);
+    assert(!read_clean.MayForwardCpuWorld()); // preflight not yet retained
+    assert(read_clean.CompleteSourceRead(clean_read));
+    assert(read_clean.MayForwardCpuWorld());
+    assert(read_clean.CompleteDraw(clean_draw));
+    assert(read_clean.FinishPresent().flags==0u);
+    Gate read_overlap;
+    const auto overlapping_draw=read_overlap.EnterDraw();
+    const auto partial_camera=read_overlap.EnterSourceRead();
+    const auto setter=read_overlap.EnterWrite();
+    read_overlap.CompleteWrite(setter,true,true);
+    assert(!read_overlap.CompleteSourceRead(partial_camera));
+    assert(!read_overlap.CompleteDraw(overlapping_draw));
+    assert(read_overlap.FinishPresent().flags&Gate::kSourceReadOverlap);
+    Gate read_concurrent;
+    const auto owning_draw=read_concurrent.EnterDraw();
+    const auto first_read=read_concurrent.EnterSourceRead();
+    const auto second_read=read_concurrent.EnterSourceRead();
+    assert(!second_read.eligible);
+    assert(!read_concurrent.CompleteSourceRead(first_read));
+    assert(!read_concurrent.CompleteSourceRead(second_read));
+    assert(!read_concurrent.CompleteDraw(owning_draw));
+    assert(read_concurrent.FinishPresent().flags&Gate::kSourceReadOverlap);
+    Gate read_present;
+    const auto old_draw=read_present.EnterDraw();
+    const auto old_read=read_present.EnterSourceRead();
+    const auto old_frame=read_present.FinishPresent();
+    assert(old_frame.flags&Gate::kSourceReadInFlight);
+    read_present.ReopenAfterPhysicalPresentReturn();
+    assert(!read_present.CompleteSourceRead(old_read));
+    assert(!read_present.CompleteDraw(old_draw));
+    assert(read_present.FinishPresent().flags&Gate::kCrossPresent);
+    Gate read_reset;
+    const auto reset_draw=read_reset.EnterDraw();
+    const auto reset_read=read_reset.EnterSourceRead();
+    read_reset.Reset();
+    assert(!read_reset.CompleteSourceRead(reset_read));
+    assert(!read_reset.CompleteDraw(reset_draw));
+    assert(read_reset.FinishPresent().flags&Gate::kCrossPresent);
+    Gate missing_read;
+    const auto standalone=missing_read.EnterSourceRead();
+    assert(!standalone.eligible);
+    assert(!missing_read.CompleteSourceRead(standalone));
+    assert(missing_read.FinishPresent().flags&Gate::kSourceReadOverlap);
     // Slow genuine SetVSConstant/SetTransform COM straddling Draw:
     // post-COM lineage counts alone are unsafe even if returning success.
     Gate overlap;
