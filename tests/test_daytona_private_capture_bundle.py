@@ -37,7 +37,7 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('Get-ChildItem -LiteralPath $logRoot -Filter "daytona_vr_startup_*.csv"',self.ps)
         self.assertIn('$knownPaths.Add($originalPath)',self.ps)
         self.assertIn('$knownDigests.Add($digest)',self.ps)
-        self.assertIn('Where-Object { $_.LastWriteTimeUtc -ge $started }',self.ps)
+        self.assertIn('$_.LastWriteTimeUtc -ge $stageStarted -and',self.ps)
         self.assertIn('model2_world_pass_evidence.py',self.ps)
         self.assertIn('model2_draw_source_report.py',self.ps)
         self.assertIn('"--race",$reports["race_a"],"--race",$reports["race_b"]',self.ps)
@@ -83,6 +83,23 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
                         self.ps.index('Local candidate triage written'))
         self.assertIn('Rename-Item -LiteralPath $candidateOutput', self.ps)
         self.assertIn('$pythonExitCode -ne 0', self.ps)
+
+    def test_fresh_original_stage_only_accepts_one_new_path_not_a_recent_old_file(self):
+        # A previously written CSV can have its LastWriteTime retouched or
+        # dated in the future. Its identity must be captured BEFORE Read-Host.
+        self.assertIn('$previousCsvPaths = New-Object', self.ps)
+        self.assertIn('$previousCsvPaths.Add([IO.Path]::GetFullPath($_.FullName))',
+                      self.ps)
+        self.assertLess(self.ps.index('$previousCsvPaths.Add'),
+                        self.ps.index('[void](Read-Host'))
+        self.assertIn('!$previousCsvPaths.Contains([IO.Path]::GetFullPath($_.FullName))',
+                      self.ps)
+        self.assertIn('if ($freshSources.Count -eq 0)', self.ps)
+        self.assertIn('if ($freshSources.Count -ne 1)', self.ps)
+        self.assertIn('PRIVATE SESSION CAPTURE AMBIGUOUS', self.ps)
+        self.assertNotIn('Select-Object -First 1', self.ps)
+        self.assertIn('Reject previously existing original x86 CSV even if retouched',
+                      self.workflow)
 
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)

@@ -151,19 +151,32 @@ foreach ($label in $labels) {
     }
     $source = Get-Item -LiteralPath $candidate -ErrorAction Stop
   } else {
-    $started = (Get-Date).ToUniversalTime().AddSeconds(-2)
+    # A timestamp alone cannot prove a new original emulator process:
+    # existing logs can be retouched, and the newest of two new logs can be
+    # an unrelated/crashed process. Snapshot path identity before prompting.
+    $stageStarted = (Get-Date).ToUniversalTime()
+    $previousCsvPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    Get-ChildItem -LiteralPath $logRoot -Filter "daytona_vr_startup_*.csv" -File |
+      ForEach-Object {
+        [void]$previousCsvPaths.Add([IO.Path]::GetFullPath($_.FullName))
+      }
     Write-Host ""
-    Write-Host "[$label] Run a NEW Daytona emulator session in this stage."
+    Write-Host "[$label] Run exactly ONE NEW Daytona emulator session in this stage."
     Write-Host "For title/menu/sky/hud/aux, visit the actual requested scene."
     Write-Host "Exit the emulator completely so the CSV is flushed."
     [void](Read-Host "Press Enter only after the original emulator exits")
-    $source = Get-ChildItem -LiteralPath $logRoot -Filter "daytona_vr_startup_*.csv" -File |
-      Where-Object { $_.LastWriteTimeUtc -ge $started } |
-      Sort-Object LastWriteTimeUtc -Descending |
-      Select-Object -First 1
-    if ($null -eq $source) {
+    $freshSources = @(Get-ChildItem -LiteralPath $logRoot -Filter "daytona_vr_startup_*.csv" -File |
+      Where-Object {
+        $_.LastWriteTimeUtc -ge $stageStarted -and
+        !$previousCsvPaths.Contains([IO.Path]::GetFullPath($_.FullName))
+      })
+    if ($freshSources.Count -eq 0) {
       throw "No NEW original x86 source CSV for $label. Relaunch the emulator and retry."
     }
+    if ($freshSources.Count -ne 1) {
+      throw "PRIVATE SESSION CAPTURE AMBIGUOUS: $($freshSources.Count) new x86 logs for $label; expected exactly one separate original emulator process."
+    }
+    $source = $freshSources[0]
   }
   $originalPath = [IO.Path]::GetFullPath($source.FullName)
   if (!$knownPaths.Add($originalPath)) {

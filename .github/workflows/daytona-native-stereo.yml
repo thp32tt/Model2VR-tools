@@ -170,6 +170,39 @@ jobs:
             $oldContent=Get-Content -LiteralPath $prior[0].FullName -Raw
             if($oldContent -notmatch "previous_complete_run"){ throw "Historical receipt unexpectedly rewritten: $oldName" }
           }
+      - name: Reject previously existing original x86 CSV even if retouched
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $root=Join-Path $env:RUNNER_TEMP "original-x86-stale-log-smoke"
+          $logs=Join-Path $root "logs"
+          New-Item -ItemType Directory -Force -Path $logs | Out-Null
+          Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+          Copy-Item tools/model2_draw_source_report.py $root/
+          Copy-Item tools/model2_world_pass_evidence.py $root/
+          # An existing file with a FUTURE mtime used to pass newest-file
+          # discovery. A real new original process MUST create a new path.
+          $stale=Join-Path $logs "daytona_vr_startup_old.csv"
+          [IO.File]::WriteAllText($stale,
+            "seq,qpc,thread,event,a0,a1,a2,a3" + "`n" +
+            "1,1,1,retouched_old_not_original_run,0,0,0,0" + "`n")
+          [IO.File]::SetLastWriteTimeUtc($stale,(Get-Date).ToUniversalTime().AddMinutes(5))
+          $rejected=$false
+          try {
+            # Unattended PowerShell returns empty at the first Read-Host;
+            # no real emulator or original game material is executed.
+            & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root
+          } catch {
+            if($_.Exception.Message -notmatch "No NEW original x86 source CSV"){ throw }
+            $rejected=$true
+          }
+          if(-not $rejected){ throw "Retouched old CSV accepted as a new physical process" }
+          if(!(Test-Path -LiteralPath $stale)){ throw "Original stale log unexpectedly moved" }
+          $archives=@(Get-ChildItem -LiteralPath $logs -Directory -Filter "private_original_evidence_*")
+          if($archives.Count -ne 1){ throw "Expected one local private stage archive" }
+          if(@(Get-ChildItem -LiteralPath $archives[0].FullName -File).Count -ne 0){
+            throw "False fresh log caused private source output"
+          }
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
       - name: Build original game hook/loader
