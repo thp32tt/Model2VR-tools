@@ -3,6 +3,8 @@
 #include <cstdlib>
 #define REQUIRE(expr) do { if (!(expr)) { std::fprintf(stderr,"CHECK FAILED at line %d: %s\n",__LINE__,#expr); std::exit(1); } } while(0)
 #include <cstdint>
+#include <atomic>
+#include <thread>
 #include <vector>
 int main(){
     using namespace m2vr::transport;
@@ -115,6 +117,36 @@ int main(){
     REQUIRE(reader.Peek(metadata));
     REQUIRE(reader.ReadReusable(staging));
     UnmapViewOfFile(raw);CloseHandle(map);
+    // Two calls from ONE source process must not concurrently own the
+    // same shared seqlock. Either whole coherent pair wins, never mixed
+    // left/right bytes from two competing original Present paths.
+    std::vector<std::uint8_t> a2(kBytesPerEye,0x4Au);
+    std::vector<std::uint8_t> b2(kBytesPerEye,0xB4u);
+    for(std::uint64_t iteration=10u;iteration<26u;++iteration){
+        std::atomic<unsigned> ready{0u};
+        std::atomic<bool> go{false};
+        bool accepted_a=false,accepted_b=false;
+        std::thread first([&]{
+            ready.fetch_add(1u);
+            while(!go.load())std::this_thread::yield();
+            accepted_a=writer.Publish(a.data(),a.data(),iteration,FrameKind::GameStereo,119u);
+        });
+        std::thread second([&]{
+            ready.fetch_add(1u);
+            while(!go.load())std::this_thread::yield();
+            accepted_b=writer.Publish(b2.data(),b2.data(),iteration,FrameKind::GameStereo,119u);
+        });
+        while(ready.load()!=2u)std::this_thread::yield();
+        go.store(true);
+        first.join();second.join();
+        REQUIRE(accepted_a != accepted_b);
+        REQUIRE(reader.ReadReusable(staging));
+        REQUIRE(staging.frame_id==iteration);
+        const auto expected=accepted_a?a[0]:b2[0];
+        REQUIRE(staging.eyes[0][0]==expected && staging.eyes[1][0]==expected);
+        REQUIRE(staging.eyes[0][kBytesPerEye-1]==(accepted_a?a.back():b2.back()));
+        REQUIRE(staging.eyes[1][kBytesPerEye-1]==(accepted_a?a.back():b2.back()));
+    }
     reader.Close();writer.Close();
     REQUIRE(!reader.Read(snap));
     return 0;

@@ -149,9 +149,22 @@ public:
         auto* h=reinterpret_cast<Header*>(base_);
         // A writer must not overlap itself. No consumer ever writes.
         const LONG before=InterlockedCompareExchange(&h->sequence,0,0);
-        if(before & 1)return false;
-        if(frame_id<=last_written_)return false;
-        InterlockedExchange(&h->sequence,before+1);
+        // The original D3D9 Present and the CPU verified-world fallback
+        // can attempt publication on separate x86 threads. Reading an
+        // even seqlock and then blindly exchanging it is NOT mutual exclusion:
+        // two 8-MiB writers could claim the same generation and mix eyes.
+        // Acquire ownership with a real compare-and-swap, fail closed on a
+        // competing writer or a generation about to overflow signed LONG.
+        if((before&1) || before>=(std::numeric_limits<LONG>::max)()-2)
+            return false;
+        if(InterlockedCompareExchange(&h->sequence,before+1,before)!=before)
+            return false;
+        // last_written_ is protected by the odd-generation writer lease,
+        // not sampled before ownership (which would be a C++ data race).
+        if(frame_id<=last_written_){
+            InterlockedExchange(&h->sequence,before+2);
+            return false;
+        }
         std::memcpy(base_+sizeof(Header),left,kBytesPerEye);
         // Do NOT copy 4 MiB of redundant pixels for a mono cinema quad.
         // The kind=4 marker is published only after the seqlock commits.
