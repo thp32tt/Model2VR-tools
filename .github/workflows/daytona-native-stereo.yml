@@ -390,7 +390,8 @@ jobs:
               & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ExistingSessionFolder $inputs
             } catch {
               if($mode -eq "valid"){throw}
-              if($_.Exception.Message -notmatch "PRIVATE SESSION COMPARE"){throw}
+              $expectedError=if($mode -eq "silent"){"Private source evidence FAIL-CLOSED"}else{"PRIVATE SESSION COMPARE RECEIPT INVALID FAIL-CLOSED"}
+              if($_.Exception.Message -notmatch $expectedError){throw}
               $rejected=$true
             } finally {
               $env:MODEL2_RECEIPT_SMOKE=$null
