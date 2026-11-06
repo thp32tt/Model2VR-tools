@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 namespace m2vr::producerhealth {
 constexpr std::uint32_t kMagic=0x3248504Du; // MPH2
@@ -132,13 +133,23 @@ public:
                  std::uint32_t scene,std::uint32_t draws,
                  std::uint32_t clears,
                  const std::array<std::uint32_t,4>& family)noexcept {
-        if(!writer_||!Valid()||!frame||frame<=last_frame_||
+        if(!writer_||!Valid()||!frame||
            (mask&~kKnownReasons)||SumFamilies(family)!=draws)return false;
         LARGE_INTEGER now{};
         if(!QueryPerformanceCounter(&now)||now.QuadPart<=0)return false;
         const LONG old=InterlockedCompareExchange(&wire_->generation,0,0);
-        if(old&1)return false;
-        InterlockedExchange(&wire_->generation,old+1);
+        // Health is the one-way receipt of the original physical Present.
+        // Claim exclusive writer ownership before touching the 48-byte
+        // record or its frame high-water mark; otherwise a concurrent CPU
+        // world/GPU fallback status can erase a successful newer receipt.
+        if((old&1) || old>=(std::numeric_limits<LONG>::max)()-2)
+            return false;
+        if(InterlockedCompareExchange(&wire_->generation,old+1,old)!=old)
+            return false;
+        if(frame<=last_frame_){
+            InterlockedExchange(&wire_->generation,old+2);
+            return false;
+        }
         wire_->status={frame,static_cast<std::uint64_t>(now.QuadPart),
                        mask,scene,draws,clears,family};
         InterlockedExchange(&wire_->generation,old+2);

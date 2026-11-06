@@ -2,6 +2,8 @@
 #include "../src/common/daytona_producer_health.hpp"
 #include <cstdio>
 #include <cstdlib>
+#include <atomic>
+#include <thread>
 #define REQUIRE(x) do {if(!(x)){std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 int main(){
  using namespace m2vr::producerhealth;
@@ -109,6 +111,34 @@ int main(){
  REQUIRE(InvalidatesCachedPair(failed,true,2u,true));
  REQUIRE(!InvalidatesCachedPair(failed,true,3u,true));
  REQUIRE(!InvalidatesCachedPair(failed,false,2u,true));
+ // Two independent original x86 paths must not write a mixed success
+ // receipt, or regress the physical Present sequence seen by Win64.
+ for(std::uint64_t id=3u;id<23u;++id){
+     std::atomic<unsigned> ready{0u};
+     std::atomic<bool> go{false};
+     bool wrote_success=false,wrote_failure=false;
+     std::thread success([&]{
+         ready.fetch_add(1u);
+         while(!go.load())std::this_thread::yield();
+         wrote_success=writer.Publish(id,0u,7u,12u,2u,first);
+     });
+     std::thread failure([&]{
+         ready.fetch_add(1u);
+         while(!go.load())std::this_thread::yield();
+         wrote_failure=writer.Publish(id,ReadbackFailed,0u,29u,3u,second);
+     });
+     while(ready.load()!=2u)std::this_thread::yield();
+     go.store(true);
+     success.join();failure.join();
+     REQUIRE(wrote_success!=wrote_failure);
+     REQUIRE(reader.Read(got));
+     REQUIRE(got.frame_id==id);
+     REQUIRE(got.reason_mask==(wrote_success?0u:ReadbackFailed));
+     REQUIRE(got.mirrored_draws==(wrote_success?12u:29u));
+     REQUIRE(got.verified_scene_draws==(wrote_success?7u:0u));
+     REQUIRE(got.family_draws==(wrote_success?first:second));
+ }
+ REQUIRE(!writer.Publish(10u,0u,7u,12u,2u,first));
  reader.Close();writer.Close();
  REQUIRE(!reader.Read(got));
  return 0;

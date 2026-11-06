@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 namespace m2vr::pose {
 constexpr std::uint32_t kMagic=0x3250564Du; // "MVP2"
@@ -82,11 +83,22 @@ public:
                data_->size==sizeof(Shared);
     }
     bool Publish(const Frame& value){
-        if(!writable_||!Valid()||value.sequence<=last_written_||
+        if(!writable_||!Valid()||value.sequence==0u||
            !(value.view_flags&kOrientationValid))return false;
         const LONG previous=InterlockedCompareExchange(&data_->generation,0,0);
-        if(previous & 1)return false;
-        InterlockedExchange(&data_->generation,previous+1);
+        // Host pose Publish and tracking-loss Invalidate must NEVER both
+        // own the same 120-byte x86/x64 IPC packet. A read-then-exchange
+        // seqlock acquisition is not a writer lock.
+        if((previous&1) || previous>=(std::numeric_limits<LONG>::max)()-2)
+            return false;
+        if(InterlockedCompareExchange(&data_->generation,
+                                      previous+1,previous)!=previous)
+            return false;
+        // This high-water mark is protected by the odd writer generation.
+        if(value.sequence<=last_written_){
+            InterlockedExchange(&data_->generation,previous+2);
+            return false;
+        }
         Frame stamped=value;
         LARGE_INTEGER now{};
         QueryPerformanceCounter(&now);
@@ -102,8 +114,11 @@ public:
     bool Invalidate() {
         if(!writable_ || !Valid())return false;
         const LONG previous=InterlockedCompareExchange(&data_->generation,0,0);
-        if(previous&1)return false;
-        InterlockedExchange(&data_->generation,previous+1);
+        if((previous&1) || previous>=(std::numeric_limits<LONG>::max)()-2)
+            return false;
+        if(InterlockedCompareExchange(&data_->generation,
+                                      previous+1,previous)!=previous)
+            return false;
         const Frame invalid{};
         std::memcpy(&data_->frame,&invalid,sizeof(Frame));
         InterlockedExchange(&data_->generation,previous+2);
