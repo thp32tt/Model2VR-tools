@@ -157,5 +157,47 @@ int main(){
     camera_epoch.Reset();
     CHECK(!camera_epoch.Anchored());
     CHECK(camera_epoch.Admit(changed)); // explicit new verified epoch
+
+    // Real binocular views may be mildly canted. Their median head
+    // orientation, not the *left* eye's optical axis, defines the world
+    // recenter reference. The two separate eye orientations must survive.
+    constexpr float cant=8.f*pi/180.f;
+    auto canted=Eyes(pi*0.5f,5.f,1.f,10.f,40u);
+    for(int eye=0;eye<2;++eye){
+        const float half=(pi*0.5f+(eye?-cant:cant))*0.5f;
+        canted.eyes[eye].orientation_xyzw[1]=std::sin(half);
+        canted.eyes[eye].orientation_xyzw[3]=std::cos(half);
+    }
+    Model2HeadRecenter canted_origin;
+    pose::Frame canted_output{};
+    CHECK(pose::CheckStereoRigGeometry(canted).valid());
+    CHECK(canted_origin.Rebase(canted,canted_output));
+    CHECK(canted_origin.Anchored());
+    CHECK(Near(canted_output.eyes[0].orientation_xyzw[1],std::sin(cant*0.5f)));
+    CHECK(Near(canted_output.eyes[1].orientation_xyzw[1],-std::sin(cant*0.5f)));
+    CHECK(Near(canted_output.eyes[0].orientation_xyzw[3],std::cos(cant*0.5f)));
+    CHECK(Near(canted_output.eyes[1].orientation_xyzw[3],std::cos(cant*0.5f)));
+    CHECK(Near(canted_output.eyes[0].position_m[0],-0.032f));
+    CHECK(Near(canted_output.eyes[1].position_m[0],0.032f));
+    auto canted_moved=canted;
+    canted_moved.sequence=41u;
+    for(auto& eye:canted_moved.eyes)eye.position_m[2]-=1.f;
+    CHECK(canted_origin.Rebase(canted_moved,canted_output));
+    CHECK(Near(canted_output.eyes[0].position_m[0],1.f-0.032f));
+    CHECK(Near(canted_output.eyes[1].position_m[0],1.f+0.032f));
+    // OpenXR is free to flip the sign of either equivalent eye
+    // quaternion. Re-anchoring a new LOCAL epoch must not rotate the
+    // driver by ~180 degrees or prefer whichever eye has positive w.
+    auto sign_flipped=canted;
+    sign_flipped.sequence=42u;
+    sign_flipped.reserved=5u;
+    for(float& q:sign_flipped.eyes[1].orientation_xyzw)q=-q;
+    CHECK(pose::CheckStereoRigGeometry(sign_flipped).valid());
+    CHECK(canted_origin.Rebase(sign_flipped,canted_output));
+    CHECK(canted_origin.ReferenceSpaceEpoch()==5u);
+    CHECK(Near(canted_output.eyes[0].orientation_xyzw[1],std::sin(cant*0.5f)));
+    CHECK(Near(canted_output.eyes[1].orientation_xyzw[1],-std::sin(cant*0.5f)));
+    CHECK(Near(canted_output.eyes[0].position_m[0],-0.032f));
+    CHECK(Near(canted_output.eyes[1].position_m[0],0.032f));
     return 0;
 }

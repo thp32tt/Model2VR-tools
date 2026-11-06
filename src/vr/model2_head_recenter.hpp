@@ -57,9 +57,22 @@ public:
             for(int i=0;i<3;++i)
                 center[i]=static_cast<float>(
                     (double(left.position_m[i])+right.position_m[i])*0.5);
+            // Canted OpenXR eyes can have distinct, equally valid view
+            // orientations. The left eye alone is NOT the headset's
+            // central forward direction: anchoring to it produces a
+            // persistent asymmetric yaw bias in head-relative World3D.
+            // q and -q encode the same rotation, so align hemispheres
+            // before averaging the two normalized, rig-checked views.
+            double agreement=0.;
             for(int i=0;i<4;++i)
-                orientation[i]=left.orientation_xyzw[i];
+                agreement+=double(left.orientation_xyzw[i])*
+                           double(right.orientation_xyzw[i]);
+            const float right_sign=agreement<0. ? -1.f : 1.f;
+            for(int i=0;i<4;++i)
+                orientation[i]=0.5f*(left.orientation_xyzw[i]+
+                                    right_sign*right.orientation_xyzw[i]);
             Normalize(orientation);
+            if(!QuaternionValid(orientation.data()))return false;
         }
         pose::Frame candidate=input;
         for(int eye_index=0;eye_index<2;++eye_index){
