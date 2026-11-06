@@ -108,8 +108,10 @@ int main() {
     for(std::size_t eye=0;eye<2u;++eye) {
         predicted.eyes[eye].orientation_xyzw[3]=1.f;
         predicted.eyes[eye].position_m[0]=eye?0.032f:-0.032f;
-        predicted.eyes[eye].fov_left_right_up_down={
+        const float test_fov[4]{
             -0.785398163f,0.785398163f,0.785398163f,-0.785398163f};
+        for(std::size_t field=0;field<4u;++field)
+            predicted.eyes[eye].fov_left_right_up_down[field]=test_fov[field];
     }
     Model2FramePoseLatch latch{};
     CHECK(latch.Begin(811u,predicted));
