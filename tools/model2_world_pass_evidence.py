@@ -319,12 +319,14 @@ def _enough_original_source(source):
         "distinct_scene_attested_physically_presented_material_present_frame_count",
         "distinct_post_com_retained_present_frame_count",
         "distinct_same_witness_joint_present_frame_count",
+        "distinct_cpu_fit_population_present_frame_count",
         "distinct_context_present_frame_count",
     ):
         value = source.get(field)
         if type(value) is not int or value < MIN_PRESENTS:
             return False
     for field in (
+        "cpu_fit_population_missing_batches",
         "original_draw_failure_witnesses",
         "original_draw_result_missing_witnesses",
         "original_draw_result_inconsistent_witnesses",

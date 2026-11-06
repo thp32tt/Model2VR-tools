@@ -1377,6 +1377,7 @@ def audit_csv(path):
         "cpu_insufficient_source_vertex_batches": 0,
         "cpu_fit_population_attested_batches": 0,
         "cpu_fit_population_missing_batches": 0,
+        "cpu_fit_population_present_frames": set(),
         "cpu_projector_inspected_triangles": 0,
         "cpu_projector_complete_triangles": 0,
         "cpu_projector_partial_triangles": 0,
@@ -1786,6 +1787,8 @@ def audit_csv(path):
                     unique_fit + shared_eye != expanded_eye):
                 raise ValueError("inconsistent original CPU fit/eye population")
             entry["cpu_fit_population_attested_batches"] += 1
+            if present_frame is not None:
+                entry["cpu_fit_population_present_frames"].add(present_frame)
         elif "source_cardinality" in data:
             entry["cpu_fit_population_missing_batches"] += 1
         if "cpu_join" in data:
@@ -1940,6 +1943,11 @@ def audit_csv(path):
             "caller_is_in_executable": caller != 0,
         }
         record["distinct_present_frame_count"] = len(value["present_frames"])
+        # Genuine CPU projector vertex population must belong to at
+        # least two DISTINCT original physical Present frames to remain
+        # an offline race source candidate (never World3D authorization).
+        record["distinct_cpu_fit_population_present_frame_count"] = len(
+            value["cpu_fit_population_present_frames"])
         record["distinct_same_witness_joint_present_frame_count"] = len(
             value["same_witness_joint_present_frames"])
         record["distinct_matrix_consistent_present_frame_count"] = len(

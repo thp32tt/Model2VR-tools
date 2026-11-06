@@ -46,6 +46,8 @@ def witness(cpu="0x004bb400", count=3):
         "original_present_failed_witnesses": 0,
         "original_present_missing_witnesses": 0,
         "distinct_same_witness_joint_present_frame_count": count,
+        "distinct_cpu_fit_population_present_frame_count": count,
+        "cpu_fit_population_missing_batches": 0,
         "distinct_context_present_frame_count": count,
         "original_source_vertex_pipeline_status": ["supported"],
         "original_source_fill_status": ["solid"],
@@ -384,6 +386,9 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         for damaged in (
             {"distinct_projected_material_present_frame_count": 1},
             {"distinct_same_witness_joint_present_frame_count": 0},
+            {"distinct_cpu_fit_population_present_frame_count": 0},
+            {"distinct_cpu_fit_population_present_frame_count": 1},
+            {"cpu_fit_population_missing_batches": 1},
             {"distinct_context_present_frame_count": 0},
             {"original_source_fill_status": ["solid", "unsupported"]},
             {"original_source_depth_cull_status": []},
