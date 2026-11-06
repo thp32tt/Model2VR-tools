@@ -210,7 +210,7 @@ jobs:
           # Isolated synthetic analyzer: test the collector's transaction
           # only, never impersonate actual Daytona game-world evidence.
           $syntheticAnalyzer=@'
-          import json, os, pathlib, sys
+          import json, os, pathlib, sys, time
           args=sys.argv[1:]
           output=pathlib.Path(args[args.index("--output")+1])
           if "--preflight" in args:
@@ -225,8 +225,11 @@ jobs:
               if os.environ.get("MODEL2_INTEGRITY_SMOKE")=="after_compare":
                   first=pathlib.Path(args[args.index("--race")+1])
                   (first.parent/"PRIVATE_SOURCE_race_a.json").write_text('{"tampered":true}',encoding="utf-8")
+              if os.environ.get("MODEL2_INTEGRITY_SMOKE")=="timeout_after_candidate":
+                  # Candidate is now visible, but comparison is NOT complete.
+                  time.sleep(30)
           '@
-          foreach($mode in @("before_compare","after_compare")) {
+          foreach($mode in @("before_compare","after_compare","timeout_after_candidate")) {
             $root=Join-Path $env:RUNNER_TEMP ("private-original-integrity-"+$mode)
             $inputs=Join-Path $root "source"
             New-Item -ItemType Directory -Force -Path $inputs | Out-Null
@@ -242,9 +245,10 @@ jobs:
             $env:MODEL2_INTEGRITY_SMOKE=$mode
             $rejected=$false
             try {
-              & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ExistingSessionFolder $inputs
+              & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ExistingSessionFolder $inputs -AuditTimeoutSeconds 2
             } catch {
-              if($_.Exception.Message -notmatch "PRIVATE SESSION INTEGRITY FAIL-CLOSED"){ throw }
+              $expected=if($mode -eq "timeout_after_candidate"){"PRIVATE SESSION COMPARE FAIL-CLOSED: PRIVATE AUDIT TIMEOUT FAIL-CLOSED"}else{"PRIVATE SESSION INTEGRITY FAIL-CLOSED"}
+              if($_.Exception.Message -notmatch $expected){ throw }
               $rejected=$true
             } finally {
               $env:MODEL2_INTEGRITY_SMOKE=$null
@@ -258,6 +262,10 @@ jobs:
             if($mode -eq "after_compare" -and
                 @(Get-ChildItem -LiteralPath $archive -Filter "PRIVATE_FAILED_COMPARE_*").Count -ne 1){
               throw "Changed cached audit comparison not quarantined"
+            }
+            if($mode -eq "timeout_after_candidate" -and
+                @(Get-ChildItem -LiteralPath $archive -Filter "PRIVATE_FAILED_COMPARE_*").Count -ne 1){
+              throw "Original timed-out comparison candidate not quarantined"
             }
             if($mode -eq "before_compare" -and
                 @(Get-ChildItem -LiteralPath $archive -Filter "PRIVATE_FAILED_COMPARE_*").Count -ne 0){

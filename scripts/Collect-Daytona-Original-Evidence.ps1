@@ -279,13 +279,22 @@ foreach ($label in @("title","menu","sky","hud","aux")) {
 }
 $candidateOutput = Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"
 $argsForPython += @("--output",$candidateOutput)
-$pythonExitCode = Invoke-PrivateAudit -auditArguments $argsForPython
+$pythonExitCode = -1
+$comparisonError = $null
+try {
+  $pythonExitCode = Invoke-PrivateAudit -auditArguments $argsForPython
+} catch {
+  # Even a timed-out or failed-to-launch comparator may have already
+  # written a partial active candidate. Always reach the quarantine.
+  $comparisonError = $_.Exception.Message
+}
 # The external comparison process (or another local writer) may change
 # cached PRIVATE inputs while the seven-session report is being assembled.
 # Never leave an active candidate/manifest on such a mutation.
 $integrityError = $null
 try { Assert-PrivateArchiveIntegrity } catch { $integrityError = $_.Exception.Message }
-if ($pythonExitCode -ne 0 -or $null -ne $integrityError -or
+if ($pythonExitCode -ne 0 -or $null -ne $comparisonError -or
+    $null -ne $integrityError -or
     !(Test-Path -LiteralPath $candidateOutput -PathType Leaf)) {
   # A failed analyzer may have left a partial candidate JSON. Do not let
   # an active success filename survive failed physical-source comparison.
@@ -297,6 +306,9 @@ if ($pythonExitCode -ne 0 -or $null -ne $integrityError -or
     Rename-Item -LiteralPath $candidateOutput -NewName $failedName -ErrorAction Stop
   }
   if ($null -ne $integrityError) { throw $integrityError }
+  if ($null -ne $comparisonError) {
+    throw "PRIVATE SESSION COMPARE FAIL-CLOSED: $comparisonError Archive kept for local inspection: $destination"
+  }
   throw "Private source evidence FAIL-CLOSED. Archive kept for local inspection: $destination"
 }
 # Final manifest only after all seven full source audits and a

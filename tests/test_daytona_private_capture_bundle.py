@@ -139,6 +139,20 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertNotIn('StandardError.ReadToEnd()', self.ps)
         self.assertIn('Reject blocked or flooded original private Python auditors', self.workflow)
 
+    def test_timed_out_comparator_quarantines_partially_written_candidate(self):
+        # Preflight success does not make a candidate safe when the final
+        # Python process creates a JSON and then times out or cannot exit.
+        self.assertIn("$comparisonError = $null", self.ps)
+        self.assertIn("try {\n  $pythonExitCode = Invoke-PrivateAudit", self.ps)
+        self.assertIn("$comparisonError = $_.Exception.Message", self.ps)
+        self.assertIn("$null -ne $comparisonError -or", self.ps)
+        self.assertLess(self.ps.index("$comparisonError = $_.Exception.Message"),
+                        self.ps.index('Rename-Item -LiteralPath $candidateOutput'))
+        self.assertIn('PRIVATE SESSION COMPARE FAIL-CLOSED', self.ps)
+        self.assertIn('timeout_after_candidate', self.workflow)
+        self.assertIn('Original timed-out comparison candidate not quarantined',
+                      self.workflow)
+
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)
         self.assertIn('"%~dp0Collect-Daytona-Original-Evidence.ps1"',self.cmd)
