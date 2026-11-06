@@ -56,6 +56,14 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('return "auxiliary.csv"',self.ps)
         self.assertIn('SessionCsvName $label',self.ps)
         self.assertIn('-ExistingSessionFolder',self.docs)
+        self.assertIn('-ResumeSessionFolder',self.docs)
+        self.assertIn('$resumeExit = Invoke-PrivateAudit -auditArguments',self.ps)
+        self.assertIn('PRIVATE SESSION RESUME FAIL-CLOSED',self.ps)
+        self.assertIn('PRIVATE_FAILED_',self.ps)
+        self.assertIn('Rename-Item -LiteralPath $failed',self.ps)
+        self.assertIn('no game rerun',self.ps)
+        self.assertGreater(self.ps.rfind('PRIVATE_MANIFEST.json'),
+                           self.ps.index('$pythonExitCode = Invoke-PrivateAudit -auditArguments $argsForPython'))
 
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)

@@ -134,6 +134,27 @@ jobs:
           if(Test-Path (Join-Path $archives[0].FullName "PRIVATE_WORLD_CANDIDATES.json")){
             throw "Invalid first x86 run created a false World3D candidate"
           }
+          # Resuming a corrupt original process MUST re-audit its raw CSV,
+          # preserve it and require a fresh original process, not accept
+          # an old cached source JSON or misrepresent the scene.
+          $resumeFailed=$false
+          try {
+            & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") `
+              -PackageRoot $root -ResumeSessionFolder $archives[0].FullName
+          } catch {
+            if($_.Exception.Message -notmatch "No NEW original x86 source CSV"){ throw }
+            $resumeFailed=$true
+          }
+          if(-not $resumeFailed){ throw "Invalid original stage incorrectly resumed" }
+          if(Test-Path (Join-Path $archives[0].FullName "race_a.csv")){
+            throw "Invalid original CSV treated as completed resumed stage"
+          }
+          if(@(Get-ChildItem -LiteralPath $archives[0].FullName -Filter "PRIVATE_FAILED_race_a_*_race_a.csv").Count -ne 1){
+            throw "Invalid stage archive was not preserved by resume"
+          }
+          if(Test-Path (Join-Path $archives[0].FullName "PRIVATE_MANIFEST.json")){
+            throw "Invalid resumed original source created a final manifest"
+          }
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
       - name: Build original game hook/loader
