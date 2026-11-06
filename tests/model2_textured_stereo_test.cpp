@@ -23,6 +23,7 @@ int main(){
     cal.runtime_confirmed=true;
     pose::Frame pose{};
     pose.sequence=27;
+    pose.predicted_display_time=27000; // synthetic OpenXR source time
     pose.reserved=1u;pose.view_flags=pose::kFullSixDofTracked;
     for(int i=0;i<2;++i){
         pose.eyes[i].position_m[0]=i?0.04f:-0.04f;
