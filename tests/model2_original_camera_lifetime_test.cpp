@@ -45,6 +45,18 @@ int main(){
     overlap.CompleteWrite(slow,true,true);
     assert(!overlap.CompleteDraw(conflict));
     assert(overlap.FinishPresent().flags&Gate::kOverlap);
+    // Two concurrent original hardware Draws also violate the single
+    // camera/source program transaction even without Set* mutation.
+    Gate dual_draw;
+    auto d1=dual_draw.EnterDraw();
+    auto d2=dual_draw.EnterDraw();
+    assert(d1.eligible && !d2.eligible);
+    assert(!dual_draw.MayForwardCpuWorld());
+    assert(!dual_draw.CompleteDraw(d1));
+    assert(!dual_draw.CompleteDraw(d2));
+    auto dual=dual_draw.FinishPresent();
+    assert(dual.flags&Gate::kOverlap);
+    assert(dual.draws==2u);
     // Shader state changes DURING an already entering source Draw.
     Gate middle;
     auto first=middle.EnterDraw();

@@ -64,7 +64,11 @@ public:
     Ticket EnterDraw() noexcept {
         std::lock_guard<std::mutex> lock(mu_);
         if(active_draws_>=kLimit){flags_|=kOverflow;return {};}
-        const bool eligible=!sealed_ && !active_writes_ && !flags_;
+        // Real original concurrent Draw calls do not retain a single
+        // camera/shader program even if no explicit COM Set was witnessed:
+        // GPU execution and independent OpenXR eye mirrors can interleave.
+        const bool eligible=!sealed_ && !active_writes_ &&
+            !active_draws_ && !flags_;
         if(!eligible)flags_|=sealed_?kCrossPresent:kOverlap;
         ++active_draws_;
         return {epoch_,revision_,true,eligible};
