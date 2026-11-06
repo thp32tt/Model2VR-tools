@@ -1851,7 +1851,12 @@ class SourceAuditTests(unittest.TestCase):
             self.write_log(path,base)
             legacy=REPORT.audit_csv(path)["sources"][0]
             self.assertEqual(legacy["cpu_legacy_unverified_vertex_batches"],1)
-            for card in ((3,3,0),(5,0,0),(7,0,0),(6,1,0),(6,0,1)):
+            self.write_log(path,base+[(
+                "model2_d3d9_cpu_vb_source_cardinality",901,3,3,0)])
+            incomplete=REPORT.audit_csv(path)["sources"][0]
+            self.assertEqual(
+                incomplete["cpu_insufficient_source_vertex_batches"],1)
+            for card in ((5,0,0),(7,0,0),(6,1,0),(6,0,1)):
                 self.write_log(path,base+[(
                     "model2_d3d9_cpu_vb_source_cardinality",901,*card)])
                 with self.subTest(card=card),self.assertRaisesRegex(
@@ -1870,7 +1875,7 @@ class SourceAuditTests(unittest.TestCase):
                 REPORT.audit_csv(path)
             self.write_log(path,base+[(
                 "model2_d3d9_cpu_vb_source_cardinality",901,6,0,0),(
-                "model2_d3d9_cpu_vb_source_cardinality",901,6,0,0)])
+                "model2_d3d9_cpu_vb_source_cardinality",901,5,0,0)])
             with self.assertRaisesRegex(ValueError,"conflicting original Draw witness"):
                 REPORT.audit_csv(path)
         join=(pack(2,2),0,0x55)
