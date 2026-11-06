@@ -355,9 +355,23 @@ void XrApp::draw_frame(XrTime display_time){
                    shared_frames_.ReadReusable(staging_frame_)){
                     // An 8 MiB copy may observe a later coherent source
                     // frame than Peek; authenticate the copied frame again.
+                    // The second mapping can advance during an 8-MiB
+                    // seqlock copy. Re-read the ACTUAL health receipt after
+                    // copying, not merely the snapshot from before Peek.
+                    // Reject if a later original Present has already
+                    // overwritten its attestation or a health write is odd.
+                    producerhealth::Snapshot post_copy_health{};
+                    const bool post_copy_fresh=producer_health_.Valid() &&
+                        producer_health_.Read(post_copy_health) &&
+                        producerhealth::Fresh(post_copy_health,now,hz);
                     const auto staged_receipt=receipt::Authorize(
                         staging_frame_.frame_id,staging_frame_.kind,
-                        staging_frame_.timestamp_qpc,producer_health_status_,producer_health_fresh_);
+                        staging_frame_.timestamp_qpc,
+                        post_copy_health,post_copy_fresh);
+                    // The same-frame copied source can never be considered
+                    // usable later in this XR tick using a stale health view.
+                    producer_health_fresh_=post_copy_fresh;
+                    if(post_copy_fresh)producer_health_status_=post_copy_health;
                     if(staging_frame_.kind!=transport::FrameKind::Diagnostic){
                         latest_receipt_verdict_=staged_receipt;
                         latest_receipt_frame_=staging_frame_.frame_id;
