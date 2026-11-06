@@ -543,6 +543,85 @@ int main(){
     assert(!raster.CanAttemptVerifiedWorldDraw());
     raster.Reset();
     assert(raster.NeedsRasterResolution());
+    // An original GetRT/GetDepth/GetMRT/GetRaster group must finish in
+    // the SAME physical epoch it entered: revision alone does not change on
+    // Present. No in-flight COM getter may be borrowed by concurrent Draws,
+    // original binding SETs, or speculative Win64 OpenXR eye sources.
+    OriginalPhysicalTargetDrawCoverage source_reads{true};
+    source_reads.RenderTargetBind(true,true,0u,true,main_depth);
+    source_reads.DepthBind(true,true,main_depth);
+    const auto clean_read=source_reads.EnterSourceRead();
+    assert(!source_reads.CanAttemptVerifiedWorldDraw());
+    source_reads.CompleteSourceRead(clean_read,false,{},true,{0u,true},
+                                   true,{true,true});
+    assert(source_reads.CanAttemptVerifiedWorldDraw());
+    auto read_draw=source_reads.EnterDraw();
+    assert(source_reads.CompleteDraw(read_draw,true,true));
+    assert(source_reads.FinishPresent().flags==0u);
+    source_reads.ReopenAfterPhysicalPresentReturn();
+
+    OriginalPhysicalTargetDrawCoverage getter_draw_overlap{true};
+    getter_draw_overlap.RenderTargetBind(true,true,0u,true,main_depth);
+    getter_draw_overlap.DepthBind(true,true,main_depth);
+    const auto getter_ticket=getter_draw_overlap.EnterSourceRead();
+    const auto draw_during_get=getter_draw_overlap.EnterDraw();
+    getter_draw_overlap.CompleteSourceRead(
+        getter_ticket,false,{},true,{0u,true},true,{true,true});
+    assert(!getter_draw_overlap.CanAttemptVerifiedWorldDraw());
+    assert(!getter_draw_overlap.CompleteDraw(draw_during_get,true,true));
+    const auto overlapped_getter=getter_draw_overlap.FinishPresent();
+    assert((overlapped_getter.flags&
+        OriginalPhysicalTargetDrawCoverage::kTargetDrift)!=0u);
+    assert(overlapped_getter.RejectUnprovenStereoSource());
+    getter_draw_overlap.ReopenAfterPhysicalPresentReturn();
+    const auto retry_read=getter_draw_overlap.EnterSourceRead();
+    getter_draw_overlap.CompleteSourceRead(
+        retry_read,false,{},true,{0u,true},true,{true,true});
+    assert(getter_draw_overlap.CanAttemptVerifiedWorldDraw());
+
+    OriginalPhysicalTargetDrawCoverage getter_cut{true};
+    getter_cut.RenderTargetBind(true,true,0u,true,main_depth);
+    getter_cut.DepthBind(true,true,main_depth);
+    const auto pending_getter=getter_cut.EnterSourceRead();
+    assert((getter_cut.FinishPresent().flags&
+        OriginalPhysicalTargetDrawCoverage::kInFlight)!=0u);
+    getter_cut.ReopenAfterPhysicalPresentReturn();
+    getter_cut.CompleteSourceRead(pending_getter,false,{},true,{0u,true},
+                                 true,{true,true});
+    assert(!getter_cut.CanAttemptVerifiedWorldDraw());
+    assert((getter_cut.FinishPresent().flags&
+        OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
+    getter_cut.ReopenAfterPhysicalPresentReturn();
+    const auto after_cut=getter_cut.EnterSourceRead();
+    getter_cut.CompleteSourceRead(after_cut,false,{},true,{0u,true},
+                                 true,{true,true});
+    assert(getter_cut.CanAttemptVerifiedWorldDraw());
+
+    OriginalPhysicalTargetDrawCoverage getter_bind_overlap{true};
+    getter_bind_overlap.RenderTargetBind(true,true,0u,true,main_depth);
+    getter_bind_overlap.DepthBind(true,true,main_depth);
+    const auto before_set=getter_bind_overlap.EnterSourceRead();
+    const auto simultaneous_set=getter_bind_overlap.EnterBind();
+    getter_bind_overlap.CompleteDepthBind(
+        simultaneous_set,true,true,main_depth);
+    getter_bind_overlap.CompleteSourceRead(
+        before_set,false,{},true,{0u,true},true,{true,true});
+    assert(!getter_bind_overlap.CanAttemptVerifiedWorldDraw());
+    assert((getter_bind_overlap.FinishPresent().flags&
+        OriginalPhysicalTargetDrawCoverage::kTargetDrift)!=0u);
+    getter_bind_overlap.ReopenAfterPhysicalPresentReturn();
+
+    OriginalPhysicalTargetDrawCoverage getter_reset{true};
+    const auto stale_getter=getter_reset.EnterSourceRead();
+    getter_reset.Reset();
+    getter_reset.CompleteSourceRead(
+        stale_getter,true,main_depth,true,{0u,true},true,{true,true});
+    assert(getter_reset.NeedsResolution());
+    assert(getter_reset.NeedsSecondaryResolution());
+    assert(getter_reset.NeedsRasterResolution());
+    assert((getter_reset.FinishPresent().flags&
+        OriginalPhysicalTargetDrawCoverage::kCrossPresent)!=0u);
+    getter_reset.ReopenAfterPhysicalPresentReturn();
     OriginalDrawCallerInventory exact{};
     assert(exact.Count()==0u && !exact.Incomplete());
     assert(exact.Observe(0x004a1234u)==OriginalCallerInsert::NewCaller);

@@ -122,14 +122,15 @@ public:
         std::uint64_t prior,OriginalRasterSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
         if(!require_raster_ || prior!=revision_ || raster_resolved_ ||
-           active_binds_ || active_ || sealed_)return;
+           active_binds_ || active_ || active_reads_ || sealed_)return;
         raster_resolved_=true; // even a failed getter is cached
         raster_eligible_=actual.known && actual.full_main_depth_view;
     }
     void ResolveSecondaryIfUnchanged(
         std::uint64_t prior,OriginalSecondaryRtSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        if(prior!=revision_ || secondary_resolved_ || active_binds_ || sealed_)
+        if(prior!=revision_ || secondary_resolved_ ||
+           active_binds_ || active_ || active_reads_ || sealed_)
             return; // a concurrent original COM SET cannot be borrowed
         secondary_mask_=actual.mask&7u;
         secondary_known_=actual.known && (actual.mask&~7u)==0u;
@@ -144,9 +145,57 @@ public:
     void ResolveIfUnchanged(std::uint64_t prior,
                             OriginalTargetSnapshot actual) noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        if(prior!=revision_ || resolved_ || active_binds_ || sealed_)return;
+        if(prior!=revision_ || resolved_ || active_binds_ ||
+           active_ || active_reads_ || sealed_)return;
         state_=actual;
         resolved_=true;
+    }
+    // One read-only x86 COM getter group is an IN-FLIGHT original source
+    // operation. A revision number alone is not sufficient: physical Present
+    // advances epoch WITHOUT changing RT binding revision, and a real Draw
+    // can run concurrently with slow GetRT/GetViewport/GetRenderState calls.
+    // Getter results are committed atomically only after ALL original COM
+    // getter calls return inside the SAME physical non-overlapping epoch.
+    struct SourceReadToken {
+        std::uint64_t epoch=0u,revision=0u;
+        bool valid=false,eligible=false;
+    };
+    SourceReadToken EnterSourceRead() noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if(active_reads_>=kLimit){flags_|=kOverflow;return {};}
+        const bool eligible=!sealed_ && !active_ && !active_binds_ &&
+            !active_reads_;
+        ++active_reads_;
+        if(!eligible)flags_|=sealed_?kCrossPresent:kTargetDrift;
+        return {epoch_,revision_,true,eligible};
+    }
+    void CompleteSourceRead(
+        const SourceReadToken& token,
+        bool read_primary,OriginalTargetSnapshot primary,
+        bool read_secondary,OriginalSecondaryRtSnapshot secondary,
+        bool read_raster,OriginalRasterSnapshot raster) noexcept {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if(!token.valid){flags_|=kOverflow;return;}
+        if(!active_reads_){flags_|=kCrossPresent;return;}
+        --active_reads_;
+        if(token.epoch!=epoch_ || sealed_){
+            flags_|=kCrossPresent;return;
+        }
+        if(!token.eligible || token.revision!=revision_ ||
+           active_reads_ || active_ || active_binds_ || flags_){
+            flags_|=kTargetDrift;return;
+        }
+        // Never turn a read-only getter into EXE SetRT/depth ownership.
+        if(read_primary && !resolved_){state_=primary;resolved_=true;}
+        if(read_secondary && !secondary_resolved_){
+            secondary_mask_=secondary.mask&7u;
+            secondary_known_=secondary.known && (secondary.mask&~7u)==0u;
+            secondary_resolved_=true; // failed getter stays unknown this revision
+        }
+        if(read_raster && require_raster_ && !raster_resolved_){
+            raster_resolved_=true;
+            raster_eligible_=raster.known && raster.full_main_depth_view;
+        }
     }
     // SetRenderTarget/SetDepthStencilSurface run through actual original COM.
     // A bind is an in-flight source WRITE, not a post-COM point observation.
@@ -158,6 +207,7 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if(active_binds_>=kLimit){flags_|=kOverflow;return {};}
         ++active_binds_;
+        if(active_reads_)flags_|=kTargetDrift;
         if(sealed_)flags_|=kCrossPresent;
         return {epoch_,revision_,true,sealed_};
     }
@@ -210,7 +260,8 @@ public:
     // original hardware Draw ALWAYS runs and the mono path is unaffected.
     bool CanAttemptVerifiedWorldDraw() noexcept {
         std::lock_guard<std::mutex> guard(mutex_);
-        return !sealed_ && active_binds_==0u && resolved_ && owned_target_ && owned_depth_ &&
+        return !sealed_ && active_binds_==0u && active_reads_==0u &&
+            resolved_ && owned_target_ && owned_depth_ &&
             secondary_resolved_ && secondary_known_ &&
             secondary_mask_==0u && flags_==0u &&
             (!require_raster_ || (raster_resolved_ && raster_eligible_)) &&
@@ -226,7 +277,7 @@ public:
         if(secondary_mask_)flags_|=kMrtActive;
         if(!secondary_resolved_ || !secondary_known_)
             flags_|=kMrtUnresolved;
-        if(active_binds_)flags_|=kTargetDrift;
+        if(active_binds_ || active_reads_)flags_|=kTargetDrift;
         Token result{epoch_,revision_,state_,owned_target_,owned_depth_,true};
         if(active_>=kLimit){
             flags_|=kOverflow;result.valid=false;return result;
@@ -275,7 +326,8 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         OriginalPhysicalTargetSummary result{backbuffer_,auxiliary_,
             unknown_,failed_,bad_depth_,flags_};
-        if(active_!=0u || active_binds_!=0u)result.flags|=kInFlight;
+        if(active_!=0u || active_binds_!=0u ||
+           active_reads_!=0u)result.flags|=kInFlight;
         backbuffer_=auxiliary_=unknown_=failed_=bad_depth_=flags_=0u;
         ++epoch_;
         sealed_=true;
@@ -297,6 +349,8 @@ public:
         InvalidateRaster();
         backbuffer_=auxiliary_=unknown_=failed_=bad_depth_=flags_=0u;
         sealed_=false;
+        // Keep active_ AND active_binds_ AND active_reads_: late COM
+        // Draw/SET/GET operations must be consumed, never reassigned.
         // Keep active_ AND active_binds_: late original COM operations
         // must still be consumed without granting stale next-frame ownership.
         // Keep active_: late original COM operations must still be consumed
@@ -378,7 +432,8 @@ private:
     std::mutex mutex_;
     OriginalTargetSnapshot state_{};
     std::uint64_t epoch_=1u,revision_=1u;
-    std::uint32_t secondary_mask_=0u,active_=0u,active_binds_=0u,backbuffer_=0u,auxiliary_=0u,
+    std::uint32_t secondary_mask_=0u,active_=0u,active_binds_=0u,
+        active_reads_=0u,backbuffer_=0u,auxiliary_=0u,
         unknown_=0u,failed_=0u,bad_depth_=0u,flags_=0u;
     bool owned_target_=false, owned_depth_=false, sealed_=false, resolved_=false;
     bool secondary_resolved_=false, secondary_known_=false;

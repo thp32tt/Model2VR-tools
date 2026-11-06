@@ -643,20 +643,19 @@ void EnsurePhysicalOriginalRtDepth(IDirect3DDevice9* d) noexcept {
     const bool secondary=g_original_target_draw_coverage.NeedsSecondaryResolution();
     const bool raster=g_original_target_draw_coverage.NeedsRasterResolution();
     if(!primary && !secondary && !raster)return; // cache by source revision
-    const auto revision=g_original_target_draw_coverage.Revision();
-    if(primary){
-        const auto actual=ReadPhysicalOriginalRtDepth(d);
-        g_original_target_draw_coverage.ResolveIfUnchanged(revision,actual);
-    }
-    if(secondary){
-        const auto actual=ReadPhysicalOriginalSecondaryRt(d);
-        g_original_target_draw_coverage.ResolveSecondaryIfUnchanged(
-            revision,actual);
-    }
-    if(raster){
-        const auto actual=ReadPhysicalOriginalRaster(d);
-        g_original_target_draw_coverage.ResolveRasterIfUnchanged(revision,actual);
-    }
+    // Real original D3D9 COM getters, not just a revision-only post-read
+    // snapshot: a concurrent Draw, Set, Reset or physical Present invalidates
+    // the WHOLE group before it can certify any CPU/Win64 OpenXR eye source.
+    const auto ticket=g_original_target_draw_coverage.EnterSourceRead();
+    if(!ticket.valid)return;
+    const auto main=primary?ReadPhysicalOriginalRtDepth(d):
+        m2vr::drawprobe::OriginalTargetSnapshot{};
+    const auto mrt=secondary?ReadPhysicalOriginalSecondaryRt(d):
+        m2vr::drawprobe::OriginalSecondaryRtSnapshot{};
+    const auto region=raster?ReadPhysicalOriginalRaster(d):
+        m2vr::drawprobe::OriginalRasterSnapshot{};
+    g_original_target_draw_coverage.CompleteSourceRead(
+        ticket,primary,main,secondary,mrt,raster,region);
 }
 bool OriginalSceneStillOwnedAfterDraw(
     unsigned source_scene,bool source_scene_open) noexcept {
