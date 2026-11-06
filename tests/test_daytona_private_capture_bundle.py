@@ -101,6 +101,27 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('Reject previously existing original x86 CSV even if retouched',
                       self.workflow)
 
+    def test_cached_original_csv_and_audit_are_pinned_until_publication(self):
+        # In-place edits after preflight must invalidate the raw-source
+        # receipt before comparing and again after the external analyzer.
+        self.assertIn("$reportHashes = @{}", self.ps)
+        self.assertIn("$reportHashes[$label] = (Get-FileHash -LiteralPath $preflight", self.ps)
+        self.assertEqual(self.ps.count("$reportHashes[$label] ="), 2)
+        self.assertIn("function Assert-PrivateArchiveIntegrity", self.ps)
+        self.assertIn("Get-FileHash -LiteralPath $csvPath -Algorithm SHA256", self.ps)
+        self.assertIn("Get-FileHash -LiteralPath $reportPath -Algorithm SHA256", self.ps)
+        self.assertIn("$csvHash -cne $hashes[$auditedLabel]", self.ps)
+        self.assertIn("$reportHash -cne $reportHashes[$auditedLabel]", self.ps)
+        self.assertEqual(self.ps.count("Assert-PrivateArchiveIntegrity"), 3)
+        self.assertLess(self.ps.index("Assert-PrivateArchiveIntegrity\n$argsForPython"),
+                        self.ps.index("$pythonExitCode = Invoke-PrivateAudit"))
+        self.assertGreater(self.ps.index("try { Assert-PrivateArchiveIntegrity }"),
+                           self.ps.index("$pythonExitCode = Invoke-PrivateAudit"))
+        self.assertIn("if ($null -ne $integrityError) { throw $integrityError }", self.ps)
+        self.assertIn("Smoke test archive mutation after per-stage physical preflight", self.workflow)
+        self.assertIn("PRIVATE SESSION INTEGRITY FAIL-CLOSED", self.workflow)
+        self.assertIn("PRIVATE_FAILED_COMPARE_", self.workflow)
+
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)
         self.assertIn('"%~dp0Collect-Daytona-Original-Evidence.ps1"',self.cmd)

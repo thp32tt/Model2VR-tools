@@ -54,6 +54,7 @@ $knownPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringCo
 $knownDigests = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 $knownNonces = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 $reports = @{}
+$reportHashes = @{}
 # Resolve Python before asking the user to run seven original x86 games.
 $pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
 $pythonPrefix = @("-3")
@@ -126,6 +127,7 @@ foreach ($label in $labels) {
         $copies[$label] = $target
         $hashes[$label] = $resumeHash
         $reports[$label] = $preflight
+        $reportHashes[$label] = (Get-FileHash -LiteralPath $preflight -Algorithm SHA256).Hash
         Write-Host ("Resumed original PRIVATE " + $label + " (fresh physical CSV audit PASS; no game rerun)")
         continue
       }
@@ -212,9 +214,36 @@ foreach ($label in $labels) {
     throw "PRIVATE SESSION PREFLIGHT FAIL-CLOSED: duplicate or missing original process nonce for $label. Archive kept: $destination"
   }
   $reports[$label] = $preflight
+  $reportHashes[$label] = (Get-FileHash -LiteralPath $preflight -Algorithm SHA256).Hash
   Write-Host ("Validated and archived PRIVATE " + $label + " (" +
               $source.Length + " bytes; original process nonce distinct)")
 }
+# A preflighted stage may sit on disk while the user completes six other
+# genuine emulator runs. Cached JSON is only trustworthy for the *same*
+# original raw CSV and report bytes that were independently audited.
+# Rehash all seven before comparison and again before publishing success.
+function Assert-PrivateArchiveIntegrity {
+  foreach ($auditedLabel in $labels) {
+    $csvPath = $copies[$auditedLabel]
+    $reportPath = $reports[$auditedLabel]
+    if (!$csvPath -or !$reportPath -or
+        !(Test-Path -LiteralPath $csvPath -PathType Leaf) -or
+        !(Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+      throw "PRIVATE SESSION INTEGRITY FAIL-CLOSED: missing archived CSV or audit for $auditedLabel."
+    }
+    try {
+      $csvHash = (Get-FileHash -LiteralPath $csvPath -Algorithm SHA256).Hash
+      $reportHash = (Get-FileHash -LiteralPath $reportPath -Algorithm SHA256).Hash
+    } catch {
+      throw "PRIVATE SESSION INTEGRITY FAIL-CLOSED: unreadable archived evidence for $auditedLabel."
+    }
+    if ($csvHash -cne $hashes[$auditedLabel] -or
+        $reportHash -cne $reportHashes[$auditedLabel]) {
+      throw "PRIVATE SESSION INTEGRITY FAIL-CLOSED: original CSV/audit changed after physical preflight for $auditedLabel."
+    }
+  }
+}
+Assert-PrivateArchiveIntegrity
 $argsForPython = @($analyzer,"--race",$reports["race_a"],"--race",$reports["race_b"])
 foreach ($label in @("title","menu","sky","hud","aux")) {
   $argsForPython += @("--control",$label,$reports[$label])
@@ -222,7 +251,12 @@ foreach ($label in @("title","menu","sky","hud","aux")) {
 $candidateOutput = Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"
 $argsForPython += @("--output",$candidateOutput)
 $pythonExitCode = Invoke-PrivateAudit -auditArguments $argsForPython
-if ($pythonExitCode -ne 0 -or
+# The external comparison process (or another local writer) may change
+# cached PRIVATE inputs while the seven-session report is being assembled.
+# Never leave an active candidate/manifest on such a mutation.
+$integrityError = $null
+try { Assert-PrivateArchiveIntegrity } catch { $integrityError = $_.Exception.Message }
+if ($pythonExitCode -ne 0 -or $null -ne $integrityError -or
     !(Test-Path -LiteralPath $candidateOutput -PathType Leaf)) {
   # A failed analyzer may have left a partial candidate JSON. Do not let
   # an active success filename survive failed physical-source comparison.
@@ -233,6 +267,7 @@ if ($pythonExitCode -ne 0 -or
                   "_PRIVATE_WORLD_CANDIDATES.json"
     Rename-Item -LiteralPath $candidateOutput -NewName $failedName -ErrorAction Stop
   }
+  if ($null -ne $integrityError) { throw $integrityError }
   throw "Private source evidence FAIL-CLOSED. Archive kept for local inspection: $destination"
 }
 # Final manifest only after all seven full source audits and a

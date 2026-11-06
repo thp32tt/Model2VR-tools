@@ -203,6 +203,67 @@ jobs:
           if(@(Get-ChildItem -LiteralPath $archives[0].FullName -File).Count -ne 0){
             throw "False fresh log caused private source output"
           }
+      - name: Smoke test archive mutation after per-stage physical preflight
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          # Isolated synthetic analyzer: test the collector's transaction
+          # only, never impersonate actual Daytona game-world evidence.
+          $syntheticAnalyzer=@'
+          import json, os, pathlib, sys
+          args=sys.argv[1:]
+          output=pathlib.Path(args[args.index("--output")+1])
+          if "--preflight" in args:
+              csv=pathlib.Path(args[args.index("--preflight")+1])
+              names=["race_a","race_b","title","menu","sky","hud","auxiliary"]
+              nonce=names.index(csv.stem)+1
+              output.write_text(json.dumps({"original_capture_run":{"nonce_hex":f"0x{nonce:016x}"}}),encoding="utf-8")
+              if csv.stem=="auxiliary" and os.environ.get("MODEL2_INTEGRITY_SMOKE")=="before_compare":
+                  (csv.parent/"race_a.csv").write_text("tampered after validated original stage",encoding="utf-8")
+          else:
+              output.write_text('{"synthetic_test_only":true}',encoding="utf-8")
+              if os.environ.get("MODEL2_INTEGRITY_SMOKE")=="after_compare":
+                  first=pathlib.Path(args[args.index("--race")+1])
+                  (first.parent/"PRIVATE_SOURCE_race_a.json").write_text('{"tampered":true}',encoding="utf-8")
+          '@
+          foreach($mode in @("before_compare","after_compare")) {
+            $root=Join-Path $env:RUNNER_TEMP ("private-original-integrity-"+$mode)
+            $inputs=Join-Path $root "source"
+            New-Item -ItemType Directory -Force -Path $inputs | Out-Null
+            Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+            Copy-Item tools/model2_draw_source_report.py $root/
+            [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
+              $syntheticAnalyzer,[Text.UTF8Encoding]::new($false))
+            foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")) {
+              $filename=if($label -eq "aux"){"auxiliary.csv"}else{$label+".csv"}
+              [IO.File]::WriteAllText((Join-Path $inputs $filename),
+                ("synthetic original x86 collector transaction only: "+$label+"; not game evidence"))
+            }
+            $env:MODEL2_INTEGRITY_SMOKE=$mode
+            $rejected=$false
+            try {
+              & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") -PackageRoot $root -ExistingSessionFolder $inputs
+            } catch {
+              if($_.Exception.Message -notmatch "PRIVATE SESSION INTEGRITY FAIL-CLOSED"){ throw }
+              $rejected=$true
+            } finally {
+              $env:MODEL2_INTEGRITY_SMOKE=$null
+            }
+            if(-not $rejected){ throw "Archive mutation accepted: $mode" }
+            $archives=@(Get-ChildItem (Join-Path $root "logs") -Directory -Filter "private_original_evidence_*")
+            if($archives.Count -ne 1){ throw "Missing local archive: $mode" }
+            $archive=$archives[0].FullName
+            if(Test-Path (Join-Path $archive "PRIVATE_MANIFEST.json")){throw "False success receipt: $mode"}
+            if(Test-Path (Join-Path $archive "PRIVATE_WORLD_CANDIDATES.json")){throw "False live candidate: $mode"}
+            if($mode -eq "after_compare" -and
+                @(Get-ChildItem -LiteralPath $archive -Filter "PRIVATE_FAILED_COMPARE_*").Count -ne 1){
+              throw "Changed cached audit comparison not quarantined"
+            }
+            if($mode -eq "before_compare" -and
+                @(Get-ChildItem -LiteralPath $archive -Filter "PRIVATE_FAILED_COMPARE_*").Count -ne 0){
+              throw "Comparison must not run after raw original CSV mutation"
+            }
+          }
       - name: Configure original game x86 hook
         run: cmake -S . -B build-game -A Win32
       - name: Build original game hook/loader
