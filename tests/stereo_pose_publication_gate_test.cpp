@@ -26,6 +26,7 @@ Frame Valid(std::uint64_t id){
     Frame f{};
     f.sequence=id;
     f.reserved=1u; // source HMD must have a valid LOCAL generation
+    f.predicted_display_time=static_cast<std::int64_t>(id)*1000;
     f.view_flags=m2vr::pose::kFullSixDofTracked;
     for(auto& eye:f.eyes){
         eye.orientation_xyzw[3]=1.f;
@@ -51,24 +52,51 @@ int main(){
     CHECK(!PublishTrackedStereoPose(writer,ring,Valid(13),Pair{3,4}));
     CHECK(writer.invalidated && !ring.Find(13));
     CHECK(PublishTrackedStereoPose(writer,ring,Valid(14),Pair{3,4}));
+    // An independent publisher caller bypassing draw_frame's XR time
+    // gate MUST NOT expose invalid XR time into original x86 IPC.
+    auto missing_time=Valid(15);missing_time.predicted_display_time=0;
+    writer.invalidated=false;
+    CHECK(!PublishTrackedStereoPose(writer,ring,missing_time,Pair{5,6}));
+    CHECK(writer.invalidated && writer.visible==0 && !ring.Find(14));
+    missing_time.predicted_display_time=-1;
+    CHECK(!PublishTrackedStereoPose(writer,ring,missing_time,Pair{5,6}));
+    CHECK(!ring.Find(15));
+    // A runtime may preserve VALID pose bits during loss of TRACKED.
+    // No such source may enter the physical compositor-eye history.
+    auto lost_tracking=Valid(15);
+    lost_tracking.view_flags=m2vr::pose::kOrientationValid |
+                             m2vr::pose::kPositionValid;
+    CHECK(!PublishTrackedStereoPose(writer,ring,lost_tracking,Pair{5,6}));
+    CHECK(!ring.Find(15) && writer.visible==0);
+    lost_tracking.view_flags=m2vr::pose::kFullSixDofTracked &
+                             ~m2vr::pose::kPositionTracked;
+    CHECK(!PublishTrackedStereoPose(writer,ring,lost_tracking,Pair{5,6}));
+    lost_tracking.view_flags=m2vr::pose::kFullSixDofTracked &
+                             ~m2vr::pose::kOrientationTracked;
+    CHECK(!PublishTrackedStereoPose(writer,ring,lost_tracking,Pair{5,6}));
+    // Rejection cannot consume a sequence: the next genuinely tracked
+    // same-ID predicted frame is still allowed to publish atomically.
+    CHECK(PublishTrackedStereoPose(writer,ring,Valid(15),Pair{5,6}));
+    CHECK(writer.visible==15 && ring.Find(15) &&
+          *ring.Find(15)==Pair({5,6}));
     writer.fail=true;writer.invalidated=false;
-    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(15),Pair{5,6}));
-    CHECK(writer.invalidated && !ring.Find(14) && !ring.Find(15));
+    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(16),Pair{5,6}));
+    CHECK(writer.invalidated && !ring.Find(15) && !ring.Find(16));
     writer.fail=false;
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(16),Pair{5,6}));
-    auto mono=Valid(17);mono.eyes[1].position_m[0]=-0.032f;
+    CHECK(PublishTrackedStereoPose(writer,ring,Valid(17),Pair{5,6}));
+    auto mono=Valid(18);mono.eyes[1].position_m[0]=-0.032f;
     CHECK(!PublishTrackedStereoPose(writer,ring,mono,Pair{7,8}));
-    CHECK(!ring.Find(16) && writer.visible==0);
+    CHECK(!ring.Find(17) && writer.visible==0);
     CHECK(!PublishTrackedStereoPose(writer,ring,
         Valid(std::uint64_t{std::numeric_limits<std::uint32_t>::max()}+1u),
         Pair{7,8}));
     writer.available=false;
-    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(18),Pair{7,8}));
-    CHECK(!ring.Find(18));
+    CHECK(!PublishTrackedStereoPose(writer,ring,Valid(19),Pair{7,8}));
+    CHECK(!ring.Find(19));
     writer.available=true;
-    CHECK(PublishTrackedStereoPose(writer,ring,Valid(19),Pair{7,8}));
+    CHECK(PublishTrackedStereoPose(writer,ring,Valid(20),Pair{7,8}));
     ring.Clear();
-    CHECK(!ring.Record(19,Pair{9,10}));
-    CHECK(ring.Record(20,Pair{9,10}));
+    CHECK(!ring.Record(20,Pair{9,10}));
+    CHECK(ring.Record(21,Pair{9,10}));
     return 0;
 }

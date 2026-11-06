@@ -58,6 +58,27 @@ int main(){
         writer,history,earlier,Views{101u,102u}));
     REQUIRE(writer.published.sequence==earlier.sequence);
     REQUIRE(history.Find(10u));
+    // This direct publication contract is separate from the host's
+    // OpenXR clock/LOCAL gate and the Win32 Draw/Present checks.
+    Ring direct_history;
+    FakeHostWriter direct_writer{&direct_history};
+    auto untracked=Packet(30,epoch.Epoch(),2.f);
+    untracked.view_flags&=~pose::kPositionTracked;
+    REQUIRE(!pose::PublishTrackedStereoPose(
+        direct_writer,direct_history,untracked,Views{301u,302u}));
+    REQUIRE(direct_writer.published.sequence==0u);
+    REQUIRE(!direct_history.Find(30u));
+    auto zero_time=Packet(30,epoch.Epoch(),2.f);
+    zero_time.predicted_display_time=0;
+    REQUIRE(!pose::PublishTrackedStereoPose(
+        direct_writer,direct_history,zero_time,Views{301u,302u}));
+    REQUIRE(!direct_history.Find(30u));
+    REQUIRE(pose::PublishTrackedStereoPose(
+        direct_writer,direct_history,
+        Packet(30,epoch.Epoch(),2.f),Views{301u,302u}));
+    REQUIRE(direct_writer.published.sequence==30u);
+    REQUIRE(direct_history.Find(30u));
+    REQUIRE(writer.published.sequence==earlier.sequence);
     REQUIRE(game_pose.Begin(100u,writer.published));
     REQUIRE(game_pose.ReferenceSpaceEpoch()==1u);
     pose::Frame cpu_eyes{};

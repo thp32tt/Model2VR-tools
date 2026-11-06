@@ -16,7 +16,14 @@ bool PublishTrackedStereoPose(
         if(writer.Valid())writer.Invalidate();
         history.Clear();
     };
-    if(!CheckStereoRigGeometry(packet).valid() ||
+    // The host's OpenXR frame gate normally provides these conditions,
+    // but this is the LAST independent boundary before original Win32
+    // can read the predicted HMD source via shared memory. Neither a
+    // VALID-only last-known pose nor a missing/reversed XrTime may enter
+    // the host eye history and its original game pose IPC together.
+    if((packet.view_flags & kFullSixDofTracked)!=kFullSixDofTracked ||
+       packet.predicted_display_time<=0 ||
+       !CheckStereoRigGeometry(packet).valid() ||
        !packet.reserved ||  // a new Win64 host MUST name its LOCAL epoch
        packet.sequence>std::numeric_limits<std::uint32_t>::max() ||
        !writer.Valid()){
