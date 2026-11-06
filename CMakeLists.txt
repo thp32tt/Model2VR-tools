@@ -383,6 +383,17 @@ add_executable(model2_d3d9_vb_window_test tests/model2_d3d9_vb_window_test.cpp)
 target_compile_features(model2_d3d9_vb_window_test PRIVATE cxx_std_20)
 target_compile_definitions(model2_d3d9_vb_window_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME model2_real_d3d9_vb_ib_source_window COMMAND model2_d3d9_vb_window_test)
+
+# Integration of a genuine original D3D9 64-triangle projected index window
+# with unique same-Draw CPU projectors and a TWO-eye raster. Synthetic
+# verified scene/calibration input only; never enables the real World3D pass.
+add_executable(model2_original_projected_eye_chain_test
+    tests/model2_original_projected_eye_chain_test.cpp)
+target_compile_features(model2_original_projected_eye_chain_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_original_projected_eye_chain_test PRIVATE
+    NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME model2_original_projected_IB_64_triangle_XR_eye_chain
+    COMMAND model2_original_projected_eye_chain_test)
 # Exact D3D9 Indexed-UP source MinVertexIndex and projected triangle order.
 add_executable(model2_d3d9_indexed_up_window_test
     tests/model2_d3d9_indexed_up_window_test.cpp)
