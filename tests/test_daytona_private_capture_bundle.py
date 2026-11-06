@@ -121,6 +121,7 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn("Smoke test archive mutation after per-stage physical preflight", self.workflow)
         self.assertIn("PRIVATE SESSION INTEGRITY FAIL-CLOSED", self.workflow)
         self.assertIn("PRIVATE_FAILED_COMPARE_", self.workflow)
+        self.assertIn('GetFileNameWithoutExtension($pythonLauncher.Source) -ieq "py"', self.ps)
 
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)

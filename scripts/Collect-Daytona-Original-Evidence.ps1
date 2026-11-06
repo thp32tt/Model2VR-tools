@@ -57,10 +57,16 @@ $reports = @{}
 $reportHashes = @{}
 # Resolve Python before asking the user to run seven original x86 games.
 $pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
-$pythonPrefix = @("-3")
+$pythonPrefix = @()
+# Some Windows Python installations alias 'py' to python.exe rather than
+# the official py.exe launcher. Only py.exe accepts the '-3' selector.
+# Otherwise the original evidence audit never runs and silently fails.
+if ($null -ne $pythonLauncher -and
+    [IO.Path]::GetFileNameWithoutExtension($pythonLauncher.Source) -ieq "py") {
+  $pythonPrefix = @("-3")
+}
 if ($null -eq $pythonLauncher) {
   $pythonLauncher = Get-Command python -ErrorAction SilentlyContinue
-  $pythonPrefix = @()
 }
 if ($null -eq $pythonLauncher) {
   throw "Python 3 is required for per-session PRIVATE original source audit."
