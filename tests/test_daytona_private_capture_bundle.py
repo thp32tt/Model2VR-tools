@@ -78,6 +78,10 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('verify_daytona_private_receipt.py', self.workflow)
         self.assertIn('PRIVATE RECEIPT BYTE-INTEGRITY PASS', (
             ROOT/"tools/verify_daytona_private_receipt.py").read_text("utf-8"))
+        self.assertIn('Copy-Item tools/verify_daytona_private_receipt.py stage/', self.workflow)
+        self.assertIn('if($verifierProcess.ExitCode -eq 0)', self.workflow)
+        self.assertIn('PRIVATE original seven-stage receipt integrity check',
+                      self.docs)
 
     def test_resumed_success_receipts_are_revoked_before_any_stage_preflight(self):
         # An archive may have become corrupt after an earlier successful run.
