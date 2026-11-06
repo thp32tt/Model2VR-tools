@@ -115,7 +115,7 @@ foreach ($label in $labels) {
   # The PRIVATE full report is cached and cross-session audited at the end,
   # avoiding seven unnecessary repeat parses of large original GPU logs.
   $preflight = Join-Path $destination ("PRIVATE_SOURCE_" + $label + ".json")
-  $preflightExit = Invoke-PrivateAudit @($analyzer,"--preflight",$target,
+  $preflightExit = Invoke-PrivateAudit -arguments @($analyzer,"--preflight",$target,
                                          "--output",$preflight)
   if ($preflightExit -ne 0 -or
       !(Test-Path -LiteralPath $preflight -PathType Leaf)) {
@@ -143,7 +143,7 @@ foreach ($label in @("title","menu","sky","hud","aux")) {
   $argsForPython += @("--control",$label,$reports[$label])
 }
 $argsForPython += @("--output",(Join-Path $destination "PRIVATE_WORLD_CANDIDATES.json"))
-$pythonExitCode = Invoke-PrivateAudit $argsForPython
+$pythonExitCode = Invoke-PrivateAudit -arguments $argsForPython
 if ($pythonExitCode -ne 0) {
   throw "Private source evidence FAIL-CLOSED. Archive kept for local inspection: $destination"
 }
