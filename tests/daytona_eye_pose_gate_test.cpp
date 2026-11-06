@@ -14,6 +14,7 @@
     std::exit(1); } } while(0)
 using m2vr::daytona::AdmitLiveEyePose;
 using m2vr::daytona::AdmitTrackedWorldEyePose;
+using m2vr::daytona::AdmitOriginalGpuDrawEyePose;
 static m2vr::pose::Frame ValidTestPose(){
     m2vr::pose::Frame f{};
     f.sequence=15;
@@ -57,26 +58,33 @@ int main(){
     // A live GUI pose can remain VALID after tracking is lost, but it
     // must NOT be accepted as a calibrated CPU-world 6DoF source.
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    CHECK(!AdmitOriginalGpuDrawEyePose(f,now,hz).valid);
     f.view_flags|=m2vr::pose::kOrientationTracked |
                   m2vr::pose::kPositionTracked;
     CHECK(AdmitTrackedWorldEyePose(f,now,hz).valid);
+    // Tracked source must be accepted at real D3D9 GPU Draw.
+    CHECK(AdmitOriginalGpuDrawEyePose(f,now,hz).valid);
     // World3D admission cannot trust a tracked geometric pair without
     // physical positive predicted XrTime; legacy GPU fallback still can.
     f.predicted_display_time=0;
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    CHECK(!AdmitOriginalGpuDrawEyePose(f,now,hz).valid);
     CHECK(AdmitLiveEyePose(f,now,hz).valid);
     f.predicted_display_time=-1;
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    CHECK(!AdmitOriginalGpuDrawEyePose(f,now,hz).valid);
     CHECK(AdmitLiveEyePose(f,now,hz).valid);
     f.predicted_display_time=15000;
     CHECK(AdmitTrackedWorldEyePose(f,now,hz).valid);
     f.reserved=0u;
-    CHECK(AdmitLiveEyePose(f,now,hz).valid); // preserve legacy GPU/mono
+    CHECK(AdmitLiveEyePose(f,now,hz).valid); // preserve legacy GUI/mono
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    CHECK(!AdmitOriginalGpuDrawEyePose(f,now,hz).valid);
     f.reserved=1u;
     CHECK(AdmitTrackedWorldEyePose(f,now,hz).valid);
     f.view_flags&=~m2vr::pose::kPositionTracked;
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);
+    CHECK(!AdmitOriginalGpuDrawEyePose(f,now,hz).valid);
     f.view_flags|=m2vr::pose::kPositionTracked;
     f.view_flags&=~m2vr::pose::kOrientationTracked;
     CHECK(!AdmitTrackedWorldEyePose(f,now,hz).valid);

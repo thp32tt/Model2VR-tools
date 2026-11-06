@@ -75,7 +75,7 @@ int main(){
     REQUIRE(!game_pose.Read(100u,temporarily_untracked));
     const daytona::OriginalSourcePoseTicket source_ticket{
         earlier.sequence,earlier.published_qpc,earlier.reserved,
-        earlier.predicted_display_time};
+        earlier.predicted_display_time,earlier.view_flags};
     constexpr std::uint64_t hz=10000000ull;
     constexpr std::uint64_t now=1000000300ull;
     REQUIRE(daytona::OriginalStereoPoseStillLiveAtPresent(
@@ -141,7 +141,7 @@ int main(){
     REQUIRE(pose::PublishTrackedStereoPose(writer,history,restart,Views{3u,4u}));
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
         {11u,new_local.published_qpc,new_local.reserved,
-         new_local.predicted_display_time},restart,now,hz));
+         new_local.predicted_display_time,new_local.view_flags},restart,now,hz));
     REQUIRE(cpu.Rebase(restart,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==3u);
     REQUIRE(game_pose.Begin(102u,restart));
@@ -167,7 +167,7 @@ int main(){
         writer,history,final_local,Views{7u,8u}));
     REQUIRE(!daytona::OriginalStereoPoseStillLiveAtPresent(
         {restart.sequence,restart.published_qpc,restart.reserved,
-         restart.predicted_display_time},final_local,now,hz));
+         restart.predicted_display_time,restart.view_flags},final_local,now,hz));
     REQUIRE(cpu.Rebase(final_local,cpu_eyes));
     REQUIRE(cpu.ReferenceSpaceEpoch()==4u);
     REQUIRE(game_pose.Begin(103u,final_local));

@@ -4,7 +4,8 @@
 int main(){
     using namespace m2vr;
     constexpr std::uint64_t now=1000600000ull,hz=10000000ull;
-    daytona::OriginalSourcePoseTicket ticket{100u,1000000000ull,1u,100000};
+    daytona::OriginalSourcePoseTicket ticket{100u,1000000000ull,1u,100000,
+        pose::kFullSixDofTracked};
     pose::Frame p{};
     p.sequence=102u;p.published_qpc=1000500000ull;
     p.predicted_display_time=102000;
@@ -20,6 +21,17 @@ int main(){
     p.eyes[0].position_m[0]=-0.032f;
     p.eyes[1].position_m[0]=0.032f;
     using daytona::OriginalStereoPoseStillLiveAtPresent;
+    CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
+    // Newly tracked Present cannot authenticate VALID-only original Draw.
+    auto untracked_draw=ticket;
+    untracked_draw.draw_view_flags=pose::kOrientationValid|pose::kPositionValid;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(untracked_draw,p,now,hz));
+    untracked_draw.draw_view_flags=pose::kFullSixDofTracked&~pose::kPositionTracked;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(untracked_draw,p,now,hz));
+    untracked_draw.draw_view_flags=pose::kFullSixDofTracked&~pose::kOrientationTracked;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(untracked_draw,p,now,hz));
+    untracked_draw.draw_view_flags=0u;
+    CHECK(!OriginalStereoPoseStillLiveAtPresent(untracked_draw,p,now,hz));
     CHECK(OriginalStereoPoseStillLiveAtPresent(ticket,p,now,hz));
     // Draw-side predicted XrTime must be named, never inferred from QPC.
     auto missing_draw_time=ticket;

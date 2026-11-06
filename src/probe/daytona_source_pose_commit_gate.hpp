@@ -13,6 +13,9 @@ struct OriginalSourcePoseTicket {
     std::uint32_t reference_space_epoch=0;
     // Physical source XrTime for the original Draw eye pair.
     std::int64_t predicted_display_time=0;
+    // Persist the ORIGINAL Draw tracking bits; Present's newer tracked
+    // sample must never relabel an untracked image as genuine eye source.
+    std::uint32_t draw_view_flags=0;
 };
 inline bool OriginalStereoPoseStillLiveAtPresent(
     OriginalSourcePoseTicket ticket,const pose::Frame& latest,
@@ -22,6 +25,8 @@ inline bool OriginalStereoPoseStillLiveAtPresent(
     if(!ticket.reference_space_epoch || !latest.reserved ||
        !ticket.sequence || ticket.sequence>0xffffffffull ||
        !ticket.published_qpc || ticket.predicted_display_time<=0 ||
+       (ticket.draw_view_flags & pose::kFullSixDofTracked)!=
+           pose::kFullSixDofTracked ||
        latest.predicted_display_time<=0 || hz<8u ||
        now<ticket.published_qpc ||
        now-ticket.published_qpc>hz/8u ||

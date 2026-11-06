@@ -54,7 +54,7 @@ struct Bridge {
     m2vr::vrbridge::OriginalCameraFamilyEpoch camera_family{};
     std::uint64_t pose_published_qpc=0;
     std::int64_t pose_predicted_display_time=0;
-    std::uint32_t pose_reference_epoch=0;
+    std::uint32_t pose_reference_epoch=0,pose_view_flags=0;
     DWORD owner=0;
     unsigned draw_count=0,triangle_count=0;
     bool active=false,pending_present=false;
@@ -73,7 +73,7 @@ struct Bridge {
     void Abort()noexcept{
         active=false;pending_present=false;
         owner=0;frame=0;pose_sequence=0;pose_published_qpc=0;
-        pose_predicted_display_time=0;pose_reference_epoch=0;
+        pose_predicted_display_time=0;pose_reference_epoch=0;pose_view_flags=0;
         draw_count=0;triangle_count=0;
         projected_camera.Reset();fixed_camera.Reset();camera_family.Reset();
         original_draw_one_shot.Reset();
@@ -154,7 +154,7 @@ bool OriginalWorldPoseLive()noexcept {
        now.QuadPart<=0 || frequency.QuadPart<=0)return false;
     return m2vr::daytona::OriginalStereoPoseStillLiveAtPresent(
         {g.pose_sequence,g.pose_published_qpc,g.pose_reference_epoch,
-         g.pose_predicted_display_time},latest,
+         g.pose_predicted_display_time,g.pose_view_flags},latest,
         static_cast<std::uint64_t>(now.QuadPart),
         static_cast<std::uint64_t>(frequency.QuadPart));
 }
@@ -352,6 +352,7 @@ extern "C" BOOL __stdcall Model2VR_BeginVerifiedWorldFrame(
         g.pose_published_qpc=predicted.published_qpc;
         g.pose_predicted_display_time=predicted.predicted_display_time;
         g.pose_reference_epoch=predicted.reserved;
+        g.pose_view_flags=predicted.view_flags;
         g.owner=GetCurrentThreadId();
         g.calibration=cal;
         g.evidence=evidence;

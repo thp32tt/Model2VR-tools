@@ -59,4 +59,13 @@ inline EyePoseAdmission AdmitTrackedWorldEyePose(
         pose::kFullSixDofTracked)return {};
     return AdmitLiveEyePose(frame,now_qpc,qpc_hz);
 }
+// Experimental original D3D9 GPU-eye replay must latch a TRACKED source
+// at Draw, not adopt a later recovered tracked pose at Present.
+// This is only a safety gate, not Daytona race-world authentication.
+// AdmitLiveEyePose remains available for non-world legacy GUI/mono.
+inline EyePoseAdmission AdmitOriginalGpuDrawEyePose(
+    const pose::Frame& frame,std::uint64_t now_qpc,
+    std::uint64_t qpc_hz) noexcept {
+    return AdmitTrackedWorldEyePose(frame,now_qpc,qpc_hz);
+}
 } // namespace m2vr::daytona

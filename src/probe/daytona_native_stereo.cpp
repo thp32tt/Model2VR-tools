@@ -810,7 +810,7 @@ private:
            ticks.QuadPart<=0 || frequency.QuadPart<=0)return false;
         return m2vr::daytona::OriginalStereoPoseStillLiveAtPresent(
             {pose_sequence_,pose_published_qpc_,pose_reference_epoch_,
-             pose_predicted_display_time_},newest,
+             pose_predicted_display_time_,pose_view_flags_},newest,
             static_cast<std::uint64_t>(ticks.QuadPart),
             static_cast<std::uint64_t>(frequency.QuadPart));
     }
@@ -820,14 +820,16 @@ private:
         pose_admitted_=false;
         pose_sequence_=0;
         pose_published_qpc_=0u;pose_predicted_display_time_=0;
-        pose_reference_epoch_=0u;
+        pose_reference_epoch_=0u;pose_view_flags_=0u;
         m2vr::pose::Frame frame{};
         if(!Model2VR_ReadPredictedEyeViews(&frame))return false;
         LARGE_INTEGER ticks{},frequency{};
         if(!QueryPerformanceCounter(&ticks) ||
            !QueryPerformanceFrequency(&frequency) ||
            ticks.QuadPart<=0 || frequency.QuadPart<=0)return false;
-        const auto admitted=m2vr::daytona::AdmitLiveEyePose(
+        // These eyes are generated at the ORIGINAL Draw. A newly tracked
+        // Present pose must not retroactively authorize stale eye pixels.
+        const auto admitted=m2vr::daytona::AdmitOriginalGpuDrawEyePose(
             frame,static_cast<std::uint64_t>(ticks.QuadPart),
             static_cast<std::uint64_t>(frequency.QuadPart));
         pose_admitted_=admitted.valid &&
@@ -837,6 +839,7 @@ private:
             pose_published_qpc_=frame.published_qpc;
             pose_predicted_display_time_=frame.predicted_display_time;
             pose_reference_epoch_=frame.reserved;
+            pose_view_flags_=frame.view_flags;
             ipd_scale_=admitted.ipd_scale;
         }
         return pose_admitted_;
@@ -857,7 +860,7 @@ private:
         mirrored_family_.fill(0u);
         pose_checked_=false;pose_admitted_=false;pose_sequence_=0;
         pose_published_qpc_=0u;pose_predicted_display_time_=0;
-        pose_reference_epoch_=0u;
+        pose_reference_epoch_=0u;pose_view_flags_=0u;
     }
     static D3DVIEWPORT9 Clip(D3DVIEWPORT9 vp,UINT w,UINT h)noexcept {
         if(vp.X>=w||vp.Y>=h){vp.X=0;vp.Y=0;vp.Width=w;vp.Height=h;}
@@ -1243,7 +1246,7 @@ private:
     bool pose_checked_=false,pose_admitted_=false;
     std::uint64_t pose_sequence_=0,pose_published_qpc_=0;
     std::int64_t pose_predicted_display_time_=0;
-    std::uint32_t pose_reference_epoch_=0u;
+    std::uint32_t pose_reference_epoch_=0u,pose_view_flags_=0u;
     bool first_stereo_published_=false,first_mono_published_=false;
     bool pending_mono_ready_=false;
     std::uint32_t pending_mono_source_reason_=0u;
