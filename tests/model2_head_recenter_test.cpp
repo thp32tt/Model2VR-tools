@@ -185,11 +185,20 @@ int main(){
     CHECK(canted_origin.Rebase(canted_moved,canted_output));
     CHECK(Near(canted_output.eyes[0].position_m[0],1.f-0.032f));
     CHECK(Near(canted_output.eyes[1].position_m[0],1.f+0.032f));
+    // A q/-q flip with the same LOCAL epoch is an identical physical
+    // binocular view, not an abrupt 360-degree headset rotation.
+    auto sign_same_epoch=canted_moved;
+    sign_same_epoch.sequence=42u;
+    for(float& q:sign_same_epoch.eyes[1].orientation_xyzw)q=-q;
+    CHECK(canted_origin.Rebase(sign_same_epoch,canted_output));
+    CHECK(Near(canted_output.eyes[0].orientation_xyzw[1],std::sin(cant*0.5f)));
+    CHECK(Near(canted_output.eyes[1].orientation_xyzw[1],-std::sin(cant*0.5f)));
+    CHECK(Near(canted_output.eyes[1].position_m[0],1.f+0.032f));
     // OpenXR is free to flip the sign of either equivalent eye
     // quaternion. Re-anchoring a new LOCAL epoch must not rotate the
     // driver by ~180 degrees or prefer whichever eye has positive w.
     auto sign_flipped=canted;
-    sign_flipped.sequence=42u;
+    sign_flipped.sequence=43u;
     sign_flipped.reserved=5u;
     for(float& q:sign_flipped.eyes[1].orientation_xyzw)q=-q;
     CHECK(pose::CheckStereoRigGeometry(sign_flipped).valid());
