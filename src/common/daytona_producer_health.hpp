@@ -152,8 +152,10 @@ public:
         }
         wire_->status={frame,static_cast<std::uint64_t>(now.QuadPart),
                        mask,scene,draws,clears,family};
-        InterlockedExchange(&wire_->generation,old+2);
+        // The original x86 success/failure receipt is one-way and may
+        // race GPU-eye fallback. Update monotonic frame before unlocking.
         last_frame_=frame;
+        InterlockedExchange(&wire_->generation,old+2);
         return true;
     }
     bool Read(Snapshot& out)const noexcept {

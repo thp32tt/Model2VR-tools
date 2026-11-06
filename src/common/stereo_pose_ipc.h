@@ -104,8 +104,10 @@ public:
         QueryPerformanceCounter(&now);
         stamped.published_qpc=static_cast<std::uint64_t>(now.QuadPart);
         std::memcpy(&data_->frame,&stamped,sizeof(Frame));
-        InterlockedExchange(&data_->generation,previous+2);
+        // The next host write may claim the lease as soon as this goes
+        // even. Keep sequence monotonic while the current writer owns it.
         last_written_=value.sequence;
+        InterlockedExchange(&data_->generation,previous+2);
         return true;
     }
     // Explicitly revoke the last valid pose on transient tracking loss.

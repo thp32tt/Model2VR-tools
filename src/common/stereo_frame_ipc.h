@@ -177,8 +177,11 @@ public:
         QueryPerformanceCounter(&time);
         h->timestamp_qpc=static_cast<std::uint64_t>(time.QuadPart);
         InterlockedExchange(&h->kind,static_cast<LONG>(kind));
-        InterlockedExchange(&h->sequence,before+2);
+        // Publish the monotonic source high-water mark BEFORE releasing
+        // the writer lease, not after: a second x86 caller may acquire the
+        // next even generation immediately and must see this frame ID.
         last_written_=frame_id;
+        InterlockedExchange(&h->sequence,before+2);
         return true;
     }
     // Small, coherent metadata check before copying two 4-MiB eyes.
