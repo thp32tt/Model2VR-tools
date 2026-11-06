@@ -119,7 +119,7 @@ foreach ($label in $labels) {
                                          "--output",$preflight)
   if ($preflightExit -ne 0 -or
       !(Test-Path -LiteralPath $preflight -PathType Leaf)) {
-    throw "PRIVATE_SESSION_PREFLIGHT_FAIL_CLOSED: $label original Draw/Present evidence invalid. Local archive kept: $destination"
+    throw "PRIVATE SESSION PREFLIGHT FAIL-CLOSED: $label original Draw/Present evidence invalid. Local archive kept: $destination"
   }
   $sourceReport = Get-Content -LiteralPath $preflight -Raw -Encoding UTF8 |
     ConvertFrom-Json
@@ -154,7 +154,7 @@ Write-Host "Private output: $destination"
  -or
       $nonce -eq "0x0000000000000000" -or
       !$knownNonces.Add($nonce)) {
-    throw "PRIVATE_SESSION_PREFLIGHT_FAIL_CLOSED: duplicate or missing original process nonce for $label. Archive kept: $destination"
+    throw "PRIVATE SESSION PREFLIGHT FAIL-CLOSED: duplicate or missing original process nonce for $label. Archive kept: $destination"
   }
   $reports[$label] = $preflight
   Write-Host ("Validated and archived PRIVATE " + $label + " (" +
