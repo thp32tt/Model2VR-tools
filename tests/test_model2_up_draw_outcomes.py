@@ -47,6 +47,36 @@ class OriginalUPPhysicalOutcomeTest(unittest.TestCase):
                   0, caller, pack(frame, 3)),
         ]
 
+    def test_private_original_cpu_projector_missing_source_is_not_a_world_camera(self):
+        # These are genuine original x86 projector *rejections*, never a
+        # replacement physical source Draw witness or auto-world proof.
+        log=[
+            event("project_original_source_gap",0x1234,2,0,0),
+            event("project_original_source_gap",0x1234,4,0,0),
+            event("project_original_source_gap",0,7,0,0),
+        ]
+        outcome=self.report(log)
+        self.assertEqual(outcome["counts"][
+            "original_cpu_projector_source_untrusted"],3)
+        self.assertEqual(outcome["counts"][
+            "original_cpu_projector_matrix_untrusted"],2)
+        self.assertEqual(outcome["counts"][
+            "original_cpu_projector_command_untrusted"],2)
+        self.assertEqual(outcome["counts"][
+            "original_cpu_projector_missing_caller"],1)
+        self.assertEqual(outcome["world_pass_proof"],"NOT_ESTABLISHED")
+        self.assertNotIn("same_witness_cpu_camera_present_candidate",
+                         outcome["counts"])
+        for caller,mask,reserved1,reserved2 in (
+                (0x1234,0,0,0),(0x1234,8,0,0),
+                (0,4,0,0),(0x100000000,2,0,0),
+                (0x1234,2,1,0),(0x1234,2,0,1)):
+            with self.subTest(caller=caller,mask=mask):
+                with self.assertRaisesRegex(
+                        ValueError,"invalid original CPU projector source gap"):
+                    self.report([event("project_original_source_gap",
+                                       caller,mask,reserved1,reserved2)])
+
     def test_original_up_unique_optical_fit_carries_true_eye_expansion(self):
         base=self.projected()
         old=self.report(base+[

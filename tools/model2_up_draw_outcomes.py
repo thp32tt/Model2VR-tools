@@ -316,6 +316,7 @@ def audit_csv(path):
             event = row["event"]
             if event not in (set(UP_TYPES) | set(JOINS) |
                              set(POPULATIONS) | set(META) | {
+                "project_original_source_gap",
                 "model2_d3d9_up_original_result",
                 "model2_d3d9_original_present_result",
                 "model2_d3d9_original_scene_failed",
@@ -346,6 +347,23 @@ def audit_csv(path):
                 a0, a1, a2, a3 = (number(row[k]) for k in ("a0", "a1", "a2", "a3"))
             except (ValueError, TypeError) as exc:
                 raise ValueError(f"malformed original UP outcome row {row_no}") from exc
+            if event == "project_original_source_gap":
+                # Genuine x86 ProjectVertexToScreen pre/post call produced
+                # an explicit pointer-free rejection BEFORE its camera
+                # source could reach the verified Win64 stereo eye path.
+                # a0 is the caller RVA, NOT a Draw witness ID; a1 is a
+                # 3-bit mask. Missing caller (bit 1) may have RVA zero.
+                if (a0 > 0xffffffff or not 1 <= a1 <= 7 or
+                        (a0==0 and not a1&1) or a2 or a3):
+                    raise ValueError("invalid original CPU projector source gap")
+                counts["original_cpu_projector_source_untrusted"] += 1
+                if a1&1:
+                    counts["original_cpu_projector_missing_caller"] += 1
+                if a1&2:
+                    counts["original_cpu_projector_matrix_untrusted"] += 1
+                if a1&4:
+                    counts["original_cpu_projector_command_untrusted"] += 1
+                continue
             if event == "model2_d3d9_original_draw_failed":
                 if (not 0 < a0 <= 0xffffffff or
                     a0 <= observed_present_frame or
