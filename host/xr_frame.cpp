@@ -215,6 +215,7 @@ void XrApp::invalidate_source_session() noexcept {
     mono_quad_anchor_.Reset();
     mono_anchor_warning_=false;
     emulator_window_capture_.Invalidate();
+    submitted_menu_capture_serial_=0u;
     emulator_window_on_quad_=false;
     for(auto& chain:chains_)
         std::fill(chain.uploaded_frame_ids.begin(),
@@ -591,7 +592,8 @@ void XrApp::draw_frame(XrTime display_time){
     // The original game mono and verified native stereo never receive input.
     menu_controller_.Poll(session_,local_space_,display_time,
         xr_session_focused_,menu_quad && flat_quad,source_pid_,
-        mono_quad_anchor_.Get(),emulator_window_capture_);
+        mono_quad_anchor_.Get(),emulator_window_capture_,
+        submitted_menu_capture_serial_);
     if(menu_quad!=emulator_window_on_quad_){
         emulator_window_on_quad_=menu_quad;
         std::cout<<"Model2VR XR pre-game Windows desktop 2D quad: "
@@ -810,6 +812,12 @@ void XrApp::draw_frame(XrTime display_time){
     report_wizard_health(true,usable && commit_source_layer);
     check(xrEndFrame(session_,&end),
           flat_quad?"end emulator/game mono 2D quad frame":"end stereo frame");
+    // Only a SUCCESSFULLY submitted menu-layer image can become the next
+    // controller ray's clickable source. Never pre-authorize its capture
+    // just because the 10-fps GDI readback or GPU upload completed.
+    submitted_menu_capture_serial_=(menu_quad && flat_quad &&
+                                    commit_source_layer)
+        ?emulator_window_capture_.Serial():0u;
 }
 void XrApp::run(int max_frames){
     wizard_diag_enabled_=GetPrivateProfileIntW(L"probe",L"wizard_health_diagnostics",

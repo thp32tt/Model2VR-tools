@@ -38,6 +38,15 @@ int main(){
     static_assert(!CaptureClickFresh(1000u,999u));
     static_assert(!CaptureClickFresh(0u,100u));
     static_assert(!CaptureClickFresh(1u,UINT64_MAX));
+    // First/new screenshots must never accept clicks before their own
+    // successful XR quad submission; a submitted but superseded menu must
+    // no longer authorize interaction with a different capture.
+    static_assert(!PresentedCaptureMatches(0u,0u));
+    static_assert(!PresentedCaptureMatches(42u,0u));
+    static_assert(PresentedCaptureMatches(42u,42u));
+    static_assert(!PresentedCaptureMatches(43u,42u));
+    static_assert(!PresentedCaptureMatches(42u,43u));
+    static_assert(!PresentedCaptureMatches(42u,0u));
     static_assert(Fit(5360,1680,1024,1024).Valid());
     // Real mouse still has a valid texture position OUTSIDE the small
     // emulator window, including on the negative-X second monitor.

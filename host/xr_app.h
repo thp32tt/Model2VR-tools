@@ -77,6 +77,9 @@ private:
     EmulatorMenuController menu_controller_{};
     bool xr_session_focused_=false;
     bool emulator_window_on_quad_=false;
+    // Captured image proven submitted to OpenXR on a preceding XR tick.
+    // Zero on original game/menu exit, tracking loss, or session change.
+    std::uint64_t submitted_menu_capture_serial_=0u;
     transport::SharedFrames shared_frames_;
     producerhealth::Link producer_health_;
     producerhealth::Snapshot producer_health_status_{};

@@ -131,7 +131,8 @@ void EmulatorMenuController::Shutdown() noexcept {
 void EmulatorMenuController::Poll(
     XrSession session,XrSpace local_space,XrTime predicted_time,
     bool focused,bool menu_visible,std::uint32_t pid,
-    const monoquad::Placement& quad,EmulatorWindowCapture& capture){
+    const monoquad::Placement& quad,EmulatorWindowCapture& capture,
+    std::uint64_t submitted_menu_capture_serial){
     capture.SetControllerReticle(false,0,0);
     ray_on_menu_=false;
     if(!active_ || !focused)return;
@@ -189,7 +190,11 @@ void EmulatorMenuController::Poll(
     const auto& hit=hits[hand];
     capture.SetControllerReticle(true,hit.texture_x,hit.texture_y);
     if(click_edges[hand]){
-        const bool sent=capture.DeliverControllerClick(pid,hit.window_x,hit.window_y);
+        // Poll runs BEFORE this frame's D3D11 upload and xrEndFrame. Its
+        // current capture might therefore be newer than the visible quad.
+        const bool sent=desktopmenu::PresentedCaptureMatches(
+            capture.Serial(),submitted_menu_capture_serial) &&
+            capture.DeliverControllerClick(pid,hit.window_x,hit.window_y);
         std::cout<<"Model2VR XR emulator menu click: "
                  <<(sent?"SENT":"BLOCKED_FOREGROUND_OR_INJECTION")
                  <<" hand="<<(hand?"right":"left")

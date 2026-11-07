@@ -42,6 +42,15 @@ constexpr bool CaptureClickFresh(std::uint64_t captured_ms,
     return captured_ms!=0u && now_ms>=captured_ms &&
            now_ms-captured_ms<=250u;
 }
+// Never inject a Quest menu click against a desktop capture that has not
+// reached a PREVIOUS successful xrEndFrame. A newer 10-fps screenshot can
+// change the visible ROM/menu controls before the HMD shows those pixels.
+// Non-menu frames and XR session invalidation reset the submitted serial.
+constexpr bool PresentedCaptureMatches(std::uint64_t current_capture_serial,
+                                       std::uint64_t submitted_menu_serial) noexcept {
+    return current_capture_serial!=0u &&
+           current_capture_serial==submitted_menu_serial;
+}
 struct ScreenPoint {
     std::int32_t x=0,y=0;
     bool valid=false;
