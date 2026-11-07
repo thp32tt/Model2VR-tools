@@ -56,12 +56,13 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
             "github.com", "git push", "World3D=true", "world_pass_proof = \"ESTABLISHED\"",
         ):
             self.assertNotIn(forbidden,self.ps)
-        self.assertIn("Get-FileHash -LiteralPath $originalPath -Algorithm SHA256",self.ps)
-        self.assertIn("Get-FileHash -LiteralPath $target -Algorithm SHA256",self.ps)
+        self.assertIn("$sha.ComputeHash($reader)",self.ps)
+        self.assertIn("Get-FileHash -LiteralPath $pendingCopy -Algorithm SHA256",self.ps)
         self.assertIn("scene_labels_verified_by",self.ps)
         self.assertIn('"NOT_ESTABLISHED"',self.ps)
         self.assertIn('"UNTESTED"',self.ps)
-        self.assertIn("Copy-Item -LiteralPath $originalPath -Destination $target",self.ps)
+        self.assertIn("$reader.CopyTo($archiveWriter)",self.ps)
+        self.assertIn("$capture = Copy-ClosedOriginalSourceUnderLease $originalPath $target",self.ps)
 
     def test_original_private_archive_is_single_writer_before_receipt_revocation(self):
         # Two terminals may resume the same seven-stage archive. The
@@ -146,27 +147,37 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('Move-PrivateFailedCandidate $candidateOutput', self.ps)
         self.assertIn('$pythonExitCode -ne 0', self.ps)
 
-    def test_original_x86_source_writer_must_exit_before_archiving(self):
-        # Windows CREATE_NEW + FILE_SHARE_READ allows hashing a log during
-        # an active original emulator process. Only an exclusive read gate
-        # prevents accepting those still-growing physical Draw/Present rows.
-        self.assertIn("function Assert-OriginalProbeExited", self.ps)
-        self.assertIn("[System.IO.FileAccess]::Read, [System.IO.FileShare]::None",
-                      self.ps)
-        self.assertIn("PRIVATE SESSION ORIGINAL SOURCE STILL OPEN FAIL-CLOSED",
-                      self.ps)
-        self.assertEqual(self.ps.count("Assert-OriginalProbeExited $originalPath"), 2)
-        self.assertLess(
-            self.ps.index("Assert-OriginalProbeExited $originalPath"),
-            self.ps.index("Get-FileHash -LiteralPath $originalPath -Algorithm SHA256"))
-        self.assertLess(
-            self.ps.index("Copy-Item -LiteralPath $originalPath -Destination $target"),
-            self.ps.rindex("Assert-OriginalProbeExited $originalPath"))
-        self.assertLess(
-            self.ps.rindex("Assert-OriginalProbeExited $originalPath"),
-            self.ps.index("$copiedHash = (Get-FileHash -LiteralPath $target"))
+    def test_original_x86_source_lease_covers_hash_copy_and_atomic_promotion(self):
+        # A short closed-producer probe could not prevent a second Win32
+        # process reopening the original logger between hash and Copy-Item.
+        # The source is now read through one long-lived, read-only handle.
+        start = self.ps.index("function Copy-ClosedOriginalSourceUnderLease")
+        end = self.ps.index("# Never accept a previously cached", start)
+        function = self.ps[start:end]
+        self.assertIn("[System.IO.FileShare]::Read", function)
+        self.assertIn("[System.IO.FileMode]::Open", function)
+        self.assertIn("PRIVATE SESSION ORIGINAL SOURCE STILL OPEN FAIL-CLOSED", function)
+        self.assertIn("$sha.ComputeHash($reader)", function)
+        self.assertIn("$reader.Position = 0", function)
+        self.assertIn("$reader.CopyTo($archiveWriter)", function)
+        self.assertIn("$archiveWriter.Flush($true)", function)
+        self.assertIn("[System.IO.FileMode]::CreateNew", function)
+        self.assertIn("Move-Item -LiteralPath $pendingCopy -Destination $destinationPath", function)
+        self.assertIn("$reader.Dispose()", function)
+        self.assertLess(function.index("$sha.ComputeHash($reader)"),
+                        function.index("$reader.CopyTo($archiveWriter)"))
+        self.assertLess(function.index("$reader.CopyTo($archiveWriter)"),
+                        function.index("Move-Item -LiteralPath $pendingCopy"))
+        self.assertLess(function.index("Move-Item -LiteralPath $pendingCopy"),
+                        function.index("$reader.Dispose()"))
+        self.assertEqual(self.ps.count(
+            "$capture = Copy-ClosedOriginalSourceUnderLease $originalPath $target"), 1)
+        self.assertNotIn("Assert-OriginalProbeExited", self.ps)
         self.assertIn(
             "Reject original x86 CSV while emulator writer is alive",
+            self.workflow)
+        self.assertIn(
+            "Verify original source capture under continuous read lease",
             self.workflow)
 
     def test_fresh_original_stage_only_accepts_one_new_path_not_a_recent_old_file(self):

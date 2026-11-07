@@ -344,6 +344,63 @@ jobs:
               throw "Single-stage synthetic source incorrectly authorized World3D"
             }
           }
+      - name: Verify original source capture under continuous read lease
+        shell: pwsh
+        run: |
+          # Extract only this approved public source helper to test genuine
+          # Windows sharing behavior without running the collector or emulator.
+          $ErrorActionPreference="Stop"
+          $code=Get-Content scripts/Collect-Daytona-Original-Evidence.ps1 -Raw
+          $a=$code.IndexOf("function Copy-ClosedOriginalSourceUnderLease")
+          $b=$code.IndexOf("# Never accept a previously cached",$a)
+          if($a -lt 0 -or $b -le $a){throw "Missing original capture lease helper"}
+          Invoke-Expression ($code.Substring($a,$b-$a))
+          $root=Join-Path $env:RUNNER_TEMP ("original-x86-copy-lease-"+[guid]::NewGuid().ToString("N"))
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $original=Join-Path $root "synthetic_original.csv"
+          $archive=Join-Path $root "PRIVATE_STAGE.csv"
+          $raw=("seq,qpc,thread,event,a0,a1,a2,a3" + "`r`n" +
+            "1,200,21,synthetic_probe_unknown,0,0,0,0" + "`r`n")
+          [IO.File]::WriteAllText($original,$raw,[Text.Encoding]::ASCII)
+          $expected=(Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
+          $writer=[IO.FileStream]::new($original,[IO.FileMode]::Open,
+            [IO.FileAccess]::Write,[IO.FileShare]::Read)
+          try {
+            $refused=$false
+            try {
+              Copy-ClosedOriginalSourceUnderLease $original $archive | Out-Null
+            } catch {
+              if($_.Exception.Message -notmatch "ORIGINAL SOURCE STILL OPEN FAIL-CLOSED"){throw}
+              $refused=$true
+            }
+            if(-not $refused -or (Test-Path $archive)){
+              throw "Active x86 original writer incorrectly allowed source archive"
+            }
+          } finally { $writer.Dispose() }
+          $record=Copy-ClosedOriginalSourceUnderLease $original $archive
+          if($record.Hash -cne $expected -or $record.Length -ne ([IO.FileInfo]$original).Length){
+            throw "Leased original source digest/length mismatch"
+          }
+          if((Get-FileHash $archive -Algorithm SHA256).Hash -cne $expected){
+            throw "Leased original source was not copied byte-exactly"
+          }
+          $prior=(Get-FileHash $archive -Algorithm SHA256).Hash
+          $rejected=$false
+          try {
+            Copy-ClosedOriginalSourceUnderLease $original $archive | Out-Null
+          } catch {
+            if($_.Exception.Message -notmatch "DESTINATION EXISTS FAIL-CLOSED"){throw}
+            $rejected=$true
+          }
+          if(-not $rejected -or (Get-FileHash $archive -Algorithm SHA256).Hash -cne $prior){
+            throw "Existing accepted PRIVATE stage was replaced"
+          }
+          if((Get-FileHash $original -Algorithm SHA256).Hash -cne $expected){
+            throw "Collector mutated the ORIGINAL input"
+          }
+          if(@(Get-ChildItem $root -Filter "*.PRIVATE_PENDING_*").Count -ne 0){
+            throw "Failed source copy left private staging files"
+          }
       - name: Smoke test archive mutation after per-stage physical preflight
         shell: pwsh
         run: |

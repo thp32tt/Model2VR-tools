@@ -154,21 +154,64 @@ function SessionCsvName([string]$label) {
   if ($label -eq "aux") { return "auxiliary.csv" }
   return $label + ".csv"
 }
-function Assert-OriginalProbeExited([string]$originalPath) {
-  # The genuine x86 probe owns an open GENERIC_WRITE/FILE_SHARE_READ handle
-  # until the emulator exits. Hashing or Copy-Item can READ such a file even
-  # while new original physical Draw/Present rows are still being written.
-  # An exclusive read fails closed while that writer is alive. Never infer
-  # an independent completed source run from a partial in-flight CSV.
-  $exclusiveReader = $null
+function Copy-ClosedOriginalSourceUnderLease([string]$originalPath,
+                                             [string]$destinationPath) {
+  # The native Win32 logger keeps GENERIC_WRITE / FILE_SHARE_READ open.
+  # The old two short FileShare.None probes allowed a different writer to
+  # reopen between hash and Copy-Item. Instead bind to ONE original file
+  # handle, held through hash, byte copy, archive digest, and atomic publish.
+  # FileShare.Read permits other readers, but denies write/delete/rename.
+  # Copy ONLY from that held handle, not a second path-based source open.
+  $reader = $null
   try {
-    $exclusiveReader = [System.IO.FileStream]::new(
+    $reader = [System.IO.FileStream]::new(
       $originalPath, [System.IO.FileMode]::Open,
-      [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
+      [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
   } catch {
-    throw "PRIVATE SESSION ORIGINAL SOURCE STILL OPEN FAIL-CLOSED: close the original x86 emulator and retry this stage. No source data was changed."
+    throw "PRIVATE SESSION ORIGINAL SOURCE STILL OPEN FAIL-CLOSED: close the original x86 emulator before source capture. No source data was changed."
+  }
+  $pendingCopy = $destinationPath + ".PRIVATE_PENDING_" +
+    [guid]::NewGuid().ToString("N")
+  try {
+    $originalLength = $reader.Length
+    if ($originalLength -lt 32) {
+      throw "Empty or truncated original source evidence; original bytes untouched."
+    }
+    # Stream source SHA from the SAME locked Windows file object that is
+    # subsequently copied. A replaced original pathname cannot switch the
+    # provenance of the archived bytes between these operations.
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+      $digest = [BitConverter]::ToString($sha.ComputeHash($reader)).Replace("-","")
+    } finally {
+      $sha.Dispose()
+    }
+    $reader.Position = 0
+    $archiveWriter = [System.IO.FileStream]::new(
+      $pendingCopy, [System.IO.FileMode]::CreateNew,
+      [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    try {
+      $reader.CopyTo($archiveWriter)
+      $archiveWriter.Flush($true)
+    } finally {
+      $archiveWriter.Dispose()
+    }
+    $copiedHash = (Get-FileHash -LiteralPath $pendingCopy -Algorithm SHA256 -ErrorAction Stop).Hash
+    if ($copiedHash -cne $digest) {
+      throw "PRIVATE SESSION SOURCE COPY INTEGRITY FAIL-CLOSED: archived bytes differ from leased original."
+    }
+    if (Test-Path -LiteralPath $destinationPath) {
+      throw "PRIVATE SESSION SOURCE DESTINATION EXISTS FAIL-CLOSED: never replace an archived original stage."
+    }
+    Move-Item -LiteralPath $pendingCopy -Destination $destinationPath -ErrorAction Stop
+    return [pscustomobject]@{ Hash = $digest; Length = $originalLength }
   } finally {
-    if ($null -ne $exclusiveReader) { $exclusiveReader.Dispose() }
+    $reader.Dispose()
+    # Only this GUID pending copy may be cleaned; NEVER delete original
+    # x86 evidence. On failed copy the stage stays unpublished/incomplete.
+    if (Test-Path -LiteralPath $pendingCopy -PathType Leaf) {
+      [System.IO.File]::Delete($pendingCopy)
+    }
   }
 }
 # Never accept a previously cached PRIVATE_SOURCE report as the result of
@@ -306,22 +349,14 @@ foreach ($label in $labels) {
   if (!$knownPaths.Add($originalPath)) {
     throw "Reused original source path for $label; seven independent sessions required."
   }
-  # Both user-supplied and freshly discovered x86 CSVs must be closed by
-  # their ORIGINAL producer. Presence and stable bytes alone are insufficient.
-  Assert-OriginalProbeExited $originalPath
-  if ($source.Length -lt 32) {
-    throw "Empty or truncated original source evidence for $label."
-  }
-  $digest = (Get-FileHash -LiteralPath $originalPath -Algorithm SHA256).Hash
+  # Treat this physical user-labelled source as complete ONLY when the
+  # ORIGINAL Win32 writer is closed for the ENTIRE digest/copy/publication.
+  # The returned SHA describes the identical leased bytes just archived.
+  $capture = Copy-ClosedOriginalSourceUnderLease $originalPath $target
+  $digest = $capture.Hash
   if (!$knownDigests.Add($digest)) {
     throw "Duplicate original source bytes for $label; independent sessions required."
   }
-  Copy-Item -LiteralPath $originalPath -Destination $target -ErrorAction Stop
-  # Recheck after copying as well: if a process began writing between the
-  # first exclusive-open check and copy, no preflight or receipt may follow.
-  Assert-OriginalProbeExited $originalPath
-  $copiedHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
-  if ($copiedHash -ne $digest) { throw "Source copy changed during $label; close original game." }
   $copies[$label] = $target
   $hashes[$label] = $digest
   # Verify physical Draw/Scene/Present and run identity before prompting
@@ -351,7 +386,7 @@ foreach ($label in $labels) {
   $reports[$label] = $preflight
   $reportHashes[$label] = (Get-FileHash -LiteralPath $preflight -Algorithm SHA256).Hash
   Write-Host ("Validated and archived PRIVATE " + $label + " (" +
-              $source.Length + " bytes; original process nonce distinct)")
+              $capture.Length + " bytes; original process nonce distinct)")
   if ($StopAfterStage -ceq $label -and $label -cne "aux") {
     $partialCaptureStopped = $true
     break
