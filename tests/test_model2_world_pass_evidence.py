@@ -646,6 +646,28 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
 
 
 
+    def test_material_present_cannot_borrow_real_successes_from_other_frame(self):
+        # The success count and original physical Draw budget still match,
+        # but three material frames would borrow all three successful
+        # original COM calls from frame 1 alone.
+        source = witness()
+        source["original_draw_success_by_physical_frame"] = [[1, 3]]
+        first = report(source)
+        first["original_sampled_scene_draw_frame_budget"] = [[1, 3]]
+        got = compare_sessions([first, report(witness())], controls())
+        self.assertEqual(got["candidates"], [])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "race_original_draw_witness_budget_exceeded")
+
+    def test_multiple_authentic_original_draws_per_present_remain_valid(self):
+        source = witness()
+        source["original_draw_success_witnesses"] = 4
+        source["original_draw_success_by_physical_frame"] = [
+            [1, 2], [2, 1], [3, 1]]
+        got = compare_sessions([report(source), report(witness())], controls())
+        self.assertEqual(len(got["candidates"]), 1)
+        self.assertFalse(got["adapter_auto_enable"])
+
     def test_same_original_frame_success_budget_rejects_global_spare_capacity(self):
         source = witness()
         # The run has nine Draws, but physical Present 1 only has three.
@@ -784,7 +806,15 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         source = witness()
         for name in source["original_material_frame_lineage"]:
             source["original_material_frame_lineage"][name] = [1, 4, 7]
-        got = compare_sessions([report(source), report(source)], controls())
+        # A genuine physical Present frame list and the original COM
+        # successful Draw frames must be exactly coherent.
+        source["original_draw_success_by_physical_frame"] = [
+            [1, 1], [4, 1], [7, 1]]
+        race_a, race_b = report(source), report(source)
+        for run in (race_a, race_b):
+            run["original_sampled_scene_draw_frame_budget"] = [
+                [1, 3], [4, 3], [7, 3]]
+        got = compare_sessions([race_a, race_b], controls())
         self.assertEqual(len(got["candidates"]), 1)
         self.assertFalse(got["adapter_auto_enable"])
 

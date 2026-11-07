@@ -567,6 +567,19 @@ def _within_original_scene_draw_budget(report):
             previous = frame
         if count != source["original_draw_success_witnesses"]:
             return False
+        # Per-Draw HRESULT successes are not just counts. Every frame
+        # that claims a successful original *projected material* Draw
+        # must have an authentic same-caller successful COM Draw on that
+        # exact original physical Present. Spare Draws on an earlier
+        # frame cannot authenticate material on later frames.
+        lineage = source.get("original_material_frame_lineage")
+        successful_material = (lineage.get("draw_success")
+                               if isinstance(lineage, dict) else None)
+        seen = {row[0] for row in rows}
+        if (not isinstance(successful_material, list) or
+                any(type(frame) is not int or frame not in seen
+                    for frame in successful_material)):
+            return False
     # Extra unaccounted frame budgets cannot be invented as spare capacity.
     return set(frame_budget) == set(summed)
 
