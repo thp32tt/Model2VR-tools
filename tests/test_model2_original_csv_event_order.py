@@ -100,6 +100,107 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
             self.assertFalse(list(Path(folder).glob(
                 "PRIVATE_PENDING_ORIGINAL_DRAW_*.json")))
 
+    def test_direct_report_lease_covers_audit_and_private_publication(self):
+        # Even on non-Windows, prove the independent entrypoint wraps the
+        # entire audit AND atomic output, not merely a short preflight probe.
+        from contextlib import contextmanager
+        with tempfile.TemporaryDirectory() as folder:
+            raw = Path(folder) / "synthetic.csv"
+            raw.write_bytes(
+                b"seq,qpc,thread,event,a0,a1,a2,a3\\r\\n"
+                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\\r\\n")
+            output = Path(folder) / "PRIVATE.json"
+            live = [False]
+            phases = []
+
+            @contextmanager
+            def lease(path):
+                self.assertEqual(path, raw.resolve())
+                self.assertFalse(live[0])
+                live[0] = True
+                phases.append("acquire")
+                try:
+                    yield
+                finally:
+                    live[0] = False
+                    phases.append("release")
+
+            original_write = source_report._write_private_report_atomic
+
+            def audit(path):
+                self.assertTrue(live[0])
+                phases.append("audit")
+                return audit_csv(path)
+
+            def write(path, target, report):
+                self.assertTrue(live[0])
+                phases.append("publish")
+                return original_write(path, target, report)
+
+            with mock.patch.object(source_report,
+                                   "_hold_original_x86_csv_direct_read_lease",
+                                   lease), mock.patch.object(
+                                       source_report, "audit_csv",
+                                       side_effect=audit), mock.patch.object(
+                                           source_report,
+                                           "_write_private_report_atomic",
+                                           side_effect=write):
+                with redirect_stdout(io.StringIO()):
+                    source_report.main(
+                        [str(raw), "--output", str(output)])
+            self.assertEqual(
+                phases, ["acquire", "audit", "publish", "release"])
+            self.assertEqual(json.loads(output.read_text("utf-8"))[
+                "world_pass_proof"], "NOT_ESTABLISHED")
+            self.assertFalse(live[0])
+
+    @unittest.skipUnless(os.name == "nt", "requires actual Win32 sharing")
+    def test_direct_report_refuses_live_writer_and_denies_reopen(self):
+        # Actual Win32 handle contract; the producer remains GENERIC_WRITE
+        # until emulator exit. These are synthetic bytes, not game evidence.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create = kernel32.CreateFileW
+        create.argtypes = (
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+            wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+            wintypes.HANDLE)
+        create.restype = wintypes.HANDLE
+        close = kernel32.CloseHandle
+        close.argtypes = (wintypes.HANDLE,)
+        close.restype = wintypes.BOOL
+        invalid = ctypes.c_void_p(-1).value
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "native-synthetic.csv"
+            path.write_bytes(
+                b"seq,qpc,thread,event,a0,a1,a2,a3\\r\\n"
+                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\\r\\n")
+            live_writer = create(str(path), 0x40000000, 1, None, 3, 0x80, None)
+            self.assertNotIn(live_writer, (None, invalid))
+            try:
+                with self.assertRaisesRegex(ValueError, "STILL OPEN"):
+                    source_report.main([str(path)])
+            finally:
+                self.assertTrue(close(live_writer))
+
+            def verify_writer_stays_blocked(source):
+                attempt = create(str(source), 0x40000000, 1,
+                                 None, 3, 0x80, None)
+                if attempt not in (None, invalid):
+                    close(attempt)
+                    self.fail("Direct source lease allowed a second writer")
+                self.assertEqual(ctypes.get_last_error(), 32)
+                return audit_csv(source)
+
+            with mock.patch.object(source_report, "audit_csv",
+                                   side_effect=verify_writer_stays_blocked):
+                with redirect_stdout(io.StringIO()) as output:
+                    source_report.main([str(path)])
+            self.assertEqual(json.loads(output.getvalue())[
+                "world_pass_proof"], "NOT_ESTABLISHED")
+
     def test_native_win32_logger_payload_format_matches_source_audit(self):
         # Keep the consumer in step with the real original x86 LogEvent ABI,
         # not only fabricated CSV fixtures. No emulator or ROM is required.

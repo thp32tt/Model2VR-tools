@@ -11,6 +11,7 @@ import tempfile
 from array import array
 from collections import Counter, defaultdict
 from pathlib import Path
+from contextlib import contextmanager
 
 MAX_ROWS = 2_000_000
 MAX_WITNESSES = 100_000
@@ -2340,6 +2341,44 @@ def audit_csv(path):
         "sources": sources,
     }
 
+@contextmanager
+def _hold_original_x86_csv_direct_read_lease(source):
+    """Keep a physical Win32 source immutable from audit through publication.
+
+    This standalone CLI is not routed through the seven-session comparator.
+    The native original logger opens GENERIC_WRITE / FILE_SHARE_READ until
+    process exit. Holding GENERIC_READ / FILE_SHARE_READ rejects that active
+    writer, and denies later WRITE/DELETE opens until the full local report
+    has been safely published. No original bytes are modified.
+    """
+    if os.name != "nt":
+        yield
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    handle = create_file(str(source), 0x80000000, 1, None, 3, 0x80, None)
+    if handle in (None, ctypes.c_void_p(-1).value):
+        raise ValueError(
+            "PRIVATE ORIGINAL X86 CSV STILL OPEN FAIL-CLOSED: "
+            "close the original emulator before direct source reporting")
+    try:
+        yield
+    finally:
+        if not close_handle(handle):
+            raise OSError("PRIVATE original CSV direct read lease release failed")
+
+
 def _refuse_private_report_source_alias(source, output):
     """A diagnostic destination must never overwrite ORIGINAL x86 evidence."""
     if output.is_symlink() or output.resolve() == source.resolve():
@@ -2379,23 +2418,27 @@ def main(argv=None):
     # Reject a destination/source alias BEFORE an expensive physical audit.
     if args.output is not None:
         _refuse_private_report_source_alias(args.csv, args.output)
-    report = audit_csv(args.csv)
-    if args.output is not None:
-        _write_private_report_atomic(args.csv, args.output, report)
-    else:
-        # The direct low-level auditor is a DIFFERENT entrypoint from the
-        # already-protected seven-stage private candidate comparator. Raw
-        # original CPU/GPU caller RVAs, pose provenance, per-Draw ordinals
-        # and capture process nonce must not enter terminal/CI transcripts.
-        # Opt in to --output to retain FULL local-only PRIVATE evidence.
-        print(json.dumps({
-            "schema": 1,
-            "report": "ORIGINAL_X86_SOURCE_DIAGNOSTIC_ONLY",
-            "caller_count": report["caller_count"],
-            "witness_count": report["witness_count"],
-            "world_pass_proof": "NOT_ESTABLISHED",
-            "hmd_runtime_validation": "UNTESTED",
-        }, sort_keys=True))
+    # Resolve the original source once, BEFORE acquiring the Windows lease:
+    # a path alias must not be retargeted between CreateFileW and Python open.
+    source = args.csv.resolve(strict=True)
+    with _hold_original_x86_csv_direct_read_lease(source):
+        report = audit_csv(source)
+        if args.output is not None:
+            _write_private_report_atomic(source, args.output, report)
+        else:
+            # The direct low-level auditor is a DIFFERENT entrypoint from the
+            # already-protected seven-stage private candidate comparator. Raw
+            # original CPU/GPU caller RVAs, pose provenance, per-Draw ordinals
+            # and capture process nonce must not enter terminal/CI transcripts.
+            # Opt in to --output to retain FULL local-only PRIVATE evidence.
+            print(json.dumps({
+                "schema": 1,
+                "report": "ORIGINAL_X86_SOURCE_DIAGNOSTIC_ONLY",
+                "caller_count": report["caller_count"],
+                "witness_count": report["witness_count"],
+                "world_pass_proof": "NOT_ESTABLISHED",
+                "hmd_runtime_validation": "UNTESTED",
+            }, sort_keys=True))
 
 
 if __name__ == "__main__":
