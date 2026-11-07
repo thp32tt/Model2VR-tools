@@ -1252,6 +1252,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("GetAncestor(post_warp,GA_ROOT)",capture)
         self.assertLess(capture.index("GetAncestor(point_hwnd,GA_ROOT)"),
                         capture.index("SetCursorPos(target_point.x,target_point.y)"))
+        self.assertLess(capture.index("GetCursorPos(&pre_input_cursor)"),
+                        capture.index("GetAncestor(post_warp,GA_ROOT)"))
         self.assertLess(capture.index("GetAncestor(post_warp,GA_ROOT)"),
                         capture.index("const UINT sent=SendInput(2,click,sizeof(INPUT))"))
         # Two independent post-warp cursor readbacks, never just blindly

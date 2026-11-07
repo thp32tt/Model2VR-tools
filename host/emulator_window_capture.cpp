@@ -207,6 +207,16 @@ bool EmulatorWindowCapture::DeliverControllerClick(
     // SetCursorPos/WindowFromPoint runs; revalidate before SendInput.
     if(!CapturedClickGeometryLive() || GetForegroundWindow()!=window_)
         return false;
+    // A local mouse/other desktop participant can move the hotspot after
+    // the HWND check; refuse a mis-targeted click as close as practical to
+    // the actual SendInput boundary. Preserve absolute negative monitor X.
+    POINT pre_input_cursor{};
+    if(!GetCursorPos(&pre_input_cursor) ||
+       !desktopmenu::CursorPositionMatches(
+           mapped,pre_input_cursor.x,pre_input_cursor.y))return false;
+    // Final HWND ancestry check immediately before SendInput, AFTER the
+    // last OS cursor readback. This blocks a same-PID sibling dialog that
+    // covered the target between the warp and the final mouse position.
     DWORD post_warp_pid=0;
     const HWND post_warp=WindowFromPoint(target_point);
     if(!post_warp)return false;
@@ -218,13 +228,6 @@ bool EmulatorWindowCapture::DeliverControllerClick(
            reinterpret_cast<std::uintptr_t>(window_),
            reinterpret_cast<std::uintptr_t>(
                GetAncestor(post_warp,GA_ROOT))))return false;
-    // A local mouse/other desktop participant can move the hotspot after
-    // the HWND check; refuse a mis-targeted click as close as practical to
-    // the actual SendInput boundary. Preserve absolute negative monitor X.
-    POINT pre_input_cursor{};
-    if(!GetCursorPos(&pre_input_cursor) ||
-       !desktopmenu::CursorPositionMatches(
-           mapped,pre_input_cursor.x,pre_input_cursor.y))return false;
     INPUT click[2]{};
     click[0].type=INPUT_MOUSE;
     click[0].mi.dwFlags=MOUSEEVENTF_LEFTDOWN;
