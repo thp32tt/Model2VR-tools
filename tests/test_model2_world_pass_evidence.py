@@ -216,7 +216,8 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             "distinct_successful_projected_material_present_frame_count",
             "distinct_physically_presented_material_present_frame_count",
             "distinct_phase_attested_physically_presented_material_present_frame_count",
-            "distinct_scene_attested_physically_presented_material_present_frame_count",
+            # Scene-attested is separately capped by the trusted scene
+            # aggregate in the pre-existing stronger test below.
             "distinct_same_witness_joint_present_frame_count",
             "distinct_cpu_fit_population_present_frame_count",
             "distinct_context_present_frame_count",
