@@ -1,5 +1,11 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Original Win32 x86 CSV native event payload audit (2026-11-07)
+
+An authentic original `src/probe/logger.cpp::LogEvent` writes a strict eight-column ASCII CSV. The `seq/qpc/thread` causal-order check is necessary but not sufficient: even events not used for the current Draw/Scene/Present report must retain the exact four unsigned 64-bit decimal fields `a0,a1,a2,a3` and a bounded ASCII identifier event name. The direct `model2_draw_source_report.py` auditor now rejects malformed cells (including signed, hex, leading-zero, blank, non-ASCII and overflowing values) **before** selecting event handlers. Decimal `18446744073709551615` remains a legal bit-pattern payload, while `18446744073709551616` is refused. This prevents a malformed unknown/diagnostic event from being silently ignored while a `PRIVATE` x86 original source is considered structurally valid.
+
+The implementation and synthetic/native-source regression were validated at `c3d390868bcf3ee78ade40c65ab406fccb9e17d5` by Public tools, ModDev, Windows x86 and Daytona original Win32+Win64 CI, **4/4 SUCCESS**. The gate does not authenticate the user's original gameplay or establish World3D; seven separate genuine local capture sessions, camera calibration and Quest3+VDXR tracked 6DoF validation are still required. No original user's x86 CSV/ROM/EXE is required by CI or should be uploaded.
+
 ## Direct original x86 seven-stage PRIVATE stdout safety (2026-11-07)
 
 Use `python tools/model2_world_pass_evidence.py --race PRIVATE_RACE_A.csv --race PRIVATE_RACE_B.csv --control title PRIVATE_TITLE.csv --control menu PRIVATE_MENU.csv --control sky PRIVATE_SKY.csv --control hud PRIVATE_HUD.csv --control aux PRIVATE_AUX.csv --output PRIVATE_WORLD_CANDIDATES.json` for the full candidate/rejected caller inventory. The detailed report stays in the user-selected **local PRIVATE JSON** file and is not printed by the CLI.
