@@ -4,7 +4,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 #define CHECK(x) do { if(!(x)) { \
     std::fprintf(stderr,"original x86 log creation line %d: %s\n", \
@@ -44,6 +47,22 @@ int main(){
     std::filesystem::remove(test_path);
     CHECK(m2vr::OpenLog(test_path));
     m2vr::LogEvent("synthetic_one_process",42u);
+    // A genuine original emulator can trigger D3D9 callbacks on multiple
+    // threads. CSV sequence/order must still be a single total order.
+    constexpr int kThreads=8;
+    constexpr int kRowsPerThread=256;
+    std::vector<std::thread> writers;
+    for(int thread=0;thread<kThreads;++thread){
+        writers.emplace_back([thread](){
+            for(int row=0;row<kRowsPerThread;++row){
+                m2vr::LogEvent("synthetic_concurrent_draw",
+                    static_cast<std::uint64_t>(thread),
+                    static_cast<std::uint64_t>(row));
+                if((row&3)==0)std::this_thread::yield();
+            }
+        });
+    }
+    for(auto& writer:writers)writer.join();
     m2vr::FlushLog();
     m2vr::CloseLog();
     CHECK(!m2vr::OpenLog(test_path)); // Simulate same PID/time filename reuse.
@@ -57,6 +76,33 @@ int main(){
               data.rfind("synthetic_one_process"));
         CHECK(data.find("seq,qpc,thread,event,a0,a1,a2,a3\r\n",1)
               ==std::string::npos);
+        std::istringstream rows(data);
+        std::string line;
+        CHECK(static_cast<bool>(std::getline(rows,line)));
+        CHECK(line=="seq,qpc,thread,event,a0,a1,a2,a3\r");
+        std::uint64_t previous_seq=0;
+        long long previous_qpc=0;
+        int concurrent_rows=0;
+        int total_rows=0;
+        while(std::getline(rows,line)){
+            CHECK(!line.empty());
+            const auto first=line.find(',');
+            CHECK(first!=std::string::npos);
+            const auto second=line.find(',',first+1);
+            CHECK(second!=std::string::npos);
+            const auto seq=std::stoull(line.substr(0,first));
+            const auto qpc=std::stoll(line.substr(first+1,
+                                                  second-first-1));
+            CHECK(seq==previous_seq+1);
+            CHECK(qpc>=previous_qpc);
+            previous_seq=seq;
+            previous_qpc=qpc;
+            ++total_rows;
+            if(line.find(",synthetic_concurrent_draw,")!=std::string::npos)
+                ++concurrent_rows;
+        }
+        CHECK(concurrent_rows==kThreads*kRowsPerThread);
+        CHECK(total_rows==1+kThreads*kRowsPerThread);
     }
     cleanup();
     return 0;

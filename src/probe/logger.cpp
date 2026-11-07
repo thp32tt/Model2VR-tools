@@ -84,15 +84,19 @@ void LogEvent(
     std::uint64_t a1,
     std::uint64_t a2,
     std::uint64_t a3) {
-    LARGE_INTEGER qpc{};
-    QueryPerformanceCounter(&qpc);
-    const auto seq = g_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
-    const auto tid = GetCurrentThreadId();
-
     std::scoped_lock lock(g_log_mutex);
     if (!g_log) {
         return;
     }
+
+    // Original D3D9 can emit source events from different threads. Capture
+    // both the CSV sequence and QPC while holding the writer lock: stamping
+    // before the lock let a later sequence reach disk first, making an
+    // authentic original physical Draw/Present audit look reordered.
+    LARGE_INTEGER qpc{};
+    QueryPerformanceCounter(&qpc);
+    const auto seq = g_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto tid = GetCurrentThreadId();
 
     std::fprintf(
         g_log,
