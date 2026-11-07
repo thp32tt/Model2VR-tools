@@ -64,6 +64,18 @@ def verify_checkpoint(folder: Path) -> tuple[str, ...]:
     if not completed:
         raise ReceiptError("no completed original x86 stage to audit")
 
+    # Pin stage *presence* before the long genuine CSV preflights. File
+    # hashes protect existing stages, but a concurrent collector can append
+    # an entirely NEW stage (or an orphan CSV/report) after our prefix scan.
+    # An old next-stage answer would then falsely describe a moving archive.
+    def stage_presence():
+        return tuple(
+            (_active(folder / ("auxiliary.csv" if label == "aux" else
+                               f"{label}.csv")),
+             _active(folder / f"PRIVATE_SOURCE_{label}.json"))
+            for label in LABELS)
+
+    original_presence = stage_presence()
     snapshots = {}
     distinct_nonces, distinct_source_hashes = set(), set()
     for label, raw, report_path in completed:
@@ -101,6 +113,9 @@ def verify_checkpoint(folder: Path) -> tuple[str, ...]:
             _matches_hash(path, initial_hash)
         if any(_active(folder / name) for name in ACTIVE_SUMMARIES):
             raise ReceiptError("active final receipt appeared during checkpoint audit")
+        if stage_presence() != original_presence:
+            raise ReceiptError(
+                "original x86 checkpoint stage inventory changed during audit")
     except (ValueError, TypeError, OverflowError, UnicodeError, OSError,
             csv.Error) as exc:
         if isinstance(exc, ReceiptError):

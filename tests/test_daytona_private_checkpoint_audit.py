@@ -136,6 +136,30 @@ class PartialCheckpointTest(unittest.TestCase):
                                         "changed PRIVATE_SOURCE_race_a.json"):
                 verify_checkpoint(self.folder)
 
+    def test_concurrent_new_complete_stage_cannot_claim_stale_prefix(self):
+        # Old files remain unchanged, but a collector appended a third
+        # original x86 stage during the lengthy second-stage preflight.
+        def append_stage(path):
+            if path.name == "race_b.csv":
+                self.add("title")
+            return self.derived(path)
+        with patch("tools.audit_daytona_private_checkpoint.preflight_original_session",
+                   side_effect=append_stage):
+            with self.assertRaisesRegex(ReceiptError, "stage inventory changed"):
+                verify_checkpoint(self.folder)
+
+    def test_concurrent_orphan_stage_cannot_claim_stale_prefix(self):
+        # A race in the collector may expose only a newly copied CSV before
+        # its paired JSON exists. Even this orphan must invalidate a PASS.
+        def append_orphan(path):
+            if path.name == "race_b.csv":
+                self.csv("title").write_bytes(b"SYNTHETIC unfinished third stage\\n")
+            return self.derived(path)
+        with patch("tools.audit_daytona_private_checkpoint.preflight_original_session",
+                   side_effect=append_orphan):
+            with self.assertRaisesRegex(ReceiptError, "stage inventory changed"):
+                verify_checkpoint(self.folder)
+
     def test_nonstandard_rehashed_json_is_not_checkpoint_evidence(self):
         report = self.report("race_a")
         text = report.read_text(encoding="utf-8")
