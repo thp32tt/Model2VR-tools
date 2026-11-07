@@ -55,6 +55,47 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
             self.assertEqual(report["world_pass_proof"], "NOT_ESTABLISHED")
             self.assertEqual(report["hmd_runtime_validation"], "UNTESTED")
 
+    def test_original_native_csv_wire_framing_rejects_parser_normalization(self):
+        # The actual C++ logger writes literal unquoted ASCII columns and
+        # CRLF-terminated rows. A generic CSV reader would accept each of
+        # these non-native rewrites as the same values, falsely authenticating
+        # source evidence. Every event is an ignored synthetic diagnostic.
+        header = b"seq,qpc,thread,event,a0,a1,a2,a3\\r\\n"
+        records = [
+            b"1,2500,41,synthetic_probe_unknown,0,0,0,0",
+            b"2,2500,42,synthetic_probe_unknown,0,0,0,0",
+            b"3,2501,41,synthetic_probe_unknown,0,0,0,0",
+        ]
+        valid = header + b"\\r\\n".join(records) + b"\\r\\n"
+        cases = {
+            "quoted sequence": valid.replace(b"1,2500", b'"1",2500', 1),
+            "quoted diagnostic": valid.replace(
+                b"synthetic_probe_unknown", b'"synthetic_probe_unknown"', 1),
+            "quoted unsigned payload": valid.replace(
+                b",0,0,0,0\\r\\n", b',"0",0,0,0\\r\\n', 1),
+            "utf8 signature": b"\\xef\\xbb\\xbf" + valid,
+            "missing final newline": valid[:-2],
+            "blank unnumbered line": valid.replace(
+                b"2,2500", b"\\r\\n2,2500", 1),
+            "oversized physical line": valid.replace(
+                b"synthetic_probe_unknown",
+                b"synthetic_probe_" + b"x" * 600, 1),
+            "embedded raw comma": valid.replace(
+                b"synthetic_probe_unknown", b"synthetic,probe_unknown", 1),
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "synthetic-original.csv"
+            path.write_bytes(valid)
+            self.assertEqual(audit_csv(path)["world_pass_proof"], "NOT_ESTABLISHED")
+            for label, payload in cases.items():
+                with self.subTest(label=label):
+                    path.write_bytes(payload)
+                    with self.assertRaisesRegex(
+                            ValueError, "invalid original CSV native event payload|"
+                            "invalid original CSV ordered event header|"
+                            "not a complete Model2VR probe CSV"):
+                        audit_csv(path)
+
     def test_native_payload_and_event_name_corruption_fails_even_if_ignored(self):
         # No original gameplay/ROM/PRIVATE bytes. The corrupt event is a
         # deliberately ignored diagnostic row, not a recognized D3D9 Draw.

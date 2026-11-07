@@ -5,7 +5,6 @@ This is an offline analysis aid: observed D3D9 callsites are NOT proof of a
 Model 2 gameplay world pass. No ROM, executable, DLL or private trace is shipped.
 """
 import argparse
-import csv
 import json
 from array import array
 from collections import Counter, defaultdict
@@ -624,17 +623,34 @@ def audit_csv(path):
     physical_draw_phase_owners = {}
     ignored = Counter()
     previous_qpc = 0
-    with open(path, "r", encoding="utf-8-sig", newline="") as source:
-        reader = csv.DictReader(source)
-        # OpenLog emits one fixed header for every genuine process file.
-        # Accepting rearranged or extra columns lets a renamed diagnostic
-        # column masquerade as the original physical source event schema.
-        if reader.fieldnames != [
-                "seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"]:
+    with open(path, "r", encoding="utf-8", newline="") as source:
+        # The genuine Win32 x86 binary logger writes a literal ASCII header
+        # and one unquoted, eight-field physical record per LogEvent, each
+        # terminated by CRLF. Accept LF-only transport copies as diagnostics,
+        # but never silently normalize BOM, CSV quoting, embedded newlines or
+        # unterminated/truncated final records into authentic native events.
+        header = "seq,qpc,thread,event,a0,a1,a2,a3"
+        if source.readline(512) not in (header + "\r\n", header + "\n"):
             raise ValueError("not a complete Model2VR probe CSV")
-        for count, row in enumerate(reader, 1):
+        columns = header.split(",")
+        # Genuine maximum native line is far below 512 characters. Bounded
+        # readline prevents a malformed PRIVATE log from allocating an
+        # arbitrarily large Python string before MAX_ROWS is enforced.
+        for count in range(1, MAX_ROWS + 2):
+            physical_line = source.readline(512)
+            if not physical_line:
+                break
             if count > MAX_ROWS:
                 raise ValueError("CSV row limit exceeded")
+            if not physical_line.endswith("\n") or '"' in physical_line:
+                raise ValueError("invalid original CSV native event payload")
+            native_line = physical_line[:-1]
+            if native_line.endswith("\r"):
+                native_line = native_line[:-1]
+            values = native_line.split(",")
+            if len(values) != len(columns):
+                raise ValueError("invalid original CSV ordered event header")
+            row = dict(zip(columns, values))
             # The original x86 logger stamps seq/QPC inside the same mutex
             # that serializes each physical D3D9 event. A CSV with reordered,
             # duplicated, omitted, or truncated rows cannot establish causal
