@@ -237,6 +237,68 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"original x86 CSV"):
                 preflight_original_session(cached)
 
+    def test_opt_in_original_race_readiness_requires_actual_same_draw_source(self):
+        # These tests use synthetic records only. This option catches a
+        # nonviable original race *before* collecting five expensive physical
+        # negative-control sessions; it never authenticates World3D.
+        with tempfile.TemporaryDirectory() as dirname:
+            csv = Path(dirname) / "original-race.csv"
+            csv.write_bytes(b"SYNTHETIC ONLY - patched preflight source")
+            output_path = Path(dirname) / "private-source.json"
+            viable = report(witness())
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=viable):
+                self.assertEqual(
+                    preflight_original_session(csv, require_race_source=True),
+                    viable)
+                with io.StringIO() as output, redirect_stdout(output):
+                    main(["--preflight", str(csv), "--require-race-source"])
+                    summary = json.loads(output.getvalue())
+                self.assertEqual(
+                    summary["race_source_preflight"],
+                    "CANDIDATE_ONLY_NOT_AUTHORIZED")
+                self.assertEqual(summary["world_pass_proof"], "NOT_ESTABLISHED")
+                self.assertEqual(summary["hmd_runtime_validation"], "UNTESTED")
+                self.assertNotIn("caller_rva_hex", output.getvalue())
+
+            # A capture with valid Present + process nonce but ZERO original
+            # race geometry cannot pass readiness. Ordinary diagnostic
+            # preflight remains supported for the five nonrace controls.
+            empty = report()
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=empty):
+                self.assertEqual(preflight_original_session(csv), empty)
+                with redirect_stderr(io.StringIO()) as errors:
+                    with self.assertRaises(SystemExit):
+                        main(["--preflight", str(csv), "--require-race-source",
+                              "--output", str(output_path)])
+                self.assertIn("RACE_SOURCE_NOT_READY", errors.getvalue())
+                self.assertFalse(output_path.exists())
+
+            # A real camera write/lifetime witness must not be omitted even
+            # when a synthetic same-Draw source record otherwise looks full.
+            unsafe = report(witness())
+            unsafe["original_physical_camera_com_lifetime"][
+                "all_original_camera_com_lifetimes_trusted"] = False
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=unsafe):
+                with self.assertRaisesRegex(ValueError, "camera COM lifetime"):
+                    preflight_original_session(csv, require_race_source=True)
+
+            # Same-frame and exact original Scene ordinal integrity is
+            # mandatory at the early race boundary, not merely at day-end.
+            mismatched = report(witness())
+            mismatched["sources"][0][
+                "original_scene_draw_ordinal_triplets"][1][2] = 3
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=mismatched):
+                with self.assertRaisesRegex(ValueError, "Draw/Scene ordinal"):
+                    preflight_original_session(csv, require_race_source=True)
+
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    main(["--require-race-source"])
+
     def test_sampled_race_scene_cannot_borrow_unrelated_physical_frame(self):
         race=report(witness())
         race["original_physical_scene_draw_coverage"][
