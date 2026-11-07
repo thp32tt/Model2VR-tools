@@ -685,6 +685,20 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         source["original_successful_draw_ordinal_pairs"] = [
             [1, 12], [1, 13], [2, 16], [3, 20]]
         source["distinct_original_draw_ordinals"] = 4
+        # Every extra authentic Draw has a same-Present post-COM stage
+        # witness, even when its CPU/material join was not sampled.
+        for rows, counter in (
+            ("original_present_success_by_physical_frame",
+             "original_present_success_witnesses"),
+            ("original_draw_phase_attested_by_physical_frame",
+             "original_draw_phase_attested_witnesses"),
+            ("original_scene_phase_attested_by_physical_frame",
+             "original_scene_phase_attested_witnesses"),
+            ("original_draw_completion_attested_by_physical_frame",
+             "original_draw_completion_attested_witnesses"),
+        ):
+            source[rows] = [[1, 2], [2, 1], [3, 1]]
+            source[counter] = 4
         got = compare_sessions([report(source), report(witness())], controls())
         self.assertEqual(len(got["candidates"]), 1)
         self.assertFalse(got["adapter_auto_enable"])
@@ -815,6 +829,20 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         source["original_successful_draw_ordinal_pairs"] = [
             [1, 12], [1, 13], [2, 16], [3, 20]]
         source["distinct_original_draw_ordinals"] = 4
+        # Every extra authentic Draw has a same-Present post-COM stage
+        # witness, even when its CPU/material join was not sampled.
+        for rows, counter in (
+            ("original_present_success_by_physical_frame",
+             "original_present_success_witnesses"),
+            ("original_draw_phase_attested_by_physical_frame",
+             "original_draw_phase_attested_witnesses"),
+            ("original_scene_phase_attested_by_physical_frame",
+             "original_scene_phase_attested_witnesses"),
+            ("original_draw_completion_attested_by_physical_frame",
+             "original_draw_completion_attested_witnesses"),
+        ):
+            source[rows] = [[1, 2], [2, 1], [3, 1]]
+            source[counter] = 4
         # Exactly one of two successful original Draws on frame 1 has
         # the full material witness chain. A spare successful Draw is
         # not automatically promoted to material.
