@@ -1,5 +1,22 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Pending seven-session PRIVATE semantic gate (2026-11-08)
+
+The local Windows collector now refuses to publish a final PRIVATE candidate
+based only on the candidate's JSON structure. Before moving either pending
+file to the active `PRIVATE_WORLD_CANDIDATES.json` and `PRIVATE_MANIFEST.json`
+names, it invokes the bundled independent Python semantic replay with
+`--pending-candidate`. That verifier strictly parses all seven preflight
+reports and the GUID-private candidate (no duplicate JSON keys, NaN or
+Infinity), recomputes the exact seven-session candidate/rejection decision,
+and checks all input byte digests again after the comparison. A syntactically
+valid forged candidate, changed preflight, missing verifier or failed replay
+is quarantined under a PRIVATE_FAILED_COMPARE name. The original user CSVs
+remain local and untouched. Only the user-observed physical seven-session
+capture and later Quest3+VDXR testing can establish gameplay provenance;
+World3D stays AUTO-OFF, `world_pass_proof=NOT_ESTABLISHED`, HMD `UNTESTED`.
+
+
 ## Original Win32 x86 CSV native event payload audit (2026-11-07)
 
 An authentic original `src/probe/logger.cpp::LogEvent` writes a strict eight-column ASCII CSV. The `seq/qpc/thread` causal-order check is necessary but not sufficient: even events not used for the current Draw/Scene/Present report must retain the exact four unsigned 64-bit decimal fields `a0,a1,a2,a3` and a bounded ASCII identifier event name. The direct `model2_draw_source_report.py` auditor now rejects malformed cells (including signed, hex, leading-zero, blank, non-ASCII and overflowing values) **before** selecting event handlers. Decimal `18446744073709551615` remains a legal bit-pattern payload, while `18446744073709551616` is refused. This prevents a malformed unknown/diagnostic event from being silently ignored while a `PRIVATE` x86 original source is considered structurally valid.

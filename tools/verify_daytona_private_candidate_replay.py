@@ -11,6 +11,7 @@ import argparse
 import csv
 import json
 from pathlib import Path
+import re
 import sys
 
 try:
@@ -105,20 +106,71 @@ def verify_candidate_replay(folder: Path, *, replay_csv: bool = False) -> None:
             f"seven-session semantic candidate replay rejected: {exc}") from exc
 
 
+def verify_pending_candidate(folder: Path, pending: Path) -> None:
+    """Verify the actual seven-report result BEFORE an active receipt exists.
+
+    The collector's temporary candidate has no final manifest yet. Strict
+    nested JSON parsing, byte snapshots and full recomputation must reject a
+    syntactically plausible but semantically forged candidate before its
+    active PRIVATE_WORLD_CANDIDATES.json name is made visible.
+    No original CSV/game data is read, copied or published here.
+    """
+    if (not folder.is_dir() or folder.is_symlink() or
+            not folder.name.startswith("private_original_evidence_")):
+        raise ReceiptError("expected private original session archive")
+    if (not re.fullmatch(r"PRIVATE_PENDING_COMPARE_[0-9a-fA-F]{32}\.json",
+                         pending.name) or
+            pending.parent.resolve() != folder.resolve()):
+        raise ReceiptError("pending candidate must belong to its private archive")
+    names = [f"PRIVATE_SOURCE_{label}.json" for label in LABELS]
+    paths = [folder / name for name in names] + [pending]
+    # Snapshot BEFORE reloading seven complete local reports. If another
+    # process edits a report/pending candidate during recomputation, refuse.
+    snapshots = [_digest(path) for path in paths]
+    try:
+        reports = {
+            label: _load_json(folder / f"PRIVATE_SOURCE_{label}.json")
+            for label in LABELS
+        }
+        expected = compare_sessions(
+            [reports["race_a"], reports["race_b"]],
+            {label: reports[label] for label in CONTROL_TYPES})
+        actual = _load_json(pending)
+        canonical = lambda value: json.dumps(
+            value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        if canonical(actual) != canonical(expected):
+            raise ReceiptError("pending candidate does not match seven source reports")
+    except (ValueError, TypeError, OverflowError) as exc:
+        if isinstance(exc, ReceiptError):
+            raise
+        raise ReceiptError("pending seven-report semantic replay failed") from exc
+    for path, digest in zip(paths, snapshots):
+        _matches_hash(path, digest)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archive", type=Path,
                         help="local private_original_evidence_* archive")
     parser.add_argument("--replay-csv", action="store_true",
                         help="also re-audit all seven original x86 CSVs (strict, slow)")
+    parser.add_argument("--pending-candidate", type=Path,
+                        help="before publication, compare a GUID-private pending candidate against seven reports")
     args = parser.parse_args(argv)
+    if args.pending_candidate is not None and args.replay_csv:
+        parser.error("--pending-candidate and --replay-csv are mutually exclusive")
     try:
-        verify_candidate_replay(args.archive, replay_csv=args.replay_csv)
+        if args.pending_candidate is not None:
+            verify_pending_candidate(args.archive, args.pending_candidate)
+        else:
+            verify_candidate_replay(args.archive, replay_csv=args.replay_csv)
     except (ReceiptError, OSError) as exc:
         print(f"PRIVATE CANDIDATE REPLAY FAIL-CLOSED: {exc}", file=sys.stderr)
         return 1
-    if args.replay_csv:
-        print("PRIVATE CSV/REPORT/CANDIDATE REPLAY PASS: seven raw CSV preflights "
+    if args.pending_candidate is not None:
+        print("PRIVATE PENDING CANDIDATE SEMANTIC PASS: seven reports independently agree.")
+    elif args.replay_csv:
+        print("PRIVATE CSV/REPORT/CANDIDATE REPLAY PASS: seven raw CSV preflights 
               "and candidate semantics agree.")
     else:
         print("PRIVATE CANDIDATE REPLAY PASS: seven report-derived results match.")

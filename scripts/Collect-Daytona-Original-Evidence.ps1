@@ -29,6 +29,7 @@ if ($ResumeSessionFolder -and $ExistingSessionFolder) {
 $logRoot = Join-Path $PackageRoot "logs"
 $analyzer = Join-Path $PackageRoot "model2_world_pass_evidence.py"
 $drawAuditor = Join-Path $PackageRoot "model2_draw_source_report.py"
+$pendingVerifier = Join-Path $PackageRoot "verify_daytona_private_candidate_replay.py"
 if (!(Test-Path -LiteralPath $analyzer -PathType Leaf) -or
     !(Test-Path -LiteralPath $drawAuditor -PathType Leaf)) {
   throw "Missing PRIVATE source analyzers; use the complete matched VR release ZIP."
@@ -500,6 +501,27 @@ if ($pythonExitCode -eq 0 -and $null -eq $comparisonError -and
     }
   } catch {
     $receiptError = $_.Exception.Message
+  }
+}
+# The prior structural gate alone cannot catch a syntactically valid but
+# forged cross-session verdict. Independently recompute it from the seven
+# exact preflight reports BEFORE either active success filename can exist.
+# Missing/broken verifier, changed report or candidate: quarantine as failure.
+if ($pythonExitCode -eq 0 -and $null -eq $comparisonError -and
+    $null -eq $integrityError -and $null -eq $receiptError -and
+    (Test-Path -LiteralPath $pendingCandidate -PathType Leaf)) {
+  try {
+    if (!(Test-Path -LiteralPath $pendingVerifier -PathType Leaf)) {
+      throw "Missing bundled original pending candidate semantic verifier."
+    }
+    $replayExit = Invoke-PrivateAudit -auditArguments @(
+      $pendingVerifier,$destination,"--pending-candidate",$pendingCandidate)
+    if ($replayExit -ne 0) {
+      throw "seven-report pending candidate semantic mismatch."
+    }
+    Assert-PrivateArchiveIntegrity
+  } catch {
+    $receiptError = "PRIVATE PENDING SEMANTIC FAIL-CLOSED: " + $_.Exception.Message
   }
 }
 if ($pythonExitCode -ne 0 -or $null -ne $comparisonError -or

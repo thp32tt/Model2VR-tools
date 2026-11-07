@@ -305,6 +305,19 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
                         self.ps.index('Move-Item -LiteralPath $pendingManifest -Destination $finalManifest'))
         self.assertIn('Reject forged or incomplete private cross-session receipt', self.workflow)
 
+    def test_pending_candidate_semantics_are_verified_before_active_publication(self):
+        # Existing offline receipt verifier was opt-in, after active names
+        # already existed. The collector must independently compare the seven
+        # reports BEFORE a forged structural candidate can be promoted.
+        self.assertIn('$pendingVerifier = Join-Path $PackageRoot "verify_daytona_private_candidate_replay.py"', self.ps)
+        self.assertIn('"--pending-candidate",$pendingCandidate', self.ps)
+        self.assertIn('PRIVATE PENDING SEMANTIC FAIL-CLOSED', self.ps)
+        self.assertLess(self.ps.index('"--pending-candidate",$pendingCandidate'),
+                        self.ps.index('Move-Item -LiteralPath $pendingCandidate -Destination $candidateOutput'))
+        self.assertIn('Assert-PrivateArchiveIntegrity\n  } catch {', self.ps)
+        self.assertIn('semantic', self.workflow)
+        self.assertIn('verify_daytona_private_candidate_replay.py', self.workflow)
+
     def test_private_partial_checkpoint_auditor_is_bundled_and_tested(self):
         self.assertIn('Copy-Item tools/audit_daytona_private_checkpoint.py stage/',
                       self.workflow)

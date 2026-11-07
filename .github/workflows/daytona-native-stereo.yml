@@ -613,13 +613,30 @@ jobs:
                   receipt["adapter_auto_enable"]=True
               output.write_text(json.dumps(receipt),encoding="utf-8")
           '@
-          foreach($mode in @("silent","truncated","forged","valid")) {
+          foreach($mode in @("silent","truncated","forged","semantic","valid")) {
             $root=Join-Path $env:RUNNER_TEMP ("original-private-receipt-"+$mode)
             $inputs=Join-Path $root "source"
             New-Item -ItemType Directory -Force -Path $inputs | Out-Null
             Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
             Copy-Item tools/model2_draw_source_report.py $root/
             Copy-Item tools/verify_daytona_private_receipt.py $root/
+            # Isolated synthetic collector transaction double: the actual
+            # seven-report semantic verifier is tested with full fixtures by
+            # test_daytona_private_candidate_replay.py above.
+            $replayShim=@'
+            import os, pathlib, sys
+            args=sys.argv[1:]
+            if len(args)!=3 or args[1]!="--pending-candidate":
+                raise SystemExit("unexpected pending semantic invocation")
+            archive=pathlib.Path(args[0])
+            pending=pathlib.Path(args[2])
+            if pending.parent!=archive or not pending.name.startswith("PRIVATE_PENDING_COMPARE_"):
+                raise SystemExit("unexpected private candidate path")
+            if os.environ.get("MODEL2_RECEIPT_SMOKE")!="valid":
+                raise SystemExit("synthetic semantic rejection")
+            '@
+            [IO.File]::WriteAllText((Join-Path $root "verify_daytona_private_candidate_replay.py"),
+              $replayShim,[Text.UTF8Encoding]::new($false))
             [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
               $stub,[Text.UTF8Encoding]::new($false))
             foreach($label in @("race_a","race_b","title","menu","sky","hud","aux")) {

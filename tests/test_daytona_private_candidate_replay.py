@@ -11,7 +11,7 @@ from unittest.mock import patch
 from tools.model2_world_pass_evidence import compare_sessions
 from tools.verify_daytona_private_receipt import verify_archive
 from tools.verify_daytona_private_candidate_replay import (
-    ReceiptError, verify_candidate_replay, main, LABELS, CONTROL_TYPES)
+    ReceiptError, verify_candidate_replay, verify_pending_candidate, main, LABELS, CONTROL_TYPES)
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -78,6 +78,58 @@ class CandidateReplayTest(unittest.TestCase):
         self.assertEqual(self.candidate["world_pass_proof"], "NOT_ESTABLISHED")
         self.assertFalse(self.candidate["adapter_auto_enable"])
 
+
+    def _pending(self):
+        pending = self.archive / ("PRIVATE_PENDING_COMPARE_" + "a" * 32 + ".json")
+        pending.write_text(json.dumps(self.candidate), encoding="utf-8")
+        return pending
+
+    def test_prepublication_pending_candidate_matches_exact_seven_reports(self):
+        pending = self._pending()
+        self.assertIsNone(verify_pending_candidate(self.archive, pending))
+        self.assertEqual(main([str(self.archive), "--pending-candidate", str(pending)]), 0)
+        self.assertEqual(self.candidate["world_pass_proof"], "NOT_ESTABLISHED")
+
+    def test_prepublication_pending_forged_semantics_never_promoted(self):
+        pending = self._pending()
+        forged = copy.deepcopy(self.candidate)
+        forged["candidates"][0]["per_race_source_present_counts"][0] += 1
+        pending.write_text(json.dumps(forged), encoding="utf-8")
+        with self.assertRaisesRegex(ReceiptError, "does not match"):
+            verify_pending_candidate(self.archive, pending)
+
+    def test_prepublication_pending_rejects_duplicate_json_member(self):
+        pending = self._pending()
+        raw = pending.read_text(encoding="utf-8")
+        self.assertIn('"adapter_auto_enable": false', raw)
+        pending.write_text(raw.replace('"adapter_auto_enable": false',
+            '"adapter_auto_enable": true, "adapter_auto_enable": false', 1),
+            encoding="utf-8")
+        with self.assertRaisesRegex(ReceiptError, "duplicate JSON key"):
+            verify_pending_candidate(self.archive, pending)
+
+    def test_prepublication_pending_requires_guid_private_file_in_archive(self):
+        pending = self._pending()
+        other = pending.parent.parent / pending.name
+        other.write_bytes(pending.read_bytes())
+        with self.assertRaisesRegex(ReceiptError, "must belong"):
+            verify_pending_candidate(self.archive, other)
+        pending.unlink()
+        pending.symlink_to(other)
+        with self.assertRaisesRegex(ReceiptError, "linked or non-file"):
+            verify_pending_candidate(self.archive, pending)
+
+    def test_prepublication_pending_detects_report_swap_during_recompute(self):
+        pending = self._pending()
+        original_compare = compare_sessions
+        def mutate_after_read(*args, **kwargs):
+            prior = self.archive / "PRIVATE_SOURCE_title.json"
+            prior.write_text(prior.read_text(encoding="utf-8") + " ", encoding="utf-8")
+            return original_compare(*args, **kwargs)
+        with patch("tools.verify_daytona_private_candidate_replay.compare_sessions",
+                   side_effect=mutate_after_read):
+            with self.assertRaisesRegex(ReceiptError, "changed PRIVATE_SOURCE_title"):
+                verify_pending_candidate(self.archive, pending)
 
     def test_candidate_replay_rejects_rehashed_duplicate_members(self):
         # Strict report->candidate comparison must not normalize away two
