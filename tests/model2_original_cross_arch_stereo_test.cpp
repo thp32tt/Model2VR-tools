@@ -105,6 +105,7 @@ int wmain(int argc,wchar_t** argv){
     REQUIRE(QueryPerformanceCounter(&host_start) && host_start.QuadPart>0);
     const auto host_source_epoch_qpc=
         static_cast<std::uint64_t>(host_start.QuadPart);
+    const auto session_source_epoch_qpc=host_source_epoch_qpc;
     std::wstring command=L"\""+std::wstring(argv[1])+L"\"";
     std::vector<wchar_t> cmd(command.begin(),command.end());
     cmd.push_back(L'\0');
@@ -181,7 +182,7 @@ int wmain(int argc,wchar_t** argv){
         REQUIRE(handoff::AdmitOriginalPresentToXr(inspected,copied,receipt,
             producerhealth::Fresh(receipt,
                 static_cast<std::uint64_t>(now.QuadPart),
-                static_cast<std::uint64_t>(hz.QuadPart)),known_pose,host_source_epoch_qpc));
+                static_cast<std::uint64_t>(hz.QuadPart)),known_pose,host_source_epoch_qpc,session_source_epoch_qpc));
         REQUIRE(frame_gate.Decide(&inspected,
             static_cast<std::uint64_t>(now.QuadPart),
             static_cast<std::uint64_t>(hz.QuadPart))==
@@ -193,7 +194,7 @@ int wmain(int argc,wchar_t** argv){
         // A hypothetical subsequent XR host has a later QPC origin.
         REQUIRE(!handoff::AdmitOriginalPresentToXr(
             inspected,copied,receipt,true,known_pose,
-            inspected.timestamp_qpc+1u));
+            inspected.timestamp_qpc+1u,session_source_epoch_qpc));
         REQUIRE(copied.eyes[0].back()==expected_left[i]);
         if(kinds[i]==transport::FrameKind::CompactMono){
             REQUIRE(copied.eyes[1].empty());
@@ -201,15 +202,20 @@ int wmain(int argc,wchar_t** argv){
             REQUIRE(copied.eyes[1].front()==expected_right[i]);
             REQUIRE(copied.eyes[1].back()==expected_right[i]);
         }
+        // A new XR session in the SAME live Win64 host must reject the
+        // previous session's original Win32 source image.
+        REQUIRE(!handoff::AdmitOriginalPresentToXr(
+            inspected,copied,receipt,true,known_pose,
+            host_source_epoch_qpc,inspected.timestamp_qpc+1u));
         // Every post-copy mutation of the exact physical D3D9 source
         // description must be denied even though the original bytes fit.
         ++copied.frame_id;
         REQUIRE(!handoff::AdmitOriginalPresentToXr(
-            inspected,copied,receipt,true,known_pose,host_source_epoch_qpc));
+            inspected,copied,receipt,true,known_pose,host_source_epoch_qpc,session_source_epoch_qpc));
         --copied.frame_id;
         auto falsified=receipt;falsified.frame_id++;
         REQUIRE(!handoff::AdmitOriginalPresentToXr(
-            inspected,copied,falsified,true,known_pose,host_source_epoch_qpc));
+            inspected,copied,falsified,true,known_pose,host_source_epoch_qpc,session_source_epoch_qpc));
     }
     REQUIRE(ResetEvent(ready)!=FALSE);
     REQUIRE(SetEvent(advance)!=FALSE);
@@ -231,7 +237,14 @@ int wmain(int argc,wchar_t** argv){
         process_lease.Alive(),frame_gate,held_x86,true,
         static_cast<std::uint64_t>(end_clock.QuadPart),
         static_cast<std::uint64_t>(hz.QuadPart),
-        newer_failed,true,host_source_epoch_qpc).reason==xrcommit::Reject::NewerFailedPresent);
+        newer_failed,true,host_source_epoch_qpc,session_source_epoch_qpc).reason==xrcommit::Reject::NewerFailedPresent);
+    REQUIRE(xrcommit::VerifyOriginalFrameAtEnd(
+        process_lease.Alive(),frame_gate,held_x86,true,
+        static_cast<std::uint64_t>(end_clock.QuadPart),
+        static_cast<std::uint64_t>(hz.QuadPart),
+        newer_failed,true,host_source_epoch_qpc,
+        held_x86.timestamp_qpc+1u).reason==
+        xrcommit::Reject::PreviousXrSessionGeneration);
     REQUIRE(pose_writer.Invalidate());
     REQUIRE(ResetEvent(ready)!=FALSE);
     REQUIRE(SetEvent(advance)!=FALSE);
@@ -248,7 +261,7 @@ int wmain(int argc,wchar_t** argv){
         process_lease.Alive(),frame_gate,held_x86,true,
         static_cast<std::uint64_t>(end_clock.QuadPart),
         static_cast<std::uint64_t>(hz.QuadPart),
-        newer_failed,true,host_source_epoch_qpc).reason==xrcommit::Reject::SourceDead);
+        newer_failed,true,host_source_epoch_qpc,session_source_epoch_qpc).reason==xrcommit::Reject::SourceDead);
     CloseHandle(ready);CloseHandle(advance);CloseHandle(child.hProcess);
     return 0;
 }

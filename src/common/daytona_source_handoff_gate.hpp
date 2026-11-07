@@ -29,11 +29,12 @@ inline constexpr bool AdmitOriginalPresentToXr(
     const transport::Snapshot& copied,
     const producerhealth::Snapshot& post_copy_health,
     bool post_copy_health_fresh,bool source_pose_in_host_ring,
-    std::uint64_t host_start_qpc) noexcept {
+    std::uint64_t host_start_qpc,
+    std::uint64_t session_start_qpc) noexcept {
     // Even the same physical Present and source pose tag cannot authenticate
     // a source packet copied from a previous Win64 OpenXR host process.
-    return xrepoch::WithinCurrentHost(inspected.timestamp_qpc,host_start_qpc) &&
-        xrepoch::WithinCurrentHost(copied.timestamp_qpc,host_start_qpc) &&
+    return xrepoch::WithinActiveSession(inspected.timestamp_qpc,host_start_qpc,session_start_qpc) &&
+        xrepoch::WithinActiveSession(copied.timestamp_qpc,host_start_qpc,session_start_qpc) &&
         SameOriginalPresentPayload(inspected,copied) &&
         transport::SourcePoseMatchesFrame(
             copied.kind,copied.pose_sequence,source_pose_in_host_ring) &&

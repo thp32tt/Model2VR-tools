@@ -141,6 +141,7 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"original_x86_process_terminated="
           <<(source_process_lease_.Terminal()?1:0)<<"\n"
           <<"xr_host_start_source_qpc="<<host_source_epoch_qpc_<<"\n"
+          <<"xr_session_start_source_qpc="<<session_source_epoch_qpc_<<"\n"
           <<"status="<<wizard::Name(status)<<"\n"
           <<"openxr_tracking_valid="<<(tracking_valid?1:0)<<"\n"
           <<"paired_frame_fresh="<<(paired_frame_fresh?1:0)<<"\n"
@@ -390,8 +391,9 @@ void XrApp::draw_frame(XrTime display_time){
             // Before 8-MiB eye copies, reject legacy packets created
             // under another Win64 host even if its pose tag has recycled.
             const bool epoch_ok=stamp_ok &&
-                xrepoch::WithinCurrentHost(
-                    stamp.timestamp_qpc,host_source_epoch_qpc_);
+                xrepoch::WithinActiveSession(
+                    stamp.timestamp_qpc,host_source_epoch_qpc_,
+                    session_source_epoch_qpc_);
             const auto action=frame_gate_.Decide(
                 epoch_ok?&stamp:nullptr,now,hz);
             if(action==transport::FrameUse::ReadNew){
@@ -483,7 +485,8 @@ void XrApp::draw_frame(XrTime display_time){
                        matched &&
                        handoff::AdmitOriginalPresentToXr(
                            stamp,staging_frame_,post_copy_health,
-                           post_copy_fresh,exact_views!=nullptr,host_source_epoch_qpc_) &&
+                           post_copy_fresh,exact_views!=nullptr,
+                           host_source_epoch_qpc_,session_source_epoch_qpc_) &&
                        frame_gate_.Accept(staging_frame_,now,hz)){
                     if(staging_frame_.kind==transport::FrameKind::Diagnostic &&
                        !saw_diagnostic_){
@@ -741,7 +744,8 @@ void XrApp::draw_frame(XrTime display_time){
             source_process_lease_.Alive(),frame_gate_,eye_frame_,
             accepted_exact_pose_,
             timestamp_ok?static_cast<std::uint64_t>(at_end.QuadPart):0u,hz,
-            last_health,final_receipt_read,host_source_epoch_qpc_);
+            last_health,final_receipt_read,host_source_epoch_qpc_,
+            session_source_epoch_qpc_);
         commit_source_layer=outcome.submit;
         if(!commit_source_layer){
             const auto failed_frame=eye_frame_.frame_id;
@@ -832,6 +836,20 @@ void XrApp::run(int max_frames){
                     XrSessionBeginInfo begin{XR_TYPE_SESSION_BEGIN_INFO};
                     begin.primaryViewConfigurationType=XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
                     check(xrBeginSession(session_,&begin),"begin XR session");
+                    // Sample AFTER the new session starts but BEFORE any
+                    // tracked eye pose is published to original Win32 D3D9.
+                    LARGE_INTEGER session_started{};
+                    if(!QueryPerformanceCounter(&session_started) ||
+                       session_started.QuadPart<=0 ||
+                       static_cast<std::uint64_t>(session_started.QuadPart)<
+                           host_source_epoch_qpc_ ||
+                       (session_source_epoch_qpc_!=0u &&
+                        static_cast<std::uint64_t>(session_started.QuadPart)<=
+                            session_source_epoch_qpc_))
+                        throw std::runtime_error(
+                            "OpenXR session source-generation QPC unavailable or nonmonotonic");
+                    session_source_epoch_qpc_=
+                        static_cast<std::uint64_t>(session_started.QuadPart);
                     if(!local_reference_epoch_.BeginSession())
                         throw std::runtime_error("OpenXR LOCAL source generation exhausted");
                     // xrBeginSession alone may reset the runtime XrTime baseline.

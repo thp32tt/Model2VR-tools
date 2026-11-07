@@ -26,17 +26,29 @@ int main(){
     health.mirrored_draws=3u;health.family_draws={1u,2u,0u,0u};
     auto verify=[&](bool alive,bool pose,bool read=true){
         return VerifyOriginalFrameAtEnd(alive,accepted,eyes,pose,now,hz,
-                                       health,read,now);
+                                       health,read,now,now);
     };
     CHECK(verify(true,true).submit);
     CHECK(verify(true,true).reason==Reject::None);
     CHECK(VerifyOriginalFrameAtEnd(
-        true,accepted,eyes,true,now,hz,health,true,now+1u).reason==
+        true,accepted,eyes,true,now,hz,health,true,now+1u,now).reason==
         Reject::PreviousHostGeneration);
     CHECK(VerifyOriginalFrameAtEnd(
-        true,accepted,eyes,true,now,hz,health,true,0u).reason==
+        true,accepted,eyes,true,now,hz,health,true,0u,now).reason==
         Reject::PreviousHostGeneration);
     CHECK(Name(Reject::PreviousHostGeneration)[0]=='O');
+    CHECK(Name(Reject::PreviousXrSessionGeneration)[0]=='O');
+    // A fresh buffer from a previous XR session in the same host process
+    // must not be submitted under the new session's display time.
+    CHECK(VerifyOriginalFrameAtEnd(
+        true,accepted,eyes,true,now,hz,health,true,now,now+1u).reason==
+        Reject::PreviousXrSessionGeneration);
+    CHECK(VerifyOriginalFrameAtEnd(
+        true,accepted,eyes,true,now,hz,health,true,now,0u).reason==
+        Reject::PreviousXrSessionGeneration);
+    CHECK(xrepoch::WithinActiveSession(now,now,now));
+    CHECK(!xrepoch::WithinActiveSession(now,now,now+1u));
+    CHECK(!xrepoch::WithinActiveSession(now,now+1u,now));
     CHECK(Name(Reject::None)[0]=='O');
     CHECK(Name(Reject::SourceDead)[0]=='O');
     CHECK(Name(Reject::StalePixels)[0]=='O');
@@ -78,23 +90,23 @@ int main(){
     CHECK(mono_gate.Accept(mono,now,hz));
     health.frame_id=11u;health.reason_mask=producerhealth::OriginalMonoFallback;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
-            health,true,now).submit);
+            health,true,now,now).submit);
     mono.pose_sequence=77u;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
-            health,true,now).reason==Reject::PoseUnproven);
+            health,true,now,now).reason==Reject::PoseUnproven);
     mono.pose_sequence=0u;
     // Later published mono can safely hold a previous mono for the short
     // original game backbuffer interval, but not a broken source HRESULT.
     health.frame_id=12u;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
-            health,true,now).submit);
+            health,true,now,now).submit);
     health.reason_mask=producerhealth::ReadbackFailed;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
-            health,true,now).reason==Reject::NewerFailedPresent);
+            health,true,now,now).reason==Reject::NewerFailedPresent);
     // Freshness rechecked AFTER swapchain upload, not the earlier copy time.
     health.reason_mask=producerhealth::OriginalMonoFallback;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,
-            now+hz, hz, health,true,now).reason==Reject::StalePixels);
+            now+hz, hz, health,true,now,now).reason==Reject::StalePixels);
     // Diagnostic source never claims a genuine Daytona Present, but still
     // needs a live source process and fresh coherent original IPC buffer.
     StereoFrameGate diag_gate;
@@ -102,11 +114,11 @@ int main(){
     diag.pose_sequence=0u;
     CHECK(diag_gate.Accept(diag,now,hz));
     CHECK(VerifyOriginalFrameAtEnd(true,diag_gate,diag,false,now,hz,
-        {},false,now).submit);
+        {},false,now,now).submit);
     CHECK(VerifyOriginalFrameAtEnd(false,diag_gate,diag,false,now,hz,
-        {},false,now).reason==Reject::SourceDead);
+        {},false,now,now).reason==Reject::SourceDead);
     diag.eyes[1].clear();
     CHECK(VerifyOriginalFrameAtEnd(true,diag_gate,diag,false,now,hz,
-        {},false,now).reason==Reject::PayloadMismatch);
+        {},false,now,now).reason==Reject::PayloadMismatch);
     return 0;
 }

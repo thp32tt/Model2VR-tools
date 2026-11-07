@@ -65,6 +65,9 @@ private:
     std::uint32_t source_pid_=0;
     // Nonzero QPC barrier before this host publishes any tracked pose.
     std::uint64_t host_source_epoch_qpc_=0u;
+    // Replaced on every successful xrBeginSession. Retain last QPC during
+    // STOPPING to reject a nonmonotonic session restart.
+    std::uint64_t session_source_epoch_qpc_=0u;
     // Original Win32 game process identity is a kernel HANDLE, never just
     // a PID-derived shared mapping name. A dead process cannot be rebound.
     OriginalSourceProcessLease source_process_lease_{};
