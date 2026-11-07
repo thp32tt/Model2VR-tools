@@ -255,7 +255,7 @@ def _validate_report(report):
               "DrawPrimitiveUP","DrawIndexedPrimitiveUP"}
     if (any(type(value) is not int or value<1 or value>MAX_SOURCES
             for value in (sampled,succeeded,drawn)) or
-        not drawn<=succeeded<=sampled or
+        not drawn<=succeeded<=sampled<=run["physical_present_count"] or
         not isinstance(families,dict) or set(families)!=expected or
         any(type(v) is not int or v<0 or v>MAX_SOURCES*10000000
             for v in families.values()) or
@@ -430,8 +430,8 @@ def compare_sessions(race_reports, nonrace_reports):
     Two independent races and title/menu/sky/hud/aux NEGATIVE controls are
     required. Neither caller matching nor class labels prove actual world.
     """
-    if not isinstance(race_reports,list) or len(race_reports)<2:
-        raise ValueError("need two independent original race captures")
+    if not isinstance(race_reports,list) or len(race_reports)!=2:
+        raise ValueError("need exactly two independent original race captures")
     if not isinstance(nonrace_reports,dict) or set(nonrace_reports)!=CONTROL_TYPES:
         raise ValueError("need exact title/menu/sky/hud/aux negative controls")
     race=[_validate_report(report) for report in race_reports]
@@ -486,6 +486,23 @@ def compare_sessions(race_reports, nonrace_reports):
             reason="race_original_rt0_depth_draw_provenance_untrusted"
         elif any(not _enough_original_source(session[key]) for session in race):
             reason="missing_same_draw_matrix_material_or_render_evidence"
+        # A per-caller Scene/Draw count is not enough to establish an eye
+        # source if fewer original physical Presents actually retain trusted
+        # camera COM lifetime or compatible main RT0/depth Draw coverage.
+        # Keep incomplete source preflights readable as diagnostics; reject
+        # the speculative candidate only.
+        elif any(
+            session[key][
+                "distinct_scene_attested_physically_presented_material_present_frame_count"
+            ] > min(
+                report["original_physical_camera_com_lifetime"][
+                    "trusted_camera_drawn_present_count"],
+                report["original_physical_draw_target_coverage"][
+                    "trusted_backbuffer_present_count"],
+            )
+            for session, report in zip(race, race_reports)
+        ):
+            reason="race_scene_source_exceeds_camera_or_rt_present_coverage"
         else:
             callers=[_cpu_callers(session[key]) for session in race]
             if any(c!=callers[0] for c in callers[1:]):

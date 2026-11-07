@@ -258,6 +258,60 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "source Present count"):
                     preflight_original_session(path)
 
+    def test_original_control_sample_cannot_outnumber_real_physical_presents(self):
+        # One original primary-device Present may contribute at most one
+        # source-control sample, even in an authentic-looking cached report.
+        for label in ("title", "race"):
+            forged = report(witness() if label == "race" else {})
+            if label == "title":
+                forged["sources"] = []
+            forged["original_control_present_sample_count"] = 9
+            forged["original_control_successful_present_count"] = 9
+            forged["original_control_successful_drawn_present_count"] = 9
+            with self.subTest(label=label):
+                with self.assertRaisesRegex(ValueError,
+                                            "physical control Present"):
+                    if label == "race":
+                        compare_sessions([forged, report(witness())], controls())
+                    else:
+                        compare_sessions([report(witness()), report(witness())],
+                                         controls(title=forged))
+
+    def test_original_scene_candidate_needs_camera_and_rt_present_coverage(self):
+        # Four trusted Scene Draw frames cannot be elevated from two real
+        # camera / RT0/depth drawn physical Presents of the same original
+        # race process; the incomplete report remains usable for preflight
+        # and rejected-caller diagnostics.
+        for aggregate, field in (
+            ("original_physical_camera_com_lifetime",
+             "trusted_camera_drawn_present_count"),
+            ("original_physical_draw_target_coverage",
+             "trusted_backbuffer_present_count"),
+        ):
+            with self.subTest(aggregate=aggregate):
+                race = report(witness())
+                race[aggregate][field] = 2
+                decision = compare_sessions(
+                    [race, report(witness())], controls())
+                self.assertFalse(decision["candidates"])
+                self.assertEqual(
+                    decision["rejected"][0]["reason"],
+                    "race_scene_source_exceeds_camera_or_rt_present_coverage")
+                with tempfile.TemporaryDirectory() as folder:
+                    path = Path(folder) / "source.csv"
+                    path.write_text("synthetic", encoding="utf-8")
+                    with patch("tools.model2_world_pass_evidence.audit_csv",
+                               return_value=race):
+                        self.assertEqual(
+                            preflight_original_session(path), race)
+
+    def test_original_seven_session_comparison_rejects_extra_race_process(self):
+        with self.assertRaisesRegex(ValueError,
+                                    "exactly two independent original race"):
+            compare_sessions(
+                [report(witness()), report(witness()), report(witness())],
+                controls())
+
     def test_race_cpu_gpu_same_original_draw_requires_post_com_completion(self):
         # A pre-COM projected match cannot borrow another physical Draw's
         # successful scene or RT state after its actual COM return.
