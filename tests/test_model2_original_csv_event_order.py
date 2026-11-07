@@ -65,7 +65,7 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
                     source_report.main([str(raw), "--output", str(destination)])
             self.assertEqual(no_stdout.getvalue(), "")
             self.assertEqual(json.loads(destination.read_text("utf-8")), full)
-            self.assertTrue(destination.read_bytes().endswith(b"\\n"))
+            self.assertTrue(destination.read_bytes().endswith(b"\n"))
 
     def test_direct_private_source_report_never_overwrites_raw_csv_alias(self):
         # Existing local original bytes are never truncated by an accidental
@@ -73,8 +73,8 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             raw = Path(folder) / "original.csv"
             original_bytes = (
-                b"seq,qpc,thread,event,a0,a1,a2,a3\\r\\n"
-                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\\r\\n")
+                b"seq,qpc,thread,event,a0,a1,a2,a3\r\n"
+                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\r\n")
             raw.write_bytes(original_bytes)
             original_hash = hashlib.sha256(raw.read_bytes()).digest()
             with self.assertRaisesRegex(ValueError, "aliases original CSV"):
@@ -91,12 +91,12 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
             # Full diagnostic publication is failure-atomic: an invalid
             # source cannot clobber an earlier good PRIVATE report.
             destination = Path(folder) / "PRIVATE_PREVIOUS.json"
-            destination.write_text('{"old":"kept"}\\n', encoding="utf-8")
+            destination.write_text('{"old":"kept"}\n', encoding="utf-8")
             raw.write_bytes(b"broken ORIGINAL source, no schema")
             with self.assertRaises(ValueError):
                 source_report.main([str(raw), "--output", str(destination)])
             self.assertEqual(destination.read_text("utf-8"),
-                             '{"old":"kept"}\\n')
+                             '{"old":"kept"}\n')
             self.assertFalse(list(Path(folder).glob(
                 "PRIVATE_PENDING_ORIGINAL_DRAW_*.json")))
 
