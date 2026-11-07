@@ -26,6 +26,7 @@ int main(){
     REQUIRE(!host.Publish(frame));
     REQUIRE(emulator.Read(got));
     REQUIRE(got.sequence==1 && got.predicted_display_time==8123456);
+    REQUIRE(!emulator.ReadTracked(got)); // VALID is not tracked
     REQUIRE(got.eyes[0].position_m[0]<0 && got.eyes[1].position_m[0]>0);
     REQUIRE(std::fabs(got.eyes[1].fov_left_right_up_down[1]-0.8f)<0.00001f);
     frame.sequence=2;frame.eyes[0].position_m[1]=0.5f;
@@ -75,6 +76,29 @@ int main(){
     frame.sequence=24u;
     REQUIRE(host.Publish(frame));
     REQUIRE(emulator.Read(got) && got.sequence==24u);
+    Frame tracked=frame;
+    tracked.sequence=25u;
+    tracked.reserved=7u;
+    tracked.predicted_display_time=9000000;
+    tracked.view_flags=kFullSixDofTracked;
+    REQUIRE(host.Publish(tracked));
+    REQUIRE(emulator.ReadTracked(got));
+    REQUIRE(got.sequence==25u && got.reserved==7u && got.published_qpc!=0u);
+    tracked.sequence=26u;tracked.reserved=0u;
+    REQUIRE(host.Publish(tracked));
+    REQUIRE(!emulator.ReadTracked(got));
+    tracked.sequence=27u;tracked.reserved=7u;
+    tracked.predicted_display_time=0;
+    REQUIRE(host.Publish(tracked));
+    REQUIRE(!emulator.ReadTracked(got));
+    tracked.sequence=28u;tracked.predicted_display_time=9000001;
+    tracked.view_flags=kFullSixDofTracked&~kPositionTracked;
+    REQUIRE(host.Publish(tracked));
+    REQUIRE(!emulator.ReadTracked(got));
+    tracked.sequence=29u;tracked.view_flags=kFullSixDofTracked;
+    REQUIRE(host.Publish(tracked));
+    REQUIRE(emulator.ReadTracked(got));
+    REQUIRE(got.sequence==29u && got.predicted_display_time==9000001);
     emulator.Close();host.Close();
     REQUIRE(!emulator.Read(got));
     return 0;

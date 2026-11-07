@@ -108,7 +108,9 @@ extern "C" __declspec(dllexport) BOOL __stdcall Model2VR_ReadPredictedEyeViews(
     if(!g_pose_reader.Valid() &&
        !g_pose_reader.Open(GetCurrentProcessId()))return FALSE;
     m2vr::pose::Frame snapshot{};
-    if(!g_pose_reader.Read(snapshot))return FALSE;
+    // Only the fully tracked Win64 LOCAL-space XR source may be latched
+    // for an original x86 D3D9 scene Draw, never VALID-only old camera.
+    if(!g_pose_reader.ReadTracked(snapshot))return FALSE;
     *output=snapshot;
     return TRUE;
 }

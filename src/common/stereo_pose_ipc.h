@@ -103,7 +103,13 @@ public:
         }
         Frame stamped=value;
         LARGE_INTEGER now{};
-        QueryPerformanceCounter(&now);
+        // The Win64 xrLocateViews producer must not claim publication when
+        // QPC cannot authenticate the source time. x86 will later reject
+        // zero QPC, but a false success here would commit a stale pose tag.
+        if(!QueryPerformanceCounter(&now) || now.QuadPart<=0){
+            InterlockedExchange(&data_->generation,previous+2);
+            return false;
+        }
         stamped.published_qpc=static_cast<std::uint64_t>(now.QuadPart);
         std::memcpy(&data_->frame,&stamped,sizeof(Frame));
         // The next host write may claim the lease as soon as this goes
@@ -140,14 +146,34 @@ public:
         if(before!=after||(after&1)||copy.sequence==0||
            !(copy.view_flags&kOrientationValid))return false;
         LARGE_INTEGER now{},freq{};
-        QueryPerformanceCounter(&now);
-        QueryPerformanceFrequency(&freq);
+        if(!QueryPerformanceCounter(&now) || now.QuadPart<=0 ||
+           !QueryPerformanceFrequency(&freq) || freq.QuadPart<=0)
+            return false;
         const auto stamp=copy.published_qpc;
-        if(stamp==0 || static_cast<std::uint64_t>(now.QuadPart)<stamp ||
-           static_cast<std::uint64_t>(now.QuadPart)-stamp >
-              static_cast<std::uint64_t>(freq.QuadPart)*2u)
+        const auto current=static_cast<std::uint64_t>(now.QuadPart);
+        const auto hz=static_cast<std::uint64_t>(freq.QuadPart);
+        // Monotonic, nonfuture source QPC with bounded 2-second lease.
+        if(!stamp || current<stamp ||
+           hz>(std::numeric_limits<std::uint64_t>::max)()/2u ||
+           current-stamp>hz*2u)
             return false; // fail closed on disconnected/abandoned XR host
         out=copy;
+        return true;
+    }
+    // The original Win32 game Draw adapter uses this stricter entry,
+    // while Read() remains backward-compatible for 2D/diagnostic users.
+    // Non-6DoF, missing XrTime or unknown LOCAL provenance never become
+    // a genuine D3D9 independently projected eye camera.
+    bool ReadTracked(Frame& out)const{
+        Frame candidate{};
+        if(!Read(candidate) ||
+           (candidate.view_flags & kFullSixDofTracked)!=kFullSixDofTracked ||
+           candidate.predicted_display_time<=0 ||
+           candidate.reserved==0u ||
+           candidate.sequence>
+                (std::numeric_limits<std::uint32_t>::max)())
+            return false;
+        out=candidate;
         return true;
     }
     void Close(){
