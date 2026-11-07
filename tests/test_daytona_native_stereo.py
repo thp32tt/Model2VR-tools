@@ -1240,6 +1240,19 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("GetForegroundWindow()!=window_",capture)
         self.assertIn("WindowFromPoint(target_point)",capture)
         self.assertIn("post_warp_pid!=static_cast<DWORD>(pid)",capture)
+        # Require the exact pictured foreground HWND as the root of the
+        # actual hit child: a different same-PID top-level popup must fail.
+        self.assertIn("CapturedRootMatches(",policy)
+        self.assertIn("CapturedRootMatches(0x1234u,0x1234u)",(
+            ROOT/"tests/model2_emulator_window_policy_test.cpp").read_text("utf-8"))
+        self.assertEqual(capture.count("CapturedRootMatches("),2)
+        self.assertEqual(capture.count("GetAncestor("),2)
+        self.assertIn("GetAncestor(point_hwnd,GA_ROOT)",capture)
+        self.assertIn("GetAncestor(post_warp,GA_ROOT)",capture)
+        self.assertLess(capture.index("GetAncestor(point_hwnd,GA_ROOT)"),
+                        capture.index("SetCursorPos(target_point.x,target_point.y)"))
+        self.assertLess(capture.index("GetAncestor(post_warp,GA_ROOT)"),
+                        capture.index("const UINT sent=SendInput(2,click,sizeof(INPUT))"))
         # Two independent post-warp cursor readbacks, never just blindly
         # trusting SetCursorPos success when ClipCursor clamps the hotspot.
         self.assertIn("CursorPositionMatches(",capture)

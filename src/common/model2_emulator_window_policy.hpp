@@ -51,6 +51,14 @@ constexpr bool PresentedCaptureMatches(std::uint64_t current_capture_serial,
     return current_capture_serial!=0u &&
            current_capture_serial==submitted_menu_serial;
 }
+// Windows may report a foreground emulator PID for two different top-level
+// HWNDs. Child controls of the photographed foreground HWND are click-safe,
+// but an overlapping sibling popup/window is not, even under the same PID.
+// Compare Win32 GetAncestor(hit, GA_ROOT) with the captured top-level HWND.
+constexpr bool CapturedRootMatches(std::uintptr_t captured,
+                                   std::uintptr_t hit_root) noexcept {
+    return captured!=0u && hit_root!=0u && captured==hit_root;
+}
 struct ScreenPoint {
     std::int32_t x=0,y=0;
     bool valid=false;

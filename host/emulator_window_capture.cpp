@@ -185,6 +185,13 @@ bool EmulatorWindowCapture::DeliverControllerClick(
     if(!point_hwnd || !IsWindow(point_hwnd))return false;
     GetWindowThreadProcessId(point_hwnd,&point_pid);
     if(point_pid!=static_cast<DWORD>(pid))return false;
+    // Same-PID sibling tool windows or popups can overlap the photographed
+    // foreground emulator window. Win32 child controls are allowed only
+    // when their GA_ROOT is the exact HWND selected during capture.
+    if(!desktopmenu::CapturedRootMatches(
+           reinterpret_cast<std::uintptr_t>(window_),
+           reinterpret_cast<std::uintptr_t>(
+               GetAncestor(point_hwnd,GA_ROOT))))return false;
     // Desktop-wide SetCursorPos preserves negative multi-monitor origins.
     // SendInput is confined to the genuine foreground emulator HWND;
     // never use WM_* messages or inject into the original D3D9 game.
@@ -205,6 +212,12 @@ bool EmulatorWindowCapture::DeliverControllerClick(
     if(!post_warp)return false;
     GetWindowThreadProcessId(post_warp,&post_warp_pid);
     if(post_warp_pid!=static_cast<DWORD>(pid))return false;
+    // Repeat the HWND ancestry check after SetCursorPos: another same-PID
+    // top-level window might have appeared over the intended child pixel.
+    if(!desktopmenu::CapturedRootMatches(
+           reinterpret_cast<std::uintptr_t>(window_),
+           reinterpret_cast<std::uintptr_t>(
+               GetAncestor(post_warp,GA_ROOT))))return false;
     // A local mouse/other desktop participant can move the hotspot after
     // the HWND check; refuse a mis-targeted click as close as practical to
     // the actual SendInput boundary. Preserve absolute negative monitor X.

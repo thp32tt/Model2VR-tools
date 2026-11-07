@@ -25,6 +25,14 @@ int main(){
     static_assert(!CursorPositionMatches({},0,0));
     static_assert(!CursorPositionMatches(
         ScreenPoint{-2147483647,-200,true},-2147483646,-200));
+    // Same-PID, different top-level HWND must be rejected even if it
+    // overlaps the captured emulator window. Child HWNDs pass when Win32
+    // resolves their GA_ROOT to the photographed foreground HWND.
+    static_assert(CapturedRootMatches(0x1234u,0x1234u));
+    static_assert(!CapturedRootMatches(0x1234u,0x5678u));
+    static_assert(!CapturedRootMatches(0x1234u,0u));
+    static_assert(!CapturedRootMatches(0u,0x1234u));
+    static_assert(!CapturedRootMatches(0u,0u));
     // A VR ray hit is bound to the screenshot shown in the quad, not
     // merely to a still-live HWND or the emulator's numeric process ID.
     constexpr WindowRect picture{-1500,-100,-860,380};
