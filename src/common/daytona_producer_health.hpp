@@ -151,7 +151,12 @@ public:
             return false;
         if(InterlockedCompareExchange(&wire_->generation,old+1,old)!=old)
             return false;
-        if(frame<=last_frame_){
+        if(frame<=last_frame_ ||
+           (last_frame_!=0u &&
+            static_cast<std::uint64_t>(now.QuadPart)<=wire_->status.timestamp_qpc)){
+            // A new physical Present cannot be certified by a receipt
+            // whose QPC regresses behind an older committed Present.
+            // Do not replace the last coherent success/failure record.
             InterlockedExchange(&wire_->generation,old+2);
             return false;
         }

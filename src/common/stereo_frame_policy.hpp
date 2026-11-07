@@ -37,7 +37,14 @@ public:
            stamp->frame_id==0 ||
            !ValidSourceKind(stamp->kind))
             return cached ? FrameUse::HoldCached : FrameUse::Missing;
-        if(stamp->frame_id>last_id_)return FrameUse::ReadNew;
+        // A larger frame ID alone is not a newer physical source sample.
+        // Reject equal or reversed QPC stamps, even when still inside the
+        // 125/250-ms cache TTL. Hold the previous pair only while it is
+        // independently fresh; never copy or relabel rollback pixels.
+        if(stamp->frame_id>last_id_)
+            return stamp->timestamp_qpc>source_high_qpc_
+                ?FrameUse::ReadNew
+                :(cached?FrameUse::HoldCached:FrameUse::Missing);
         return stamp->frame_id==last_id_ && cached
             ? FrameUse::HoldCached : FrameUse::Missing;
     }
@@ -45,11 +52,13 @@ public:
                 std::uint64_t ticks_per_second) noexcept {
         if(!HasRecent(snapshot.timestamp_qpc,now,ticks_per_second,snapshot.kind) ||
            snapshot.frame_id==0 || snapshot.frame_id<=last_id_ ||
+           snapshot.timestamp_qpc<=source_high_qpc_ ||
            !ValidSourceKind(snapshot.kind) ||
            !ValidEyePayload(snapshot.kind,snapshot.eyes[0].size(),
                             snapshot.eyes[1].size()))return false;
         last_id_=snapshot.frame_id;
         last_qpc_=snapshot.timestamp_qpc;
+        source_high_qpc_=snapshot.timestamp_qpc;
         kind_=snapshot.kind;
         return true;
     }
@@ -58,13 +67,18 @@ public:
     }
     std::uint64_t id()const noexcept{return last_id_;}
     FrameKind kind()const noexcept{return kind_;}
-    void Reset()noexcept{last_id_=last_qpc_=0;kind_=FrameKind::Invalid;}
+    void Reset()noexcept{
+        last_id_=last_qpc_=source_high_qpc_=0;
+        kind_=FrameKind::Invalid;
+    }
     // XR session STOPPING or lost tracking must revoke cached eye contents
     // while keeping the source's monotonically increasing frame high-water
     // mark. Otherwise a pre-stop IPC image could be accepted a second time
     // immediately after the headset session resumes.
     void ExpireKeepFrameId() noexcept {
         last_qpc_=0u;
+        // The source frame ID and its last verified QPC remain monotonic
+        // across tracking loss and same-host XR session restarts.
         kind_=FrameKind::Invalid;
     }
 private:
@@ -79,6 +93,7 @@ private:
     }
     std::uint64_t last_id_=0;
     std::uint64_t last_qpc_=0;
+    std::uint64_t source_high_qpc_=0;
     FrameKind kind_=FrameKind::Invalid;
 };
 } // namespace m2vr::transport

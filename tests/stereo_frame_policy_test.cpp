@@ -49,6 +49,23 @@ int main(){
     CHECK(gate.Decide(nullptr,t+100,hz)==FrameUse::HoldCached);
     CHECK(gate.Decide(&stamp,t+125,hz)==FrameUse::HoldCached);
     CHECK(gate.Decide(&stamp,t+126,hz)==FrameUse::Missing);
+    // New numeric ID with SAME or REVERSED QPC may not supersede the
+    // exact accepted original x86 source timestamp; direct Accept must
+    // enforce the rule even if the cheap Peek decision was bypassed.
+    FrameStamp same_qpc{2,t,FrameKind::GameStereo,123};
+    FrameStamp backwards_qpc{2,t-1,FrameKind::GameStereo,123};
+    CHECK(gate.Decide(&same_qpc,t+10,hz)==FrameUse::HoldCached);
+    CHECK(gate.Decide(&backwards_qpc,t+10,hz)==FrameUse::HoldCached);
+    Snapshot rollback{};
+    rollback.frame_id=2;rollback.timestamp_qpc=t;
+    rollback.kind=FrameKind::GameStereo;
+    rollback.eyes[0].resize(kBytesPerEye);
+    rollback.eyes[1].resize(kBytesPerEye);
+    CHECK(!gate.Accept(rollback,t+10,hz));
+    rollback.timestamp_qpc=t-1;
+    CHECK(!gate.Accept(rollback,t+10,hz));
+    CHECK(gate.id()==1 && gate.Cached(t+10,hz));
+    CHECK(gate.Decide(&same_qpc,t+126,hz)==FrameUse::Missing);
     CHECK(!gate.Cached(t+126,hz));
     CHECK(gate.Decide(nullptr,t+126,hz)==FrameUse::Missing);
     CHECK(gate.Decide(&stamp,t-1,hz)==FrameUse::Missing);
@@ -87,6 +104,15 @@ int main(){
     CHECK(!gate.Cached(t+140,1000));
     CHECK(gate.Decide(&diag,t+140,1000)==FrameUse::Missing);
     CHECK(gate.Decide(&regressed,t+140,1000)==FrameUse::Missing);
+    // Expiring XR image pixels must not erase source-time high-water:
+    // the next original x86 packet is not valid merely for carrying ID 4.
+    FrameStamp old_time_new_id{4,t+135,FrameKind::GameStereo,123};
+    CHECK(gate.Decide(&old_time_new_id,t+140,1000)==FrameUse::Missing);
+    Snapshot old_time_snapshot=snap;
+    old_time_snapshot.frame_id=4;
+    old_time_snapshot.timestamp_qpc=t+135;
+    old_time_snapshot.kind=FrameKind::GameStereo;
+    CHECK(!gate.Accept(old_time_snapshot,t+140,1000));
     FrameStamp recovered{4,t+141,FrameKind::GameStereo,123};
     CHECK(gate.Decide(&recovered,t+142,1000)==FrameUse::ReadNew);
     snap.frame_id=4;snap.timestamp_qpc=t+141;

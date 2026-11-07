@@ -147,6 +147,25 @@ int main(){
         REQUIRE(staging.eyes[0][kBytesPerEye-1]==(accepted_a?a.back():b2.back()));
         REQUIRE(staging.eyes[1][kBytesPerEye-1]==(accepted_a?a.back():b2.back()));
     }
+    // Deterministic QPC rollback injection at the actual Win32 shared
+    // mapping: despite a valid higher ID and complete stereo source, the
+    // real producer must refuse to overwrite the last accepted pixels.
+    HANDLE clock_map=OpenFileMappingW(
+        FILE_MAP_WRITE,FALSE,NameForPid(key).c_str());
+    REQUIRE(clock_map!=nullptr);
+    auto* clock_header=static_cast<Header*>(MapViewOfFile(
+        clock_map,FILE_MAP_WRITE,0,0,sizeof(Header)));
+    REQUIRE(clock_header!=nullptr);
+    const auto saved_qpc=clock_header->timestamp_qpc;
+    clock_header->timestamp_qpc=UINT64_MAX;
+    REQUIRE(!writer.Publish(a.data(),b.data(),26u,
+        FrameKind::GameStereo,119u));
+    clock_header->timestamp_qpc=saved_qpc;
+    REQUIRE(reader.Peek(metadata) && metadata.frame_id==25u);
+    REQUIRE(writer.Publish(a.data(),b.data(),26u,
+        FrameKind::GameStereo,119u));
+    REQUIRE(reader.Peek(metadata) && metadata.frame_id==26u);
+    UnmapViewOfFile(clock_header);CloseHandle(clock_map);
     reader.Close();writer.Close();
     REQUIRE(!reader.Read(snap));
     return 0;

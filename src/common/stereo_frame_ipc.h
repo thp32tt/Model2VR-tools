@@ -169,7 +169,12 @@ public:
         // A zero timestamp cannot be linked to the post-COM Present
         // receipt, and must never overwrite a previously valid eye packet.
         LARGE_INTEGER time{};
-        if(!QueryPerformanceCounter(&time) || time.QuadPart<=0){
+        if(!QueryPerformanceCounter(&time) || time.QuadPart<=0 ||
+           (last_written_!=0u &&
+            static_cast<std::uint64_t>(time.QuadPart)<=h->timestamp_qpc)){
+            // Windows QPC must advance between successful original source
+            // publications. Never overwrite 4/8 MiB of valid eye pixels
+            // under a newer ID but an equal/reversed source timestamp.
             InterlockedExchange(&h->sequence,before+2);
             return false;
         }

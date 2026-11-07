@@ -189,6 +189,23 @@ int main(){
      REQUIRE(got.verified_scene_draws==(wrote_success?7u:0u));
      REQUIRE(got.family_draws==(wrote_success?first:second));
  }
+ // A newer physical Present receipt must never regress Windows QPC.
+ // Exercise the real 64-byte x86/x64 health wire with a deterministic
+ // future-timestamp corruption; the previous completed receipt survives.
+ HANDLE clock_map=OpenFileMappingW(
+     FILE_MAP_WRITE,FALSE,NameForPid(pid).c_str());
+ REQUIRE(clock_map!=nullptr);
+ auto* clock_wire=static_cast<Wire*>(MapViewOfFile(
+     clock_map,FILE_MAP_WRITE,0,0,sizeof(Wire)));
+ REQUIRE(clock_wire!=nullptr);
+ const auto saved_qpc=clock_wire->status.timestamp_qpc;
+ clock_wire->status.timestamp_qpc=UINT64_MAX;
+ REQUIRE(!writer.Publish(26u,0u,7u,12u,2u,first));
+ clock_wire->status.timestamp_qpc=saved_qpc;
+ REQUIRE(reader.Read(got) && got.frame_id==25u);
+ REQUIRE(writer.Publish(26u,0u,7u,12u,2u,first));
+ REQUIRE(reader.Read(got) && got.frame_id==26u);
+ UnmapViewOfFile(clock_wire);CloseHandle(clock_map);
  REQUIRE(!writer.Publish(10u,0u,7u,12u,2u,first));
  reader.Close();writer.Close();
  REQUIRE(!reader.Read(got));
