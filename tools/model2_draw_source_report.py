@@ -626,8 +626,11 @@ def audit_csv(path):
     previous_qpc = 0
     with open(path, "r", encoding="utf-8-sig", newline="") as source:
         reader = csv.DictReader(source)
-        if (not reader.fieldnames or not FIELDS.issubset(reader.fieldnames)
-                or len(reader.fieldnames) != len(set(reader.fieldnames))):
+        # OpenLog emits one fixed header for every genuine process file.
+        # Accepting rearranged or extra columns lets a renamed diagnostic
+        # column masquerade as the original physical source event schema.
+        if reader.fieldnames != [
+                "seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"]:
             raise ValueError("not a complete Model2VR probe CSV")
         for count, row in enumerate(reader, 1):
             if count > MAX_ROWS:
