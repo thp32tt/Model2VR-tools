@@ -1224,6 +1224,7 @@ class NativeStereoTest(unittest.TestCase):
     def test_quest_menu_ray_cannot_inject_into_game_or_foreign_window(self):
         controller=(ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8")
         capture=(ROOT/"host/emulator_window_capture.cpp").read_text("utf-8")
+        policy=(ROOT/"src/common/model2_emulator_window_policy.hpp").read_text("utf-8")
         host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
         config=configparser.ConfigParser()
         config.read(ROOT/"config/daytona_native_stereo.ini",encoding="utf-8")
