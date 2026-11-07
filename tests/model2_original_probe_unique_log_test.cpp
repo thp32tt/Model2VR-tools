@@ -34,6 +34,13 @@ int main(){
                                 std::istreambuf_iterator<char>()};
         CHECK(saved=="untouched prior emulator PRIVATE process");
     }
+    // Even a zero-length file left by a crashed original x86 probe is
+    // already owned by another session. Never silently fill it in later.
+    {
+        std::ofstream empty(test_path,std::ios::binary|std::ios::trunc);
+    }
+    CHECK(!m2vr::OpenLog(test_path));
+    CHECK(std::filesystem::file_size(test_path)==0u);
     std::filesystem::remove(test_path);
     CHECK(m2vr::OpenLog(test_path));
     m2vr::LogEvent("synthetic_one_process",42u);
