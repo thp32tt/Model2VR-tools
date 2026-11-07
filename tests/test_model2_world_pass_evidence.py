@@ -350,6 +350,10 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             with self.subTest(ordinal=ordinal):
                 race = report(witness())
                 race["sources"][0][ordinal] = 4
+                if ordinal == "distinct_original_scene_ordinals":
+                    # Permit this ordinal RANGE; only the missing number
+                    # of genuine native Scene witnesses may reject it.
+                    race["sources"][0]["original_scene_ordinal_max"] = 4
                 race["sources"][0][phase] = 3
                 self.assertFalse(compare_sessions(
                     [race, report(witness())], controls())["candidates"])
