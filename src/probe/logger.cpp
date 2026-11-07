@@ -116,7 +116,17 @@ void LogEvent(
     // Flush at most once per 64 rows or about once per second while
     // events arrive, without syncing the filesystem on every Draw.
     const ULONGLONG tick=GetTickCount64();
-    if ((seq & 63u) == 0u || tick-g_last_flush_tick>=1000u) {
+    // Genuine original D3D9 post-COM physical Present coverage is emitted
+    // after its Draw/Scene/RT/camera witnesses. A normal process shutdown
+    // does not call CloseLog under the Windows loader lock; CRT buffering
+    // could otherwise discard the last short PRIVATE source session.
+    // Persist the first and every eighth completed source frame without
+    // flushing once per Draw/Present (or modifying the game's COM calls).
+    const bool original_present_checkpoint =
+        event == "model2_d3d9_original_draw_target_coverage" &&
+        (a0 == 1u || (a0 & 7u) == 0u);
+    if ((seq & 63u) == 0u || tick-g_last_flush_tick>=1000u ||
+        original_present_checkpoint) {
         std::fflush(g_log);
         g_last_flush_tick=tick;
     }

@@ -47,6 +47,27 @@ int main(){
     std::filesystem::remove(test_path);
     CHECK(m2vr::OpenLog(test_path));
     m2vr::LogEvent("synthetic_one_process",42u);
+    // An authentic original physical Present emits its target coverage
+    // AFTER all post-COM provenance witnesses. This event must persist at
+    // the first and every eighth frame without CloseLog/FlushLog. The
+    // producer process may exit without running a CRT shutdown callback.
+    for(unsigned frame=1u;frame<=8u;++frame)
+        m2vr::LogEvent("model2_d3d9_original_draw_target_coverage",frame);
+    {
+        // Read through the real Win32 FILE_SHARE_READ logger handle while
+        // the writer remains OPEN; buffering would hide these short-session
+        // checkpoints until process exit or the 64-row periodic flush.
+        std::ifstream partial(test_path,std::ios::binary);
+        CHECK(static_cast<bool>(partial));
+        const std::string persisted{std::istreambuf_iterator<char>(partial),
+                                    std::istreambuf_iterator<char>()};
+        CHECK(persisted.find(
+            ",model2_d3d9_original_draw_target_coverage,1,0,0,0\r\n")
+            !=std::string::npos);
+        CHECK(persisted.find(
+            ",model2_d3d9_original_draw_target_coverage,8,0,0,0\r\n")
+            !=std::string::npos);
+    }
     // A genuine original emulator can trigger D3D9 callbacks on multiple
     // threads. CSV sequence/order must still be a single total order.
     constexpr int kThreads=8;
@@ -102,7 +123,7 @@ int main(){
                 ++concurrent_rows;
         }
         CHECK(concurrent_rows==kThreads*kRowsPerThread);
-        CHECK(total_rows==1+kThreads*kRowsPerThread);
+        CHECK(total_rows==1+8+kThreads*kRowsPerThread);
     }
     cleanup();
     return 0;
