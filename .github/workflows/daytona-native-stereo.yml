@@ -269,6 +269,76 @@ jobs:
               Where-Object { $_.Name -ne ".private_original_collection.lock" }).Count -ne 0){
             throw "False fresh log caused private source output"
           }
+      - name: Reject original x86 CSV while emulator writer is alive
+        shell: pwsh
+        run: |
+          # Synthetic Win32 file-share reproduction of the real probe's
+          # GENERIC_WRITE/FILE_SHARE_READ handle. No original game is run.
+          $ErrorActionPreference="Stop"
+          $root=Join-Path $env:RUNNER_TEMP "daytona-original-live-writer"
+          $inputs=Join-Path $root "source"
+          New-Item -ItemType Directory -Force -Path $inputs | Out-Null
+          Copy-Item scripts/Collect-Daytona-Original-Evidence.ps1 $root/
+          [IO.File]::WriteAllText((Join-Path $root "model2_draw_source_report.py"),
+            "# synthetic only" + "`n")
+          $preflight=@'
+          import json,sys
+          from pathlib import Path
+          args=sys.argv[1:]
+          if "--preflight" not in args or "--output" not in args:
+              raise SystemExit("synthetic preflight only; no World3D candidate")
+          Path(args[args.index("--output")+1]).write_text(
+              json.dumps({"original_capture_run":{"nonce_hex":"0x0000000000000010"}}),
+              encoding="utf-8")
+          '@
+          [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),$preflight)
+          $csv=Join-Path $inputs "race_a.csv"
+          [IO.File]::WriteAllText($csv,
+            ("seq,qpc,thread,event,a0,a1,a2,a3" + "`n" +
+             "1,1,1,synthetic_active_original,0,0,0,0" + "`n"))
+          $before=(Get-FileHash -LiteralPath $csv -Algorithm SHA256).Hash
+          $writer=[System.IO.FileStream]::new(
+            $csv,[System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Write,[System.IO.FileShare]::Read)
+          try {
+            $rejected=$false
+            try {
+              & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") `
+                -PackageRoot $root -ExistingSessionFolder $inputs -StopAfterStage race_a
+            } catch {
+              if($_.Exception.Message -notmatch "ORIGINAL SOURCE STILL OPEN FAIL-CLOSED"){throw}
+              $rejected=$true
+            }
+            if(-not $rejected){throw "Active original x86 writer was accepted as complete"}
+            $archives=@(Get-ChildItem (Join-Path $root "logs") -Directory -Filter "private_original_evidence_*")
+            if($archives.Count -ne 1){throw "Missing rejected original stage archive"}
+            foreach($name in @("race_a.csv","PRIVATE_SOURCE_race_a.json",
+                               "PRIVATE_MANIFEST.json","PRIVATE_WORLD_CANDIDATES.json")){
+              if(Test-Path (Join-Path $archives[0].FullName $name)){
+                throw "Live original producer incorrectly published $name"
+              }
+            }
+          } finally {
+            $writer.Dispose()
+          }
+          if((Get-FileHash -LiteralPath $csv -Algorithm SHA256).Hash -cne $before){
+            throw "Rejected live original CSV was mutated"
+          }
+          # Once the producer releases its actual writer handle, the same
+          # synthetic CSV is accepted ONLY as an incomplete diagnostic stage.
+          & (Join-Path $root "Collect-Daytona-Original-Evidence.ps1") `
+            -PackageRoot $root -ExistingSessionFolder $inputs -StopAfterStage race_a
+          $archives=@(Get-ChildItem (Join-Path $root "logs") -Directory -Filter "private_original_evidence_*")
+          if($archives.Count -ne 2){throw "Expected separate rejected/accepted archives"}
+          $saved=@($archives | Where-Object {
+            (Test-Path (Join-Path $_.FullName "race_a.csv")) -and
+            (Test-Path (Join-Path $_.FullName "PRIVATE_SOURCE_race_a.json")) })
+          if($saved.Count -ne 1){throw "Closed original source did not reach diagnostic preflight"}
+          foreach($name in @("PRIVATE_MANIFEST.json","PRIVATE_WORLD_CANDIDATES.json")){
+            if(Test-Path (Join-Path $saved[0].FullName $name)){
+              throw "Single-stage synthetic source incorrectly authorized World3D"
+            }
+          }
       - name: Smoke test archive mutation after per-stage physical preflight
         shell: pwsh
         run: |

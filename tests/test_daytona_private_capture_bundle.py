@@ -146,6 +146,29 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('Move-PrivateFailedCandidate $candidateOutput', self.ps)
         self.assertIn('$pythonExitCode -ne 0', self.ps)
 
+    def test_original_x86_source_writer_must_exit_before_archiving(self):
+        # Windows CREATE_NEW + FILE_SHARE_READ allows hashing a log during
+        # an active original emulator process. Only an exclusive read gate
+        # prevents accepting those still-growing physical Draw/Present rows.
+        self.assertIn("function Assert-OriginalProbeExited", self.ps)
+        self.assertIn("[System.IO.FileAccess]::Read, [System.IO.FileShare]::None",
+                      self.ps)
+        self.assertIn("PRIVATE SESSION ORIGINAL SOURCE STILL OPEN FAIL-CLOSED",
+                      self.ps)
+        self.assertEqual(self.ps.count("Assert-OriginalProbeExited $originalPath"), 2)
+        self.assertLess(
+            self.ps.index("Assert-OriginalProbeExited $originalPath"),
+            self.ps.index("Get-FileHash -LiteralPath $originalPath -Algorithm SHA256"))
+        self.assertLess(
+            self.ps.index("Copy-Item -LiteralPath $originalPath -Destination $target"),
+            self.ps.rindex("Assert-OriginalProbeExited $originalPath"))
+        self.assertLess(
+            self.ps.rindex("Assert-OriginalProbeExited $originalPath"),
+            self.ps.index("$copiedHash = (Get-FileHash -LiteralPath $target"))
+        self.assertIn(
+            "Reject original x86 CSV while emulator writer is alive",
+            self.workflow)
+
     def test_fresh_original_stage_only_accepts_one_new_path_not_a_recent_old_file(self):
         # A previously written CSV can have its LastWriteTime retouched or
         # dated in the future. Its identity must be captured BEFORE Read-Host.

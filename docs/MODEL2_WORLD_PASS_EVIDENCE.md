@@ -1,5 +1,27 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Original x86 source producer must exit before PRIVATE archiving (2026-11-07)
+
+After the operator completes each user-labelled original Daytona x86 race/control
+session, **fully exit the emulator before continuing the collector**. The
+collector now opens the selected original CSV with Windows `FileShare.None`
+before hashing and again immediately after copying. Because the actual original
+probe holds a write handle with `FILE_SHARE_READ` until process exit, this
+exclusive-read probe fails closed on a still-running emulator even if its
+growing CSV is readable by `Get-FileHash` or `Copy-Item`. If the original log
+is still open (or access cannot be proven exclusive), the collector preserves
+the user-owned source, refuses preflight, and requires a fresh capture stage.
+A second exclusive-open check plus existing original/copy SHA checks also
+prevent an overlapping late writer from receiving a valid report.
+
+A Windows PowerShell smoke test uses a synthetic `FileShare.Read` writer to
+assert reject-without-copy while active, unchanged original bytes, and
+successful *diagnostic-only* single-stage capture after the handle closes.
+Neither test data nor a passing PRIVATE preflight establishes original
+World3D, game camera metres-per-unit, or Quest3+VDXR gameplay. CPU World3D
+AUTO-OFF, `world_pass_proof=NOT_ESTABLISHED`,
+`RUNTIME_VALIDATION=UNTESTED`, and genuine original mono fallback stay intact.
+
 ## Per-original-process PRIVATE source CSV exclusive creation (2026-11-07)
 
 The actual original Daytona x86 probe now creates its source CSV only with

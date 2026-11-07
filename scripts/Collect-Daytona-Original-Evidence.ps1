@@ -154,6 +154,23 @@ function SessionCsvName([string]$label) {
   if ($label -eq "aux") { return "auxiliary.csv" }
   return $label + ".csv"
 }
+function Assert-OriginalProbeExited([string]$originalPath) {
+  # The genuine x86 probe owns an open GENERIC_WRITE/FILE_SHARE_READ handle
+  # until the emulator exits. Hashing or Copy-Item can READ such a file even
+  # while new original physical Draw/Present rows are still being written.
+  # An exclusive read fails closed while that writer is alive. Never infer
+  # an independent completed source run from a partial in-flight CSV.
+  $exclusiveReader = $null
+  try {
+    $exclusiveReader = [System.IO.FileStream]::new(
+      $originalPath, [System.IO.FileMode]::Open,
+      [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
+  } catch {
+    throw "PRIVATE SESSION ORIGINAL SOURCE STILL OPEN FAIL-CLOSED: close the original x86 emulator and retry this stage. No source data was changed."
+  } finally {
+    if ($null -ne $exclusiveReader) { $exclusiveReader.Dispose() }
+  }
+}
 # Never accept a previously cached PRIVATE_SOURCE report as the result of
 # a fresh CSV preflight. Only a uniquely named pending output produced by
 # this invocation may become the active report after the audit succeeds.
@@ -289,6 +306,9 @@ foreach ($label in $labels) {
   if (!$knownPaths.Add($originalPath)) {
     throw "Reused original source path for $label; seven independent sessions required."
   }
+  # Both user-supplied and freshly discovered x86 CSVs must be closed by
+  # their ORIGINAL producer. Presence and stable bytes alone are insufficient.
+  Assert-OriginalProbeExited $originalPath
   if ($source.Length -lt 32) {
     throw "Empty or truncated original source evidence for $label."
   }
@@ -297,6 +317,9 @@ foreach ($label in $labels) {
     throw "Duplicate original source bytes for $label; independent sessions required."
   }
   Copy-Item -LiteralPath $originalPath -Destination $target -ErrorAction Stop
+  # Recheck after copying as well: if a process began writing between the
+  # first exclusive-open check and copy, no preflight or receipt may follow.
+  Assert-OriginalProbeExited $originalPath
   $copiedHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
   if ($copiedHash -ne $digest) { throw "Source copy changed during $label; close original game." }
   $copies[$label] = $target
