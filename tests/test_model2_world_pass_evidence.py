@@ -20,6 +20,8 @@ def witness(cpu="0x004bb400", count=3):
         "distinct_projected_material_present_frame_count": count,
         "distinct_successful_projected_material_present_frame_count": count,
         "original_draw_success_witnesses": count,
+        "original_draw_success_by_physical_frame": [
+            [frame, 1] for frame in range(1, count+1)],
         "original_draw_phase_attested_witnesses": count,
         "original_scene_phase_attested_witnesses": count,
         "original_draw_completion_attested_witnesses": count,
@@ -100,6 +102,7 @@ def report(*sources):
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
         "world_pass_proof": "NOT_ESTABLISHED",
         "hmd_runtime_validation": "UNTESTED",
+        "original_sampled_scene_draw_frame_budget": [[1,3],[2,3],[3,3]],
         "original_physical_scene_draw_coverage":{
             "physical_present_count":8,"first_present_frame":1,
             "last_present_frame":8,
@@ -641,6 +644,57 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         self.assertFalse(got["adapter_auto_enable"])
 
 
+
+
+    def test_same_original_frame_success_budget_rejects_global_spare_capacity(self):
+        source = witness()
+        # The run has nine Draws, but physical Present 1 only has three.
+        source["original_draw_success_by_physical_frame"] = [[1, 4]]
+        source["original_draw_success_witnesses"] = 4
+        got = compare_sessions([report(source), report(witness())], controls())
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "race_original_draw_witness_budget_exceeded")
+
+    def test_distinct_original_callers_share_physical_frame_draw_budget(self):
+        first, second = witness(), witness()
+        second["caller_rva_hex"] = "0x004a1235"
+        first["original_draw_success_by_physical_frame"] = [[1,2],[2,1]]
+        second["original_draw_success_by_physical_frame"] = [[1,2],[3,1]]
+        # Two disjoint callers claim four Draws on frame 1; actual stream
+        # has three. Their aggregate six remains within the global nine.
+        got = compare_sessions([report(first,second),
+                                report(copy.deepcopy(first),copy.deepcopy(second))],
+                               controls())
+        self.assertFalse(got["candidates"])
+        self.assertEqual({x["reason"] for x in got["rejected"]},
+                         {"race_original_draw_witness_budget_exceeded"})
+
+    def test_original_frame_draw_budget_requires_complete_bounded_provenance(self):
+        for bad in (None, [[1,3],[1,3],[3,3]],
+                    [[1,3],[2,True],[3,3]], [[1,3],[3,3],[2,3]],
+                    [[1,3],[2,-1],[3,3]], [[1,3],[2,3],[9,3]]):
+            with self.subTest(bad=bad):
+                run = report(witness())
+                if bad is None:
+                    del run["original_sampled_scene_draw_frame_budget"]
+                else:
+                    run["original_sampled_scene_draw_frame_budget"] = bad
+                got = compare_sessions([run,report(witness())],controls())
+                self.assertFalse(got["candidates"])
+
+    def test_original_frame_draw_counts_reject_missing_duplicate_or_unbalanced(self):
+        for bad in (None, [[1,2],[2,1]], [[1,1],[1,1],[3,1]],
+                    [[1,1],[2,False],[3,1]], [[1,1],[2,1],[9,1]],
+                    [[2,1],[1,1],[3,1]]):
+            with self.subTest(bad=bad):
+                source = witness()
+                if bad is None:
+                    del source["original_draw_success_by_physical_frame"]
+                else:
+                    source["original_draw_success_by_physical_frame"] = bad
+                got = compare_sessions([report(source),report(witness())],controls())
+                self.assertFalse(got["candidates"])
 
     def test_original_scene_camera_target_same_physical_present_required(self):
         # All independent physical coverage totals still equal three, but

@@ -524,7 +524,51 @@ def _within_original_scene_draw_budget(report):
             observed += count
             if observed > budget:
                 return False
-    return True
+    # An aggregate budget is not causal: a claimed four successful Draws
+    # on original Present #1 cannot borrow a fourth Draw from Present #2.
+    frame_rows = report.get("original_sampled_scene_draw_frame_budget")
+    if not isinstance(frame_rows, list) or len(frame_rows) > MAX_SOURCES:
+        return False
+    physical_frames = report["original_capture_run"]["physical_present_count"]
+    frame_budget = {}
+    previous = 0
+    for pair in frame_rows:
+        if (not isinstance(pair, list) or len(pair) != 2 or
+                any(type(n) is not int for n in pair)):
+            return False
+        frame, available = pair
+        if (not previous < frame <= physical_frames or
+                not 0 <= available <= 10_000_000):
+            return False
+        frame_budget[frame] = available
+        previous = frame
+    if sum(frame_budget.values()) > budget:
+        return False
+    summed = {}
+    for source in report["sources"]:
+        rows = source.get("original_draw_success_by_physical_frame")
+        if not isinstance(rows, list) or len(rows) > MAX_SOURCES:
+            return False
+        previous = 0
+        count = 0
+        for pair in rows:
+            if (not isinstance(pair, list) or len(pair) != 2 or
+                    any(type(n) is not int for n in pair)):
+                return False
+            frame, observed = pair
+            if (not previous < frame <= physical_frames or
+                    frame not in frame_budget or
+                    not 0 < observed <= frame_budget[frame]):
+                return False
+            count += observed
+            summed[frame] = summed.get(frame, 0) + observed
+            if summed[frame] > frame_budget[frame]:
+                return False
+            previous = frame
+        if count != source["original_draw_success_witnesses"]:
+            return False
+    # Extra unaccounted frame budgets cannot be invented as spare capacity.
+    return set(frame_budget) == set(summed)
 
 
 def _control_projector_callers(control):

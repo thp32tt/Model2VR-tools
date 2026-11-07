@@ -53,6 +53,7 @@ class SourceAuditTests(unittest.TestCase):
             data=REPORT.audit_csv(path)
             scene=data["original_physical_scene_draw_coverage"]
             self.assertEqual(scene["physical_present_count"],512)
+            self.assertEqual(data["original_sampled_scene_draw_frame_budget"], [])
             self.assertEqual(scene["original_begin_scene_count"],512)
             self.assertEqual(scene["original_successful_in_scene_draw_count"],512)
             self.assertEqual(scene["trusted_scene_drawn_present_count"],512)
@@ -593,6 +594,7 @@ class SourceAuditTests(unittest.TestCase):
                                if e[0] != "model2_d3d9_source_draw_phase"])
             src = REPORT.audit_csv(p)["sources"][0]
             self.assertEqual(src["original_draw_success_witnesses"], 1)
+            self.assertEqual(src["original_draw_success_by_physical_frame"], [[7, 1]])
             self.assertEqual(src["original_draw_phase_missing_witnesses"], 1)
             self.assertEqual(src["distinct_original_draw_ordinals"], 0)
             for bad in ((7, 12, pack(0x4321, 1)),

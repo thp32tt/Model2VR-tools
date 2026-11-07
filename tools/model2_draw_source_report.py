@@ -7,6 +7,7 @@ Model 2 gameplay world pass. No ROM, executable, DLL or private trace is shipped
 import argparse
 import csv
 import json
+from array import array
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -582,6 +583,9 @@ def audit_csv(path):
     # private sessions and waste memory for multi-race capture auditing.
     scene_coverage_sampled = {}
     scene_coverage_totals = Counter()
+    # Four bytes per physical Present, bounded by CSV rows. A sampled
+    # caller cannot borrow spare Draws from unrelated physical frames.
+    scene_frame_draw_budget = array('I')
     # One byte per physical frame, not an unbounded list of game geometry:
     # prevents a sampled world/CPU pass from borrowing scene integrity
     # from an unrelated healthy physical frame in the same CSV.
@@ -957,6 +961,7 @@ def audit_csv(path):
                 trusted = (flags==0 and begins==ends and inside>0 and
                            untrusted==0 and failed==0)
                 scene_frame_trusted.append(1 if trusted else 0)
+                scene_frame_draw_budget.append(inside+untrusted+failed)
                 if flags!=0 or begins!=ends:
                     scene_flagged_frame_count+=1
                 elif trusted:
@@ -1408,6 +1413,7 @@ def audit_csv(path):
         "source_context_unknowns": 0,
         "original_main_full_view_depth_candidates": 0,
         "original_draw_success_witnesses": 0,
+        "original_draw_success_by_physical_frame": Counter(),
         "original_draw_failure_witnesses": 0,
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
@@ -1601,6 +1607,8 @@ def audit_csv(path):
             else:
                 original_success = True
                 entry["original_draw_success_witnesses"] += 1
+                if present_frame is not None:
+                    entry["original_draw_success_by_physical_frame"][present_frame] += 1
         # This GPU completion must belong to the sampled CPU witness's
         # same physical original frame/ordinal/Scene and real HRESULT.
         # All bits describe post-COM facts; no bit grants World3D.
@@ -1953,6 +1961,9 @@ def audit_csv(path):
             "caller_is_in_executable": caller != 0,
         }
         record["distinct_present_frame_count"] = len(value["present_frames"])
+        record["original_draw_success_by_physical_frame"] = [
+            [frame, count] for frame, count in sorted(
+                value["original_draw_success_by_physical_frame"].items())]
         # Genuine CPU projector vertex population must belong to at
         # least two DISTINCT original physical Present frames to remain
         # an offline race source candidate (never World3D authorization).
@@ -2034,6 +2045,7 @@ def audit_csv(path):
                         "original_post_com_retained_present_frames",
                         "original_scene_ordinals",
                         "original_draw_phase_ordinals",
+                        "original_draw_success_by_physical_frame",
                        "same_witness_joint_present_frames"):
                 continue
             if isinstance(item, set):
@@ -2095,7 +2107,16 @@ def audit_csv(path):
         if values[0]&0x80000000==0]
     drawn_controls=[
         values for values in successful_controls if sum(values[1:])>0]
+    # Only the bounded union of physically sampled successful Draw frames;
+    # do not retain a huge per-frame original game trace in the report.
+    sampled_success_frames = sorted({frame for entry in grouped.values()
+        for frame in entry["original_draw_success_by_physical_frame"]})
+    sampled_frame_budgets = [
+        [frame, int(scene_frame_draw_budget[frame-1])]
+        for frame in sampled_success_frames
+        if 1 <= frame <= len(scene_frame_draw_budget)]
     return {
+        "original_sampled_scene_draw_frame_budget": sampled_frame_budgets,
         "schema": 1,
         "source_kind": "real_d3d9_command_boundary_readonly_metadata",
         "original_physical_scene_draw_coverage": (
