@@ -6,12 +6,14 @@
 // NO emulator state, ROM pixels, CPU-world/6DoF proof or HMD dependency.
 #include "daytona_original_present_receipt.hpp"
 #include "stereo_frame_policy.hpp"
+#include "daytona_xr_host_epoch_gate.hpp"
 #include <cstdint>
 
 namespace m2vr::xrcommit {
 enum class Reject : std::uint8_t {
     None, SourceDead, StalePixels, PayloadMismatch, PoseUnproven,
-    MissingReceipt, NewerFailedPresent, ContradictoryReceipt
+    MissingReceipt, NewerFailedPresent, ContradictoryReceipt,
+    PreviousHostGeneration
 };
 inline constexpr const char* Name(Reject reason) noexcept {
     switch(reason){
@@ -23,6 +25,7 @@ inline constexpr const char* Name(Reject reason) noexcept {
     case Reject::MissingReceipt: return "ORIGINAL_PRESENT_RECEIPT_MISSING";
     case Reject::NewerFailedPresent: return "NEWER_ORIGINAL_D3D9_PRESENT_FAILED";
     case Reject::ContradictoryReceipt: return "ORIGINAL_PRESENT_RECEIPT_CONTRADICTORY";
+    case Reject::PreviousHostGeneration: return "ORIGINAL_EYES_FROM_PREVIOUS_XR_HOST";
     }
     return "UNKNOWN_ORIGINAL_XR_LAYER_REJECTION";
 }
@@ -37,11 +40,15 @@ inline Result VerifyOriginalFrameAtEnd(
     bool exact_source_pose_accepted,
     std::uint64_t final_qpc,std::uint64_t qpc_hz,
     const producerhealth::Snapshot& final_health,
-    bool final_health_read) noexcept {
+    bool final_health_read,
+    std::uint64_t host_start_qpc) noexcept {
     using namespace transport;
     if(!original_source_alive)return {false,Reject::SourceDead};
     if(!accepted.Cached(final_qpc,qpc_hz))
         return {false,Reject::StalePixels};
+    // Recheck at xrEndFrame, AFTER potentially slow D3D11 image uploads.
+    if(!xrepoch::WithinCurrentHost(eyes.timestamp_qpc,host_start_qpc))
+        return {false,Reject::PreviousHostGeneration};
     if(!eyes.frame_id || eyes.frame_id!=accepted.id() ||
        eyes.kind!=accepted.kind() ||
        !ValidEyePayload(eyes.kind,eyes.eyes[0].size(),

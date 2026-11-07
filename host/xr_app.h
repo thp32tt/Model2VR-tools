@@ -63,6 +63,8 @@ private:
     // One recycled pixel swizzle scratch buffer, never part of IPC staging.
     std::vector<std::uint8_t> bgra_upload_scratch_;
     std::uint32_t source_pid_=0;
+    // Nonzero QPC barrier before this host publishes any tracked pose.
+    std::uint64_t host_source_epoch_qpc_=0u;
     // Original Win32 game process identity is a kernel HANDLE, never just
     // a PID-derived shared mapping name. A dead process cannot be rebound.
     OriginalSourceProcessLease source_process_lease_{};

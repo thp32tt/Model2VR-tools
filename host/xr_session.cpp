@@ -20,6 +20,10 @@ XrApp::~XrApp(){
     if(instance_!=XR_NULL_HANDLE)xrDestroyInstance(instance_);
 }
 void XrApp::initialize(){
+    LARGE_INTEGER host_start{};
+    if(!QueryPerformanceCounter(&host_start) || host_start.QuadPart<=0)
+        throw std::runtime_error("OpenXR source-generation QPC unavailable");
+    host_source_epoch_qpc_=static_cast<std::uint64_t>(host_start.QuadPart);
     std::uint32_t count=0;
     check(xrEnumerateInstanceExtensionProperties(nullptr,0,&count,nullptr),"list extensions");
     std::vector<XrExtensionProperties> extensions(count,{XR_TYPE_EXTENSION_PROPERTIES});
