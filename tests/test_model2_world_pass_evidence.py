@@ -668,7 +668,16 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                                  "missing_same_draw_matrix_material_or_render_evidence")
 
     def test_original_physical_world_owned_count_cannot_be_forged(self):
-        for wrong in (True, -1, 2, 4):
+        # Impossible/boolean frame counts are rejected during preflight;
+        # plausible-but-wrong counts remain diagnosable candidate failures.
+        for wrong in (True, -1):
+            with self.subTest(wrong=wrong):
+                source = witness()
+                source["distinct_physical_world_owned_present_frame_count"] = wrong
+                with self.assertRaisesRegex(
+                        ValueError, "per-caller source Present count"):
+                    compare_sessions([report(source), report(witness())], controls())
+        for wrong in (2, 4):
             with self.subTest(wrong=wrong):
                 source = witness()
                 source["distinct_physical_world_owned_present_frame_count"] = wrong
