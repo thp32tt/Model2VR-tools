@@ -28,8 +28,17 @@ class SourceAuditTests(unittest.TestCase):
             frames=512
             caller=0x1234
             lo,hi=REPORT._original_caller_exact_bloom({caller})
-            events=[("model2_d3d9_original_draw_caller_first",
-                     1,caller,pack(1,1),0)]
+            events=[
+                ("model2_d3d9_original_draw_caller_first",
+                 1,caller,pack(1,1),0),
+                # One actually observed original sampled VB Draw on the
+                # first of 512 continuous physical Scene/Draw Presents.
+                ("model2_d3d9_vb_present_frame", 8001, 1, 1, 0),
+                ("model2_d3d9_vb_source", 8001, caller,
+                 pack(1,0x104),pack(4096,24)),
+                ("model2_d3d9_vb_original_result", 8001, 0,
+                 caller,pack(1,1)),
+            ]
             for frame in range(1,frames+1):
                 if frame==1 or frame%8==0:
                     events.append(("model2_d3d9_original_control_present_phase",
@@ -53,7 +62,10 @@ class SourceAuditTests(unittest.TestCase):
             data=REPORT.audit_csv(path)
             scene=data["original_physical_scene_draw_coverage"]
             self.assertEqual(scene["physical_present_count"],512)
-            self.assertEqual(data["original_sampled_scene_draw_frame_budget"], [])
+            self.assertEqual(data["original_sampled_scene_draw_frame_budget"],
+                             [[1, 1]])
+            self.assertEqual(data["sources"][0][
+                "original_draw_success_by_physical_frame"], [[1, 1]])
             self.assertEqual(scene["original_begin_scene_count"],512)
             self.assertEqual(scene["original_successful_in_scene_draw_count"],512)
             self.assertEqual(scene["trusted_scene_drawn_present_count"],512)
