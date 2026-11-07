@@ -115,7 +115,10 @@ class CandidateReplayTest(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptError, "must belong"):
             verify_pending_candidate(self.archive, other)
         pending.unlink()
-        pending.symlink_to(other)
+        try:
+            pending.symlink_to(other)
+        except (OSError, NotImplementedError):
+            self.skipTest("creating symlinks requires optional Windows privileges")
         with self.assertRaisesRegex(ReceiptError, "linked or non-file"):
             verify_pending_candidate(self.archive, pending)
 

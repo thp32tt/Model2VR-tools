@@ -208,7 +208,7 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn("Get-FileHash -LiteralPath $reportPath -Algorithm SHA256", self.ps)
         self.assertIn("$csvHash -cne $hashes[$auditedLabel]", self.ps)
         self.assertIn("$reportHash -cne $reportHashes[$auditedLabel]", self.ps)
-        self.assertEqual(self.ps.count("Assert-PrivateArchiveIntegrity"), 4)
+        self.assertEqual(self.ps.count("Assert-PrivateArchiveIntegrity"), 5)
         self.assertLess(self.ps.index("Assert-PrivateArchiveIntegrity\n$argsForPython"),
                         self.ps.index("$pythonExitCode = Invoke-PrivateAudit"))
         self.assertGreater(self.ps.index("try { Assert-PrivateArchiveIntegrity }"),

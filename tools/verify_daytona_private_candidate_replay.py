@@ -170,7 +170,7 @@ def main(argv=None) -> int:
     if args.pending_candidate is not None:
         print("PRIVATE PENDING CANDIDATE SEMANTIC PASS: seven reports independently agree.")
     elif args.replay_csv:
-        print("PRIVATE CSV/REPORT/CANDIDATE REPLAY PASS: seven raw CSV preflights 
+        print("PRIVATE CSV/REPORT/CANDIDATE REPLAY PASS: seven raw CSV preflights "
               "and candidate semantics agree.")
     else:
         print("PRIVATE CANDIDATE REPLAY PASS: seven report-derived results match.")
