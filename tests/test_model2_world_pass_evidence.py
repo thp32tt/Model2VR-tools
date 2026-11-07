@@ -896,8 +896,14 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             source["original_material_frame_lineage"][name] = [1, 4, 7]
         # A genuine physical Present frame list and the original COM
         # successful Draw frames must be exactly coherent.
-        source["original_draw_success_by_physical_frame"] = [
-            [1, 1], [4, 1], [7, 1]]
+        for stage in (
+            "original_draw_success_by_physical_frame",
+            "original_present_success_by_physical_frame",
+            "original_draw_phase_attested_by_physical_frame",
+            "original_scene_phase_attested_by_physical_frame",
+            "original_draw_completion_attested_by_physical_frame",
+        ):
+            source[stage] = [[1, 1], [4, 1], [7, 1]]
         race_a, race_b = report(source), report(source)
         for run in (race_a, race_b):
             run["original_sampled_scene_draw_frame_budget"] = [
