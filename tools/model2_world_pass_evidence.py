@@ -10,6 +10,7 @@ import json
 import os
 import re
 import tempfile
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 try:
@@ -970,20 +971,64 @@ def _assert_original_x86_csv_closed(path):
         raise ValueError("PRIVATE ORIGINAL X86 CSV close probe failed")
 
 
-def _capture_digest(path):
+@contextmanager
+def _hold_original_x86_csv_read_lease(path):
+    """Keep genuine original Windows x86 CSV immutable across the WHOLE audit.
+
+    A closed-producer probe before/after hashing cannot prevent a second
+    writer from reopening a file during slow original Draw/Present parsing.
+    GENERIC_READ + FILE_SHARE_READ allows our subsequent read-only Python
+    opens, but denies any new GENERIC_WRITE or rename/delete handle while
+    this lease is held. The original x86 logger's active GENERIC_WRITE handle
+    also prevents acquiring this lease. No game, ROM, or PRIVATE bytes are
+    written, moved or transmitted. Other platforms preserve digest checks.
+    """
+    if os.name != "nt" or path.suffix.lower() != ".csv":
+        yield
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    # 0x80000000 GENERIC_READ, 1 FILE_SHARE_READ, 3 OPEN_EXISTING:
+    # not an exclusive read handle; only future writers/renames are denied.
+    source = _file(path)
+    handle = create_file(str(source), 0x80000000, 1, None, 3, 0x80, None)
+    if handle in (None, ctypes.c_void_p(-1).value):
+        raise ValueError(
+            "PRIVATE ORIGINAL X86 CSV STILL OPEN FAIL-CLOSED: "
+            "cannot hold original source read-only for entire analysis")
+    try:
+        yield
+    finally:
+        if not close_handle(handle):
+            raise OSError("PRIVATE original x86 CSV read-only lease release failed")
+
+
+def _capture_digest(path, *, held_lease=False):
     # Duplicate bytes under distinct filenames are NOT independent sessions.
     # Stream large private CSV logs without retaining them in memory.
     digest = hashlib.sha256()
     # Same no-symlink local-only source rule as the final PRIVATE receipt:
     # no standalone comparison may follow a linked capture outside the
     # operator's chosen original-game evidence directory.
-    _assert_original_x86_csv_closed(path)
+    if not held_lease:
+        _assert_original_x86_csv_closed(path)
     with _file(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
-    # Recheck after reading. The parser and candidate comparator likewise
-    # rehash all original inputs before any PRIVATE report publication.
-    _assert_original_x86_csv_closed(path)
+    # The durable source lease prevents reopening for write/rename mid-audit.
+    # Unleased legacy callers still use the old short closed-producer probes.
+    if not held_lease:
+        _assert_original_x86_csv_closed(path)
     return digest.digest()
 
 
@@ -1061,17 +1106,44 @@ def preflight_original_session(path, *, require_race_source=False):
     # audited mutable bytes without checking the *same* physical file after
     # processing. Do not publish candidate metadata based on a changing
     # original x86 Draw/Scene/Present capture. Reject symlinked input too.
-    original_digest = _capture_digest(path)
-    report=audit_csv(_file(path))
-    sources=_validate_report(report)
-    bloom=_control_bloom(report)
-    _control_exact_callers(report,bloom)
-    _control_projector_callers(sources)
-    if require_race_source:
-        _require_race_source_readiness(report, sources)
-    if _capture_digest(path) != original_digest:
-        raise ValueError("PRIVATE original x86 CSV changed during single-session preflight")
-    return report
+    with _hold_original_x86_csv_read_lease(path):
+        original_digest = _capture_digest(path, held_lease=True)
+        report=audit_csv(_file(path))
+        sources=_validate_report(report)
+        bloom=_control_bloom(report)
+        _control_exact_callers(report,bloom)
+        _control_projector_callers(sources)
+        if require_race_source:
+            _require_race_source_readiness(report, sources)
+        if _capture_digest(path, held_lease=True) != original_digest:
+            raise ValueError("PRIVATE original x86 CSV changed during single-session preflight")
+        return report
+
+
+def _compare_direct_seven_inputs(paths, races, controls, output):
+    """Keep all seven original CSV sources write/rename-closed until publish."""
+    with ExitStack() as leases:
+        # Acquire all original source leases before reading ANY session. The
+        # operator's genuine original x86 game CSVs are not modified or copied.
+        # JSON-only cached reports retain their previous diagnostic-only
+        # digest handling and cannot become physical source authorization.
+        for path in paths:
+            leases.enter_context(_hold_original_x86_csv_read_lease(path))
+        fingerprints=[_capture_digest(path, held_lease=True) for path in paths]
+        if len(set(fingerprints)) != len(fingerprints):
+            raise ValueError("identical capture bytes cannot prove independent sessions")
+        result=compare_sessions(
+            [_load_report(path) for path in races],
+            {label:_load_report(path) for label,path in controls.items()},
+        )
+        if any(_capture_digest(path, held_lease=True) != earlier
+               for path, earlier in zip(paths, fingerprints)):
+            raise ValueError(
+                "PRIVATE seven-session source changed during candidate analysis")
+        content=json.dumps(result,sort_keys=True,indent=2)+"\\n"
+        if output:
+            _write_private_json_atomic(output, content, paths)
+        return content
 
 
 def main(argv=None):
@@ -1095,23 +1167,26 @@ def main(argv=None):
             parser.error("--preflight cannot mix with seven-session comparison")
         try:
             _refuse_private_output_alias(args.output, [args.preflight])
-            result=preflight_original_session(
-                args.preflight, require_race_source=args.require_race_source)
-            content=json.dumps(result,sort_keys=True,indent=2)+"\n"
-            if args.output:
-                _write_private_json_atomic(args.output, content, [args.preflight])
-            else:
-                # Without explicit PRIVATE file, never print the original
-                # game's sampled caller/source records to the terminal.
-                run=result["original_capture_run"]
-                print(json.dumps({
-                    "schema":1,"preflight":"ORIGINAL_SOURCE_READABLE",
-                    "physical_present_count":run["physical_present_count"],
-                    "race_source_preflight":(
-                        "CANDIDATE_ONLY_NOT_AUTHORIZED"
-                        if args.require_race_source else "NOT_REQUESTED"),
-                    "world_pass_proof":"NOT_ESTABLISHED",
-                    "hmd_runtime_validation":"UNTESTED"}))
+            # Keep the Windows original source pinned THROUGH publication:
+            # a closed-producer probe only around read/parse leaves a gap
+            # before atomic private output promotion.
+            with _hold_original_x86_csv_read_lease(args.preflight):
+                result=preflight_original_session(
+                    args.preflight, require_race_source=args.require_race_source)
+                content=json.dumps(result,sort_keys=True,indent=2)+"\n"
+                if args.output:
+                    _write_private_json_atomic(args.output, content, [args.preflight])
+                else:
+                    # Never print sampled original game caller/source records.
+                    run=result["original_capture_run"]
+                    print(json.dumps({
+                        "schema":1,"preflight":"ORIGINAL_SOURCE_READABLE",
+                        "physical_present_count":run["physical_present_count"],
+                        "race_source_preflight":(
+                            "CANDIDATE_ONLY_NOT_AUTHORIZED"
+                            if args.require_race_source else "NOT_REQUESTED"),
+                        "world_pass_proof":"NOT_ESTABLISHED",
+                        "hmd_runtime_validation":"UNTESTED"}))
         except (ValueError,OSError,UnicodeError,json.JSONDecodeError) as exc:
             parser.error(str(exc))
         return
@@ -1131,32 +1206,10 @@ def main(argv=None):
         parser.error("two independent race files and distinct capture paths required")
     try:
         _refuse_private_output_alias(args.output, paths)
-        fingerprints=[_capture_digest(path) for path in paths]
-        if len(set(fingerprints))!=len(fingerprints):
-            parser.error("identical capture bytes cannot prove independent sessions")
-        result=compare_sessions(
-            [_load_report(path) for path in args.race],
-            {label:_load_report(path) for label,path in controls.items()},
-        )
-        # The standalone seven-session CLI used to hash only BEFORE its
-        # potentially long real CSV/JSON analysis. An operator concurrently
-        # replacing even the FIRST input during the LAST input scan would
-        # leave a candidate derived from a different set of source bytes.
-        # Rehash ALL seven immediately before publication; the Windows
-        # collector separately pins those files until receipt promotion.
-        if any(_capture_digest(path) != earlier
-               for path, earlier in zip(paths, fingerprints)):
-            raise ValueError(
-                "PRIVATE seven-session source changed during candidate analysis")
+        content = _compare_direct_seven_inputs(paths, args.race, controls, args.output)
     except (ValueError,OSError,json.JSONDecodeError) as exc:
         parser.error(str(exc))
-    content=json.dumps(result,sort_keys=True,indent=2)+"\n"
-    if args.output:
-        try:
-            _write_private_json_atomic(args.output, content, paths)
-        except (ValueError, OSError) as exc:
-            parser.error(str(exc))
-    else:
+    if not args.output:
         print(content,end="")
 
 
