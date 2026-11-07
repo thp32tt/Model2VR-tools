@@ -947,19 +947,23 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         base["original_successful_draw_ordinal_pairs"] = [
             [1, 12], [1, 13], [2, 16], [3, 20]]
         base["distinct_original_draw_ordinals"] = 4
+        # Both successful Draws on frame 1 were phase attested; only
+        # Draw #12 has the later presented Scene/material chain.
+        base["original_draw_phase_attested_witnesses"] = 4
+        base["original_draw_phase_attested_by_physical_frame"] = [
+            [1, 2], [2, 1], [3, 1]]
+        base["original_draw_phase_attested_ordinal_pairs"] = [
+            [1, 12], [1, 13], [2, 16], [3, 20]]
         for field in (
             "original_present_success_ordinal_pairs",
-            "original_draw_phase_attested_ordinal_pairs",
             "original_scene_phase_attested_ordinal_pairs",
             "original_draw_completion_attested_ordinal_pairs",
         ):
-            # One authentic stage on each Present, including first Draw #12.
             base[field] = [[1, 12], [2, 16], [3, 20]]
         accepted = compare_sessions([report(base), report(witness())], controls())
         self.assertEqual(len(accepted["candidates"]), 1)
         for field in (
             "original_present_success_ordinal_pairs",
-            "original_draw_phase_attested_ordinal_pairs",
             "original_scene_phase_attested_ordinal_pairs",
             "original_draw_completion_attested_ordinal_pairs",
         ):
@@ -1005,10 +1009,13 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         src["original_successful_draw_ordinal_pairs"] = [
             [1, 12], [1, 13], [2, 16], [3, 20]]
         src["distinct_original_draw_ordinals"] = 4
-        # Both phase and Scene have one witness on physical Present #1,
-        # but different successful Draws own those two witnesses.
+        # Both successful frame-1 Draws have authentic phase witnesses,
+        # but only #13 has the Scene witness. Material #12 cannot borrow.
+        src["original_draw_phase_attested_witnesses"] = 4
+        src["original_draw_phase_attested_by_physical_frame"] = [
+            [1, 2], [2, 1], [3, 1]]
         src["original_draw_phase_attested_ordinal_pairs"] = [
-            [1, 12], [2, 16], [3, 20]]
+            [1, 12], [1, 13], [2, 16], [3, 20]]
         src["original_scene_phase_attested_ordinal_pairs"] = [
             [1, 13], [2, 16], [3, 20]]
         got = compare_sessions([report(src), report(witness())], controls())
