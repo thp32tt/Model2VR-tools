@@ -1,5 +1,26 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## PRIVATE original capture output-path overwrite protection (2026-11-07)
+
+The original Daytona x86 PRIVATE evidence tool refuses to use any input
+capture as an output destination. This applies both to single-session
+`--preflight ORIGINAL.csv --output ...` and the direct seven-session
+`--race`/`--control` candidate comparison. A mistyped output path equal
+to a source CSV/JSON, a normalized/parent-symlink alias or an existing
+hard-link alias is rejected **before analysis**; output symlinks are
+rejected even when they point to unrelated operator files. Keep all
+original source CSV and JSON evidence immutable, with distinct PRIVATE
+output filenames. The Windows collector's unique pending report paths
+remain compatible.
+
+This is a safety improvement for local user-owned original capture data,
+not a CPU/GPU World3D source proof. Python 398 synthetic public tests and
+all four required original-source SHA `b05fe43d3c35633e5f049b8e7b2b36c707b4c8e6`
+GitHub CI workflows passed (including native game-win32, xr-win64, bundle).
+Original Daytona executable/ROM, source rendering, OpenXR/FFB, OutRun and
+web-port have not changed. `world_pass_proof=NOT_ESTABLISHED`,
+`RUNTIME_VALIDATION=UNTESTED`, World3D AUTO-OFF, mono fallback retained.
+
 ## Direct original seven-session candidate input integrity (2026-11-07)
 
 The direct local command `python tools/model2_world_pass_evidence.py --race ... --control ...`
