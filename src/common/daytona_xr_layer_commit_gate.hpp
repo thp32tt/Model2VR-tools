@@ -60,6 +60,8 @@ inline Result VerifyOriginalFrameAtEnd(
     // exact QPC and OpenXR pose tag originally copied under the x86 source
     // seqlock. Refuse any post-accept swap/relabel before xrEndFrame, even
     // if another coherent same-ID buffer still has two correctly sized eyes.
+    // This SOURCE_METADATA_MISMATCH is intentionally reported before the
+    // generic mono-pose rejection, as the native regression now asserts.
     if(!accepted.MatchesAcceptedMetadata(eyes) ||
        !ValidEyePayload(eyes.kind,eyes.eyes[0].size(),
                         eyes.eyes[1].size()))
