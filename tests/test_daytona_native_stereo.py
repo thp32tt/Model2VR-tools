@@ -1143,6 +1143,12 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("? tag!=0u",protocol)
         self.assertIn("!ValidSourcePoseClaim(kind,pose_sequence)",protocol)
         self.assertIn("!ValidSourcePoseClaim(stamp.kind,stamp.pose_sequence)",protocol)
+        host_policy=(ROOT/"src/common/stereo_frame_policy.hpp").read_text("utf-8")
+        # The host cannot bypass the exact same early x86 source-pose
+        # rule when it sees a forged stamp or receives a direct Snapshot.
+        self.assertIn("!ValidSourcePoseClaim(stamp->kind,stamp->pose_sequence)",host_policy)
+        self.assertIn("!ValidSourcePoseClaim(snapshot.kind,snapshot.pose_sequence)",host_policy)
+        self.assertIn("ValidSourcePoseClaim(eyes.kind,eyes.pose_sequence)",host_policy)
 
     def test_authenticated_cpu_world_handoff_before_native_gpu_fallback(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")

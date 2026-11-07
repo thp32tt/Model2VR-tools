@@ -74,6 +74,10 @@ static_assert(!ValidSourcePoseClaim(FrameKind::GameMonoFallback,1u));
 static_assert(ValidSourcePoseClaim(FrameKind::Diagnostic,0u));
 static_assert(!ValidSourcePoseClaim(FrameKind::Diagnostic,1u));
 static_assert(!ValidSourcePoseClaim(FrameKind::Invalid,0u));
+static_assert(!ValidSourcePoseClaim(FrameKind::Invalid,1u));
+static_assert(ValidSourcePoseClaim(
+    FrameKind::VerifiedCpuWorldStereo,
+    (std::numeric_limits<std::uint32_t>::max)()));
 constexpr bool ValidEyePayload(FrameKind kind,std::size_t left,
                                std::size_t right) noexcept {
     return left==kBytesPerEye && (kind==FrameKind::CompactMono
