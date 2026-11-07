@@ -1,5 +1,24 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Per-original-process PRIVATE source CSV exclusive creation (2026-11-07)
+
+The actual original Daytona x86 probe now creates its source CSV only with
+Windows `CREATE_NEW`; it NEVER appends a second emulator process to an
+existing log, including an empty filename left by an interrupted capture.
+The filename includes the local timestamp to millisecond precision, PID and
+system QPC start stamp. `Collect-Daytona-Original-Evidence.ps1` continues to
+select the same `daytona_vr_startup_*.csv` pattern, and every race/control
+still requires a separate user-observed original emulator exit. If a filename
+already exists, probe initialization fails closed rather than corrupting a
+previous user-owned original process log. Do not rename, edit or merge these
+source CSVs across the seven private race/control stages.
+
+Actual C++ source/native CTest SHA: `1f99ea0cd68eb5ee0f467c79cdb4ef9b7735704e`.
+Exact-SHA 4/4 required CI SUCCESS; this does not establish World3D gameplay
+provenance, camera metres-per-unit, Quest3+VDXR 6DoF or runtime visual proof.
+`world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED`, CPU
+World3D AUTO-OFF and unmodified original mono fallback remain mandatory.
+
 ## Standalone ORIGINAL x86 single-session preflight source-byte stability (2026-11-07)
 
 The direct `python tools/model2_world_pass_evidence.py --preflight
