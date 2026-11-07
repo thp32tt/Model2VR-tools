@@ -319,7 +319,54 @@ def _cpu_callers(source):
     return callers if len(callers) == 1 else None
 
 
-def _enough_original_source(source):
+
+def _exact_original_present_lineage(source, physical_present_count):
+    """Require one authentic original physical-frame chain, not just equal N.
+
+    The raw CSV auditor exports the exact sorted frame sets. A cached
+    report with equal cardinalities but disjoint frames cannot claim
+    Draw/Scene/post-COM identity. Legacy reports remain readable for
+    diagnostics, never silently promoted to a World3D candidate.
+    """
+    lineage = source.get("original_material_frame_lineage")
+    counts = {
+        "projected": "distinct_projected_material_present_frame_count",
+        "draw_success": "distinct_successful_projected_material_present_frame_count",
+        "present_success": "distinct_physically_presented_material_present_frame_count",
+        "draw_phase": "distinct_phase_attested_physically_presented_material_present_frame_count",
+        "scene_phase": "distinct_scene_attested_physically_presented_material_present_frame_count",
+        "post_com": "distinct_post_com_retained_present_frame_count",
+        "same_witness_joint": "distinct_same_witness_joint_present_frame_count",
+        "main_context": "distinct_context_present_frame_count",
+    }
+    if not isinstance(lineage, dict) or set(lineage) != set(counts):
+        return False
+    sets = {}
+    for key, count_field in counts.items():
+        frames = lineage[key]
+        count = source.get(count_field)
+        if (not isinstance(frames, list) or type(count) is not int or
+                not 0 <= count <= physical_present_count or
+                len(frames) != count or
+                any(type(frame) is not int or
+                    not 1 <= frame <= physical_present_count
+                    for frame in frames) or
+                any(a >= b for a, b in zip(frames, frames[1:]))):
+            return False
+        sets[key] = set(frames)
+    chain = ("scene_phase", "draw_phase", "present_success",
+             "draw_success", "projected", "same_witness_joint")
+    if any(not sets[child].issubset(sets[parent])
+           for child, parent in zip(chain, chain[1:])):
+        return False
+    # The identical Scene material Present must retain a successful
+    # original physical post-COM completion on THAT frame, and each
+    # projected candidate must have main RT/depth source-context evidence.
+    return (sets["scene_phase"].issubset(sets["post_com"]) and
+            sets["projected"].issubset(sets["main_context"]))
+
+
+def _enough_original_source(source, physical_present_count):
     # Projected-material is a SAME-witness subset of the complete CPU
     # projector + active matrix + geometry command + main RT/Present join.
     # Separate merely coincident counters must not be joined here.
@@ -435,7 +482,8 @@ def _enough_original_source(source):
                 any(not isinstance(s, str) for s in status) or
                 set(status) != allowed):
             return False
-    return _cpu_callers(source) is not None
+    return (_cpu_callers(source) is not None and
+            _exact_original_present_lineage(source, physical_present_count))
 
 
 
@@ -554,7 +602,9 @@ def compare_sessions(race_reports, nonrace_reports):
         elif any(not r["original_physical_draw_target_coverage"][
                 "all_original_draw_targets_trusted"] for r in race_reports):
             reason="race_original_rt0_depth_draw_provenance_untrusted"
-        elif any(not _enough_original_source(session[key]) for session in race):
+        elif any(not _enough_original_source(
+                 session[key], report["original_capture_run"]["physical_present_count"])
+                 for session, report in zip(race, race_reports)):
             reason="missing_same_draw_matrix_material_or_render_evidence"
         elif any(not _within_original_scene_draw_budget(report)
                  for report in race_reports):

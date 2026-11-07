@@ -1931,6 +1931,12 @@ class SourceAuditTests(unittest.TestCase):
             complete=REPORT.audit_csv(path)["sources"][0]
             self.assertEqual(complete["original_draw_completion_attested_witnesses"],1)
             self.assertEqual(complete["distinct_post_com_retained_present_frame_count"],1)
+            # A complete original physical post-COM Draw can be traced
+            # to its specific Present, while absent CPU/material joins
+            # are never invented as candidate frame sets.
+            self.assertEqual(complete["original_material_frame_lineage"]["post_com"], [17])
+            self.assertEqual(complete["original_material_frame_lineage"]["scene_phase"], [])
+            self.assertEqual(complete["original_material_frame_lineage"]["projected"], [])
             for mask in (1,3,7,11,13):
                 with self.subTest(mask=mask):
                     self.write_log(path,base+[(

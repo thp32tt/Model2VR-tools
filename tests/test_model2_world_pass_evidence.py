@@ -58,6 +58,16 @@ def witness(cpu="0x004bb400", count=3):
         "original_source_vertex_pipeline_status": ["supported"],
         "original_source_fill_status": ["solid"],
         "original_source_depth_cull_status": ["supported"],
+        "original_material_frame_lineage": {
+            "projected": list(range(1, count+1)),
+            "draw_success": list(range(1, count+1)),
+            "present_success": list(range(1, count+1)),
+            "draw_phase": list(range(1, count+1)),
+            "scene_phase": list(range(1, count+1)),
+            "post_com": list(range(1, count+1)),
+            "same_witness_joint": list(range(1, count+1)),
+            "main_context": list(range(1, count+1)),
+        },
         "same_witness_joint_cpu_matrix_commands": [
             [cpu, "0x010f0068", "0x12345678", "0x00000120"],
             [cpu, "0x010f00a8", "0x87654321", "0x00000121"],
@@ -626,6 +636,56 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             [report(*copy.deepcopy(sources)), report(*copy.deepcopy(sources))],
             controls())
         self.assertEqual(len(got["candidates"]), 3)
+        self.assertFalse(got["adapter_auto_enable"])
+
+
+    def test_original_frame_lineage_rejects_equal_count_cross_frame_swap(self):
+        # Every old summary count remains three. The claimed successful
+        # Draw frames are not a subset of the projected source frames.
+        source = witness()
+        source["original_material_frame_lineage"]["draw_success"] = [1, 2, 4]
+        result = compare_sessions([report(source), report(witness())], controls())
+        self.assertEqual(result["candidates"], [])
+        self.assertEqual(result["rejected"][0]["reason"],
+                         "missing_same_draw_matrix_material_or_render_evidence")
+
+    def test_original_frame_lineage_rejects_scene_from_another_present(self):
+        source = witness()
+        source["original_material_frame_lineage"]["scene_phase"] = [1, 2, 4]
+        result = compare_sessions([report(source), report(witness())], controls())
+        self.assertEqual(result["candidates"], [])
+        self.assertEqual(result["rejected"][0]["reason"],
+                         "missing_same_draw_matrix_material_or_render_evidence")
+
+    def test_original_scene_must_share_exact_frame_with_post_com_completion(self):
+        source = witness()
+        source["original_material_frame_lineage"]["post_com"] = [1, 2, 5]
+        result = compare_sessions([report(source), report(witness())], controls())
+        self.assertEqual(result["candidates"], [])
+        self.assertEqual(result["rejected"][0]["reason"],
+                         "missing_same_draw_matrix_material_or_render_evidence")
+
+    def test_original_present_lineage_fails_closed_for_missing_malformed_frames(self):
+        for wrong in (None, [1, 1, 2], [1, 2, 9], [1, 2, True],
+                      [2, 1, 3], [1, 2], ["1", 2, 3]):
+            with self.subTest(wrong=wrong):
+                source = witness()
+                if wrong is None:
+                    del source["original_material_frame_lineage"]
+                else:
+                    source["original_material_frame_lineage"]["projected"] = wrong
+                got = compare_sessions([report(source), report(witness())],
+                                       controls())
+                self.assertFalse(got["candidates"])
+                self.assertEqual(got["rejected"][0]["reason"],
+                                 "missing_same_draw_matrix_material_or_render_evidence")
+
+    def test_original_valid_lineage_can_span_nonconsecutive_physical_frames(self):
+        source = witness()
+        for name in source["original_material_frame_lineage"]:
+            source["original_material_frame_lineage"][name] = [1, 4, 7]
+        got = compare_sessions([report(source), report(source)], controls())
+        self.assertEqual(len(got["candidates"]), 1)
         self.assertFalse(got["adapter_auto_enable"])
 
     def test_cross_phase_conservative_candidate_only(self):

@@ -1970,6 +1970,21 @@ def audit_csv(path):
             value["original_scene_attested_physical_material_present_frames"])
         record["distinct_post_com_retained_present_frame_count"] = len(
             value["original_post_com_retained_present_frames"])
+        # PRIVATE source identity: retain the exact original physical
+        # Present indices for the causal material/COM chain. Equal set
+        # cardinalities alone cannot prove that the same original frames
+        # survived Draw HRESULT, physical Present, Scene and post-COM.
+        # This data stays in local operator reports, never public CI logs.
+        record["original_material_frame_lineage"] = {
+            "projected": sorted(value["projected_material_correlated_present_frames"]),
+            "draw_success": sorted(value["original_successful_projected_material_present_frames"]),
+            "present_success": sorted(value["original_physically_presented_material_present_frames"]),
+            "draw_phase": sorted(value["original_phase_attested_physical_material_present_frames"]),
+            "scene_phase": sorted(value["original_scene_attested_physical_material_present_frames"]),
+            "post_com": sorted(value["original_post_com_retained_present_frames"]),
+            "same_witness_joint": sorted(value["same_witness_joint_present_frames"]),
+            "main_context": sorted(value["context_present_frames"]),
+        }
         scene_ordinals = value["original_scene_ordinals"]
         record["original_scene_ordinal_min"] = (
             min(scene_ordinals) if scene_ordinals else None)
