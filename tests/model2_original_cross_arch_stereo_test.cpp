@@ -201,6 +201,10 @@ int wmain(int argc,wchar_t** argv){
         REQUIRE(frame_gate.Accept(copied,
             static_cast<std::uint64_t>(now.QuadPart),
             static_cast<std::uint64_t>(hz.QuadPart)));
+        // This is a real native x86->x64 shared mapping: original mono
+        // source kind does NOT clear the last accepted tracked XR pose.
+        REQUIRE(frame_gate.lastSourcePoseSequence()==
+                (i==0u?91u:(i==1u?91u:93u)));
         if(i==2u){
             transport::FrameStamp stale=inspected;
             stale.frame_id=4u;
