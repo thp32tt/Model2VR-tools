@@ -1868,7 +1868,12 @@ class NativeStereoTest(unittest.TestCase):
         launcher=(ROOT/"scripts/Run-Daytona-VR.bat").read_text("utf-8")
         config=configparser.ConfigParser()
         config.read(ROOT/"config/daytona_native_stereo.ini",encoding="utf-8")
-        self.assertIn("report_wizard_health(true,usable)",host)
+        # The F9 key edge must be sampled AFTER post-upload physical
+        # Present and source-process liveness decide actual XR layer count.
+        self.assertIn("report_wizard_health(true,usable && commit_source_layer)",host)
+        self.assertGreater(
+            host.index("report_wizard_health(true,usable && commit_source_layer)"),
+            host.index("end.layerCount=commit_source_layer?1u:0u"))
         self.assertIn("report_wizard_health(false,false)",host)
         self.assertIn("GetAsyncKeyState(VK_F9)",host)
         self.assertIn("daytona_vr_bug_capture.txt",host)
