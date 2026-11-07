@@ -628,6 +628,50 @@ def _within_original_scene_draw_budget(report):
                 min(ordinals, default=None) != source.get("original_draw_ordinal_min") or
                 max(ordinals, default=None) != source.get("original_draw_ordinal_max")):
             return False
+        # Stage counters are independent read-only x86 observations. A
+        # matching frame count cannot launder a different Draw ordinal
+        # into this sampled COM call's Scene or retained post-COM source.
+        # Legacy cached reports without exact ordinal provenance remain
+        # diagnostics-only (rejected candidates), never World3D authority.
+        ordinal_stage_pairs = {"draw_success": own_pairs}
+        for field, stage in (
+            ("original_present_success_ordinal_pairs", "present_success"),
+            ("original_draw_phase_attested_ordinal_pairs", "draw_phase"),
+            ("original_scene_phase_attested_ordinal_pairs", "scene_phase"),
+            ("original_draw_completion_attested_ordinal_pairs", "post_com"),
+        ):
+            observed_pairs = source.get(field)
+            if (not isinstance(observed_pairs, list) or
+                    len(observed_pairs) != sum(actual[stage].values()) or
+                    len(observed_pairs) > MAX_SOURCES):
+                return False
+            previous_stage_pair = (0, 0)
+            stage_set = set()
+            stage_frames = {}
+            for pair in observed_pairs:
+                if (not isinstance(pair, list) or len(pair) != 2 or
+                        any(type(value) is not int for value in pair)):
+                    return False
+                stage_pair = tuple(pair)
+                if (stage_pair <= previous_stage_pair or
+                        stage_pair not in own_pairs):
+                    return False
+                stage_set.add(stage_pair)
+                frame = stage_pair[0]
+                stage_frames[frame] = stage_frames.get(frame, 0) + 1
+                previous_stage_pair = stage_pair
+            if stage_frames != actual[stage]:
+                return False
+            ordinal_stage_pairs[stage] = stage_set
+        if (not ordinal_stage_pairs["present_success"].issubset(own_pairs) or
+                not ordinal_stage_pairs["draw_phase"].issubset(own_pairs) or
+                not ordinal_stage_pairs["scene_phase"].issubset(
+                    ordinal_stage_pairs["draw_phase"]) or
+                not ordinal_stage_pairs["post_com"].issubset(
+                    ordinal_stage_pairs["scene_phase"]) or
+                not ordinal_stage_pairs["post_com"].issubset(
+                    ordinal_stage_pairs["present_success"])):
+            return False
         material_pairs = source.get(
             "original_scene_material_postcom_ordinal_pairs")
         if (not isinstance(material_pairs, list) or
@@ -641,7 +685,10 @@ def _within_original_scene_draw_budget(report):
                 return False
             frame, ordinal = pair
             if ((frame, ordinal) <= previous_material or
-                    (frame, ordinal) not in own_pairs or
+                    (frame, ordinal) not in ordinal_stage_pairs["post_com"] or
+                    (frame, ordinal) not in ordinal_stage_pairs["present_success"] or
+                    (frame, ordinal) not in ordinal_stage_pairs["draw_phase"] or
+                    (frame, ordinal) not in ordinal_stage_pairs["scene_phase"] or
                     frame not in actual["present_success"] or
                     frame not in actual["draw_phase"] or
                     frame not in actual["scene_phase"] or

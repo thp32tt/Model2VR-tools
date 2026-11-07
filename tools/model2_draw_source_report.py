@@ -1415,6 +1415,10 @@ def audit_csv(path):
         "original_draw_success_witnesses": 0,
         "original_draw_success_by_physical_frame": Counter(),
         "original_successful_draw_ordinal_pairs": set(),
+        "original_present_success_ordinal_pairs": set(),
+        "original_draw_phase_attested_ordinal_pairs": set(),
+        "original_scene_phase_attested_ordinal_pairs": set(),
+        "original_draw_completion_attested_ordinal_pairs": set(),
         "original_scene_material_postcom_ordinal_pairs": set(),
         "original_present_success_by_physical_frame": Counter(),
         "original_draw_phase_attested_by_physical_frame": Counter(),
@@ -1560,6 +1564,8 @@ def audit_csv(path):
                 entry["original_draw_phase_attested_witnesses"] += 1
                 entry["original_draw_phase_attested_by_physical_frame"][present_frame] += 1
                 entry["original_draw_phase_ordinals"].add(ordinal)
+                entry["original_draw_phase_attested_ordinal_pairs"].add(
+                    (present_frame, ordinal))
         scene = data.get("source_scene_phase")
         scene_attested = False
         if scene is None:
@@ -1575,6 +1581,9 @@ def audit_csv(path):
                 entry["original_scene_phase_attested_witnesses"] += 1
                 entry["original_scene_phase_attested_by_physical_frame"][present_frame] += 1
                 entry["original_scene_ordinals"].add(scene_index)
+                if phase_attested:
+                    entry["original_scene_phase_attested_ordinal_pairs"].add(
+                        (present_frame, phase[1]))
         # A late failed original Begin/EndScene can occur after a successful
         # source Draw but BEFORE its physical Present. It invalidates the
         # entire candidate scene on that physical frame, not the real Draw.
@@ -1643,6 +1652,8 @@ def audit_csv(path):
                 post_com_retained=True
                 entry["original_draw_completion_attested_witnesses"]+=1
                 entry["original_draw_completion_attested_by_physical_frame"][present_frame] += 1
+                entry["original_draw_completion_attested_ordinal_pairs"].add(
+                    (present_frame, phase[1]))
         # Even an authentic successful COM Draw may never reach the screen
         # if the physical original Present failed (e.g. lost D3D9 device).
         original_present_success = False
@@ -1656,6 +1667,9 @@ def audit_csv(path):
                 original_present_success = True
                 entry["original_present_success_witnesses"] += 1
                 entry["original_present_success_by_physical_frame"][present_frame] += 1
+                if phase_attested:
+                    entry["original_present_success_ordinal_pairs"].add(
+                        (present_frame, phase[1]))
                 if post_com_retained:
                     entry["original_post_com_retained_present_frames"].add(
                         present_frame)
@@ -1999,6 +2013,10 @@ def audit_csv(path):
         # payload or raw geometry is included in the report.
         for name in (
             "original_successful_draw_ordinal_pairs",
+            "original_present_success_ordinal_pairs",
+            "original_draw_phase_attested_ordinal_pairs",
+            "original_scene_phase_attested_ordinal_pairs",
+            "original_draw_completion_attested_ordinal_pairs",
             "original_scene_material_postcom_ordinal_pairs",
         ):
             record[name] = [list(pair) for pair in sorted(value[name])]
@@ -2082,6 +2100,10 @@ def audit_csv(path):
                         "original_draw_phase_ordinals",
                         "original_draw_success_by_physical_frame",
                         "original_successful_draw_ordinal_pairs",
+                        "original_present_success_ordinal_pairs",
+                        "original_draw_phase_attested_ordinal_pairs",
+                        "original_scene_phase_attested_ordinal_pairs",
+                        "original_draw_completion_attested_ordinal_pairs",
                         "original_scene_material_postcom_ordinal_pairs",
                         "original_present_success_by_physical_frame",
                         "original_draw_phase_attested_by_physical_frame",
