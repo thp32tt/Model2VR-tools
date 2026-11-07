@@ -1,6 +1,14 @@
 # Sega Model 2 / Daytona USA VR — Automated Development Master Plan
 
-Updated: 2026-11-07 KST
+Updated: 2026-11-08 KST
+
+## 2026-11-08 — Original standalone Win32 x86 direct CSV complete read-only lease (AI2 exact-SHA 4/4 SUCCESS)
+
+- **Distinct unfinished source gap closed:** Seven-stage PRIVATE comparison had a continuous Win32 original CSV read lease, but the independently shipped `tools/model2_draw_source_report.py` direct CLI still called `audit_csv` without the producer-closed/source-lease gate. A still-running original Win32 game writer could therefore look like a completed original physical Draw source and mutate PRIVATE evidence during analysis/output. This fixes that separate direct entrypoint, not the earlier seven-stage read lease or stdout privacy feature.
+- **Actual real source+tests:** The direct CLI resolves the source once, uses a Win32 `GENERIC_READ / FILE_SHARE_READ` handle through `audit_csv` and the complete explicit atomic PRIVATE `--output` publication (or redacted stdout), denies the genuine still-live `GENERIC_WRITE / FILE_SHARE_READ` producer and future write/delete opens while held. It does not write any original CSV. Synthetic portable lifecycle regression and real Win32 sharing/reopen regression added to `tests/test_model2_original_csv_event_order.py`. CRLF fixture literal correction is the SAME task, +0. No original Daytona/ROM/EXE/PRIVATE capture, OpenXR runtime, OutRun or web-port files modified.
+- **FINAL exact material code+test SHA and mandatory CI 4/4 SUCCESS:** `thp32tt/Model2VR-tools@2d352acc6d2e710ca4a192f5765edd83a3ee383c`; Public tools `42384288944`; ModDev toolkit `42384288924`; Windows x86 probe `42384288887`; original Daytona game-win32/xr-win64/combined bundle `42384288922` (3/3 inner SUCCESS). These are synthetic/native build verifications, NOT original Daytona gameplay or Quest3 physical proof.
+- **Remaining actual physical blocker:** Seven independent locally captured original Daytona Win32 x86 PRIVATE `race_a/race_b/title/menu/sky/hud/aux` sessions must establish genuine SAME physical CPU camera/projector/matrix/geometry ↔ D3D9 Draw/Scene/RT0/depth/Present and calibrate real game camera axes/metres-per-unit. Quest3+VDXR IPD/6DoF gameplay validation remains untested; `world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED`, CPU World3D AUTO-OFF, original mono fallback. Never fabricate or publish original PRIVATE evidence.
+- **AI2 score once-only:** `MODEL2VR-ORIGINAL-DIRECT-SOURCE-LEASE-20261108-2D352ACC`, GitHub scoreboard SSOT `thp32tt/ai-dev-lab@12be23063939c9300bff628d3ee269c25306c219/AI_SCOREBOARD.md` blob `b694fd48cd827672420178d93d42e69cc9613898`, remote head/blob/key readback confirmed. **Previous 2727 + one distinct fully verified direct read-only source-lease feature (+1) = cumulative 2728 AI2 points**. Prior features, retry, docs-only, CI repeat and package +0; AI1 separate.
 
 ## 2026-11-07 — Standalone original Win32 x86 direct PRIVATE Draw source-report safe publication (AI2 4/4 exact SHA SUCCESS)
 
