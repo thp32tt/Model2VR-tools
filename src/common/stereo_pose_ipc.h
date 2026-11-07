@@ -173,6 +173,20 @@ public:
            candidate.sequence>
                 (std::numeric_limits<std::uint32_t>::max)())
             return false;
+        // The backwards-compatible 2-second Read() lease is appropriate
+        // for remote diagnostics but FAR too old for authentic x86 D3D9
+        // head-tracked Draw. Cap original-source exposure to the same
+        // 125-ms native eye freshness window as the Win64 compositor.
+        LARGE_INTEGER now{},frequency{};
+        if(!QueryPerformanceCounter(&now) || now.QuadPart<=0 ||
+           !QueryPerformanceFrequency(&frequency) ||
+           frequency.QuadPart<=0)
+            return false;
+        const auto current=static_cast<std::uint64_t>(now.QuadPart);
+        const auto hz=static_cast<std::uint64_t>(frequency.QuadPart);
+        if(current<candidate.published_qpc ||
+           current-candidate.published_qpc>hz/8u)
+            return false;
         out=candidate;
         return true;
     }

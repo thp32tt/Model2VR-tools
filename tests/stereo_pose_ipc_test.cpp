@@ -99,6 +99,37 @@ int main(){
     REQUIRE(host.Publish(tracked));
     REQUIRE(emulator.ReadTracked(got));
     REQUIRE(got.sequence==29u && got.predicted_display_time==9000001);
+    // Actual Windows named-mapping test: emulate a disconnected host whose
+    // pose QPC is still within legacy 2 seconds but too old to drive an
+    // original D3D9 World3D Draw. Keep the same source sequence/eyes.
+    LARGE_INTEGER clock{},frequency{};
+    REQUIRE(QueryPerformanceCounter(&clock) && clock.QuadPart>0);
+    REQUIRE(QueryPerformanceFrequency(&frequency) && frequency.QuadPart>0);
+    if(static_cast<std::uint64_t>(clock.QuadPart)>
+       static_cast<std::uint64_t>(frequency.QuadPart)){
+        HANDLE mapped=OpenFileMappingW(FILE_MAP_WRITE,FALSE,
+                                       NameForPid(key).c_str());
+        REQUIRE(mapped!=nullptr);
+        auto* raw=static_cast<Shared*>(MapViewOfFile(
+            mapped,FILE_MAP_WRITE,0,0,sizeof(Shared)));
+        REQUIRE(raw!=nullptr);
+        const LONG before=raw->generation;
+        REQUIRE(!(before&1));
+        REQUIRE(InterlockedCompareExchange(
+            &raw->generation,before+1,before)==before);
+        const auto live_qpc=raw->frame.published_qpc;
+        raw->frame.published_qpc=static_cast<std::uint64_t>(
+            clock.QuadPart-frequency.QuadPart/2); // 500 ms stale
+        InterlockedExchange(&raw->generation,before+2);
+        REQUIRE(emulator.Read(got)); // diagnostic two-second compatibility
+        REQUIRE(!emulator.ReadTracked(got)); // 125-ms genuine game gate
+        const LONG second=raw->generation;
+        REQUIRE(InterlockedCompareExchange(
+            &raw->generation,second+1,second)==second);
+        raw->frame.published_qpc=live_qpc;
+        InterlockedExchange(&raw->generation,second+2);
+        UnmapViewOfFile(raw);CloseHandle(mapped);
+    }
     emulator.Close();host.Close();
     REQUIRE(!emulator.Read(got));
     return 0;
