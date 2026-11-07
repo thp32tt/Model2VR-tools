@@ -148,6 +148,23 @@ class PartialCheckpointTest(unittest.TestCase):
             with self.assertRaisesRegex(ReceiptError, "stage inventory changed"):
                 verify_checkpoint(self.folder)
 
+    def test_stage_append_between_inventory_scan_and_hashing_is_rejected(self):
+        # Trigger a new stage just AFTER the original last label was scanned.
+        # A second initial inventory scan would accept this unreviewed stage
+        # and incorrectly report only race_a/race_b as an audited prefix.
+        from tools.audit_daytona_private_checkpoint import _active as real_active
+        def append_after_scan(path):
+            was_active = real_active(path)
+            if path.name == "PRIVATE_SOURCE_aux.json":
+                self.add("title")
+            return was_active
+        with patch("tools.audit_daytona_private_checkpoint._active",
+                   side_effect=append_after_scan), patch(
+                "tools.audit_daytona_private_checkpoint.preflight_original_session",
+                side_effect=self.derived):
+            with self.assertRaisesRegex(ReceiptError, "stage inventory changed"):
+                verify_checkpoint(self.folder)
+
     def test_concurrent_orphan_stage_cannot_claim_stale_prefix(self):
         # A race in the collector may expose only a newly copied CSV before
         # its paired JSON exists. Even this orphan must invalidate a PASS.
