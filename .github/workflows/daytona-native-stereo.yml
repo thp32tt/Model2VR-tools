@@ -26,6 +26,8 @@ on:
       - 'src/probe/original_d3d9_*.inl'
       - 'tools/model2_draw_source_report.py'
       - 'tests/test_model2_original_csv_event_order.py'
+      - 'tests/test_model2_draw_source_report.py'
+      - 'tests/test_model2_original_control_present_phase.py'
       - 'src/probe/config.*'
       - 'src/probe/hooks_x86.cpp'
       - 'src/loader/main.cpp'
