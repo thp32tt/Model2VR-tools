@@ -126,8 +126,10 @@ int main(){
             health,true,now,now).reason==Reject::PayloadMismatch);
     mono.timestamp_qpc=now;
     mono.pose_sequence=77u;
+    // The final exact-source binding rejects substituted tagged mono
+    // metadata even before the generic unproven-pose classification.
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
-            health,true,now,now).reason==Reject::PoseUnproven);
+            health,true,now,now).reason==Reject::PayloadMismatch);
     mono.pose_sequence=0u;
     // Later published mono can safely hold a previous mono for the short
     // original game backbuffer interval, but not a broken source HRESULT.
