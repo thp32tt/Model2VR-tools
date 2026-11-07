@@ -1,5 +1,11 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Direct original x86 seven-stage PRIVATE stdout safety (2026-11-07)
+
+Use `python tools/model2_world_pass_evidence.py --race PRIVATE_RACE_A.csv --race PRIVATE_RACE_B.csv --control title PRIVATE_TITLE.csv --control menu PRIVATE_MENU.csv --control sky PRIVATE_SKY.csv --control hud PRIVATE_HUD.csv --control aux PRIVATE_AUX.csv --output PRIVATE_WORLD_CANDIDATES.json` for the full candidate/rejected caller inventory. The detailed report stays in the user-selected **local PRIVATE JSON** file and is not printed by the CLI.
+
+If `--output` is omitted, the CLI intentionally prints **only counts** (race/control sessions, accepted/rejected candidates) and the `NOT_ESTABLISHED` / `UNTESTED` / disabled-World3D status; it does not print raw CPU/GPU executable RVA, original process nonces or Draw/Scene ordinal ranges. This protects shell transcripts, CI logs and support chats from accidental private metadata disclosure. Both forms remain diagnostic-only: neither authorizes a stereoscopic world pass. Do not upload genuine original Daytona x86 CSVs, PRIVATE JSON reports, game/ROM files or screenshots containing source identities.
+
 ## Original x86 source producer must exit before PRIVATE archiving (2026-11-07)
 
 After the operator completes each user-labelled original Daytona x86 race/control
