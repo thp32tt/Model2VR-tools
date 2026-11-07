@@ -79,7 +79,7 @@ int wmain(int argc,wchar_t** argv){
     REQUIRE(CreateProcessW(argv[1],cmd.data(),nullptr,nullptr,FALSE,0,
                            nullptr,nullptr,&startup,&child)!=FALSE);
     CloseHandle(child.hThread);
-    host::OriginalSourceProcessLease process_lease;
+    m2vr::host::OriginalSourceProcessLease process_lease;
     REQUIRE(process_lease.Attach(child.dwProcessId));
     REQUIRE(process_lease.CreationTime100ns()!=0u);
     HANDLE ready=nullptr,advance=nullptr;

@@ -1784,7 +1784,14 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("health.frame_id>frame",receipt)
         self.assertIn("producerhealth::OriginalMonoPublished(health.reason_mask)",receipt)
         self.assertIn("producerhealth::InvalidatesCachedPair(",receipt)
-        self.assertIn("bool usable=!source_failed_after_pair &&",host)
+        # A physically terminated x86 process must invalidate every
+        # previously accepted source pair BEFORE 64-bit OpenXR submission.
+        self.assertIn("source_process_lease_.Attach(source_pid_)",host)
+        self.assertIn("const bool original_process_still_live=",host)
+        self.assertIn("source_process_lease_.Alive()",host)
+        self.assertIn("bool usable=original_process_still_live &&",host)
+        self.assertIn("!source_failed_after_pair &&",host)
+        self.assertIn("source_pid_=0u;",host)
         self.assertIn("mono_anchor_rejected=true;",host)
         self.assertIn("usable=false;",host)
         self.assertIn("static_assert(sizeof(Wire)==64)",hdr)
