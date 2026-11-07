@@ -220,6 +220,17 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 self.assertEqual(summary["world_pass_proof"],"NOT_ESTABLISHED")
                 self.assertEqual(summary["hmd_runtime_validation"],"UNTESTED")
                 self.assertNotIn("caller_rva_hex",captured)
+            # A legitimate original --preflight must not destroy its own CSV
+            # when the operator accidentally chooses it as --output.
+            original_csv_bytes = csv.read_bytes()
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=valid) as forbidden_audit:
+                with redirect_stderr(io.StringIO()) as error:
+                    with self.assertRaises(SystemExit):
+                        main(["--preflight",str(csv),"--output",str(csv)])
+                self.assertIn("must not overwrite",error.getvalue())
+                forbidden_audit.assert_not_called()
+            self.assertEqual(csv.read_bytes(),original_csv_bytes)
             with redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     main(["--preflight",str(csv),"--race",str(csv)])
@@ -270,6 +281,19 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             self.assertEqual(accepted["world_pass_proof"], "NOT_ESTABLISHED")
             output.unlink()
 
+            # A direct seven-stage candidate run must preserve EVERY
+            # original source file when its output accidentally aliases
+            # one of the private race/control JSON inputs.
+            for stage in paths:
+                with self.subTest(output_alias=stage):
+                    source_before = paths[stage].read_bytes()
+                    with redirect_stderr(io.StringIO()) as error:
+                        with self.assertRaises(SystemExit):
+                            main(argv[:-1] + [str(paths[stage])])
+                    self.assertIn("must not overwrite",error.getvalue())
+                    self.assertEqual(paths[stage].read_bytes(),source_before)
+            self.assertFalse(output.exists())
+
             original = paths["race_a"].read_text(encoding="utf-8")
             for name, forged in (
                 ("top_level_duplicate", original.replace(
@@ -309,6 +333,24 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             self.assertIn("source changed during candidate analysis",
                           err.getvalue())
             self.assertFalse(output.exists())
+
+            # Even an output link to a file OUTSIDE the seven inputs is
+            # unsafe: refuse before analysis can follow it and overwrite
+            # arbitrary local private operator data.
+            linked_output = folder / "linked-output.json"
+            unrelated = folder / "unrelated-private.txt"
+            unrelated.write_text("keep this original private file",encoding="utf-8")
+            try:
+                linked_output.symlink_to(unrelated)
+            except (OSError, NotImplementedError):
+                pass  # Restricted Windows test account may block symlinks.
+            else:
+                with redirect_stderr(io.StringIO()) as error:
+                    with self.assertRaises(SystemExit):
+                        main(argv[:-1] + [str(linked_output)])
+                self.assertIn("linked file",error.getvalue())
+                self.assertEqual(unrelated.read_text(encoding="utf-8"),
+                                 "keep this original private file")
 
             # Linked source paths are not independent original evidence.
             linked = folder / "linked-race-a.json"
