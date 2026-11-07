@@ -261,7 +261,7 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             ]
             for label in sorted(CONTROL_TYPES):
                 argv.extend(("--control", label, str(paths[label])))
-            argv.extend(("--output", str(output))
+            argv.extend(("--output", str(output)))
 
             main(argv)
             accepted = json.loads(output.read_text(encoding="utf-8"))
