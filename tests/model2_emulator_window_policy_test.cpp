@@ -15,6 +15,29 @@ int main(){
     static_assert(!MapDesktopPoint(desktop,5360,100).valid);
     static_assert(!MapDesktopPoint(desktop,100,1680).valid);
     static_assert(!MapDesktopPoint({},100,100).valid);
+    // A VR ray hit is bound to the screenshot shown in the quad, not
+    // merely to a still-live HWND or the emulator's numeric process ID.
+    constexpr WindowRect picture{-1500,-100,-860,380};
+    static_assert(picture.Valid());
+    static_assert(CaptureGeometryMatches(desktop,desktop,picture,picture));
+    static_assert(!CaptureGeometryMatches(
+        desktop,DesktopBounds{-1919,-240,5360,1680},picture,picture));
+    static_assert(!CaptureGeometryMatches(
+        desktop,DesktopBounds{-1920,-240,5360,1700},picture,picture));
+    static_assert(!CaptureGeometryMatches(
+        desktop,desktop,picture,WindowRect{-1499,-100,-859,380}));
+    static_assert(!CaptureGeometryMatches(
+        desktop,desktop,picture,WindowRect{-1500,-100,-860,381}));
+    static_assert(!CaptureGeometryMatches(
+        desktop,desktop,picture,WindowRect{-1500,-100,-1500,380}));
+    static_assert(!CaptureGeometryMatches(
+        {},desktop,picture,picture));
+    static_assert(CaptureClickFresh(1000u,1000u));
+    static_assert(CaptureClickFresh(1000u,1250u));
+    static_assert(!CaptureClickFresh(1000u,1251u));
+    static_assert(!CaptureClickFresh(1000u,999u));
+    static_assert(!CaptureClickFresh(0u,100u));
+    static_assert(!CaptureClickFresh(1u,UINT64_MAX));
     static_assert(Fit(5360,1680,1024,1024).Valid());
     // Real mouse still has a valid texture position OUTSIDE the small
     // emulator window, including on the negative-X second monitor.

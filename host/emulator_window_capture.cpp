@@ -42,6 +42,12 @@ HWND FindEmulatorWindow(std::uint32_t pid){
     // window so the player can see the dialog rather than stale game pixels.
     return selection.active_dialog?selection.active_dialog:selection.selected;
 }
+desktopmenu::WindowRect WindowBounds(HWND window) noexcept {
+    RECT r{};
+    if(!window || !IsWindow(window) || !GetWindowRect(window,&r))
+        return {};
+    return {r.left,r.top,r.right,r.bottom};
+}
 } // namespace
 
 bool EmulatorWindowCapture::Update(std::uint32_t emulator_pid){
@@ -52,6 +58,8 @@ bool EmulatorWindowCapture::Update(std::uint32_t emulator_pid){
     // clicking. Desktop capture must remain visible even if the emulator
     // has not created its first window or a ROM dialog is in front.
     const HWND selected=FindEmulatorWindow(emulator_pid);
+    const auto captured_foreground=GetForegroundWindow();
+    const auto initial_window_rect=WindowBounds(selected);
     const auto now=GetTickCount64();
     if(selected==window_ && desktop.left==source_bounds_.left &&
        desktop.top==source_bounds_.top &&
@@ -61,8 +69,21 @@ bool EmulatorWindowCapture::Update(std::uint32_t emulator_pid){
     window_=selected;
     source_bounds_=desktop;
     ready_=false;
+    captured_window_rect_={};
+    captured_ms_=0u;
+    click_geometry_valid_=false;
     next_capture_ms_=now+100u; // 10fps UI/desktop, never 90Hz CPU readback.
     if(!Capture(desktop))return false;
+    // Capture is still useful as a visual-only quad when the original
+    // window is absent, occluded or moving. Only controller injection must
+    // require stable, currently visible screenshot/window coordinates.
+    captured_window_rect_=initial_window_rect;
+    captured_ms_=GetTickCount64();
+    click_geometry_valid_=selected!=nullptr &&
+        captured_foreground==selected && GetForegroundWindow()==selected &&
+        desktopmenu::CaptureGeometryMatches(
+            desktop,desktopmenu::CurrentVirtualDesktop(),
+            initial_window_rect,WindowBounds(selected));
     ready_=true;
     ++serial_;
     if(!serial_)++serial_;
@@ -130,9 +151,17 @@ bool EmulatorWindowCapture::Capture(desktopmenu::DesktopBounds desktop){
     ReleaseDC(nullptr,source);
     return drawn;
 }
+bool EmulatorWindowCapture::CapturedClickGeometryLive() const noexcept {
+    return click_geometry_valid_ && window_ &&
+        desktopmenu::CaptureClickFresh(captured_ms_,GetTickCount64()) &&
+        desktopmenu::CaptureGeometryMatches(
+            source_bounds_,desktopmenu::CurrentVirtualDesktop(),
+            captured_window_rect_,WindowBounds(window_));
+}
 bool EmulatorWindowCapture::DeliverControllerClick(
     std::uint32_t pid,std::uint32_t desktop_x,std::uint32_t desktop_y){
     if(!ready_ || !window_ || !pid ||
+       !CapturedClickGeometryLive() ||
        GetForegroundWindow()!=window_ ||
        !IsWindow(window_) || !IsWindowVisible(window_) || IsIconic(window_))
         return false;
@@ -160,7 +189,10 @@ bool EmulatorWindowCapture::DeliverControllerClick(
     // SendInput is confined to the genuine foreground emulator HWND;
     // never use WM_* messages or inject into the original D3D9 game.
     if(!SetCursorPos(target_point.x,target_point.y))return false;
-    if(GetForegroundWindow()!=window_)return false;
+    // A window can move or the desktop layout can change even while
+    // SetCursorPos/WindowFromPoint runs; revalidate before SendInput.
+    if(!CapturedClickGeometryLive() || GetForegroundWindow()!=window_)
+        return false;
     DWORD post_warp_pid=0;
     const HWND post_warp=WindowFromPoint(target_point);
     if(!post_warp)return false;

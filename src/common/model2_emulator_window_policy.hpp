@@ -14,6 +14,34 @@ struct DesktopBounds {
                width<=8192u && height<=8192u;
     }
 };
+// One Quest menu click must target the SAME desktop geometry and emulator
+// HWND rectangle shown in its most recent 10-fps desktop-capture image.
+// A monitor hotplug, resolution/DPI move, or ROM-dialog relocation can make
+// the old XR quad coordinates point at the wrong Windows control even if the
+// HWND still belongs to the authenticated original emulator process.
+struct WindowRect {
+    std::int32_t left=0,top=0,right=0,bottom=0;
+    constexpr bool Valid()const noexcept {
+        return right>left && bottom>top;
+    }
+};
+constexpr bool CaptureGeometryMatches(
+    DesktopBounds captured,DesktopBounds live,
+    WindowRect pictured,WindowRect current) noexcept {
+    return captured.Valid() && live.Valid() &&
+           captured.left==live.left && captured.top==live.top &&
+           captured.width==live.width && captured.height==live.height &&
+           pictured.Valid() && current.Valid() &&
+           pictured.left==current.left && pictured.top==current.top &&
+           pictured.right==current.right && pictured.bottom==current.bottom;
+}
+// The 10-fps source may be skipped for one XR tick, but never inject an OS
+// click against a stale 2D snapshot even when the window itself remains.
+constexpr bool CaptureClickFresh(std::uint64_t captured_ms,
+                                 std::uint64_t now_ms) noexcept {
+    return captured_ms!=0u && now_ms>=captured_ms &&
+           now_ms-captured_ms<=250u;
+}
 struct ScreenPoint {
     std::int32_t x=0,y=0;
     bool valid=false;
