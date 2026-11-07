@@ -30,6 +30,9 @@ def witness(cpu="0x004bb400", count=3):
             [frame, 8+4*frame] for frame in range(1, count+1)],
         "original_scene_phase_attested_ordinal_pairs": [
             [frame, 8+4*frame] for frame in range(1, count+1)],
+        "original_scene_draw_ordinal_triplets": [
+            [frame, 8+4*frame, 2 if frame == 2 else 1]
+            for frame in range(1, count+1)],
         "original_draw_completion_attested_ordinal_pairs": [
             [frame, 8+4*frame] for frame in range(1, count+1)],
         "original_scene_material_postcom_ordinal_pairs": [
@@ -664,6 +667,9 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 [frame, 8+4*frame+offset] for frame in (1, 2, 3)]
             source["original_scene_phase_attested_ordinal_pairs"] = [
                 [frame, 8+4*frame+offset] for frame in (1, 2, 3)]
+            source["original_scene_draw_ordinal_triplets"] = [
+                [frame, 8+4*frame+offset, 2 if frame == 2 else 1]
+                for frame in (1, 2, 3)]
             source["original_draw_completion_attested_ordinal_pairs"] = [
                 [frame, 8+4*frame+offset] for frame in (1, 2, 3)]
             source["original_draw_ordinal_min"] = 12 + offset
@@ -706,6 +712,8 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             [1, 12], [1, 13], [2, 16], [3, 20]]
         source["original_scene_phase_attested_ordinal_pairs"] = [
             [1, 12], [1, 13], [2, 16], [3, 20]]
+        source["original_scene_draw_ordinal_triplets"] = [
+            [1, 12, 1], [1, 13, 1], [2, 16, 2], [3, 20, 1]]
         source["original_draw_completion_attested_ordinal_pairs"] = [
             [1, 12], [1, 13], [2, 16], [3, 20]]
         source["distinct_original_draw_ordinals"] = 4
@@ -858,6 +866,8 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             [1, 12], [1, 13], [2, 16], [3, 20]]
         source["original_scene_phase_attested_ordinal_pairs"] = [
             [1, 12], [1, 13], [2, 16], [3, 20]]
+        source["original_scene_draw_ordinal_triplets"] = [
+            [1, 12, 1], [1, 13, 1], [2, 16, 2], [3, 20, 1]]
         source["original_draw_completion_attested_ordinal_pairs"] = [
             [1, 12], [1, 13], [2, 16], [3, 20]]
         source["distinct_original_draw_ordinals"] = 4
@@ -907,11 +917,75 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             b[field] = [[1, 13], [2, 17], [3, 21]]
         b["original_draw_ordinal_min"] = 13
         b["original_draw_ordinal_max"] = 21
+        b["original_scene_draw_ordinal_triplets"] = [
+            [1, 13, 1], [2, 17, 2], [3, 21, 1]]
         result = compare_sessions(
             [report(a, b), report(copy.deepcopy(a), copy.deepcopy(b))],
             controls())
         self.assertEqual(len(result["candidates"]), 2)
         self.assertFalse(result["adapter_auto_enable"])
+
+
+    def test_original_scene_draw_identity_is_not_only_a_per_present_count(self):
+        # Same material Draw and Scene per-Present counts survive, but the
+        # cached source attached the genuine scene to a different Draw.
+        src = witness()
+        src["original_draw_success_witnesses"] = 4
+        src["original_draw_success_by_physical_frame"] = [
+            [1, 2], [2, 1], [3, 1]]
+        src["original_successful_draw_ordinal_pairs"] = [
+            [1, 12], [1, 13], [2, 16], [3, 20]]
+        src["distinct_original_draw_ordinals"] = 4
+        src["original_draw_phase_attested_witnesses"] = 4
+        src["original_draw_phase_attested_by_physical_frame"] = [
+            [1, 2], [2, 1], [3, 1]]
+        src["original_draw_phase_attested_ordinal_pairs"] = [
+            [1, 12], [1, 13], [2, 16], [3, 20]]
+        positive = compare_sessions([report(src), report(witness())], controls())
+        self.assertEqual(len(positive["candidates"]), 1)
+        wrong = copy.deepcopy(src)
+        wrong["original_scene_draw_ordinal_triplets"][0] = [1, 13, 1]
+        got = compare_sessions([report(wrong), report(witness())], controls())
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "race_original_draw_witness_budget_exceeded")
+
+    def test_original_scene_ordinal_triplets_strictly_validated(self):
+        samples = (
+            None,
+            [[1, 12, 1], [1, 12, 1], [3, 20, 1]],
+            [[1, 12, 1], [2, 16, True], [3, 20, 1]],
+            [[1, 12, 1], [2, 16, 0], [3, 20, 1]],
+            [[1, 12, 1], [2, 16, 100001], [3, 20, 1]],
+            [[1, 12, 1], [3, 20, 1], [2, 16, 2]],
+            [[1, 12, 1], [2, 16, 2]],
+            [[1, 12, 1], [2, 16, 2], [9, 20, 1]],
+            [[1, 12, 1], [2, 16, 2], [3, 21, 1]],
+            [[1, 12, 1], [2, 16, 2], [3, 20, 1, 2]],
+            [[1, 12, 1], [2, 16, 2], [3, 20, "1"]],
+        )
+        for malformed in samples:
+            src = witness()
+            if malformed is None:
+                del src["original_scene_draw_ordinal_triplets"]
+            else:
+                src["original_scene_draw_ordinal_triplets"] = malformed
+            got = compare_sessions([report(src), report(witness())],
+                                   controls())
+            self.assertFalse(got["candidates"], malformed)
+            self.assertEqual(got["rejected"][0]["reason"],
+                             "race_original_draw_witness_budget_exceeded")
+
+    def test_original_scene_ordinal_range_is_derived_from_actual_draws(self):
+        src = witness()
+        # A cached report could previously retain plausible [1,2]
+        # scene range while each Draw actually recorded only Scene #1.
+        src["original_scene_draw_ordinal_triplets"] = [
+            [1, 12, 1], [2, 16, 1], [3, 20, 1]]
+        got = compare_sessions([report(src), report(witness())], controls())
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "race_original_draw_witness_budget_exceeded")
 
     def test_original_draw_ordinal_rows_missing_malformed_or_replayed(self):
         for bad in (
@@ -1146,6 +1220,8 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                       "original_draw_completion_attested_ordinal_pairs",
                       "original_scene_material_postcom_ordinal_pairs"):
             source[field] = [[1, 12], [4, 16], [7, 20]]
+        source["original_scene_draw_ordinal_triplets"] = [
+            [1, 12, 1], [4, 16, 2], [7, 20, 1]]
         for run in (race_a, race_b):
             run["original_sampled_scene_draw_frame_budget"] = [
                 [1, 3], [4, 3], [7, 3]]

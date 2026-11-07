@@ -1418,6 +1418,7 @@ def audit_csv(path):
         "original_present_success_ordinal_pairs": set(),
         "original_draw_phase_attested_ordinal_pairs": set(),
         "original_scene_phase_attested_ordinal_pairs": set(),
+        "original_scene_draw_ordinal_triplets": set(),
         "original_draw_completion_attested_ordinal_pairs": set(),
         "original_scene_material_postcom_ordinal_pairs": set(),
         "original_present_success_by_physical_frame": Counter(),
@@ -1584,6 +1585,10 @@ def audit_csv(path):
                 if phase_attested:
                     entry["original_scene_phase_attested_ordinal_pairs"].add(
                         (present_frame, phase[1]))
+                    # Observed real Scene identity belongs to THIS original
+                    # Draw, not another Scene on the same physical Present.
+                    entry["original_scene_draw_ordinal_triplets"].add(
+                        (present_frame, phase[1], scene_index))
         # A late failed original Begin/EndScene can occur after a successful
         # source Draw but BEFORE its physical Present. It invalidates the
         # entire candidate scene on that physical frame, not the real Draw.
@@ -2016,6 +2021,7 @@ def audit_csv(path):
             "original_present_success_ordinal_pairs",
             "original_draw_phase_attested_ordinal_pairs",
             "original_scene_phase_attested_ordinal_pairs",
+            "original_scene_draw_ordinal_triplets",
             "original_draw_completion_attested_ordinal_pairs",
             "original_scene_material_postcom_ordinal_pairs",
         ):
@@ -2103,6 +2109,7 @@ def audit_csv(path):
                         "original_present_success_ordinal_pairs",
                         "original_draw_phase_attested_ordinal_pairs",
                         "original_scene_phase_attested_ordinal_pairs",
+                        "original_scene_draw_ordinal_triplets",
                         "original_draw_completion_attested_ordinal_pairs",
                         "original_scene_material_postcom_ordinal_pairs",
                         "original_present_success_by_physical_frame",

@@ -1949,6 +1949,7 @@ class SourceAuditTests(unittest.TestCase):
             self.assertEqual(complete["original_present_success_ordinal_pairs"], [[17, 12]])
             self.assertEqual(complete["original_draw_phase_attested_ordinal_pairs"], [[17, 12]])
             self.assertEqual(complete["original_scene_phase_attested_ordinal_pairs"], [[17, 12]])
+            self.assertEqual(complete["original_scene_draw_ordinal_triplets"], [[17, 12, 4]])
             self.assertEqual(complete["original_draw_completion_attested_ordinal_pairs"], [[17, 12]])
             self.assertEqual(
                 complete["original_scene_material_postcom_ordinal_pairs"], [])

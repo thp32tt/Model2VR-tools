@@ -672,6 +672,36 @@ def _within_original_scene_draw_budget(report):
                 not ordinal_stage_pairs["post_com"].issubset(
                     ordinal_stage_pairs["present_success"])):
             return False
+        # The genuine x86 source carries the Scene ordinal separately
+        # from the Draw ordinal. Cached private reports cannot exchange two
+        # different original Scenes on the SAME physical Present while
+        # leaving their Draw/Present/post-COM counts unchanged.
+        triplets = source.get("original_scene_draw_ordinal_triplets")
+        scene_pairs = ordinal_stage_pairs["scene_phase"]
+        if (not isinstance(triplets, list) or
+                len(triplets) != len(scene_pairs) or
+                len(triplets) > MAX_SOURCES):
+            return False
+        seen_scenes = set()
+        previous_scene_draw = (0, 0)
+        for item in triplets:
+            if (not isinstance(item, list) or len(item) != 3 or
+                    any(type(value) is not int for value in item)):
+                return False
+            frame, draw_ordinal, scene_ordinal = item
+            original_pair = (frame, draw_ordinal)
+            if (original_pair <= previous_scene_draw or
+                    original_pair not in scene_pairs or
+                    not 1 <= scene_ordinal <= 100_000):
+                return False
+            seen_scenes.add(scene_ordinal)
+            previous_scene_draw = original_pair
+        if (len(seen_scenes) != source.get("distinct_original_scene_ordinals") or
+                min(seen_scenes, default=None) !=
+                source.get("original_scene_ordinal_min") or
+                max(seen_scenes, default=None) !=
+                source.get("original_scene_ordinal_max")):
+            return False
         material_pairs = source.get(
             "original_scene_material_postcom_ordinal_pairs")
         if (not isinstance(material_pairs, list) or
