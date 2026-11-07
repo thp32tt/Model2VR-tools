@@ -35,6 +35,19 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('StopAfterStage', self.cmd + self.ps)
         self.assertIn('-StopAfterStage', self.docs)
 
+    def test_optional_race_readiness_is_only_for_real_race_capture_and_resume(self):
+        # A readable genuine CSV with no same-Draw CPU/GPU world witnesses
+        # should be rejected BEFORE spending five additional original game
+        # sessions, if the operator opts in. No auto-authorization.
+        self.assertIn('[switch]$RequireRaceSource', self.ps)
+        self.assertEqual(self.ps.count('if ($RequireRaceSource -and'), 2)
+        self.assertIn('$resumeArgs += "--require-race-source"', self.ps)
+        self.assertIn('$preflightArgs += "--require-race-source"', self.ps)
+        self.assertIn('$label -ceq "race_a" -or $label -ceq "race_b"', self.ps)
+        self.assertIn('-RequireRaceSource', self.docs)
+        self.assertIn('CPU World3D', self.docs)
+        self.assertNotIn('world_pass_proof = "ESTABLISHED"', self.ps)
+
     def test_original_exe_is_never_patched_or_uploaded(self):
         for forbidden in (
             "Invoke-WebRequest", "Invoke-RestMethod", "Start-BitsTransfer",
