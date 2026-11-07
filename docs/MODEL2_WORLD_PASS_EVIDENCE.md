@@ -1,5 +1,13 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Per-original-process physical Present count and same-source causal candidate checks (2026-11-07)
+
+The original PRIVATE source audit now requires every per-caller `distinct_*_present_frame_count` to be a non-boolean, nonnegative integer no greater than its `original_capture_run.physical_present_count`. The bound belongs to the same original x86 process nonce, **not** a second race or the x64 HMD source. Multi-Draw-per-frame observation counters are not limited to one Draw per Present; only distinct physical frame set cardinalities are limited.
+
+Before a race Draw caller can be listed as a candidate, its same-witness material counts must not grow as evidence flows from projected material → successful original COM Draw → physically successful primary Present → attested phase → original Scene. Impossible order removes the candidate with the existing insufficient-original-source reason. This rejection deliberately does not make an incomplete original preflight unparseable merely because one downstream stage has zero evidence. Independently impossible frame cardinality is invalid at per-stage preflight.
+
+Synthetic-only tests and the four Windows/Linux CI workflows passed at source/test SHA `a78e20c5006c1fe25996a41a001d9f3016c2659e`. The matched original Daytona Win32+Win64 bundle artifact is `13553924752` (expiry 2026-11-21). This source integrity improvement does not establish the original gameplay scene labels, game-world camera metres-per-unit/axes, stereo admission, 6DoF/IPD or Quest3+VDXR runtime proof. `world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED`, CPU World3D AUTO-OFF; original game mono fallback unchanged. No PRIVATE capture is published.
+
 ## Original x86 D3D9 camera/program COM lifetime, never inferred from a post-call counter (2026-11-06)
 
 The genuine primary emulator x86 D3D9 COM calls `SetTransform`,
