@@ -20,6 +20,10 @@ def witness(cpu="0x004bb400", count=3):
         "distinct_projected_material_present_frame_count": count,
         "distinct_successful_projected_material_present_frame_count": count,
         "original_draw_success_witnesses": count,
+        "original_draw_phase_attested_witnesses": count,
+        "original_scene_phase_attested_witnesses": count,
+        "original_draw_completion_attested_witnesses": count,
+        "original_present_success_witnesses": count,
         "original_draw_failure_witnesses": 0,
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
@@ -311,6 +315,68 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             compare_sessions(
                 [report(witness()), report(witness()), report(witness())],
                 controls())
+
+    def test_original_draw_attestation_witnesses_bound_distinct_frames(self):
+        # A cached report can name three different successfully presented
+        # material frames despite observing only two or zero actual native
+        # HRESULT/phase/Scene/completion Draw witnesses of this caller.
+        cases = (
+            ("original_draw_success_witnesses", 2),
+            ("original_present_success_witnesses", 2),
+            ("original_draw_phase_attested_witnesses", 2),
+            ("original_scene_phase_attested_witnesses", 2),
+            ("original_draw_completion_attested_witnesses", 2),
+            ("original_draw_success_witnesses", True),
+        )
+        for field, forged_count in cases:
+            with self.subTest(field=field, count=forged_count):
+                race = report(witness())
+                race["sources"][0][field] = forged_count
+                decision = compare_sessions([race, report(witness())], controls())
+                self.assertFalse(decision["candidates"])
+                self.assertEqual(
+                    decision["rejected"][0]["reason"],
+                    "missing_same_draw_matrix_material_or_render_evidence")
+
+    def test_original_draw_ordinals_cannot_outnumber_actual_phase_witnesses(self):
+        # An ordinal is counted only from an original physical Draw/Scene
+        # sample, even if several Draws occur within one Present.
+        for ordinal, phase in (
+            ("distinct_original_draw_ordinals",
+             "original_draw_phase_attested_witnesses"),
+            ("distinct_original_scene_ordinals",
+             "original_scene_phase_attested_witnesses"),
+        ):
+            with self.subTest(ordinal=ordinal):
+                race = report(witness())
+                race["sources"][0][ordinal] = 4
+                race["sources"][0][phase] = 3
+                self.assertFalse(compare_sessions(
+                    [race, report(witness())], controls())["candidates"])
+
+    def test_original_post_com_success_witnesses_require_draw_success(self):
+        # Even if physical material counts look consistent, a Present or
+        # retained completion cannot have more sampled successes than the
+        # authentic original game Draw HRESULT success count.
+        for field in ("original_present_success_witnesses",
+                      "original_draw_completion_attested_witnesses"):
+            with self.subTest(field=field):
+                race = report(witness())
+                race["sources"][0][field] = 4
+                decision = compare_sessions(
+                    [race, report(witness())], controls())
+                self.assertFalse(decision["candidates"])
+                self.assertEqual(
+                    decision["rejected"][0]["reason"],
+                    "missing_same_draw_matrix_material_or_render_evidence")
+                # Source preflight remains useful for rejected diagnostics,
+                # never silently promoting these counts to VR ownership.
+                with tempfile.TemporaryDirectory() as folder:
+                    raw = Path(folder) / "synthetic.csv"
+                    raw.write_text("synthetic", encoding="utf-8")
+                    with patch("tools.model2_world_pass_evidence.audit_csv",
+                               return_value=race):
+                        self.assertEqual(preflight_original_session(raw), race)
 
     def test_race_cpu_gpu_same_original_draw_requires_post_com_completion(self):
         # A pre-COM projected match cannot borrow another physical Draw's

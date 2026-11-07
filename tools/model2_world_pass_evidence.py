@@ -350,6 +350,40 @@ def _enough_original_source(source):
     if any(source[child] > source[parent]
            for parent, child in zip(ordered, ordered[1:])):
         return False
+    # Distinct physical frames are SET cardinalities, not proof of that
+    # many authentic original COM calls. Each success/phase/completion
+    # frame must have at least one corresponding same-caller original
+    # post-COM witness, which the CSV audit counts per actual Draw.
+    # Keep malformed/incomplete sources readable for rejected diagnostics.
+    witness_floors = (
+        ("original_draw_success_witnesses",
+         "distinct_successful_projected_material_present_frame_count"),
+        ("original_present_success_witnesses",
+         "distinct_physically_presented_material_present_frame_count"),
+        ("original_draw_phase_attested_witnesses",
+         "distinct_phase_attested_physically_presented_material_present_frame_count"),
+        ("original_scene_phase_attested_witnesses",
+         "distinct_scene_attested_physically_presented_material_present_frame_count"),
+        ("original_draw_completion_attested_witnesses",
+         "distinct_post_com_retained_present_frame_count"),
+        ("original_draw_phase_attested_witnesses",
+         "distinct_original_draw_ordinals"),
+        ("original_scene_phase_attested_witnesses",
+         "distinct_original_scene_ordinals"),
+    )
+    for counter, distinct in witness_floors:
+        count = source.get(counter)
+        observed = source.get(distinct)
+        if (type(count) is not int or type(observed) is not int or
+                not 0 <= observed <= count <= MAX_SOURCES * 10000000):
+            return False
+    # Original Present success and retained post-COM completion require
+    # the sampled original Draw itself to have succeeded first; these
+    # witnesses cannot exceed the authentic Draw HRESULT success count.
+    successful = source["original_draw_success_witnesses"]
+    if (source["original_present_success_witnesses"] > successful or
+            source["original_draw_completion_attested_witnesses"] > successful):
+        return False
     for field in (
         "cpu_fit_population_missing_batches",
         "original_draw_failure_witnesses",
