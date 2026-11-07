@@ -290,5 +290,23 @@ int main(){
     CHECK(claim_gate.Accept(offered,t+4u,hz));
     CHECK(claim_gate.MatchesAcceptedMetadata(offered));
     CHECK(claim_gate.lastSourcePoseSequence()==52u);
+    // Tracking/session expiry destroys accepted eyes without clearing the
+    // original source ID, QPC or HMD pose high-water. A malformed frame
+    // cannot exploit the expired cache as permission to advance the source.
+    claim_gate.ExpireKeepFrameId();
+    CHECK(!claim_gate.Cached(t+5u,hz));
+    CHECK(!claim_gate.MatchesAcceptedMetadata(offered));
+    FrameStamp expired_forgery{
+        4u,t+5u,FrameKind::GameMonoFallback,123u,52u};
+    offered.frame_id=4u;offered.timestamp_qpc=t+5u;
+    offered.kind=FrameKind::GameMonoFallback;
+    offered.pose_sequence=52u;
+    CHECK(claim_gate.Decide(&expired_forgery,t+6u,hz)==FrameUse::Missing);
+    CHECK(!claim_gate.Accept(offered,t+6u,hz));
+    CHECK(claim_gate.id()==3u && claim_gate.lastSourcePoseSequence()==52u);
+    expired_forgery.pose_sequence=0u;offered.pose_sequence=0u;
+    CHECK(claim_gate.Decide(&expired_forgery,t+6u,hz)==FrameUse::ReadNew);
+    CHECK(claim_gate.Accept(offered,t+6u,hz));
+    CHECK(claim_gate.lastSourcePoseSequence()==52u);
     return 0;
 }
