@@ -4,9 +4,42 @@
 #include <cstdlib>
 #include <atomic>
 #include <thread>
+#include <string>
+#include <vector>
+#include <cstring>
 #define REQUIRE(expr) do {if(!(expr)){std::fprintf(stderr,"FAIL %d: %s\n",__LINE__,#expr);std::exit(1);}}while(0)
-int main(){
+namespace {
+std::wstring PoseLeaseEventName(DWORD emulator_pid,const wchar_t* suffix){
+    return L"Local\\Model2VR_XrPublisherLease_"+
+        std::to_wstring(emulator_pid)+suffix;
+}
+}
+int main(int argc,char** argv){
     using namespace m2vr::pose;
+    if(argc==3 && std::strcmp(argv[1],"--pose-publisher-child")==0){
+        const auto emulator_pid=static_cast<DWORD>(std::strtoul(argv[2],nullptr,10));
+        REQUIRE(emulator_pid!=0u);
+        Link publisher;
+        REQUIRE(publisher.Create(emulator_pid));
+        Frame actual{};
+        actual.sequence=51u;
+        actual.predicted_display_time=9000001;
+        actual.reserved=7u;
+        actual.view_flags=kFullSixDofTracked;
+        actual.eyes[0].position_m[0]=-0.032f;
+        actual.eyes[1].position_m[0]=0.032f;
+        REQUIRE(publisher.Publish(actual));
+        const HANDLE ready=OpenEventW(EVENT_MODIFY_STATE,FALSE,
+            PoseLeaseEventName(emulator_pid,L"_ready").c_str());
+        const HANDLE release=OpenEventW(SYNCHRONIZE,FALSE,
+            PoseLeaseEventName(emulator_pid,L"_release").c_str());
+        REQUIRE(ready && release);
+        REQUIRE(SetEvent(ready)!=FALSE);
+        REQUIRE(WaitForSingleObject(release,20000u)==WAIT_OBJECT_0);
+        CloseHandle(release);CloseHandle(ready);
+        return 0;
+    }
+    REQUIRE(argc==1);
     Link host,emulator;
     const auto key=GetCurrentProcessId();
     REQUIRE(host.Create(key));
@@ -132,5 +165,44 @@ int main(){
     }
     emulator.Close();host.Close();
     REQUIRE(!emulator.Read(got));
+    // Real Windows process lifetime regression: a separate publisher
+    // exits immediately after delivering tracked views. The original
+    // game keeps its mapping open, and QPC is still fresh (<125ms).
+    // A timestamp-only lease used to incorrectly admit this dead source.
+    const HANDLE ready=CreateEventW(nullptr,TRUE,FALSE,
+        PoseLeaseEventName(key,L"_ready").c_str());
+    const HANDLE release=CreateEventW(nullptr,TRUE,FALSE,
+        PoseLeaseEventName(key,L"_release").c_str());
+    REQUIRE(ready && release);
+    wchar_t executable[MAX_PATH]{};
+    const DWORD path_length=GetModuleFileNameW(nullptr,executable,MAX_PATH);
+    REQUIRE(path_length>0u && path_length<MAX_PATH);
+    const std::wstring command=L"\""+std::wstring(executable)+
+        L"\" --pose-publisher-child "+std::to_wstring(key);
+    std::vector<wchar_t> args(command.begin(),command.end());
+    args.push_back(L'\0');
+    STARTUPINFOW startup{};startup.cb=sizeof(startup);
+    PROCESS_INFORMATION child{};
+    REQUIRE(CreateProcessW(executable,args.data(),nullptr,nullptr,FALSE,0,
+        nullptr,nullptr,&startup,&child)!=FALSE);
+    CloseHandle(child.hThread);
+    REQUIRE(WaitForSingleObject(ready,20000u)==WAIT_OBJECT_0);
+    REQUIRE(emulator.Open(key));
+    REQUIRE(emulator.ReadTracked(got));
+    REQUIRE(got.sequence==51u && got.reserved==7u);
+    REQUIRE(SetEvent(release)!=FALSE);
+    REQUIRE(WaitForSingleObject(child.hProcess,20000u)==WAIT_OBJECT_0);
+    DWORD exit_code=1u;
+    REQUIRE(GetExitCodeProcess(child.hProcess,&exit_code) && exit_code==0u);
+    // Keep the map pinned in the x86 consumer. With no artificial delay,
+    // the last stamped pose is still present, but the creator process
+    // HANDLE is now signalled and must defeat BOTH read entrypoints.
+    REQUIRE(!emulator.Valid());
+    REQUIRE(!emulator.Read(got));
+    REQUIRE(!emulator.ReadTracked(got));
+    emulator.Close();
+    REQUIRE(!emulator.Open(key)); // producer exited; no named writer
+    CloseHandle(child.hProcess);
+    CloseHandle(release);CloseHandle(ready);
     return 0;
 }

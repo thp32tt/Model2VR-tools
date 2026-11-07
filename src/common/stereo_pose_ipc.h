@@ -77,12 +77,24 @@ public:
         handle_=OpenFileMappingW(FILE_MAP_READ,FALSE,name.c_str());
         if(!handle_)return false;
         data_=static_cast<Shared*>(MapViewOfFile(handle_,FILE_MAP_READ,0,0,sizeof(Shared)));
+        // The mapped Win64 XR publisher can exit while the original
+        // Win32 game still owns this read-only mapping. Pin the creator's
+        // kernel process object, not its reusable numeric PID, and reject
+        // a dead producer even when the pose QPC is still under 125 ms.
+        if(!data_ || data_->magic!=kMagic || data_->version!=kVersion ||
+           data_->size!=sizeof(Shared) || !data_->writer_pid){
+            Close();return false;
+        }
+        writer_pid_=data_->writer_pid;
+        writer_process_=OpenProcess(SYNCHRONIZE,FALSE,writer_pid_);
         if(!Valid()){Close();return false;}
         return true;
     }
     bool Valid()const{
         return data_ && data_->magic==kMagic && data_->version==kVersion &&
-               data_->size==sizeof(Shared);
+               data_->size==sizeof(Shared) && data_->writer_pid!=0u &&
+               (writable_ ? data_->writer_pid==GetCurrentProcessId() :
+                (data_->writer_pid==writer_pid_ && WriterProcessAlive()));
     }
     bool Publish(const Frame& value){
         if(!writable_||!Valid()||value.sequence==0u||
@@ -157,6 +169,9 @@ public:
            hz>(std::numeric_limits<std::uint64_t>::max)()/2u ||
            current-stamp>hz*2u)
             return false; // fail closed on disconnected/abandoned XR host
+        // A Win64 host may die between opening the mapping and reading
+        // the seqlock. Its old pose must not be considered live.
+        if(!writable_ && !WriterProcessAlive())return false;
         out=copy;
         return true;
     }
@@ -187,17 +202,30 @@ public:
         if(current<candidate.published_qpc ||
            current-candidate.published_qpc>hz/8u)
             return false;
+        // Do not let a host exit after the first Read() revive an
+        // otherwise recent real-game 6DoF source snapshot.
+        if(!writable_ && !WriterProcessAlive())return false;
         out=candidate;
         return true;
     }
     void Close(){
         if(data_)UnmapViewOfFile(data_);
         if(handle_)CloseHandle(handle_);
-        data_=nullptr;handle_=nullptr;writable_=false;last_written_=0;
+        if(writer_process_)CloseHandle(writer_process_);
+        data_=nullptr;handle_=nullptr;writer_process_=nullptr;
+        writer_pid_=0u;writable_=false;last_written_=0;
     }
 private:
+    bool WriterProcessAlive()const noexcept {
+        // WAIT_TIMEOUT is the only proof this exact process HANDLE is
+        // still unsignalled. WAIT_OBJECT_0 and WAIT_FAILED both reject.
+        return writer_process_ &&
+               WaitForSingleObject(writer_process_,0u)==WAIT_TIMEOUT;
+    }
     HANDLE handle_=nullptr;
+    HANDLE writer_process_=nullptr; // pinned identity of Win64 XR publisher
     Shared* data_=nullptr;
+    std::uint32_t writer_pid_=0u;
     bool writable_=false;
     std::uint64_t last_written_=0;
 };
