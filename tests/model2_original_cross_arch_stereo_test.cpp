@@ -90,6 +90,10 @@ int wmain(){
                            0u,0u,0u,{}));
     REQUIRE(SetEvent(ready)!=FALSE);
     REQUIRE(WaitForSingleObject(advance,30000u)==WAIT_OBJECT_0);
+    // A real Win64 OpenXR tracking-loss invalidation is observed through
+    // the existing x64->x86 production pose channel, not a test mock.
+    m2vr::pose::Frame invalidated{};
+    REQUIRE(!original_x86_pose.ReadTracked(invalidated));
     CloseHandle(ready);CloseHandle(advance);
     return 0;
 }
@@ -220,6 +224,7 @@ int wmain(int argc,wchar_t** argv){
         static_cast<std::uint64_t>(end_clock.QuadPart),
         static_cast<std::uint64_t>(hz.QuadPart),
         newer_failed,true).reason==xrcommit::Reject::NewerFailedPresent);
+    REQUIRE(pose_writer.Invalidate());
     REQUIRE(ResetEvent(ready)!=FALSE);
     REQUIRE(SetEvent(advance)!=FALSE);
     REQUIRE(WaitForSingleObject(child.hProcess,30000u)==WAIT_OBJECT_0);
@@ -228,6 +233,14 @@ int wmain(int argc,wchar_t** argv){
     REQUIRE(!process_lease.Alive());
     REQUIRE(process_lease.Terminal());
     REQUIRE(!process_lease.Attach(child.dwProcessId));
+    // A terminal original game process may leave Win64 mappings readable.
+    // Neither the prior accepted frame nor a previously successful health
+    // can be submitted after the kernel process HANDLE signals exit.
+    REQUIRE(xrcommit::VerifyOriginalFrameAtEnd(
+        process_lease.Alive(),frame_gate,held_x86,true,
+        static_cast<std::uint64_t>(end_clock.QuadPart),
+        static_cast<std::uint64_t>(hz.QuadPart),
+        newer_failed,true).reason==xrcommit::Reject::SourceDead);
     CloseHandle(ready);CloseHandle(advance);CloseHandle(child.hProcess);
     return 0;
 }

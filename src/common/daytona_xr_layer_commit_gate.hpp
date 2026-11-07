@@ -49,6 +49,12 @@ inline Result VerifyOriginalFrameAtEnd(
        !producerhealth::Fresh(final_health,final_qpc,qpc_hz) ||
        final_health.frame_id<eyes.frame_id)
         return {false,Reject::MissingReceipt};
+    // A physically *newer* original Present cannot predate the copied
+    // D3D9 eye surface in the shared Windows QPC domain. This also covers
+    // bogus zero-reason "success" receipts used to keep stale eyes alive.
+    if(!eyes.timestamp_qpc ||
+       final_health.timestamp_qpc<eyes.timestamp_qpc)
+        return {false,Reject::ContradictoryReceipt};
     if(final_health.frame_id==eyes.frame_id){
         return receipt::Authorize(eyes.frame_id,eyes.kind,
              eyes.timestamp_qpc,final_health,true)==receipt::Verdict::Admit

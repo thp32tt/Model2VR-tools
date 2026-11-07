@@ -47,6 +47,9 @@ int main(){
     // A newer verified success may hold frame 10 for a bounded XR tick.
     health.frame_id=11u;
     CHECK(verify(true,true).submit);
+    health.timestamp_qpc=now-1u;
+    CHECK(verify(true,true).reason==Reject::ContradictoryReceipt);
+    health.timestamp_qpc=now;
     // No scene/Draw cannot be a harmless newer source success.
     health.verified_scene_draws=0u;
     CHECK(verify(true,true).reason==Reject::NewerFailedPresent);
