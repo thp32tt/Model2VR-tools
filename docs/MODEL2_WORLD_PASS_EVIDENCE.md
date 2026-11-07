@@ -1,5 +1,31 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Direct original seven-session candidate input integrity (2026-11-07)
+
+The direct local command `python tools/model2_world_pass_evidence.py --race ... --control ...`
+can compare **seven independently captured user-labelled ORIGINAL Daytona x86**
+CSV/preflight JSON sources before a final `PRIVATE_MANIFEST.json` exists.
+It now uses the same strict receipt JSON decoder for every directly supplied
+JSON report: duplicate members at ANY nested depth, NaN/Infinity, invalid roots
+and linked/symlink inputs fail closed. A valid JSON-only or raw CSV seven-session
+candidate comparison is unchanged.
+
+For direct entry only, it also hashes every one of the seven input source files
+**before** deriving the candidate and hashes all seven again **after** the
+entire comparison, immediately before writing output. This catches a prior
+race/control file being changed while another original source is parsed.
+The Windows collector separately pins original CSV/report SHA-256 values
+through pending candidate promotion and final receipt creation. The raw
+captured CSV/report files and their analysis are PRIVATE/local only.
+
+This new direct-entry integrity check is not an original gameplay-source
+authentication, scene classification, game-camera axis/metres-per-unit
+calibration, or Quest3+VDXR tracking proof. A successful read-only result is
+still `world_pass_proof=NOT_ESTABLISHED`,
+`RUNTIME_VALIDATION=UNTESTED`, `adapter_auto_enable=false`.
+Real Daytona Draw/Present, source emulator/ROM/EXE, OpenXR, FFB, input,
+original mono fallback, OutRun and web-port are unmodified.
+
 ## Per-original-process physical Present count and same-source causal candidate checks (2026-11-07)
 
 The original PRIVATE source audit now requires every per-caller `distinct_*_present_frame_count` to be a non-boolean, nonnegative integer no greater than its `original_capture_run.physical_present_count`. The bound belongs to the same original x86 process nonce, **not** a second race or the x64 HMD source. Multi-Draw-per-frame observation counters are not limited to one Draw per Present; only distinct physical frame set cardinalities are limited.
