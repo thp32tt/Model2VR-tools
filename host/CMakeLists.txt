@@ -46,6 +46,14 @@ add_test(NAME daytona_original_mono_quad_world_anchor_x64
 # ABI contract must be identical between the 32-bit emulator producer
 # and the 64-bit HMD consumer; run the same regression in both builds.
 enable_testing()
+# Independent Win64 consumer applies identical real x86 packet/health
+# admission before any OpenXR projection swapchain receives game pixels.
+add_executable(daytona_source_handoff_x64_test
+    ../tests/daytona_source_handoff_gate_test.cpp)
+target_compile_features(daytona_source_handoff_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_draw_present_to_xr_handoff_x64
+    COMMAND daytona_source_handoff_x64_test)
+
 add_executable(model2vr_shared_ipc_x64_test ../tests/stereo_frame_ipc_test.cpp)
 target_compile_features(model2vr_shared_ipc_x64_test PRIVATE cxx_std_20)
 add_test(NAME stereo_frame_transport_x64 COMMAND model2vr_shared_ipc_x64_test)

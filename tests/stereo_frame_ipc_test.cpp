@@ -151,3 +151,6 @@ int main(){
     REQUIRE(!reader.Read(snap));
     return 0;
 }
+
+// Runtime-oriented source/receipt gate tests live in
+// daytona_source_handoff_gate_test.cpp, compiled for both native bitnesses.

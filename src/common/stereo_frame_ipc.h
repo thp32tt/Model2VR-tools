@@ -165,6 +165,14 @@ public:
             InterlockedExchange(&h->sequence,before+2);
             return false;
         }
+        // Fail before touching either eye on a broken native QPC clock.
+        // A zero timestamp cannot be linked to the post-COM Present
+        // receipt, and must never overwrite a previously valid eye packet.
+        LARGE_INTEGER time{};
+        if(!QueryPerformanceCounter(&time) || time.QuadPart<=0){
+            InterlockedExchange(&h->sequence,before+2);
+            return false;
+        }
         std::memcpy(base_+sizeof(Header),left,kBytesPerEye);
         // Do NOT copy 4 MiB of redundant pixels for a mono cinema quad.
         // The kind=4 marker is published only after the seqlock commits.
@@ -173,8 +181,6 @@ public:
             std::memcpy(base_+sizeof(Header)+kBytesPerEye,right,kBytesPerEye);
         h->frame_id=frame_id;
         h->pose_sequence=pose_sequence;
-        LARGE_INTEGER time{};
-        QueryPerformanceCounter(&time);
         h->timestamp_qpc=static_cast<std::uint64_t>(time.QuadPart);
         InterlockedExchange(&h->kind,static_cast<LONG>(kind));
         // Publish the monotonic source high-water mark BEFORE releasing
@@ -201,8 +207,12 @@ public:
         MemoryBarrier();
         const LONG end=h->sequence;
         if(start!=end || (end&1) || stamp.frame_id==0 ||
-           stamp.writer_pid!=key_pid_ ||
-           !ValidSourceKind(stamp.kind))return false;
+           stamp.timestamp_qpc==0u || stamp.writer_pid!=key_pid_ ||
+           !ValidSourceKind(stamp.kind) ||
+           (stamp.kind==FrameKind::VerifiedCpuWorldStereo &&
+            stamp.pose_sequence==0u) ||
+           (!IsStereoGame(stamp.kind) && stamp.pose_sequence!=0u))
+            return false;
         out=stamp;
         return true;
     }
@@ -221,6 +231,10 @@ public:
         if(!ValidSourceKind(kind))return false;
         const auto frame=h->frame_id, timestamp=h->timestamp_qpc;
         const auto pose_sequence=h->pose_sequence;
+        if(frame==0u || timestamp==0u ||
+           (kind==FrameKind::VerifiedCpuWorldStereo &&
+            pose_sequence==0u) ||
+           (!IsStereoGame(kind) && pose_sequence!=0u))return false;
         if(staging.eyes[0].size()!=kBytesPerEye)
             staging.eyes[0].resize(kBytesPerEye);
         std::memcpy(staging.eyes[0].data(),base_+sizeof(Header),kBytesPerEye);

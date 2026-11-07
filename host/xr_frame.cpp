@@ -1,5 +1,6 @@
 #include "xr_app.h"
 #include "xr_source_eye_coherence.hpp"
+#include "../src/common/daytona_source_handoff_gate.hpp"
 #include "../src/common/stereo_eye_rig_geometry.hpp"
 #include "../src/common/stereo_pose_publication_gate.hpp"
 #include "../src/common/model2_emulator_window_policy.hpp"
@@ -416,8 +417,10 @@ void XrApp::draw_frame(XrTime display_time){
                 if(known_pose &&
                    receipt_verdict==receipt::Verdict::Admit &&
                    shared_frames_.ReadReusable(staging_frame_)){
-                    // An 8 MiB copy may observe a later coherent source
-                    // frame than Peek; authenticate the copied frame again.
+                    // The 8-MiB copy may observe a newer coherent source
+                    // generation than Peek. Require the SAME physical
+                    // frame, kind, QPC and pose tag at the final gate; let
+                    // the next XR tick retry a newer, fully stamped pair.
                     // The second mapping can advance during an 8-MiB
                     // seqlock copy. Re-read the ACTUAL health receipt after
                     // copying, not merely the snapshot from before Peek.
@@ -444,7 +447,11 @@ void XrApp::draw_frame(XrTime display_time){
                     const bool matched=transport::SourcePoseMatchesFrame(
                         staging_frame_.kind,tag,tag!=0u && exact_views!=nullptr);
                     if(staged_receipt==receipt::Verdict::Admit &&
-                       matched && frame_gate_.Accept(staging_frame_,now,hz)){
+                       matched &&
+                       handoff::AdmitOriginalPresentToXr(
+                           stamp,staging_frame_,post_copy_health,
+                           post_copy_fresh,exact_views!=nullptr) &&
+                       frame_gate_.Accept(staging_frame_,now,hz)){
                     if(staging_frame_.kind==transport::FrameKind::Diagnostic &&
                        !saw_diagnostic_){
                         std::cout<<"Model2VR: DIAGNOSTIC source; not native game stereo\n";

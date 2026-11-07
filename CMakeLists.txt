@@ -196,6 +196,14 @@ target_compile_features(daytona_pose_present_x86_test PRIVATE cxx_std_20)
 add_test(NAME daytona_original_pose_at_present_x86 COMMAND daytona_pose_present_x86_test)
 
 # 32/64-bit ABI-compatible shared stereo transport and diagnostic producer.
+# Source packet Peek and x64 post-copy original physical Present receipt
+# must describe the EXACT same x86 D3D9 frame and pose-tag transaction.
+add_executable(daytona_source_handoff_x86_test
+    tests/daytona_source_handoff_gate_test.cpp)
+target_compile_features(daytona_source_handoff_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_draw_present_to_xr_handoff_x86
+    COMMAND daytona_source_handoff_x86_test)
+
 add_executable(model2vr_stereo_ipc_test tests/stereo_frame_ipc_test.cpp)
 target_compile_features(model2vr_stereo_ipc_test PRIVATE cxx_std_20)
 add_test(NAME stereo_frame_transport COMMAND model2vr_stereo_ipc_test)
