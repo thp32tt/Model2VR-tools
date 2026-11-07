@@ -988,13 +988,21 @@ def preflight_original_session(path, *, require_race_source=False):
     """
     if path.suffix.lower() != ".csv":
         raise ValueError("single-session preflight requires original x86 CSV")
-    report=audit_csv(path)
+    # The Windows collector independently pins every captured original CSV,
+    # but a standalone --preflight or a direct library caller previously
+    # audited mutable bytes without checking the *same* physical file after
+    # processing. Do not publish candidate metadata based on a changing
+    # original x86 Draw/Scene/Present capture. Reject symlinked input too.
+    original_digest = _capture_digest(path)
+    report=audit_csv(_file(path))
     sources=_validate_report(report)
     bloom=_control_bloom(report)
     _control_exact_callers(report,bloom)
     _control_projector_callers(sources)
     if require_race_source:
         _require_race_source_readiness(report, sources)
+    if _capture_digest(path) != original_digest:
+        raise ValueError("PRIVATE original x86 CSV changed during single-session preflight")
     return report
 
 
