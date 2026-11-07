@@ -30,6 +30,33 @@ The tool reads, but never edits, original private files. It requires a contiguou
 
 This audit does **not** automatically identify race/menu/sky/HUD scenes, prove same-Present World3D ownership, calibrate metres-per-unit, launch the emulator, test Quest3 or authorize stereo. No original CSVs, EXE or ROM are uploaded. `world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED`, CPU World3D AUTO-OFF and original mono fallback remain unchanged.
 
+## Optional original x86 race-source readiness preflight (2026-11-07)
+
+By default, `--preflight` accepts readable read-only original source logs for
+both real race and nonrace diagnostic sessions. A race with **zero** coherent
+CPU projector + active matrix/geometry + same original x86 Draw/Scene/RT0/depth
++ successful post-COM physical Present witnesses cannot become a valid
+World3D candidate merely by collecting five more control sessions.
+
+For an EARLY, strictly non-authorizing source-viability gate, run the
+collector with `-RequireRaceSource`. It applies only to `race_a` and
+`race_b`, for both fresh capture and resume; title/menu/sky/hud/aux keep
+the normal diagnostic preflight:
+
+```powershell
+.\Collect-Daytona-Original-Evidence.cmd -RequireRaceSource -StopAfterStage race_a
+.\Collect-Daytona-Original-Evidence.cmd -RequireRaceSource -ResumeSessionFolder ".\logs\private_original_evidence_<UTC>" -StopAfterStage race_b
+```
+
+For local manual triage of ONE original racing session, the equivalent is
+`python .\model2_world_pass_evidence.py --preflight ".\logs\race_a.csv" --require-race-source`.
+A failed race-readiness check does not save an active per-stage JSON and does
+not ask for another genuine original game run; the existing private archive
+remains diagnostic and resumable. The option never asserts scene labels,
+World3D, camera axes/metres-per-unit, Quest3 tracked IPD/6DoF or stereo
+readiness. It does not auto-enable CPU World3D or alter original Draw/Present,
+input, FFB, original EXE/ROM, OpenXR, OutRun or web-port.
+
 ## PRIVATE original Daytona stage-by-stage checkpoint capture (2026-11-07)
 
 The local seven-session collector can now stop cleanly after one audited, user-labelled stage so you can collect the genuine original Daytona x86 evidence across separate operator sessions. From the extracted matched Win32/Win64 release folder:
