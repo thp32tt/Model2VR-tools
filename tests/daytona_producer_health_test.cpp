@@ -93,6 +93,33 @@ int main(){
  REQUIRE(m2vr::receipt::RevokesCached(10u,FrameKind::CompactMono,1u,receipt,true));
  receipt.reason_mask=0u;
  REQUIRE(!m2vr::receipt::RevokesCached(10u,FrameKind::GameStereo,1u,receipt,true));
+ // A newer successful REAL-original stereo source changes kind, even
+ // though older x86 mono/GPU/CPU pixels are still within their age TTL.
+ Snapshot newer_gpu{12u,20u,0u,3u,4u,0u,{4u,0u,0u,0u}};
+ Snapshot newer_cpu{12u,20u,0u,3u,0u,0u,{0u,0u,0u,0u}};
+ using m2vr::receipt::NewerNativeKindTransition;
+ REQUIRE(NewerNativeKindTransition(11u,FrameKind::CompactMono,10u,newer_gpu,true));
+ REQUIRE(NewerNativeKindTransition(11u,FrameKind::GameMonoFallback,10u,newer_cpu,true));
+ REQUIRE(NewerNativeKindTransition(11u,FrameKind::GameStereo,10u,newer_cpu,true));
+ REQUIRE(NewerNativeKindTransition(11u,FrameKind::VerifiedCpuWorldStereo,10u,newer_gpu,true));
+ REQUIRE(!NewerNativeKindTransition(11u,FrameKind::GameStereo,10u,newer_gpu,true));
+ REQUIRE(!NewerNativeKindTransition(11u,FrameKind::VerifiedCpuWorldStereo,10u,newer_cpu,true));
+ REQUIRE(!NewerNativeKindTransition(11u,FrameKind::Diagnostic,10u,newer_gpu,true));
+ REQUIRE(!NewerNativeKindTransition(11u,FrameKind::CompactMono,10u,newer_gpu,false));
+ REQUIRE(!NewerNativeKindTransition(12u,FrameKind::CompactMono,10u,newer_gpu,true));
+ REQUIRE(!NewerNativeKindTransition(11u,FrameKind::CompactMono,21u,newer_gpu,true));
+ REQUIRE(m2vr::receipt::RevokesCached(11u,FrameKind::CompactMono,10u,newer_gpu,true));
+ REQUIRE(m2vr::receipt::RevokesCached(11u,FrameKind::GameStereo,10u,newer_cpu,true));
+ REQUIRE(!m2vr::receipt::RevokesCached(11u,FrameKind::GameStereo,10u,newer_gpu,true));
+ // The receipt must remain source-authentic; fabricated/ambiguous zero
+ // success, absent Scene or broken draw totals cannot classify a transition.
+ newer_gpu.verified_scene_draws=0u;
+ REQUIRE(!NewerNativeKindTransition(11u,FrameKind::CompactMono,10u,newer_gpu,true));
+ newer_gpu.verified_scene_draws=3u;
+ newer_gpu.family_draws[0]=2u;
+ REQUIRE(!NewerNativeKindTransition(11u,FrameKind::CompactMono,10u,newer_gpu,true));
+ newer_cpu.mirrored_clears=1u;
+ REQUIRE(!NewerNativeKindTransition(11u,FrameKind::CompactMono,10u,newer_cpu,true));
  receipt.frame_id=9u;
  REQUIRE(!m2vr::receipt::RevokesCached(10u,FrameKind::GameStereo,1u,receipt,true));
  REQUIRE(!writer.Publish(1u,NoVerifiedScene,0,11,1,first));

@@ -190,6 +190,20 @@ int wmain(int argc,wchar_t** argv){
         REQUIRE(frame_gate.Accept(copied,
             static_cast<std::uint64_t>(now.QuadPart),
             static_cast<std::uint64_t>(hz.QuadPart)));
+        // The real Win32 producer's third successful physical receipt
+        // switches from original mono to CPU source. Never keep the old
+        // mono cinema image on the Win64 compositor just because it is
+        // still QPC-fresh when we observe the newer health.
+        if(i==2u){
+            REQUIRE(receipt::NewerNativeKindTransition(
+                2u,transport::FrameKind::CompactMono,
+                inspected.timestamp_qpc>1u?inspected.timestamp_qpc-1u:1u,
+                receipt,true));
+            REQUIRE(receipt::RevokesCached(
+                2u,transport::FrameKind::CompactMono,
+                inspected.timestamp_qpc>1u?inspected.timestamp_qpc-1u:1u,
+                receipt,true));
+        }
         REQUIRE(copied.eyes[0].front()==expected_left[i]);
         // A hypothetical subsequent XR host has a later QPC origin.
         REQUIRE(!handoff::AdmitOriginalPresentToXr(

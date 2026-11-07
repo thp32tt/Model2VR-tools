@@ -82,6 +82,14 @@ int main(){
     CHECK(verify(true,true).reason==Reject::NewerFailedPresent);
     health.reason_mask=producerhealth::OriginalMonoFallback;
     CHECK(verify(true,true).reason==Reject::NewerFailedPresent);
+    // Newer successful CPU world source is NOT the same kind as a
+    // previously accepted speculative GPU GameStereo pair.
+    health.reason_mask=0u;health.mirrored_draws=0u;
+    health.family_draws={0u,0u,0u,0u};
+    CHECK(verify(true,true).reason==Reject::NewerNativeSourceKind);
+    health.mirrored_draws=3u;health.family_draws={1u,2u,0u,0u};
+    CHECK(verify(true,true).submit);
+    CHECK(Name(Reject::NewerNativeSourceKind)[0]=='N');
     // Original game 2D->mono is one RGBA source, NOT two projected eyes.
     Snapshot mono=eyes;
     mono.frame_id=11u;mono.pose_sequence=0u;
@@ -103,6 +111,15 @@ int main(){
     health.reason_mask=producerhealth::ReadbackFailed;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
             health,true,now,now).reason==Reject::NewerFailedPresent);
+    // Mono->authentic native stereo recovers while the old cinema packet
+    // remains QPC-fresh: its 250ms cache must be retired right away.
+    health.reason_mask=0u;health.verified_scene_draws=3u;
+    health.mirrored_draws=3u;health.family_draws={1u,2u,0u,0u};
+    CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
+            health,true,now,now).reason==Reject::NewerNativeSourceKind);
+    health.mirrored_draws=0u;health.family_draws={0u,0u,0u,0u};
+    CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
+            health,true,now,now).reason==Reject::NewerNativeSourceKind);
     // Freshness rechecked AFTER swapchain upload, not the earlier copy time.
     health.reason_mask=producerhealth::OriginalMonoFallback;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,

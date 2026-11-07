@@ -13,7 +13,8 @@ namespace m2vr::xrcommit {
 enum class Reject : std::uint8_t {
     None, SourceDead, StalePixels, PayloadMismatch, PoseUnproven,
     MissingReceipt, NewerFailedPresent, ContradictoryReceipt,
-    PreviousHostGeneration, PreviousXrSessionGeneration
+    PreviousHostGeneration, PreviousXrSessionGeneration,
+    NewerNativeSourceKind
 };
 inline constexpr const char* Name(Reject reason) noexcept {
     switch(reason){
@@ -27,6 +28,7 @@ inline constexpr const char* Name(Reject reason) noexcept {
     case Reject::ContradictoryReceipt: return "ORIGINAL_PRESENT_RECEIPT_CONTRADICTORY";
     case Reject::PreviousHostGeneration: return "ORIGINAL_EYES_FROM_PREVIOUS_XR_HOST";
     case Reject::PreviousXrSessionGeneration: return "ORIGINAL_EYES_FROM_PREVIOUS_XR_SESSION";
+    case Reject::NewerNativeSourceKind: return "NEWER_ORIGINAL_NATIVE_SOURCE_KIND";
     }
     return "UNKNOWN_ORIGINAL_XR_LAYER_REJECTION";
 }
@@ -92,12 +94,17 @@ inline Result VerifyOriginalFrameAtEnd(
     // stereo->original-mono transition must revoke it immediately.
     // A purported newer reason=0 success with ZERO authentic scene Draws
     // cannot act as a harmless "success" while retaining previous eyes.
+    if(receipt::NewerNativeKindTransition(eyes.frame_id,eyes.kind,
+                                         eyes.timestamp_qpc,final_health,true))
+        return {false,Reject::NewerNativeSourceKind};
     if(receipt::RevokesCached(eyes.frame_id,eyes.kind,eyes.timestamp_qpc,
                             final_health,true) ||
        (final_health.reason_mask==0u &&
          (final_health.verified_scene_draws==0u ||
           producerhealth::SumFamilies(final_health.family_draws)!=
-             final_health.mirrored_draws)))
+             final_health.mirrored_draws ||
+          (final_health.mirrored_draws==0u &&
+           final_health.mirrored_clears!=0u))))
         return {false,Reject::NewerFailedPresent};
     return {true,Reject::None};
 }

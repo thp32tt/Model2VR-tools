@@ -55,6 +55,34 @@ inline constexpr Verdict Authorize(
     return Verdict::Reject;
 }
 
+// A DIFFERENT valid original output kind in a newer successful physical
+// Present revokes cached eyes immediately, not only a failed Present.
+// Otherwise a 250-ms compact cinema frame can hide a newly recovered
+// tracked GPU/CPU stereo frame, or stale GPU replay can survive after a
+// verified-CPU source switch. The 60Hz->90/120Hz same-kind hold remains.
+// A zero reason mask alone is NOT sufficient: require an authentic scene,
+// coherent mirrored Draw-family totals and physical source QPC order.
+// No game-world verification is inferred from the newer health alone.
+inline constexpr bool NewerNativeKindTransition(
+    std::uint64_t cached_frame,transport::FrameKind cached_kind,
+    std::uint64_t cached_qpc,
+    const producerhealth::Snapshot& newer,bool fresh) noexcept {
+    if(!fresh || cached_frame==0u || !cached_qpc ||
+       newer.frame_id<=cached_frame ||
+       newer.timestamp_qpc<cached_qpc ||
+       newer.reason_mask!=0u || newer.verified_scene_draws==0u ||
+       producerhealth::SumFamilies(newer.family_draws)!=newer.mirrored_draws)
+        return false;
+    const bool gpu=newer.mirrored_draws!=0u;
+    const bool cpu=newer.mirrored_draws==0u &&
+                   newer.mirrored_clears==0u;
+    if(!gpu && !cpu)return false; // malformed zero-reason receipt
+    if(transport::IsMonoGame(cached_kind))return true;
+    if(cached_kind==transport::FrameKind::GameStereo)return cpu;
+    if(cached_kind==transport::FrameKind::VerifiedCpuWorldStereo)return gpu;
+    return false;
+}
+
 // Once admitted, a later same-frame contradictory health status must also
 // revoke the cached pair. A newer failed Present uses existing bounded
 // fallback logic. A newer successful Present may hold the prior verified
@@ -69,8 +97,9 @@ inline constexpr bool RevokesCached(
     if(health.frame_id==frame)
         return Authorize(frame,kind,source_qpc,health,true)!=Verdict::Admit;
     if(health.frame_id>frame)
-        return producerhealth::InvalidatesCachedPair(
-            health,true,frame,transport::IsStereoGame(kind));
+        return NewerNativeKindTransition(frame,kind,source_qpc,health,true) ||
+               producerhealth::InvalidatesCachedPair(
+                   health,true,frame,transport::IsStereoGame(kind));
     return false;
 }
 } // namespace m2vr::receipt
