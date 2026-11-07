@@ -18,6 +18,17 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
         ["3", "2501", "41", "synthetic_probe_unknown", "0", "0", "0", "0"],
     ]
 
+    def test_native_win32_logger_payload_format_matches_source_audit(self):
+        # Keep the consumer in step with the real original x86 LogEvent ABI,
+        # not only fabricated CSV fixtures. No emulator or ROM is required.
+        producer = (Path(__file__).resolve().parents[1]
+                    / "src" / "probe" / "logger.cpp").read_text(encoding="utf-8")
+        self.assertIn("seq,qpc,thread,event,a0,a1,a2,a3", producer)
+        self.assertIn("%llu,%lld,%lu,%.*s,%llu,%llu,%llu,%llu", producer)
+        for argument in ("a0", "a1", "a2", "a3"):
+            self.assertIn("static_cast<unsigned long long>(" + argument + ")",
+                          producer)
+
     def write_rows(self, destination, rows):
         with destination.open("w", encoding="utf-8", newline="") as output:
             writer = csv.writer(output)
