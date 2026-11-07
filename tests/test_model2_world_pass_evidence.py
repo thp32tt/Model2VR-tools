@@ -198,6 +198,68 @@ def controls(**overrides):
 
 
 class OriginalWorldPassEvidenceTest(unittest.TestCase):
+    def test_direct_seven_session_stdout_redacts_private_caller_identifiers(self):
+        # All reports are invented metadata. Never echo original Daytona
+        # CPU/GPU RVAs, per-frame Draw/Scene ordinals or process run nonces
+        # into CI/shell stdout; keep detailed records in explicit local JSON.
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            records = {
+                "race_a": report(witness()), "race_b": report(witness()),
+                **controls(),
+            }
+            paths = {}
+            for label, value in records.items():
+                path = root / (label + ".json")
+                path.write_text(json.dumps(value), encoding="utf-8")
+                paths[label] = path
+            argv = ["--race", str(paths["race_a"]),
+                    "--race", str(paths["race_b"])]
+            for label in sorted(CONTROL_TYPES):
+                argv += ["--control", label, str(paths[label])]
+
+            safe_out = io.StringIO()
+            with redirect_stdout(safe_out):
+                main(argv)
+            summary = json.loads(safe_out.getvalue())
+            self.assertEqual(summary, {
+                "schema": 1,
+                "private_candidate_summary": "CANDIDATE_ONLY_NOT_AUTHORIZED",
+                "race_session_count": 2,
+                "nonrace_session_count": 5,
+                "candidate_count": 1,
+                "rejected_count": 0,
+                "world_pass_proof": "NOT_ESTABLISHED",
+                "hmd_runtime_validation": "UNTESTED",
+                "adapter_auto_enable": False,
+            })
+            for forbidden in ("0x", "caller", "ordinal", "nonce", "sources"):
+                self.assertNotIn(forbidden, safe_out.getvalue())
+
+            local = root / "PRIVATE_FULL_CANDIDATES.json"
+            with redirect_stdout(io.StringIO()) as stdout:
+                main(argv + ["--output", str(local)])
+            self.assertEqual(stdout.getvalue(), "")
+            full = json.loads(local.read_text(encoding="utf-8"))
+            self.assertEqual(len(full["candidates"]), 1)
+            self.assertEqual(full["candidates"][0]["caller_rva_hex"],
+                             "0x004a1234")
+            self.assertEqual(
+                full["candidates"][0]["cpu_projector_caller_rva_hex"],
+                "0x004bb400")
+
+            # Rejected caller details are private as well.
+            paths["title"].write_text(
+                json.dumps(report(witness())), encoding="utf-8")
+            redacted = io.StringIO()
+            with redirect_stdout(redacted):
+                main(argv)
+            rejected_summary = json.loads(redacted.getvalue())
+            self.assertEqual(rejected_summary["candidate_count"], 0)
+            self.assertGreaterEqual(rejected_summary["rejected_count"], 1)
+            for forbidden in ("0x", "caller", "ordinal", "nonce", "sources"):
+                self.assertNotIn(forbidden, redacted.getvalue())
+
     @unittest.skipUnless(os.name == "nt", "requires real Windows file-share semantics")
     def test_direct_python_source_rejects_live_original_x86_writer(self):
         # Exercise the actual Win32 share-mode contract, not a mocked

@@ -1210,7 +1210,23 @@ def main(argv=None):
     except (ValueError,OSError,json.JSONDecodeError) as exc:
         parser.error(str(exc))
     if not args.output:
-        print(content,end="")
+        # The seven input reports are PRIVATE original game metadata.
+        # Full candidate/rejection JSON contains executable CPU/GPU caller
+        # RVAs and Draw/Scene ordinals. A shell, CI runner or support log
+        # must not capture those by accident merely because --output was
+        # omitted. Keep detailed evidence only in an explicit local file.
+        result = json.loads(content)
+        print(json.dumps({
+            "schema": 1,
+            "private_candidate_summary": "CANDIDATE_ONLY_NOT_AUTHORIZED",
+            "race_session_count": result["race_session_count"],
+            "nonrace_session_count": result["nonrace_session_count"],
+            "candidate_count": len(result["candidates"]),
+            "rejected_count": len(result["rejected"]),
+            "world_pass_proof": "NOT_ESTABLISHED",
+            "hmd_runtime_validation": "UNTESTED",
+            "adapter_auto_enable": False,
+        }, sort_keys=True))
 
 
 if __name__=="__main__":
