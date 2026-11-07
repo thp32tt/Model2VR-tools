@@ -117,6 +117,18 @@ target_include_directories(model2vr_stereo_core PUBLIC src/vr)
 target_compile_features(model2vr_stereo_core PUBLIC cxx_std_20)
 
 enable_testing()
+
+# Keep PRIVATE original x86 Daytona process logs disjoint. A new process
+# must CREATE_NEW rather than append to an earlier PID/second collision.
+add_executable(model2_original_probe_unique_log_test
+    tests/model2_original_probe_unique_log_test.cpp
+    src/probe/logger.cpp)
+target_compile_features(model2_original_probe_unique_log_test PRIVATE cxx_std_20)
+target_compile_definitions(model2_original_probe_unique_log_test PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+add_test(NAME model2_original_x86_private_log_exclusive_creation
+    COMMAND model2_original_probe_unique_log_test)
+
 add_executable(model2vr_stereo_core_test tests/stereo_core_test.cpp)
 target_link_libraries(model2vr_stereo_core_test PRIVATE model2vr_stereo_core)
 add_test(NAME stereo_geometry_invariants COMMAND model2vr_stereo_core_test)

@@ -29,10 +29,19 @@ DWORD WINAPI ProbeThread(void* parameter) {
     if (log_path.is_relative()) log_path = directory / log_path;
     SYSTEMTIME now{};
     GetLocalTime(&now);
-    wchar_t suffix[96]{};
-    swprintf_s(suffix, L"_%04hu%02hu%02hu_%02hu%02hu%02hu_%lu",
-               now.wYear, now.wMonth, now.wDay,
-               now.wHour, now.wMinute, now.wSecond, GetCurrentProcessId());
+    LARGE_INTEGER start_qpc{};
+    QueryPerformanceCounter(&start_qpc);
+    wchar_t suffix[128]{};
+    // A PID can be reused in the same second, especially for quick
+    // original Daytona PRIVATE race/control restarts. Milliseconds plus
+    // this system-monotonic QPC differentiate these process starts; the
+    // logger independently refuses an existing destination via CREATE_NEW.
+    // Preserve the daytona_vr_startup_*.csv collector filename contract.
+    swprintf_s(suffix,L"_%04hu%02hu%02hu_%02hu%02hu%02hu_%03hu_%lu_%016llx",
+        now.wYear,now.wMonth,now.wDay,
+        now.wHour,now.wMinute,now.wSecond,now.wMilliseconds,
+        GetCurrentProcessId(),
+        static_cast<unsigned long long>(start_qpc.QuadPart));
     log_path = log_path.parent_path() /
         (log_path.stem().wstring()+suffix+log_path.extension().wstring());
     // Keep x86 startup CSV beside the launcher and x64 host logs even

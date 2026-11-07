@@ -4,6 +4,8 @@
 
 #include <atomic>
 #include <cstdio>
+#include <fcntl.h>
+#include <io.h>
 #include <mutex>
 
 namespace m2vr {
@@ -22,16 +24,37 @@ bool OpenLog(const std::filesystem::path& path) {
         return true;
     }
 
-    g_last_flush_tick=GetTickCount64();
-    if (_wfopen_s(&g_log, path.c_str(), L"ab") != 0 || !g_log) {
-        g_log = nullptr;
+    // Every original x86 emulator process must own a BRAND NEW log.
+    // Opening in append mode silently merged runs if Windows reused a PID
+    // and the old second-resolution filename was still on disk. A CSV with
+    // concatenated headers or two process lifetimes cannot be used as an
+    // independent Daytona PRIVATE source session.
+    //
+    // CREATE_NEW is atomic across processes and refuses existing files,
+    // including same-name reopens. Let the probe fail closed rather than
+    // corrupt a user-owned original game capture. FILE_SHARE_READ allows
+    // an observer to inspect an actively written log without writing it.
+    const HANDLE file=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ,
+        nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(file==INVALID_HANDLE_VALUE)return false;
+    const int fd=_open_osfhandle(reinterpret_cast<intptr_t>(file),
+                                _O_WRONLY|_O_BINARY);
+    if(fd==-1){
+        CloseHandle(file); // Ownership transfers only on successful import.
         return false;
     }
-
-    std::fseek(g_log, 0, SEEK_END);
-    if (std::ftell(g_log) == 0) {
-        std::fputs("seq,qpc,thread,event,a0,a1,a2,a3\r\n", g_log);
-        std::fflush(g_log);
+    std::FILE* opened=nullptr;
+    if(_fdopen_s(&opened,fd,"wb")!=0 || !opened){
+        _close(fd); // Owns and closes the imported Win32 file handle.
+        return false;
+    }
+    g_log=opened;
+    g_last_flush_tick=GetTickCount64();
+    std::fputs("seq,qpc,thread,event,a0,a1,a2,a3\r\n",g_log);
+    if(std::fflush(g_log)!=0){
+        std::fclose(g_log);
+        g_log=nullptr;
+        return false;
     }
     return true;
 }
