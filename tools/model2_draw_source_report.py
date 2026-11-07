@@ -1414,6 +1414,10 @@ def audit_csv(path):
         "original_main_full_view_depth_candidates": 0,
         "original_draw_success_witnesses": 0,
         "original_draw_success_by_physical_frame": Counter(),
+        "original_present_success_by_physical_frame": Counter(),
+        "original_draw_phase_attested_by_physical_frame": Counter(),
+        "original_scene_phase_attested_by_physical_frame": Counter(),
+        "original_draw_completion_attested_by_physical_frame": Counter(),
         "original_draw_failure_witnesses": 0,
         "original_draw_result_missing_witnesses": 0,
         "original_draw_result_inconsistent_witnesses": 0,
@@ -1552,6 +1556,7 @@ def audit_csv(path):
             else:
                 phase_attested = True
                 entry["original_draw_phase_attested_witnesses"] += 1
+                entry["original_draw_phase_attested_by_physical_frame"][present_frame] += 1
                 entry["original_draw_phase_ordinals"].add(ordinal)
         scene = data.get("source_scene_phase")
         scene_attested = False
@@ -1566,6 +1571,7 @@ def audit_csv(path):
             else:
                 scene_attested = True
                 entry["original_scene_phase_attested_witnesses"] += 1
+                entry["original_scene_phase_attested_by_physical_frame"][present_frame] += 1
                 entry["original_scene_ordinals"].add(scene_index)
         # A late failed original Begin/EndScene can occur after a successful
         # source Draw but BEFORE its physical Present. It invalidates the
@@ -1631,6 +1637,7 @@ def audit_csv(path):
             else:
                 post_com_retained=True
                 entry["original_draw_completion_attested_witnesses"]+=1
+                entry["original_draw_completion_attested_by_physical_frame"][present_frame] += 1
         # Even an authentic successful COM Draw may never reach the screen
         # if the physical original Present failed (e.g. lost D3D9 device).
         original_present_success = False
@@ -1643,6 +1650,7 @@ def audit_csv(path):
             else:
                 original_present_success = True
                 entry["original_present_success_witnesses"] += 1
+                entry["original_present_success_by_physical_frame"][present_frame] += 1
                 if post_com_retained:
                     entry["original_post_com_retained_present_frames"].add(
                         present_frame)
@@ -1961,9 +1969,18 @@ def audit_csv(path):
             "caller_is_in_executable": caller != 0,
         }
         record["distinct_present_frame_count"] = len(value["present_frames"])
-        record["original_draw_success_by_physical_frame"] = [
-            [frame, count] for frame, count in sorted(
-                value["original_draw_success_by_physical_frame"].items())]
+        # Each post-COM and phase counter is grouped by the exact sampled
+        # original x86 physical Present. Global equal counts cannot borrow
+        # evidence from another frame in a cached PRIVATE receipt.
+        for stage in (
+            "original_draw_success_by_physical_frame",
+            "original_present_success_by_physical_frame",
+            "original_draw_phase_attested_by_physical_frame",
+            "original_scene_phase_attested_by_physical_frame",
+            "original_draw_completion_attested_by_physical_frame",
+        ):
+            record[stage] = [
+                [frame, count] for frame, count in sorted(value[stage].items())]
         # Genuine CPU projector vertex population must belong to at
         # least two DISTINCT original physical Present frames to remain
         # an offline race source candidate (never World3D authorization).
@@ -2046,6 +2063,10 @@ def audit_csv(path):
                         "original_scene_ordinals",
                         "original_draw_phase_ordinals",
                         "original_draw_success_by_physical_frame",
+                        "original_present_success_by_physical_frame",
+                        "original_draw_phase_attested_by_physical_frame",
+                        "original_scene_phase_attested_by_physical_frame",
+                        "original_draw_completion_attested_by_physical_frame",
                        "same_witness_joint_present_frames"):
                 continue
             if isinstance(item, set):

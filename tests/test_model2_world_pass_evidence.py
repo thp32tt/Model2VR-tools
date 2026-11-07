@@ -22,6 +22,14 @@ def witness(cpu="0x004bb400", count=3):
         "original_draw_success_witnesses": count,
         "original_draw_success_by_physical_frame": [
             [frame, 1] for frame in range(1, count+1)],
+        "original_present_success_by_physical_frame": [
+            [frame, 1] for frame in range(1, count+1)],
+        "original_draw_phase_attested_by_physical_frame": [
+            [frame, 1] for frame in range(1, count+1)],
+        "original_scene_phase_attested_by_physical_frame": [
+            [frame, 1] for frame in range(1, count+1)],
+        "original_draw_completion_attested_by_physical_frame": [
+            [frame, 1] for frame in range(1, count+1)],
         "original_draw_phase_attested_witnesses": count,
         "original_scene_phase_attested_witnesses": count,
         "original_draw_completion_attested_witnesses": count,
@@ -717,6 +725,86 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                     source["original_draw_success_by_physical_frame"] = bad
                 got = compare_sessions([report(source),report(witness())],controls())
                 self.assertFalse(got["candidates"])
+
+    def test_original_post_com_stages_cannot_borrow_another_present(self):
+        # Same totals and an authentic successful original COM Draw on all
+        # material frames are insufficient when the physical Present,
+        # phase, Scene or completion evidence is from another frame.
+        fields = (
+            "original_present_success_by_physical_frame",
+            "original_draw_phase_attested_by_physical_frame",
+            "original_scene_phase_attested_by_physical_frame",
+            "original_draw_completion_attested_by_physical_frame",
+        )
+        for field in fields:
+            with self.subTest(field=field):
+                source = witness()
+                source["original_draw_success_witnesses"] = 5
+                source["original_draw_success_by_physical_frame"] = [
+                    [1, 2], [2, 2], [3, 1]]
+                # The global stage total remains three, but the stage
+                # has no genuine original COM witness on material frame 3.
+                source[field] = [[1, 2], [2, 1]]
+                got = compare_sessions([report(source), report(witness())],
+                                       controls())
+                self.assertFalse(got["candidates"])
+                self.assertEqual(got["rejected"][0]["reason"],
+                                 "race_original_draw_witness_budget_exceeded")
+
+    def test_original_post_com_stage_rows_are_complete_and_causal(self):
+        fields = (
+            "original_present_success_by_physical_frame",
+            "original_draw_phase_attested_by_physical_frame",
+            "original_scene_phase_attested_by_physical_frame",
+            "original_draw_completion_attested_by_physical_frame",
+        )
+        bad_rows = (
+            None, [[1, 1], [1, 2]], [[1, True], [2, 1], [3, 1]],
+            [[1, 1], [2, 1]], [[1, 1], [2, 1], [9, 1]],
+            [[3, 1], [2, 1], [1, 1]], [[1, 0], [2, 1], [3, 1]],
+        )
+        for field in fields:
+            for rows in bad_rows:
+                with self.subTest(field=field, rows=rows):
+                    source = witness()
+                    if rows is None:
+                        del source[field]
+                    else:
+                        source[field] = rows
+                    got = compare_sessions([report(source),report(witness())],
+                                           controls())
+                    self.assertFalse(got["candidates"])
+                    self.assertEqual(got["rejected"][0]["reason"],
+                                     "race_original_draw_witness_budget_exceeded")
+
+    def test_original_same_frame_stage_predecessor_limits(self):
+        # Each stage still totals three, but one Scene witness exists
+        # without its own authentic Draw-phase witness on frame 3.
+        source = witness()
+        source["original_draw_success_witnesses"] = 5
+        source["original_draw_success_by_physical_frame"] = [
+            [1, 2], [2, 2], [3, 1]]
+        source["original_draw_phase_attested_by_physical_frame"] = [
+            [1, 1], [2, 1], [3, 1]]
+        source["original_scene_phase_attested_witnesses"] = 4
+        source["original_scene_phase_attested_by_physical_frame"] = [
+            [1, 2], [2, 1], [3, 1]]
+        got = compare_sessions([report(source),report(witness())],controls())
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "race_original_draw_witness_budget_exceeded")
+
+    def test_original_stage_witnesses_keep_valid_extra_com_draw(self):
+        source = witness()
+        source["original_draw_success_witnesses"] = 4
+        source["original_draw_success_by_physical_frame"] = [
+            [1, 2], [2, 1], [3, 1]]
+        # Exactly one of two successful original Draws on frame 1 has
+        # the full material witness chain. A spare successful Draw is
+        # not automatically promoted to material.
+        got = compare_sessions([report(source),report(witness())],controls())
+        self.assertEqual(len(got["candidates"]),1)
+        self.assertFalse(got["adapter_auto_enable"])
 
     def test_original_scene_camera_target_same_physical_present_required(self):
         # All independent physical coverage totals still equal three, but

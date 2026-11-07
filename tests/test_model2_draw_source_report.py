@@ -1944,6 +1944,14 @@ class SourceAuditTests(unittest.TestCase):
                 "model2_d3d9_source_draw_completion",501,17,12,15)])
             complete=REPORT.audit_csv(path)["sources"][0]
             self.assertEqual(complete["original_draw_completion_attested_witnesses"],1)
+            for field in (
+                "original_draw_success_by_physical_frame",
+                "original_present_success_by_physical_frame",
+                "original_draw_phase_attested_by_physical_frame",
+                "original_scene_phase_attested_by_physical_frame",
+                "original_draw_completion_attested_by_physical_frame",
+            ):
+                self.assertEqual(complete[field], [[17, 1]], field)
             self.assertEqual(complete["distinct_post_com_retained_present_frame_count"],1)
             # A complete original physical post-COM Draw can be traced
             # to its specific Present, while absent CPU/material joins

@@ -545,41 +545,67 @@ def _within_original_scene_draw_budget(report):
     if sum(frame_budget.values()) > budget:
         return False
     summed = {}
+    stages = (
+        ("original_draw_success_by_physical_frame",
+         "original_draw_success_witnesses", "draw_success"),
+        ("original_present_success_by_physical_frame",
+         "original_present_success_witnesses", "present_success"),
+        ("original_draw_phase_attested_by_physical_frame",
+         "original_draw_phase_attested_witnesses", "draw_phase"),
+        ("original_scene_phase_attested_by_physical_frame",
+         "original_scene_phase_attested_witnesses", "scene_phase"),
+        ("original_draw_completion_attested_by_physical_frame",
+         "original_draw_completion_attested_witnesses", "post_com"),
+    )
     for source in report["sources"]:
-        rows = source.get("original_draw_success_by_physical_frame")
-        if not isinstance(rows, list) or len(rows) > MAX_SOURCES:
-            return False
-        previous = 0
-        count = 0
-        for pair in rows:
-            if (not isinstance(pair, list) or len(pair) != 2 or
-                    any(type(n) is not int for n in pair)):
-                return False
-            frame, observed = pair
-            if (not previous < frame <= physical_frames or
-                    frame not in frame_budget or
-                    not 0 < observed <= frame_budget[frame]):
-                return False
-            count += observed
-            summed[frame] = summed.get(frame, 0) + observed
-            if summed[frame] > frame_budget[frame]:
-                return False
-            previous = frame
-        if count != source["original_draw_success_witnesses"]:
-            return False
-        # Per-Draw HRESULT successes are not just counts. Every frame
-        # that claims a successful original *projected material* Draw
-        # must have an authentic same-caller successful COM Draw on that
-        # exact original physical Present. Spare Draws on an earlier
-        # frame cannot authenticate material on later frames.
         lineage = source.get("original_material_frame_lineage")
-        successful_material = (lineage.get("draw_success")
-                               if isinstance(lineage, dict) else None)
-        seen = {row[0] for row in rows}
-        if (not isinstance(successful_material, list) or
-                any(type(frame) is not int or frame not in seen
-                    for frame in successful_material)):
+        if not isinstance(lineage, dict):
             return False
+        actual = {}
+        for field, counter, material_stage in stages:
+            rows = source.get(field)
+            if not isinstance(rows, list) or len(rows) > MAX_SOURCES:
+                return False
+            previous = 0
+            count = 0
+            per_frame = {}
+            for pair in rows:
+                if (not isinstance(pair, list) or len(pair) != 2 or
+                        any(type(n) is not int for n in pair)):
+                    return False
+                frame, observed = pair
+                if (not previous < frame <= physical_frames or
+                        frame not in frame_budget or
+                        not 0 < observed <= frame_budget[frame]):
+                    return False
+                count += observed
+                per_frame[frame] = observed
+                if field == "original_draw_success_by_physical_frame":
+                    summed[frame] = summed.get(frame, 0) + observed
+                    if summed[frame] > frame_budget[frame]:
+                        return False
+                previous = frame
+            if count != source.get(counter):
+                return False
+            claimed_frames = lineage.get(material_stage)
+            if (not isinstance(claimed_frames, list) or
+                    any(type(frame) is not int or frame not in per_frame
+                        for frame in claimed_frames)):
+                return False
+            actual[material_stage] = per_frame
+        # Every claimed material step must have real post-COM witnesses
+        # on THAT physical Present. Equal global counts do not establish
+        # same-frame success, phase, Scene or retained completion. A stage
+        # cannot claim more sampled Draws than its same-frame predecessor.
+        for frame, successes in actual["draw_success"].items():
+            presented = actual["present_success"].get(frame, 0)
+            phase = actual["draw_phase"].get(frame, 0)
+            scene = actual["scene_phase"].get(frame, 0)
+            completed = actual["post_com"].get(frame, 0)
+            if (presented > successes or phase > successes or
+                    scene > phase or completed > scene or
+                    completed > presented):
+                return False
     # Extra unaccounted frame budgets cannot be invented as spare capacity.
     return set(frame_budget) == set(summed)
 
