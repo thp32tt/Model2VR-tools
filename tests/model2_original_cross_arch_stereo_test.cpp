@@ -81,13 +81,13 @@ int wmain(){
         if(i==2u){
             // Actual x86 shared mapping: earlier camera 90 must NOT
             // supersede stereo 91 after the intervening mono Present.
-            std::vector<std::uint8_t> old_left(transport::kBytesPerEye,0x55);
-            std::vector<std::uint8_t> old_right(transport::kBytesPerEye,0xaa);
+            std::vector<std::uint8_t> old_left(m2vr::transport::kBytesPerEye,0x55);
+            std::vector<std::uint8_t> old_right(m2vr::transport::kBytesPerEye,0xaa);
             REQUIRE(!frames.Publish(old_left.data(),old_right.data(),
-                3u,transport::FrameKind::VerifiedCpuWorldStereo,90u));
-            transport::FrameStamp still_mono{};
+                3u,m2vr::transport::FrameKind::VerifiedCpuWorldStereo,90u));
+            m2vr::transport::FrameStamp still_mono{};
             REQUIRE(frames.Peek(still_mono) && still_mono.frame_id==2u &&
-                    still_mono.kind==transport::FrameKind::CompactMono);
+                    still_mono.kind==m2vr::transport::FrameKind::CompactMono);
         }
         REQUIRE(WritePhase(frames,health,i+1u,kinds[i],tags[i],
                            colors_left[i],colors_right[i]));
