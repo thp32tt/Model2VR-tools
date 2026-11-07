@@ -655,7 +655,24 @@ def audit_csv(path):
                     or not 0 < thread_id <= 0xffffffff):
                 raise ValueError("invalid original CSV ordered event header")
             previous_qpc = qpc
+            # Win32 LogEvent writes all four payload slots with %llu.
+            # Earlier causal-order checks validated only seq/QPC/thread:
+            # corrupt or spoofed payload cells on *ignored* diagnostic
+            # events could silently pass a native x86 source audit.
+            # Validate every physical row before event classification.
             event = row["event"]
+            if (not isinstance(event, str) or not 1 <= len(event) <= 128
+                    or not event.isascii()
+                    or not (event[0].isalpha() or event[0] == "_")
+                    or any(not (ch.isalnum() or ch == "_") for ch in event)):
+                raise ValueError("invalid original CSV native event payload")
+            for field in ("a0", "a1", "a2", "a3"):
+                raw = row[field]
+                if (not isinstance(raw, str) or not raw.isascii()
+                        or not raw.isdecimal() or len(raw) > 20
+                        or (len(raw) > 1 and raw[0] == "0")
+                        or int(raw) > UINT64_MAX):
+                    raise ValueError("invalid original CSV native event payload")
             if event == "model2_d3d9_original_draw_failed":
                 try:
                     frame, family, result, caller = (

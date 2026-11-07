@@ -31,6 +31,52 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
             self.assertEqual(result["world_pass_proof"], "NOT_ESTABLISHED")
             self.assertEqual(result["hmd_runtime_validation"], "UNTESTED")
 
+    def test_native_unsigned64_payload_on_every_original_csv_event(self):
+        # Real Win32 LogEvent uses %llu for all four payload fields,
+        # including events that the offline source report does not consume.
+        # Large legitimate bit-patterns must remain valid.
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "native-shaped-synthetic.csv"
+            rows = [self.HEADER.copy(), *[v.copy() for v in self.ROWS]]
+            rows[1][4:] = ["18446744073709551615", "0", "1", "4294967295"]
+            self.write_rows(path, rows)
+            report = audit_csv(path)
+            self.assertEqual(report["world_pass_proof"], "NOT_ESTABLISHED")
+            self.assertEqual(report["hmd_runtime_validation"], "UNTESTED")
+
+    def test_native_payload_and_event_name_corruption_fails_even_if_ignored(self):
+        # No original gameplay/ROM/PRIVATE bytes. The corrupt event is a
+        # deliberately ignored diagnostic row, not a recognized D3D9 Draw.
+        cases = (
+            ("missing payload", 4, ""),
+            ("negative payload", 5, "-1"),
+            ("nonstandard hex", 6, "0x12"),
+            ("plus sign", 7, "+1"),
+            ("fractional value", 4, "1.0"),
+            ("leading zeros", 5, "0002"),
+            ("above uint64", 6, "18446744073709551616"),
+            ("nonnumeric", 7, "NaN"),
+            ("nonascii digits", 4, "１２"),
+            ("whitespace", 5, " 1"),
+            ("embedded csv newline", 6, "1\\n2"),
+            ("empty event", 3, ""),
+            ("event with spaces", 3, "bad event"),
+            ("injected comma", 3, "bad,field"),
+            ("event control character", 3, "bad\\nfield"),
+            ("nonascii event", 3, "evént"),
+            ("oversized event name", 3, "e" * 129),
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "native-shaped-synthetic.csv"
+            for name, column, replacement in cases:
+                with self.subTest(name=name):
+                    rows = [self.HEADER.copy(), *[v.copy() for v in self.ROWS]]
+                    rows[2][column] = replacement
+                    self.write_rows(path, rows)
+                    with self.assertRaisesRegex(
+                            ValueError, "invalid original CSV native event payload"):
+                        audit_csv(path)
+
     def test_corrupt_original_event_order_fails_closed_before_source_admission(self):
         cases = (
             ("duplicate seq", 2, 0, "1"),
