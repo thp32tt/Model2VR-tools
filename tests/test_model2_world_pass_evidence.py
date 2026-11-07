@@ -248,6 +248,79 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"original x86 CSV"):
                 preflight_original_session(cached)
 
+    def test_original_single_preflight_pins_csv_bytes_before_reporting(self):
+        # The PowerShell collector already rehashes its source, but callers
+        # invoking the standalone CLI/library directly also need this
+        # boundary. Invented fixture, never real Daytona source material.
+        from tools import model2_world_pass_evidence as evidence
+        valid = report(witness())
+        with tempfile.TemporaryDirectory() as dirname:
+            folder = Path(dirname)
+            csv = folder / "race_a.csv"
+            csv.write_bytes(b"synthetic original x86 fixture BEFORE")
+            output = folder / "PRIVATE_SOURCE_race_a.json"
+            sentinel = b"prior validated private diagnostic only"
+            output.write_bytes(sentinel)
+            initial = csv.read_bytes()
+
+            def mutate_during_audit(path):
+                self.assertEqual(Path(path),csv)
+                csv.write_bytes(b"synthetic original x86 fixture AFTER")
+                return valid
+
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       side_effect=mutate_during_audit) as observer:
+                # Direct Python library callers must refuse the stale source
+                # even though schema/Scene/camera/RT/Draw counters are valid.
+                with self.assertRaisesRegex(
+                        ValueError,"changed during single-session preflight"):
+                    evidence.preflight_original_session(csv)
+            observer.assert_called_once()
+            self.assertNotEqual(initial,csv.read_bytes())
+            self.assertEqual(output.read_bytes(),sentinel)
+
+            # The CLI fails before publishing ANY report (existing output
+            # remains unchanged), rather than merely refusing at collector
+            # archive promotion time.
+            csv.write_bytes(initial)
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       side_effect=mutate_during_audit):
+                with redirect_stderr(io.StringIO()) as err:
+                    with self.assertRaises(SystemExit):
+                        main(["--preflight",str(csv),"--output",str(output)])
+            self.assertIn("changed during single-session preflight",
+                          err.getvalue())
+            self.assertEqual(output.read_bytes(),sentinel)
+
+            # Valid immutable original source is still diagnostic-only and
+            # never starts World3D or claims HMD proof.
+            csv.write_bytes(initial)
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=valid):
+                result=evidence.preflight_original_session(csv)
+                self.assertEqual(result["world_pass_proof"],"NOT_ESTABLISHED")
+                self.assertEqual(result["hmd_runtime_validation"],"UNTESTED")
+                main(["--preflight",str(csv),"--output",str(output)])
+            self.assertEqual(json.loads(output.read_text("utf-8")),valid)
+            self.assertEqual(csv.read_bytes(),initial)
+
+    def test_original_single_preflight_rejects_linked_original_csv(self):
+        from tools import model2_world_pass_evidence as evidence
+        with tempfile.TemporaryDirectory() as dirname:
+            folder=Path(dirname)
+            original=folder/"private-original.csv"
+            original.write_bytes(b"synthetic untouched original")
+            linked=folder/"linked-original.csv"
+            try:
+                linked.symlink_to(original)
+            except (OSError,NotImplementedError):
+                self.skipTest("symlink creation unavailable on test system")
+            with patch("tools.model2_world_pass_evidence.audit_csv") as audit:
+                with self.assertRaisesRegex(ValueError,"linked"):
+                    evidence.preflight_original_session(linked)
+            audit.assert_not_called()
+            self.assertEqual(original.read_bytes(),b"synthetic untouched original")
+
     def test_direct_private_seven_session_cli_pins_bytes_and_strict_json(self):
         # This exercises the DIRECT candidate CLI before an archived receipt
         # exists, rather than re-testing the already-secured final verifier.
