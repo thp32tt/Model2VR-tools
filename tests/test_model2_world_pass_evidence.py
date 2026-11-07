@@ -253,13 +253,14 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                     viable)
                 with io.StringIO() as output, redirect_stdout(output):
                     main(["--preflight", str(csv), "--require-race-source"])
-                    summary = json.loads(output.getvalue())
+                    captured = output.getvalue()
+                    summary = json.loads(captured)
                 self.assertEqual(
                     summary["race_source_preflight"],
                     "CANDIDATE_ONLY_NOT_AUTHORIZED")
                 self.assertEqual(summary["world_pass_proof"], "NOT_ESTABLISHED")
                 self.assertEqual(summary["hmd_runtime_validation"], "UNTESTED")
-                self.assertNotIn("caller_rva_hex", output.getvalue())
+                self.assertNotIn("caller_rva_hex", captured)
 
             # A capture with valid Present + process nonce but ZERO original
             # race geometry cannot pass readiness. Ordinary diagnostic
