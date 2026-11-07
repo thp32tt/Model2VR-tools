@@ -3,10 +3,17 @@
 Use entirely synthetic rows; never package private Daytona source captures.
 """
 import csv
+import hashlib
+import io
+import json
+import os
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
+from tools import model2_draw_source_report as source_report
 from tools.model2_draw_source_report import audit_csv
 
 
@@ -17,6 +24,81 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
         ["2", "2500", "42", "synthetic_probe_unknown", "0", "0", "0", "0"],
         ["3", "2501", "41", "synthetic_probe_unknown", "0", "0", "0", "0"],
     ]
+
+    def test_direct_source_report_cli_default_never_prints_private_metadata(self):
+        # This lower-level original-x86 CLI is separate from the already
+        # hardened seven-session comparator. All caller/nonce/ordinal data
+        # must stay out of terminal transcripts unless --output is explicit.
+        sentinel = "0xdeadc0de"
+        full = {
+            "caller_count": 1, "witness_count": 4,
+            "world_pass_proof": "NOT_ESTABLISHED",
+            "hmd_runtime_validation": "UNTESTED",
+            "original_capture_run": {"nonce_hex": "0xabcdef0123456789"},
+            "sources": [{
+                "caller_rva_hex": sentinel, "original_draw_ordinal_min": 889,
+                "cpu_projection_caller_rva_hex": "0xaabbccdd",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            raw = Path(folder) / "original.csv"
+            raw.write_text("synthetic no real original data", encoding="ascii")
+            output = io.StringIO()
+            with mock.patch.object(source_report, "audit_csv",
+                                   return_value=full):
+                with redirect_stdout(output):
+                    source_report.main([str(raw)])
+            text = output.getvalue()
+            summary = json.loads(text)
+            self.assertEqual(summary["caller_count"], 1)
+            self.assertEqual(summary["world_pass_proof"], "NOT_ESTABLISHED")
+            self.assertEqual(summary["hmd_runtime_validation"], "UNTESTED")
+            self.assertNotIn("sources", summary)
+            for forbidden in (sentinel, "0xabcdef0123456789",
+                              "0xaabbccdd", "889", "nonce_hex"):
+                self.assertNotIn(forbidden, text)
+
+            destination = Path(folder) / "PRIVATE_SOURCE_REPORT.json"
+            with mock.patch.object(source_report, "audit_csv",
+                                   return_value=full):
+                with redirect_stdout(io.StringIO()) as no_stdout:
+                    source_report.main([str(raw), "--output", str(destination)])
+            self.assertEqual(no_stdout.getvalue(), "")
+            self.assertEqual(json.loads(destination.read_text("utf-8")), full)
+            self.assertTrue(destination.read_bytes().endswith(b"\\n"))
+
+    def test_direct_private_source_report_never_overwrites_raw_csv_alias(self):
+        # Existing local original bytes are never truncated by an accidental
+        # --output ORIGINAL.csv or a hard-link alias to the same source.
+        with tempfile.TemporaryDirectory() as folder:
+            raw = Path(folder) / "original.csv"
+            original_bytes = (
+                b"seq,qpc,thread,event,a0,a1,a2,a3\\r\\n"
+                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\\r\\n")
+            raw.write_bytes(original_bytes)
+            original_hash = hashlib.sha256(raw.read_bytes()).digest()
+            with self.assertRaisesRegex(ValueError, "aliases original CSV"):
+                source_report.main([str(raw), "--output", str(raw)])
+            self.assertEqual(hashlib.sha256(raw.read_bytes()).digest(),
+                             original_hash)
+            alias = Path(folder) / "same-original-hardlink.json"
+            os.link(raw, alias)
+            with self.assertRaisesRegex(ValueError, "aliases original CSV"):
+                source_report.main([str(raw), "--output", str(alias)])
+            self.assertEqual(hashlib.sha256(raw.read_bytes()).digest(),
+                             original_hash)
+
+            # Full diagnostic publication is failure-atomic: an invalid
+            # source cannot clobber an earlier good PRIVATE report.
+            destination = Path(folder) / "PRIVATE_PREVIOUS.json"
+            destination.write_text('{"old":"kept"}\\n', encoding="utf-8")
+            raw.write_bytes(b"broken ORIGINAL source, no schema")
+            with self.assertRaises(ValueError):
+                source_report.main([str(raw), "--output", str(destination)])
+            self.assertEqual(destination.read_text("utf-8"),
+                             '{"old":"kept"}\\n')
+            self.assertFalse(list(Path(folder).glob(
+                "PRIVATE_PENDING_ORIGINAL_DRAW_*.json")))
 
     def test_native_win32_logger_payload_format_matches_source_audit(self):
         # Keep the consumer in step with the real original x86 LogEvent ABI,

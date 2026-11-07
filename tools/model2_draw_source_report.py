@@ -6,6 +6,8 @@ Model 2 gameplay world pass. No ROM, executable, DLL or private trace is shipped
 """
 import argparse
 import json
+import os
+import tempfile
 from array import array
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -2338,16 +2340,63 @@ def audit_csv(path):
         "sources": sources,
     }
 
-def main():
+def _refuse_private_report_source_alias(source, output):
+    """A diagnostic destination must never overwrite ORIGINAL x86 evidence."""
+    if output.is_symlink() or output.resolve() == source.resolve():
+        raise ValueError("PRIVATE source report output aliases original CSV")
+    # Existing hard links resolve to different names but share source bytes.
+    if output.exists() and output.samefile(source):
+        raise ValueError("PRIVATE source report output aliases original CSV")
+
+
+def _write_private_report_atomic(source, output, report):
+    """Keep the last local report intact on an audit/write failure."""
+    _refuse_private_report_source_alias(source, output)
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", newline="\n",
+                prefix="PRIVATE_PENDING_ORIGINAL_DRAW_", suffix=".json",
+                dir=output.parent, delete=False) as handle:
+            pending = Path(handle.name)
+            handle.write(json.dumps(report, sort_keys=True, indent=2) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        # Catch a link introduced during the potentially lengthy audit.
+        _refuse_private_report_source_alias(source, output)
+        os.replace(pending, output)
+    finally:
+        if pending is not None:
+            pending.unlink(missing_ok=True)
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("csv", type=Path, help="local model2vr_probe.csv")
-    ap.add_argument("--output", type=Path, help="write JSON; otherwise stdout")
-    args = ap.parse_args()
-    result = json.dumps(audit_csv(args.csv), indent=2, sort_keys=True)
-    if args.output:
-        args.output.write_text(result + "\n", encoding="utf-8")
+    ap.add_argument("csv", type=Path, help="local original x86 source CSV")
+    ap.add_argument("--output", type=Path,
+                    help="explicit PRIVATE local JSON; stdout is redacted")
+    args = ap.parse_args(argv)
+    # Reject a destination/source alias BEFORE an expensive physical audit.
+    if args.output is not None:
+        _refuse_private_report_source_alias(args.csv, args.output)
+    report = audit_csv(args.csv)
+    if args.output is not None:
+        _write_private_report_atomic(args.csv, args.output, report)
     else:
-        print(result)
+        # The direct low-level auditor is a DIFFERENT entrypoint from the
+        # already-protected seven-stage private candidate comparator. Raw
+        # original CPU/GPU caller RVAs, pose provenance, per-Draw ordinals
+        # and capture process nonce must not enter terminal/CI transcripts.
+        # Opt in to --output to retain FULL local-only PRIVATE evidence.
+        print(json.dumps({
+            "schema": 1,
+            "report": "ORIGINAL_X86_SOURCE_DIAGNOSTIC_ONLY",
+            "caller_count": report["caller_count"],
+            "witness_count": report["witness_count"],
+            "world_pass_proof": "NOT_ESTABLISHED",
+            "hmd_runtime_validation": "UNTESTED",
+        }, sort_keys=True))
+
 
 if __name__ == "__main__":
     main()
