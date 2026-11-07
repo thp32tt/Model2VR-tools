@@ -278,6 +278,14 @@ def _validate_report(report):
         # Caller provenance must agree with the native executable RVA.
         if source.get("caller_is_in_executable") is not (int(caller, 16) != 0):
             raise ValueError("inconsistent original executable caller ownership")
+        if key in result:
+            raise ValueError("duplicate original Draw caller in a capture")
+        scene_attested=source.get(
+            "distinct_scene_attested_physically_presented_material_present_frame_count")
+        if (scene_attested is not None and
+            (type(scene_attested) is not int or scene_attested<0 or
+             scene_attested>scene["trusted_scene_drawn_present_count"])):
+            raise ValueError("per-caller Scene/Draw exceeds physical original frame coverage")
         # Every distinct_*_present_frame_count is a SET cardinality of
         # actual original physical Present frame indices. A cached report
         # claiming N different source frames from fewer than N original
@@ -304,14 +312,6 @@ def _validate_report(report):
         for parent, child in zip(ordered, ordered[1:]):
             if parent in source and child in source and source[child] > source[parent]:
                 raise ValueError("per-caller original physical source evidence order invalid")
-        if key in result:
-            raise ValueError("duplicate original Draw caller in a capture")
-        scene_attested=source.get(
-            "distinct_scene_attested_physically_presented_material_present_frame_count")
-        if (scene_attested is not None and
-            (type(scene_attested) is not int or scene_attested<0 or
-             scene_attested>scene["trusted_scene_drawn_present_count"])):
-            raise ValueError("per-caller Scene/Draw exceeds physical original frame coverage")
         result[key] = source
     return result
 

@@ -236,6 +236,10 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         ):
             with self.subTest(field=field):
                 race = report(witness())
+                # The aggregate trusted Scene/Draw boundary must stay valid;
+                # isolate an impossible same-source downstream frame set.
+                race["original_physical_scene_draw_coverage"][
+                    "trusted_scene_drawn_present_count"] = 5
                 race["sources"][0][field] = 4  # 4 <= 8, but parent has 3
                 with self.assertRaisesRegex(ValueError, "source evidence order"):
                     compare_sessions([race, report(witness())], controls())
