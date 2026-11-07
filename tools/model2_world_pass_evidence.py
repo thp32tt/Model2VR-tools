@@ -958,6 +958,26 @@ def _load_report(path):
     return _load_json(path)
 
 
+
+def _refuse_private_output_alias(output, original_inputs):
+    """Never let a private report overwrite its original x86 evidence bytes.
+
+    A direct --output may otherwise name a --preflight CSV, a --race JSON,
+    or any --control file. Resolve lexical/parent-link aliases and existing
+    hard links before doing expensive analysis; reject output symlinks even
+    when they currently point outside the source set.
+    """
+    if output is None:
+        return
+    if output.is_symlink():
+        raise ValueError("PRIVATE output must not be a linked file")
+    destination = output.resolve()
+    for source in original_inputs:
+        if (destination == source.resolve() or
+                (output.exists() and output.samefile(source))):
+            raise ValueError("PRIVATE output must not overwrite original source bytes")
+
+
 def preflight_original_session(path, *, require_race_source=False):
     """Prove one genuine original x86 process run is analyzable BEFORE next run.
 
@@ -998,6 +1018,7 @@ def main(argv=None):
         if args.race or args.control:
             parser.error("--preflight cannot mix with seven-session comparison")
         try:
+            _refuse_private_output_alias(args.output, [args.preflight])
             result=preflight_original_session(
                 args.preflight, require_race_source=args.require_race_source)
             content=json.dumps(result,sort_keys=True,indent=2)+"\n"
@@ -1033,6 +1054,7 @@ def main(argv=None):
     if len(args.race)<2 or len(set(p.resolve() for p in paths))!=len(paths):
         parser.error("two independent race files and distinct capture paths required")
     try:
+        _refuse_private_output_alias(args.output, paths)
         fingerprints=[_capture_digest(path) for path in paths]
         if len(set(fingerprints))!=len(fingerprints):
             parser.error("identical capture bytes cannot prove independent sessions")
