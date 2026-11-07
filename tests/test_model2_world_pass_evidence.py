@@ -273,6 +273,144 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                              evidence._capture_digest(original))
             self.assertEqual(original.read_bytes(), prior)
 
+    @unittest.skipUnless(os.name == "nt", "requires genuine Win32 share-mode semantics")
+    def test_original_x86_csv_read_lease_persists_through_preflight_publication(self):
+        # A short closed-producer probe alone permits a new writer between
+        # hash and Draw/Present parsing. Exercise actual Windows CreateFileW
+        # sharing and rename denial, not a mocked source-closed flag.
+        import ctypes
+        from ctypes import wintypes
+        from tools import model2_world_pass_evidence as evidence
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        create = kernel.CreateFileW
+        create.argtypes = (
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+            wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+        create.restype = wintypes.HANDLE
+        close = kernel.CloseHandle
+        close.argtypes = (wintypes.HANDLE,)
+        close.restype = wintypes.BOOL
+        invalid = (None, ctypes.c_void_p(-1).value)
+        valid = report(witness())
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "race_a.csv"
+            source.write_bytes(b"synthetic closed original Daytona x86 source")
+            before = source.read_bytes()
+            output = root / "PRIVATE_SOURCE_race_a.json"
+            alternative = root / "replacement.csv"
+            alternative.write_bytes(b"synthetic FORGED new process log")
+            check_count = []
+
+            def deny_writer_and_rename():
+                # Writer can open this source AFTER a short probe, but must
+                # NOT open it while any real source analysis lease is held.
+                writer = create(str(source), 0x40000000, 1, None, 3, 0x80, None)
+                if writer not in invalid:
+                    close(writer)
+                self.assertIn(writer, invalid)
+                with self.assertRaises(OSError):
+                    os.replace(alternative, source)
+                self.assertTrue(alternative.exists())
+                self.assertEqual(source.read_bytes(), before)
+                check_count.append(True)
+
+            def while_auditing(path):
+                self.assertEqual(Path(path), source)
+                deny_writer_and_rename()
+                return valid
+
+            real_publish = evidence._write_private_json_atomic
+            def while_publishing(path, content, inputs):
+                deny_writer_and_rename()
+                return real_publish(path, content, inputs)
+
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       side_effect=while_auditing), patch(
+                       "tools.model2_world_pass_evidence._write_private_json_atomic",
+                       side_effect=while_publishing):
+                # Library and CLI paths both keep source immutable.
+                result = preflight_original_session(source)
+                self.assertEqual(result["world_pass_proof"], "NOT_ESTABLISHED")
+                main(["--preflight", str(source), "--output", str(output)])
+            self.assertEqual(len(check_count), 3)
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")), valid)
+            self.assertEqual(source.read_bytes(), before)
+
+            # A closed transaction releases the source handle promptly.
+            writer = create(str(source), 0x40000000, 1, None, 3, 0x80, None)
+            self.assertNotIn(writer, invalid)
+            self.assertTrue(close(writer))
+            self.assertEqual(source.read_bytes(), before)
+
+    @unittest.skipUnless(os.name == "nt", "requires genuine Win32 share-mode semantics")
+    def test_original_seven_csv_read_leases_block_late_writer_until_candidate_published(self):
+        import ctypes
+        from ctypes import wintypes
+        from tools import model2_world_pass_evidence as evidence
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        create = kernel.CreateFileW
+        create.argtypes = (
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+            wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+        create.restype = wintypes.HANDLE
+        close = kernel.CloseHandle
+        close.argtypes = (wintypes.HANDLE,)
+        close.restype = wintypes.BOOL
+        invalid = (None, ctypes.c_void_p(-1).value)
+        names = ("race_a", "race_b", "title", "menu", "sky", "hud", "aux")
+        candidate = {"schema": 1, "world_pass_proof": "NOT_ESTABLISHED",
+                     "hmd_runtime_validation": "UNTESTED",
+                     "adapter_auto_enable": False}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {name: root / (name + ".csv") for name in names}
+            for name, path in paths.items():
+                path.write_bytes(("synthetic original " + name).encode("ascii"))
+            before = {name: path.read_bytes() for name, path in paths.items()}
+            output = root / "PRIVATE_WORLD_CANDIDATES.json"
+            argv = ["--race", str(paths["race_a"]), "--race", str(paths["race_b"])]
+            for name in names[2:]:
+                argv += ["--control", name, str(paths[name])]
+            argv += ["--output", str(output)]
+            verified = []
+
+            def assert_all_held():
+                for name, path in paths.items():
+                    writer = create(str(path), 0x40000000, 1, None, 3, 0x80, None)
+                    if writer not in invalid:
+                        close(writer)
+                    self.assertIn(writer, invalid,
+                                  "source writer reopened during " + name)
+                verified.append(True)
+
+            def sample_report(path):
+                assert_all_held()
+                return {"source_kind": "synthetic diagnostic only"}
+
+            real_publish = evidence._write_private_json_atomic
+            def during_promotion(path, content, sources):
+                assert_all_held()
+                return real_publish(path, content, sources)
+
+            with patch("tools.model2_world_pass_evidence._load_report",
+                       side_effect=sample_report), patch(
+                       "tools.model2_world_pass_evidence.compare_sessions",
+                       return_value=candidate), patch(
+                       "tools.model2_world_pass_evidence._write_private_json_atomic",
+                       side_effect=during_promotion):
+                main(argv)
+            self.assertEqual(len(verified), 8)
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")),candidate)
+            for name, path in paths.items():
+                self.assertEqual(path.read_bytes(), before[name])
+                writer = create(str(path), 0x40000000, 1, None, 3, 0x80, None)
+                self.assertNotIn(writer, invalid)
+                self.assertTrue(close(writer))
+
     def test_single_original_process_preflight_before_seven_stage_capture(self):
         # Standalone preflight uses the exact same original Scene, camera
         # lifetime, target/depth, physical Present and caller inventory
@@ -341,7 +479,13 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
 
             def mutate_during_audit(path):
                 self.assertEqual(Path(path),csv)
-                csv.write_bytes(b"synthetic original x86 fixture AFTER")
+                try:
+                    csv.write_bytes(b"synthetic original x86 fixture AFTER")
+                except OSError as exc:
+                    # New Windows full-analysis read lease denies the write
+                    # itself. Linux remains protected by before/after hashes.
+                    raise ValueError(
+                        "PRIVATE original x86 CSV write blocked during source audit") from exc
                 return valid
 
             with patch("tools.model2_world_pass_evidence.audit_csv",
@@ -349,10 +493,14 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 # Direct Python library callers must refuse the stale source
                 # even though schema/Scene/camera/RT/Draw counters are valid.
                 with self.assertRaisesRegex(
-                        ValueError,"changed during single-session preflight"):
+                        ValueError,"changed during single-session preflight|"
+                                   "write blocked during source audit"):
                     evidence.preflight_original_session(csv)
             observer.assert_called_once()
-            self.assertNotEqual(initial,csv.read_bytes())
+            if os.name == "nt":
+                self.assertEqual(initial,csv.read_bytes())
+            else:
+                self.assertNotEqual(initial,csv.read_bytes())
             self.assertEqual(output.read_bytes(),sentinel)
 
             # The CLI fails before publishing ANY report (existing output
@@ -364,8 +512,9 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 with redirect_stderr(io.StringIO()) as err:
                     with self.assertRaises(SystemExit):
                         main(["--preflight",str(csv),"--output",str(output)])
-            self.assertIn("changed during single-session preflight",
-                          err.getvalue())
+            self.assertRegex(
+                err.getvalue(),
+                "changed during single-session preflight|write blocked during source audit")
             self.assertEqual(output.read_bytes(),sentinel)
 
             # Valid immutable original source is still diagnostic-only and
