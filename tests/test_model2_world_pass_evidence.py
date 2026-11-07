@@ -570,6 +570,64 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         self.assertEqual(got["rejected"][0]["reason"],
                          "missing_same_draw_matrix_material_or_render_evidence")
 
+
+    def test_original_caller_success_cannot_outnumber_complete_scene_draws(self):
+        forged = witness()
+        # The original physical x86 scene counted exactly nine attempted
+        # Draws. A cached caller cannot claim ten successful COM Draws,
+        # even when all of its frame sets are within actual Presents.
+        forged["original_draw_success_witnesses"] = 10
+        result = compare_sessions([report(forged), report(witness())],
+                                  controls())
+        self.assertFalse(result["candidates"])
+        self.assertEqual(result["rejected"][0]["reason"],
+                         "race_original_draw_witness_budget_exceeded")
+
+    def test_original_distinct_gpu_callers_share_one_physical_draw_budget(self):
+        first, second = witness(), witness()
+        second["caller_rva_hex"] = "0x004a1235"
+        # Each caller separately claims no more than the original nine
+        # real Draws, but their disjoint observed successes cannot total 12.
+        first["original_draw_success_witnesses"] = 6
+        second["original_draw_success_witnesses"] = 6
+        overclaimed = report(first, second)
+        got = compare_sessions([overclaimed, report(witness())], controls())
+        self.assertFalse(got["candidates"])
+        self.assertEqual(
+            {r["reason"] for r in got["rejected"]},
+            {"race_original_draw_witness_budget_exceeded",
+             "missing_in_race_capture"},
+        )
+
+    def test_original_phase_scene_and_completion_witness_budget(self):
+        for field in (
+            "original_draw_phase_attested_witnesses",
+            "original_scene_phase_attested_witnesses",
+        ):
+            with self.subTest(field=field):
+                forged = witness()
+                forged[field] = 10
+                got = compare_sessions([report(forged), report(witness())],
+                                       controls())
+                self.assertFalse(got["candidates"])
+                self.assertEqual(
+                    got["rejected"][0]["reason"],
+                    "race_original_draw_witness_budget_exceeded")
+
+    def test_original_scene_budget_accepts_exact_aggregate_successes(self):
+        sources = []
+        for offset in range(3):
+            source = witness()
+            source["caller_rva_hex"] = f"0x{0x004a1234 + offset:08x}"
+            sources.append(source)
+        # Three nonoverlapping caller samples x three successful Draws
+        # exactly match the nine real original physical Scene Draws.
+        got = compare_sessions(
+            [report(*copy.deepcopy(sources)), report(*copy.deepcopy(sources))],
+            controls())
+        self.assertEqual(len(got["candidates"]), 3)
+        self.assertFalse(got["adapter_auto_enable"])
+
     def test_cross_phase_conservative_candidate_only(self):
         a, b = witness(), witness()
         # Same CPU caller, different matrix/command fingerprints per

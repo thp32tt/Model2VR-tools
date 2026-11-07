@@ -438,6 +438,42 @@ def _enough_original_source(source):
     return _cpu_callers(source) is not None
 
 
+
+def _within_original_scene_draw_budget(report):
+    """Sampled caller witnesses cannot outnumber *all* real original Draws.
+
+    Each CSV source is a disjoint (family, executable caller) partition
+    of sampled original x86 Draw calls. The continuous physical Scene/Draw
+    counter covers every original Draw across all four families, unlike
+    the first/eighth-Present-only control-family totals. Both individual
+    caller claims and their aggregate must fit that authentic budget.
+    This check is candidate-only: incomplete reports remain readable as
+    rejected diagnostics and never authorize a game world pass.
+    """
+    scene = report["original_physical_scene_draw_coverage"]
+    budget = sum(scene[k] for k in (
+        "original_successful_in_scene_draw_count",
+        "original_successful_untrusted_scene_draw_count",
+        "original_failed_draw_count",
+    ))
+    for field in (
+        "original_draw_success_witnesses",
+        "original_present_success_witnesses",
+        "original_draw_phase_attested_witnesses",
+        "original_scene_phase_attested_witnesses",
+        "original_draw_completion_attested_witnesses",
+    ):
+        observed = 0
+        for source in report["sources"]:
+            count = source.get(field)
+            if type(count) is not int or not 0 <= count <= budget:
+                return False
+            observed += count
+            if observed > budget:
+                return False
+    return True
+
+
 def _control_projector_callers(control):
     """Any readable CPU source caller in a non-race capture is negative evidence.
 
@@ -520,6 +556,9 @@ def compare_sessions(race_reports, nonrace_reports):
             reason="race_original_rt0_depth_draw_provenance_untrusted"
         elif any(not _enough_original_source(session[key]) for session in race):
             reason="missing_same_draw_matrix_material_or_render_evidence"
+        elif any(not _within_original_scene_draw_budget(report)
+                 for report in race_reports):
+            reason="race_original_draw_witness_budget_exceeded"
         # A per-caller Scene/Draw count is not enough to establish an eye
         # source if fewer original physical Presents actually retain trusted
         # camera COM lifetime or compatible main RT0/depth Draw coverage.
