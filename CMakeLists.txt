@@ -198,6 +198,14 @@ add_test(NAME daytona_original_pose_at_present_x86 COMMAND daytona_pose_present_
 # 32/64-bit ABI-compatible shared stereo transport and diagnostic producer.
 # Source packet Peek and x64 post-copy original physical Present receipt
 # must describe the EXACT same x86 D3D9 frame and pose-tag transaction.
+# Standalone Win32 original-source emitter for the joint x86->x64
+# process/IPC test on a single Windows runner; synthetic pixels only.
+add_executable(model2_original_crossarch_x86_producer
+    tests/model2_original_cross_arch_stereo_test.cpp)
+target_compile_features(model2_original_crossarch_x86_producer PRIVATE cxx_std_20)
+target_compile_definitions(model2_original_crossarch_x86_producer PRIVATE
+    NOMINMAX WIN32_LEAN_AND_MEAN M2VR_CROSS_ARCH_PRODUCER)
+
 add_executable(daytona_source_handoff_x86_test
     tests/daytona_source_handoff_gate_test.cpp)
 target_compile_features(daytona_source_handoff_x86_test PRIVATE cxx_std_20)

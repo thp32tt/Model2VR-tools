@@ -48,6 +48,15 @@ add_test(NAME daytona_original_mono_quad_world_anchor_x64
 enable_testing()
 # Independent Win64 consumer applies identical real x86 packet/health
 # admission before any OpenXR projection swapchain receives game pixels.
+# The genuine 64-bit Windows process opens the independent 32-bit
+# producer's named mappings and checks all three original-source subtypes.
+# The joint workflow runs it against an actual x86 child process.
+add_executable(model2_original_crossarch_x64_consumer
+    ../tests/model2_original_cross_arch_stereo_test.cpp)
+target_compile_features(model2_original_crossarch_x64_consumer PRIVATE cxx_std_20)
+target_compile_definitions(model2_original_crossarch_x64_consumer PRIVATE
+    NOMINMAX WIN32_LEAN_AND_MEAN M2VR_CROSS_ARCH_CONSUMER)
+
 add_executable(daytona_source_handoff_x64_test
     ../tests/daytona_source_handoff_gate_test.cpp)
 target_compile_features(daytona_source_handoff_x64_test PRIVATE cxx_std_20)

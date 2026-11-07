@@ -843,8 +843,35 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  cross-architecture-source:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure genuine original x86 emitter
+        run: cmake -S . -B build-cross-x86 -A Win32
+      - name: Build 32-bit production IPC writer test process
+        run: cmake --build build-cross-x86 --config Release --target model2_original_crossarch_x86_producer --parallel
+      - name: Configure 64-bit OpenXR-side reader
+        run: cmake -S host -B build-cross-x64 -A x64
+      - name: Build 64-bit production IPC reader test process
+        run: cmake --build build-cross-x64 --config Release --target model2_original_crossarch_x64_consumer --parallel
+      - name: Test live Win32 to Win64 original-Present-bound transport
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $producer=Join-Path $pwd "build-cross-x86/Release/model2_original_crossarch_x86_producer.exe"
+          $consumer=Join-Path $pwd "build-cross-x64/Release/model2_original_crossarch_x64_consumer.exe"
+          if(!(Test-Path $producer) -or !(Test-Path $consumer)){
+            throw "Missing either real-architecture process"
+          }
+          & $consumer $producer
+          if($LASTEXITCODE -ne 0){
+            throw "Real x86->x64 producer/receipt/pose/mono IPC handoff failed"
+          }
+
   bundle:
-    needs: [game-win32, xr-win64]
+    needs: [game-win32, xr-win64, cross-architecture-source]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
