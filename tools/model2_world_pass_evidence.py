@@ -745,6 +745,40 @@ def _within_original_scene_draw_budget(report):
     return set(frame_budget) == set(summed)
 
 
+
+def _require_race_source_readiness(report, sources):
+    """Early ORIGINAL x86 race viability only; NEVER World3D authorization.
+
+    A readable original capture with no complete same-Draw CPU projector,
+    matrix/geometry, Scene/RT/depth and post-COM witnesses is useful as a
+    diagnostic, but collecting five additional private control sessions
+    cannot turn that capture into a viable race candidate. This opt-in
+    preflight stops at the FIRST race session instead of wasting real runs.
+    Cross-session negative controls, actual game-camera calibration and HMD
+    runtime proof remain independently mandatory.
+    """
+    camera = report["original_physical_camera_com_lifetime"]
+    target = report["original_physical_draw_target_coverage"]
+    if (not camera["all_original_camera_com_lifetimes_trusted"] or
+            camera["original_camera_state_write_count"] == 0):
+        raise ValueError(
+            "RACE_SOURCE_NOT_READY: original camera COM lifetime or state writes missing")
+    if not target["all_original_draw_targets_trusted"]:
+        raise ValueError(
+            "RACE_SOURCE_NOT_READY: original main RT0/depth ownership untrusted")
+    if not _within_original_scene_draw_budget(report):
+        raise ValueError(
+            "RACE_SOURCE_NOT_READY: same-physical-Present original Draw/Scene "
+            "ordinal evidence incomplete")
+    physical_count = report["original_capture_run"]["physical_present_count"]
+    if not any(_enough_original_source(source, physical_count)
+               for source in sources.values()):
+        raise ValueError(
+            "RACE_SOURCE_NOT_READY: no complete original same-Draw CPU "
+            "projector/matrix/geometry/material/Scene witness")
+
+
+
 def _control_projector_callers(control):
     """Any readable CPU source caller in a non-race capture is negative evidence.
 
@@ -915,7 +949,7 @@ def _load_report(path):
         return json.load(handle)
 
 
-def preflight_original_session(path):
+def preflight_original_session(path, *, require_race_source=False):
     """Prove one genuine original x86 process run is analyzable BEFORE next run.
 
     This makes no claim about the USER's scene label, calibrated camera or
@@ -930,6 +964,8 @@ def preflight_original_session(path):
     bloom=_control_bloom(report)
     _control_exact_callers(report,bloom)
     _control_projector_callers(sources)
+    if require_race_source:
+        _require_race_source_readiness(report, sources)
     return report
 
 
@@ -937,6 +973,10 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preflight",type=Path,
                         help="validate ONE original x86 CSV now; keep full report PRIVATE")
+    parser.add_argument("--require-race-source",action="store_true",
+                        help="opt-in: stop an original race capture if it lacks "
+                             "a viable same-Draw source (NOT World3D proof); "
+                             "requires --preflight")
     parser.add_argument("--race",action="append",type=Path,
                         help="private original race CSV/report; provide at least two")
     parser.add_argument("--control",action="append",nargs=2,
@@ -949,7 +989,8 @@ def main(argv=None):
         if args.race or args.control:
             parser.error("--preflight cannot mix with seven-session comparison")
         try:
-            result=preflight_original_session(args.preflight)
+            result=preflight_original_session(
+                args.preflight, require_race_source=args.require_race_source)
             content=json.dumps(result,sort_keys=True,indent=2)+"\n"
             if args.output:
                 args.output.write_text(content,encoding="utf-8")
@@ -960,11 +1001,16 @@ def main(argv=None):
                 print(json.dumps({
                     "schema":1,"preflight":"ORIGINAL_SOURCE_READABLE",
                     "physical_present_count":run["physical_present_count"],
+                    "race_source_preflight":(
+                        "CANDIDATE_ONLY_NOT_AUTHORIZED"
+                        if args.require_race_source else "NOT_REQUESTED"),
                     "world_pass_proof":"NOT_ESTABLISHED",
                     "hmd_runtime_validation":"UNTESTED"}))
         except (ValueError,OSError,UnicodeError,json.JSONDecodeError) as exc:
             parser.error(str(exc))
         return
+    if args.require_race_source:
+        parser.error("--require-race-source requires --preflight")
     if not args.race:
         parser.error("two independent --race captures required")
     controls={}
