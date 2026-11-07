@@ -1944,6 +1944,10 @@ class SourceAuditTests(unittest.TestCase):
                 "model2_d3d9_source_draw_completion",501,17,12,15)])
             complete=REPORT.audit_csv(path)["sources"][0]
             self.assertEqual(complete["original_draw_completion_attested_witnesses"],1)
+            self.assertEqual(
+                complete["original_successful_draw_ordinal_pairs"], [[17, 12]])
+            self.assertEqual(
+                complete["original_scene_material_postcom_ordinal_pairs"], [])
             for field in (
                 "original_draw_success_by_physical_frame",
                 "original_present_success_by_physical_frame",

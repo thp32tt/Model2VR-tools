@@ -545,6 +545,9 @@ def _within_original_scene_draw_budget(report):
     if sum(frame_budget.values()) > budget:
         return False
     summed = {}
+    # Sampled original x86 all-family Draw ordinal IDs are exclusive
+    # within one physical Present, regardless of caller/family.
+    seen_original_draws = set()
     stages = (
         ("original_draw_success_by_physical_frame",
          "original_draw_success_witnesses", "draw_success"),
@@ -593,6 +596,61 @@ def _within_original_scene_draw_budget(report):
                         for frame in claimed_frames)):
                 return False
             actual[material_stage] = per_frame
+        # Per-frame counts still allow two different original Draws on
+        # the same Present to be falsely treated as one. Require exact
+        # successful all-family Draw ordinal identity across callers.
+        pairs = source.get("original_successful_draw_ordinal_pairs")
+        if (not isinstance(pairs, list) or len(pairs) > MAX_SOURCES or
+                len(pairs) != source["original_draw_success_witnesses"]):
+            return False
+        previous_pair = (0, 0)
+        own_pairs = set()
+        by_frame = {}
+        ordinals = set()
+        for pair in pairs:
+            if (not isinstance(pair, list) or len(pair) != 2 or
+                    any(type(n) is not int for n in pair)):
+                return False
+            frame, ordinal = pair
+            if (not 1 <= frame <= physical_frames or
+                    not 1 <= ordinal <= 10_000_000 or
+                    (frame, ordinal) <= previous_pair or
+                    frame not in frame_budget or
+                    (frame, ordinal) in seen_original_draws):
+                return False
+            previous_pair = (frame, ordinal)
+            own_pairs.add((frame, ordinal))
+            seen_original_draws.add((frame, ordinal))
+            ordinals.add(ordinal)
+            by_frame[frame] = by_frame.get(frame, 0) + 1
+        if (by_frame != actual["draw_success"] or
+                len(ordinals) != source.get("distinct_original_draw_ordinals") or
+                min(ordinals, default=None) != source.get("original_draw_ordinal_min") or
+                max(ordinals, default=None) != source.get("original_draw_ordinal_max")):
+            return False
+        material_pairs = source.get(
+            "original_scene_material_postcom_ordinal_pairs")
+        if (not isinstance(material_pairs, list) or
+                len(material_pairs) > len(pairs)):
+            return False
+        previous_material = (0, 0)
+        material_frames = set()
+        for pair in material_pairs:
+            if (not isinstance(pair, list) or len(pair) != 2 or
+                    any(type(n) is not int for n in pair)):
+                return False
+            frame, ordinal = pair
+            if ((frame, ordinal) <= previous_material or
+                    (frame, ordinal) not in own_pairs or
+                    frame not in actual["present_success"] or
+                    frame not in actual["draw_phase"] or
+                    frame not in actual["scene_phase"] or
+                    frame not in actual["post_com"]):
+                return False
+            previous_material = (frame, ordinal)
+            material_frames.add(frame)
+        if material_frames != set(lineage.get("scene_phase", [])):
+            return False
         # Every claimed material step must have real post-COM witnesses
         # on THAT physical Present. Equal global counts do not establish
         # same-frame success, phase, Scene or retained completion. A stage

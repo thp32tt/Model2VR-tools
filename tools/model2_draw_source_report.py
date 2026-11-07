@@ -1414,6 +1414,8 @@ def audit_csv(path):
         "original_main_full_view_depth_candidates": 0,
         "original_draw_success_witnesses": 0,
         "original_draw_success_by_physical_frame": Counter(),
+        "original_successful_draw_ordinal_pairs": set(),
+        "original_scene_material_postcom_ordinal_pairs": set(),
         "original_present_success_by_physical_frame": Counter(),
         "original_draw_phase_attested_by_physical_frame": Counter(),
         "original_scene_phase_attested_by_physical_frame": Counter(),
@@ -1615,6 +1617,9 @@ def audit_csv(path):
                 entry["original_draw_success_witnesses"] += 1
                 if present_frame is not None:
                     entry["original_draw_success_by_physical_frame"][present_frame] += 1
+                    if phase_attested:
+                        entry["original_successful_draw_ordinal_pairs"].add(
+                            (present_frame, phase[1]))
         # This GPU completion must belong to the sampled CPU witness's
         # same physical original frame/ordinal/Scene and real HRESULT.
         # All bits describe post-COM facts; no bit grants World3D.
@@ -1925,6 +1930,12 @@ def audit_csv(path):
                             not original_surface_failed):
                         entry["original_scene_attested_physical_material_present_frames"].add(
                             present_frame)
+                        # The original material must be retained by THIS
+                        # physical Draw's own post-COM completion, not
+                        # another Draw in the same physical Present.
+                        if post_com_retained:
+                            entry["original_scene_material_postcom_ordinal_pairs"].add(
+                                (present_frame, phase[1]))
             # This qualifies a SOURCE MATERIAL candidate only. A private
             # authenticated game-world owner, camera axis/units and HMD test
             # are still all required before enabling actual XR replay.
@@ -1984,6 +1995,13 @@ def audit_csv(path):
         # Genuine CPU projector vertex population must belong to at
         # least two DISTINCT original physical Present frames to remain
         # an offline race source candidate (never World3D authorization).
+        # Bounded original Draw ordinal witnesses: no game-private
+        # payload or raw geometry is included in the report.
+        for name in (
+            "original_successful_draw_ordinal_pairs",
+            "original_scene_material_postcom_ordinal_pairs",
+        ):
+            record[name] = [list(pair) for pair in sorted(value[name])]
         record["distinct_cpu_fit_population_present_frame_count"] = len(
             value["cpu_fit_population_present_frames"])
         record["distinct_same_witness_joint_present_frame_count"] = len(
@@ -2063,6 +2081,8 @@ def audit_csv(path):
                         "original_scene_ordinals",
                         "original_draw_phase_ordinals",
                         "original_draw_success_by_physical_frame",
+                        "original_successful_draw_ordinal_pairs",
+                        "original_scene_material_postcom_ordinal_pairs",
                         "original_present_success_by_physical_frame",
                         "original_draw_phase_attested_by_physical_frame",
                         "original_scene_phase_attested_by_physical_frame",

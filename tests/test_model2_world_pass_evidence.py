@@ -22,6 +22,10 @@ def witness(cpu="0x004bb400", count=3):
         "original_draw_success_witnesses": count,
         "original_draw_success_by_physical_frame": [
             [frame, 1] for frame in range(1, count+1)],
+        "original_successful_draw_ordinal_pairs": [
+            [frame, 8+4*frame] for frame in range(1, count+1)],
+        "original_scene_material_postcom_ordinal_pairs": [
+            [frame, 8+4*frame] for frame in range(1, count+1)],
         "original_present_success_by_physical_frame": [
             [frame, 1] for frame in range(1, count+1)],
         "original_draw_phase_attested_by_physical_frame": [
@@ -642,6 +646,12 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         for offset in range(3):
             source = witness()
             source["caller_rva_hex"] = f"0x{0x004a1234 + offset:08x}"
+            source["original_successful_draw_ordinal_pairs"] = [
+                [frame, 8+4*frame+offset] for frame in (1, 2, 3)]
+            source["original_scene_material_postcom_ordinal_pairs"] = [
+                [frame, 8+4*frame+offset] for frame in (1, 2, 3)]
+            source["original_draw_ordinal_min"] = 12 + offset
+            source["original_draw_ordinal_max"] = 20 + offset
             sources.append(source)
         # Three nonoverlapping caller samples x three successful Draws
         # exactly match the nine real original physical Scene Draws.
@@ -672,6 +682,9 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         source["original_draw_success_witnesses"] = 4
         source["original_draw_success_by_physical_frame"] = [
             [1, 2], [2, 1], [3, 1]]
+        source["original_successful_draw_ordinal_pairs"] = [
+            [1, 12], [1, 13], [2, 16], [3, 20]]
+        source["distinct_original_draw_ordinals"] = 4
         got = compare_sessions([report(source), report(witness())], controls())
         self.assertEqual(len(got["candidates"]), 1)
         self.assertFalse(got["adapter_auto_enable"])
@@ -799,12 +812,81 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         source["original_draw_success_witnesses"] = 4
         source["original_draw_success_by_physical_frame"] = [
             [1, 2], [2, 1], [3, 1]]
+        source["original_successful_draw_ordinal_pairs"] = [
+            [1, 12], [1, 13], [2, 16], [3, 20]]
+        source["distinct_original_draw_ordinals"] = 4
         # Exactly one of two successful original Draws on frame 1 has
         # the full material witness chain. A spare successful Draw is
         # not automatically promoted to material.
         got = compare_sessions([report(source),report(witness())],controls())
         self.assertEqual(len(got["candidates"]),1)
         self.assertFalse(got["adapter_auto_enable"])
+
+    def test_same_original_draw_ordinal_cannot_be_spent_by_two_callers(self):
+        a, b = witness(), witness()
+        b["caller_rva_hex"] = "0x004a1235"
+        # Both callers fit the actual per-Present budget, but claim
+        # the identical real Draw ordinal on the same original Present.
+        result = compare_sessions(
+            [report(a, b), report(copy.deepcopy(a), copy.deepcopy(b))],
+            controls())
+        self.assertFalse(result["candidates"])
+        self.assertEqual(
+            {r["reason"] for r in result["rejected"]},
+            {"race_original_draw_witness_budget_exceeded"})
+
+    def test_same_present_distinct_original_draw_ordinals_are_valid(self):
+        a, b = witness(), witness()
+        b["caller_rva_hex"] = "0x004a1235"
+        for field in ("original_successful_draw_ordinal_pairs",
+                      "original_scene_material_postcom_ordinal_pairs"):
+            b[field] = [[1, 13], [2, 17], [3, 21]]
+        b["original_draw_ordinal_min"] = 13
+        b["original_draw_ordinal_max"] = 21
+        result = compare_sessions(
+            [report(a, b), report(copy.deepcopy(a), copy.deepcopy(b))],
+            controls())
+        self.assertEqual(len(result["candidates"]), 2)
+        self.assertFalse(result["adapter_auto_enable"])
+
+    def test_original_draw_ordinal_rows_missing_malformed_or_replayed(self):
+        for bad in (
+            None, [[1, 12], [1, 12], [3, 20]],
+            [[1, 12], [2, True], [3, 20]],
+            [[1, 12], [3, 20], [2, 16]],
+            [[1, 12], [2, 16], [9, 20]],
+            [[1, 12], [2, 16]],
+            [[1, 12], [2, 16], [3, 11]],
+            [[1, 12], [2, 16], [3, 99999999]],
+        ):
+            with self.subTest(bad=bad):
+                src = witness()
+                if bad is None:
+                    del src["original_successful_draw_ordinal_pairs"]
+                else:
+                    src["original_successful_draw_ordinal_pairs"] = bad
+                result = compare_sessions([report(src), report(witness())],
+                                          controls())
+                self.assertFalse(result["candidates"])
+                self.assertEqual(result["rejected"][0]["reason"],
+                                 "race_original_draw_witness_budget_exceeded")
+
+    def test_material_scene_postcom_must_be_same_original_draw_ordinal(self):
+        for bad in (
+            [[1, 12], [2, 16], [3, 19]],
+            [[1, 12], [2, 16]],
+            [[1, 12], [2, 16], [3, True]],
+            [[1, 12], [2, 16], [2, 20]],
+            [[1, 12], [2, 16], [3, 20], [3, 21]],
+        ):
+            with self.subTest(bad=bad):
+                src = witness()
+                src["original_scene_material_postcom_ordinal_pairs"] = bad
+                result = compare_sessions([report(src), report(witness())],
+                                          controls())
+                self.assertFalse(result["candidates"])
+                self.assertEqual(result["rejected"][0]["reason"],
+                                 "race_original_draw_witness_budget_exceeded")
 
     def test_original_scene_camera_target_same_physical_present_required(self):
         # All independent physical coverage totals still equal three, but
@@ -905,6 +987,9 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         ):
             source[stage] = [[1, 1], [4, 1], [7, 1]]
         race_a, race_b = report(source), report(source)
+        for field in ("original_successful_draw_ordinal_pairs",
+                      "original_scene_material_postcom_ordinal_pairs"):
+            source[field] = [[1, 12], [4, 16], [7, 20]]
         for run in (race_a, race_b):
             run["original_sampled_scene_draw_frame_budget"] = [
                 [1, 3], [4, 3], [7, 3]]
