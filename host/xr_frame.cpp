@@ -174,6 +174,8 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"emulator_menu_quad_visible="<<(emulator_window_on_quad_?1:0)<<"\n"
            <<"quest_menu_controller_enabled="<<(menu_controller_.Active()?1:0)<<"\n"
            <<"quest_menu_controller_has_ray_hit="<<(menu_controller_.RayOnMenu()?1:0)<<"\n"
+           <<"quest_menu_current_capture_serial="<<emulator_window_capture_.Serial()<<"\n"
+           <<"quest_menu_submitted_capture_serial="<<submitted_menu_capture_serial_<<"\n"
            <<"quest_menu_openxr_focused="<<(xr_session_focused_?1:0)<<"\n"
            <<"native_stereo_confirmed="<<(paired_frame_fresh &&
                 transport::IsStereoGame(frame_gate_.kind())?1:0)<<"\n"

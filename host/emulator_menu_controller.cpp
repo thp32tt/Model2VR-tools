@@ -192,14 +192,19 @@ void EmulatorMenuController::Poll(
     if(click_edges[hand]){
         // Poll runs BEFORE this frame's D3D11 upload and xrEndFrame. Its
         // current capture might therefore be newer than the visible quad.
-        const bool sent=desktopmenu::PresentedCaptureMatches(
-            capture.Serial(),submitted_menu_capture_serial) &&
+        const bool submitted=desktopmenu::PresentedCaptureMatches(
+            capture.Serial(),submitted_menu_capture_serial);
+        const bool sent=submitted &&
             capture.DeliverControllerClick(pid,hit.window_x,hit.window_y);
         std::cout<<"Model2VR XR emulator menu click: "
-                 <<(sent?"SENT":"BLOCKED_FOREGROUND_OR_INJECTION")
+                 <<(sent?"SENT":submitted?"BLOCKED_FOREGROUND_OR_INJECTION":
+                         "BLOCKED_UNSUBMITTED_XR_MENU_SNAPSHOT")
                  <<" hand="<<(hand?"right":"left")
                  <<" desktop_x="<<hit.window_x
-                 <<" desktop_y="<<hit.window_y<<"\n";
+                 <<" desktop_y="<<hit.window_y
+                 <<" current_capture_serial="<<capture.Serial()
+                 <<" submitted_capture_serial="<<submitted_menu_capture_serial
+                 <<"\n";
     }
 }
 } // namespace m2vr::host
