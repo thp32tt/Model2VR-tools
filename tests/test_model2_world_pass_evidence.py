@@ -207,6 +207,50 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"per-caller Scene/Draw"):
             compare_sessions([race,report(witness())],controls())
 
+    def test_per_caller_physical_present_cardinality_rejects_forged_race(self):
+        # Synthetic cached evidence may claim more DISTINCT physical frames
+        # than the original x86 process actually presented. This must fail
+        # before either caller can become a World3D candidate.
+        for field in (
+            "distinct_projected_material_present_frame_count",
+            "distinct_successful_projected_material_present_frame_count",
+            "distinct_physically_presented_material_present_frame_count",
+            "distinct_phase_attested_physically_presented_material_present_frame_count",
+            "distinct_scene_attested_physically_presented_material_present_frame_count",
+            "distinct_same_witness_joint_present_frame_count",
+            "distinct_cpu_fit_population_present_frame_count",
+            "distinct_context_present_frame_count",
+        ):
+            with self.subTest(field=field):
+                race = report(witness())
+                race["sources"][0][field] = 9  # only 8 physical Presents
+                with self.assertRaisesRegex(ValueError, "source Present count"):
+                    compare_sessions([race, report(witness())], controls())
+
+    def test_source_causal_present_sets_cannot_grow_downstream(self):
+        for field in (
+            "distinct_successful_projected_material_present_frame_count",
+            "distinct_physically_presented_material_present_frame_count",
+            "distinct_phase_attested_physically_presented_material_present_frame_count",
+            "distinct_scene_attested_physically_presented_material_present_frame_count",
+        ):
+            with self.subTest(field=field):
+                race = report(witness())
+                race["sources"][0][field] = 4  # 4 <= 8, but parent has 3
+                with self.assertRaisesRegex(ValueError, "source evidence order"):
+                    compare_sessions([race, report(witness())], controls())
+
+    def test_original_preflight_rejects_forged_control_source_cardinality(self):
+        forged = report(witness())
+        forged["sources"][0]["distinct_context_present_frame_count"] = True
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "synthetic-original.csv"
+            path.write_text("synthetic", encoding="utf-8")
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=forged):
+                with self.assertRaisesRegex(ValueError, "source Present count"):
+                    preflight_original_session(path)
+
     def test_race_cpu_gpu_same_original_draw_requires_post_com_completion(self):
         # A pre-COM projected match cannot borrow another physical Draw's
         # successful scene or RT state after its actual COM return.

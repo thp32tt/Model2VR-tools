@@ -278,6 +278,32 @@ def _validate_report(report):
         # Caller provenance must agree with the native executable RVA.
         if source.get("caller_is_in_executable") is not (int(caller, 16) != 0):
             raise ValueError("inconsistent original executable caller ownership")
+        # Every distinct_*_present_frame_count is a SET cardinality of
+        # actual original physical Present frame indices. A cached report
+        # claiming N different source frames from fewer than N original
+        # primary-device Presents cannot establish a CPU/GPU candidate.
+        # Check all known and future per-source cardinalities; do not
+        # confuse these with Draw witness counts (many Draws per frame).
+        physical_count = run["physical_present_count"]
+        for field, value in source.items():
+            if (field.startswith("distinct_") and
+                    field.endswith("_present_frame_count") and
+                    (type(value) is not int or not 0 <= value <= physical_count)):
+                raise ValueError("per-caller source Present count exceeds original capture")
+        # The genuine original source parser creates these nested frame
+        # sets only by admitting the immediately preceding physical stage.
+        # A report with larger downstream success/scene sets would borrow
+        # evidence that never existed for the same physical source Draw.
+        ordered = (
+            "distinct_projected_material_present_frame_count",
+            "distinct_successful_projected_material_present_frame_count",
+            "distinct_physically_presented_material_present_frame_count",
+            "distinct_phase_attested_physically_presented_material_present_frame_count",
+            "distinct_scene_attested_physically_presented_material_present_frame_count",
+        )
+        for parent, child in zip(ordered, ordered[1:]):
+            if parent in source and child in source and source[child] > source[parent]:
+                raise ValueError("per-caller original physical source evidence order invalid")
         if key in result:
             raise ValueError("duplicate original Draw caller in a capture")
         scene_attested=source.get(
