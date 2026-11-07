@@ -242,8 +242,10 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 race["original_physical_scene_draw_coverage"][
                     "trusted_scene_drawn_present_count"] = 5
                 race["sources"][0][field] = 4  # 4 <= 8, but parent has 3
-                with self.assertRaisesRegex(ValueError, "source evidence order"):
-                    compare_sessions([race, report(witness())], controls())
+                decision = compare_sessions([race, report(witness())], controls())
+                self.assertEqual(decision["candidates"], [])
+                self.assertEqual(decision["rejected"][0]["reason"],
+                                 "missing_same_draw_matrix_material_or_render_evidence")
 
     def test_original_preflight_rejects_forged_control_source_cardinality(self):
         forged = report(witness())

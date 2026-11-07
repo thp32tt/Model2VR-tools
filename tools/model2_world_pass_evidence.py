@@ -298,20 +298,6 @@ def _validate_report(report):
                     field.endswith("_present_frame_count") and
                     (type(value) is not int or not 0 <= value <= physical_count)):
                 raise ValueError("per-caller source Present count exceeds original capture")
-        # The genuine original source parser creates these nested frame
-        # sets only by admitting the immediately preceding physical stage.
-        # A report with larger downstream success/scene sets would borrow
-        # evidence that never existed for the same physical source Draw.
-        ordered = (
-            "distinct_projected_material_present_frame_count",
-            "distinct_successful_projected_material_present_frame_count",
-            "distinct_physically_presented_material_present_frame_count",
-            "distinct_phase_attested_physically_presented_material_present_frame_count",
-            "distinct_scene_attested_physically_presented_material_present_frame_count",
-        )
-        for parent, child in zip(ordered, ordered[1:]):
-            if parent in source and child in source and source[child] > source[parent]:
-                raise ValueError("per-caller original physical source evidence order invalid")
         result[key] = source
     return result
 
@@ -351,6 +337,19 @@ def _enough_original_source(source):
         value = source.get(field)
         if type(value) is not int or value < MIN_PRESENTS:
             return False
+    # Fail candidate admission, not preflight source parsing, when a
+    # malformed or failed Draw/Present stage overclaims a downstream frame.
+    # These sets come from one and the same physical original x86 Draw.
+    ordered = (
+        "distinct_projected_material_present_frame_count",
+        "distinct_successful_projected_material_present_frame_count",
+        "distinct_physically_presented_material_present_frame_count",
+        "distinct_phase_attested_physically_presented_material_present_frame_count",
+        "distinct_scene_attested_physically_presented_material_present_frame_count",
+    )
+    if any(source[child] > source[parent]
+           for parent, child in zip(ordered, ordered[1:])):
+        return False
     for field in (
         "cpu_fit_population_missing_batches",
         "original_draw_failure_witnesses",
