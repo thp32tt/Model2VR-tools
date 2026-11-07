@@ -4,6 +4,7 @@
 // World3D, or substitute synthetic frames for actual headset evidence.
 #include "../src/common/daytona_source_handoff_gate.hpp"
 #include "../src/common/daytona_xr_layer_commit_gate.hpp"
+#include "../src/common/stereo_pose_ipc.h"
 #include "../host/original_source_process_lease.hpp"
 #include <Windows.h>
 #include <array>
@@ -52,14 +53,31 @@ int wmain(){
     m2vr::transport::SharedFrames frames;
     m2vr::producerhealth::Link health;
     REQUIRE(frames.Create(pid) && health.Create(pid));
+    // Startup handshake: the real Win64 test process must publish tracked
+    // local-space eye geometry BEFORE the Win32 original D3D9 Draw samples
+    // it. These named events are NOT a replacement for pose seqlock/QPC.
+    REQUIRE(SetEvent(ready)!=FALSE);
+    REQUIRE(WaitForSingleObject(advance,30000u)==WAIT_OBJECT_0);
+    m2vr::pose::Link original_x86_pose;
+    REQUIRE(original_x86_pose.Open(pid));
     const std::array<m2vr::transport::FrameKind,3> kinds{{
         m2vr::transport::FrameKind::GameStereo,
         m2vr::transport::FrameKind::CompactMono,
         m2vr::transport::FrameKind::VerifiedCpuWorldStereo}};
-    const std::array<std::uint32_t,3> tags{{91u,0u,92u}};
+    const std::array<std::uint32_t,3> tags{{91u,0u,93u}};
     const std::array<std::uint8_t,3> colors_left{{0x17u,0x2cu,0x3du}};
     const std::array<std::uint8_t,3> colors_right{{0x8bu,0u,0xc6u}};
     for(unsigned i=0;i<3u;++i){
+        m2vr::pose::Frame sampled{};
+        REQUIRE(original_x86_pose.ReadTracked(sampled));
+        REQUIRE(sampled.sequence==91u+i);
+        REQUIRE(sampled.reserved==7u);
+        REQUIRE(sampled.predicted_display_time==
+                9000000+static_cast<std::int64_t>(i)*100000);
+        REQUIRE(sampled.eyes[0].position_m[0]==-0.032f);
+        REQUIRE(sampled.eyes[1].position_m[0]== 0.032f);
+        REQUIRE(sampled.eyes[0].fov_left_right_up_down[0]==-0.8f);
+        REQUIRE(sampled.eyes[1].fov_left_right_up_down[1]== 0.8f);
         REQUIRE(WritePhase(frames,health,i+1u,kinds[i],tags[i],
                            colors_left[i],colors_right[i]));
         REQUIRE(SetEvent(ready)!=FALSE);
@@ -104,6 +122,10 @@ int wmain(int argc,wchar_t** argv){
     // source receipt, otherwise OpenFileMapping races process startup.
     REQUIRE(WaitForSingleObject(ready,30000u)==WAIT_OBJECT_0);
     using namespace m2vr;
+    // Host x64 actually CREATES the reverse pose IPC under the original
+    // Win32 process PID; child only opens and consumes a tracked snapshot.
+    pose::Link pose_writer;
+    REQUIRE(pose_writer.Create(child.dwProcessId));
     transport::SharedFrames frame_reader;
     producerhealth::Link health_reader;
     REQUIRE(frame_reader.Open(child.dwProcessId));
@@ -113,10 +135,30 @@ int wmain(int argc,wchar_t** argv){
     const std::array<transport::FrameKind,3> kinds{{
         transport::FrameKind::GameStereo,transport::FrameKind::CompactMono,
         transport::FrameKind::VerifiedCpuWorldStereo}};
-    const std::array<std::uint32_t,3> tags{{91u,0u,92u}};
+    const std::array<std::uint32_t,3> tags{{91u,0u,93u}};
     const std::array<std::uint8_t,3> expected_left{{0x17u,0x2cu,0x3du}};
     const std::array<std::uint8_t,3> expected_right{{0x8bu,0u,0xc6u}};
     for(unsigned i=0;i<3u;++i){
+        // OpenXR side of the actual x64->x86 transport. Synthetic tracked
+        // views are never represented as real headset/runtime validation.
+        pose::Frame predicted{};
+        predicted.sequence=91u+i;
+        predicted.predicted_display_time=
+            9000000+static_cast<std::int64_t>(i)*100000;
+        predicted.reserved=7u;
+        predicted.view_flags=pose::kFullSixDofTracked;
+        for(auto& eye:predicted.eyes){
+            eye.orientation_xyzw[3]=1.f;
+            eye.fov_left_right_up_down[0]=-0.8f;
+            eye.fov_left_right_up_down[1]= 0.8f;
+            eye.fov_left_right_up_down[2]= 0.8f;
+            eye.fov_left_right_up_down[3]=-0.8f;
+        }
+        predicted.eyes[0].position_m[0]=-0.032f;
+        predicted.eyes[1].position_m[0]= 0.032f;
+        REQUIRE(pose_writer.Publish(predicted));
+        REQUIRE(ResetEvent(ready)!=FALSE);
+        REQUIRE(SetEvent(advance)!=FALSE);
         REQUIRE(WaitForSingleObject(ready,30000u)==WAIT_OBJECT_0);
         LARGE_INTEGER now{};REQUIRE(QueryPerformanceCounter(&now) && now.QuadPart>0);
         transport::FrameStamp inspected{};
@@ -156,9 +198,9 @@ int wmain(int argc,wchar_t** argv){
         auto falsified=receipt;falsified.frame_id++;
         REQUIRE(!handoff::AdmitOriginalPresentToXr(
             inspected,copied,falsified,true,known_pose));
-        REQUIRE(ResetEvent(ready)!=FALSE);
-        REQUIRE(SetEvent(advance)!=FALSE);
     }
+    REQUIRE(ResetEvent(ready)!=FALSE);
+    REQUIRE(SetEvent(advance)!=FALSE);
     // Actual x86 writer now reports a newer FAILED original Present while
     // the x64 process still holds frame 3's accepted native two-eye pair.
     REQUIRE(WaitForSingleObject(ready,30000u)==WAIT_OBJECT_0);
