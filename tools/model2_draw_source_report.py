@@ -638,7 +638,7 @@ def audit_csv(path):
             # original Draw/Scene/Present provenance even if stage totals match.
             # Check EVERY row, including unknown diagnostic events; ignoring an
             # event must not permit a silent gap in the genuine source stream.
-            if None in row:
+            if None in row or any(row.get(field) is None for field in FIELDS):
                 raise ValueError("invalid original CSV ordered event header")
             raw_order = (row.get("seq"), row.get("qpc"), row.get("thread"))
             if any(not isinstance(raw, str) or not raw.isascii()
