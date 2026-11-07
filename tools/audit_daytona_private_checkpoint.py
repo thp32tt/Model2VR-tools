@@ -45,12 +45,14 @@ def verify_checkpoint(folder: Path) -> tuple[str, ...]:
     # report or a symlink claiming to be an absent stage. On a checkpoint
     # only an ordered prefix of separately finished x86 game runs exists.
     completed = []
+    initial_stage_presence = []
     gap_seen = False
     for label in LABELS:
         csv_name = "auxiliary.csv" if label == "aux" else f"{label}.csv"
         raw = folder / csv_name
         report = folder / f"PRIVATE_SOURCE_{label}.json"
         has_raw, has_report = _active(raw), _active(report)
+        initial_stage_presence.append((has_raw, has_report))
         if has_raw != has_report:
             raise ReceiptError(f"orphan original x86 CSV/report at {label}")
         if not has_raw:
@@ -75,7 +77,9 @@ def verify_checkpoint(folder: Path) -> tuple[str, ...]:
              _active(folder / f"PRIVATE_SOURCE_{label}.json"))
             for label in LABELS)
 
-    original_presence = stage_presence()
+    # Use the SAME presence observations that selected completed stages,
+    # not a second scan that could race with a freshly added later stage.
+    original_presence = tuple(initial_stage_presence)
     snapshots = {}
     distinct_nonces, distinct_source_hashes = set(), set()
     for label, raw, report_path in completed:
