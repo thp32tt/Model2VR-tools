@@ -3,6 +3,7 @@
 // that the Win64 OpenXR host reads. It does not run Daytona, claim race
 // World3D, or substitute synthetic frames for actual headset evidence.
 #include "../src/common/daytona_source_handoff_gate.hpp"
+#include "../host/original_source_process_lease.hpp"
 #include <Windows.h>
 #include <array>
 #include <cstdint>
@@ -78,6 +79,9 @@ int wmain(int argc,wchar_t** argv){
     REQUIRE(CreateProcessW(argv[1],cmd.data(),nullptr,nullptr,FALSE,0,
                            nullptr,nullptr,&startup,&child)!=FALSE);
     CloseHandle(child.hThread);
+    host::OriginalSourceProcessLease process_lease;
+    REQUIRE(process_lease.Attach(child.dwProcessId));
+    REQUIRE(process_lease.CreationTime100ns()!=0u);
     HANDLE ready=nullptr,advance=nullptr;
     for(unsigned retry=0;retry<100u && (!ready || !advance);++retry){
         if(!ready)ready=OpenEventW(EVENT_MODIFY_STATE|SYNCHRONIZE,FALSE,
@@ -146,6 +150,9 @@ int wmain(int argc,wchar_t** argv){
     REQUIRE(WaitForSingleObject(child.hProcess,30000u)==WAIT_OBJECT_0);
     DWORD code=1;REQUIRE(GetExitCodeProcess(child.hProcess,&code));
     REQUIRE(code==0u);
+    REQUIRE(!process_lease.Alive());
+    REQUIRE(process_lease.Terminal());
+    REQUIRE(!process_lease.Attach(child.dwProcessId));
     CloseHandle(ready);CloseHandle(advance);CloseHandle(child.hProcess);
     return 0;
 }

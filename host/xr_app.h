@@ -23,6 +23,7 @@
 #include "../src/common/daytona_host_pixel_format.hpp"
 #include "emulator_window_capture.hpp"
 #include "emulator_menu_controller.hpp"
+#include "original_source_process_lease.hpp"
 
 namespace m2vr::host {
 using Microsoft::WRL::ComPtr;
@@ -61,6 +62,9 @@ private:
     // One recycled pixel swizzle scratch buffer, never part of IPC staging.
     std::vector<std::uint8_t> bgra_upload_scratch_;
     std::uint32_t source_pid_=0;
+    // Original Win32 game process identity is a kernel HANDLE, never just
+    // a PID-derived shared mapping name. A dead process cannot be rebound.
+    OriginalSourceProcessLease source_process_lease_{};
     // Capture the real pre-game Windows menu/ROM dialog into a flat XR quad.
     // This capture never authorizes native stereo or writes game IPC.
     EmulatorWindowCapture emulator_window_capture_{};

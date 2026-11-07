@@ -200,6 +200,14 @@ add_test(NAME daytona_original_pose_at_present_x86 COMMAND daytona_pose_present_
 # must describe the EXACT same x86 D3D9 frame and pose-tag transaction.
 # Standalone Win32 original-source emitter for the joint x86->x64
 # process/IPC test on a single Windows runner; synthetic pixels only.
+# A dead x86 source process must not leave mapped eye packets under a
+# reused PID in the independent Win64 OpenXR process.
+add_executable(model2_original_process_lease_x86_test
+    tests/model2_original_source_process_lease_test.cpp)
+target_compile_features(model2_original_process_lease_x86_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_d3d9_pid_reuse_quarantine_x86
+    COMMAND model2_original_process_lease_x86_test)
+
 add_executable(model2_original_crossarch_x86_producer
     tests/model2_original_cross_arch_stereo_test.cpp)
 target_compile_features(model2_original_crossarch_x86_producer PRIVATE cxx_std_20)

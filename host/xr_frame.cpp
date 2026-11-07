@@ -206,6 +206,21 @@ void XrApp::invalidate_source_session() noexcept {
                   chain.uploaded_frame_ids.end(),0u);
 }
 void XrApp::draw_frame(XrTime display_time){
+    // Bind and monitor the ACTUAL original x86 game process. Named IPC
+    // mappings remain readable after the writer exits if this x64 host still
+    // owns them. Invalidate/close all three mappings BEFORE accepting any
+    // stereo packet or publishing the next HMD pose on a dead/reused PID.
+    if(source_pid_ && !source_process_lease_.Attach(source_pid_)){
+        std::cerr<<"Daytona VR original D3D9 producer no longer live"
+                 <<" pid="<<source_pid_
+                 <<" (stale Win32 eye source retired; restart host for a new process)"
+                 <<std::endl;
+        invalidate_source_session();
+        shared_frames_.Close();
+        producer_health_.Close();
+        pose_writer_.Close();
+        source_pid_=0u;
+    }
     // A queued LOCAL-space origin change must not mix earlier original
     // x86 D3D9 eye pixels with later real xrLocateViews coordinates.
     const auto local_action=local_reference_epoch_.OnPredictedFrame(display_time);
@@ -475,7 +490,13 @@ void XrApp::draw_frame(XrTime display_time){
     const bool source_failed_after_pair=receipt::RevokesCached(
         frame_gate_.id(),frame_gate_.kind(),eye_frame_.timestamp_qpc,
         producer_health_status_,producer_health_fresh_);
-    bool usable=!source_failed_after_pair &&
+    // The process may exit while the host copies 8 MiB. Check the live
+    // kernel process HANDLE again immediately before XR image selection;
+    // the next XR frame retires mappings and pose ownership permanently.
+    const bool original_process_still_live=
+        source_pid_!=0u && source_process_lease_.Alive();
+    bool usable=original_process_still_live &&
+        !source_failed_after_pair &&
         frame_gate_.Cached(now,hz) &&
         eye_frame_.frame_id==frame_gate_.id() &&
         transport::ValidEyePayload(eye_frame_.kind,

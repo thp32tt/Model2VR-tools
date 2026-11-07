@@ -51,6 +51,14 @@ enable_testing()
 # The genuine 64-bit Windows process opens the independent 32-bit
 # producer's named mappings and checks all three original-source subtypes.
 # The joint workflow runs it against an actual x86 child process.
+# The same actual Windows process lifetime rule is enforced in the
+# shipping Win64 XR host before any accepted original binocular frame.
+add_executable(model2_original_process_lease_x64_test
+    ../tests/model2_original_source_process_lease_test.cpp)
+target_compile_features(model2_original_process_lease_x64_test PRIVATE cxx_std_20)
+add_test(NAME model2_original_d3d9_pid_reuse_quarantine_x64
+    COMMAND model2_original_process_lease_x64_test)
+
 add_executable(model2_original_crossarch_x64_consumer
     ../tests/model2_original_cross_arch_stereo_test.cpp)
 target_compile_features(model2_original_crossarch_x64_consumer PRIVATE cxx_std_20)
