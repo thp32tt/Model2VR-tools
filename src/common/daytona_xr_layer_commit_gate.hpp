@@ -13,6 +13,19 @@ enum class Reject : std::uint8_t {
     None, SourceDead, StalePixels, PayloadMismatch, PoseUnproven,
     MissingReceipt, NewerFailedPresent, ContradictoryReceipt
 };
+inline constexpr const char* Name(Reject reason) noexcept {
+    switch(reason){
+    case Reject::None: return "ORIGINAL_XR_LAYER_SUBMITTED";
+    case Reject::SourceDead: return "ORIGINAL_X86_PROCESS_TERMINATED";
+    case Reject::StalePixels: return "ORIGINAL_EYE_FRAME_QPC_EXPIRED";
+    case Reject::PayloadMismatch: return "ORIGINAL_EYE_BUFFER_FRAME_MISMATCH";
+    case Reject::PoseUnproven: return "ORIGINAL_OPENXR_EYE_POSE_UNPROVEN";
+    case Reject::MissingReceipt: return "ORIGINAL_PRESENT_RECEIPT_MISSING";
+    case Reject::NewerFailedPresent: return "NEWER_ORIGINAL_D3D9_PRESENT_FAILED";
+    case Reject::ContradictoryReceipt: return "ORIGINAL_PRESENT_RECEIPT_CONTRADICTORY";
+    }
+    return "UNKNOWN_ORIGINAL_XR_LAYER_REJECTION";
+}
 struct Result {
     bool submit=false;
     Reject reason=Reject::MissingReceipt;

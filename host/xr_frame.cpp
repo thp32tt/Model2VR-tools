@@ -147,6 +147,8 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"latest_original_receipt_frame="<<latest_receipt_frame_<<"\n"
           <<"latest_original_receipt_verdict="
           <<static_cast<unsigned>(latest_receipt_verdict_)<<"\n"
+          <<"final_original_xr_layer="<<xrcommit::Name(final_xr_rejection_)<<"\n"
+          <<"final_rejected_original_frame="<<final_xr_rejected_frame_<<"\n"
           <<"frame_transport_open="<<(shared_frames_.Valid()?1:0)<<"\n"
           <<"source_kind="<<(frame_gate_.kind()==transport::FrameKind::VerifiedCpuWorldStereo
                 ?"VerifiedCpuWorldStereo":
@@ -725,14 +727,22 @@ void XrApp::draw_frame(XrTime display_time){
             last_health,final_receipt_read);
         commit_source_layer=outcome.submit;
         if(!commit_source_layer){
-            std::cerr<<"Daytona VR final original XR layer REJECTED"
-                     <<" reason="<<static_cast<unsigned>(outcome.reason)
-                     <<" frame="<<eye_frame_.frame_id
-                     <<" last_health_frame="<<(final_receipt_read
-                         ?last_health.frame_id:0u)
-                     <<std::endl;
+            const auto failed_frame=eye_frame_.frame_id;
+            if(final_xr_rejection_!=outcome.reason ||
+               failed_frame==1u || failed_frame%120u==0u)
+                std::cerr<<"Daytona VR final original XR layer REJECTED"
+                         <<" reason="<<xrcommit::Name(outcome.reason)
+                         <<" frame="<<failed_frame
+                         <<" last_health_frame="<<(final_receipt_read
+                             ?last_health.frame_id:0u)
+                         <<std::endl;
             invalidate_source_session();
+            final_xr_rejection_=outcome.reason;
+            final_xr_rejected_frame_=failed_frame;
             report_wizard_health(true,false);
+        }else{
+            final_xr_rejection_=xrcommit::Reject::None;
+            final_xr_rejected_frame_=0u;
         }
     }else if(menu_quad && source_pid_!=0u){
         // Desktop-menu screenshot also belongs to that real original x86
@@ -741,6 +751,8 @@ void XrApp::draw_frame(XrTime display_time){
         commit_source_layer=source_process_lease_.Alive();
         if(!commit_source_layer){
             invalidate_source_session();
+            final_xr_rejection_=xrcommit::Reject::SourceDead;
+            final_xr_rejected_frame_=0u;
             report_wizard_health(true,false);
         }
     }

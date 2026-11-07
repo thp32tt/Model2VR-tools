@@ -30,6 +30,11 @@ int main(){
     };
     CHECK(verify(true,true).submit);
     CHECK(verify(true,true).reason==Reject::None);
+    CHECK(Name(Reject::None)[0]=='O');
+    CHECK(Name(Reject::SourceDead)[0]=='O');
+    CHECK(Name(Reject::StalePixels)[0]=='O');
+    CHECK(Name(Reject::NewerFailedPresent)[0]=='N');
+    CHECK(Name(Reject::ContradictoryReceipt)[0]=='O');
     CHECK(!verify(false,true).submit);
     CHECK(verify(false,true).reason==Reject::SourceDead);
     CHECK(!verify(true,false).submit);

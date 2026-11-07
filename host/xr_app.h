@@ -23,6 +23,7 @@
 #include "../src/common/daytona_host_pixel_format.hpp"
 #include "emulator_window_capture.hpp"
 #include "emulator_menu_controller.hpp"
+#include "../src/common/daytona_xr_layer_commit_gate.hpp"
 #include "original_source_process_lease.hpp"
 
 namespace m2vr::host {
@@ -92,6 +93,10 @@ private:
     bool warned_original_receipt_rejection_=false;
     receipt::Verdict latest_receipt_verdict_=receipt::Verdict::AwaitHealth;
     std::uint64_t latest_receipt_frame_=0u;
+    // Persist the actual last-minute original x86 Present rejection in F9
+    // bug captures even after the stale eye frame cache is invalidated.
+    xrcommit::Reject final_xr_rejection_=xrcommit::Reject::None;
+    std::uint64_t final_xr_rejected_frame_=0u;
     std::uint8_t last_pose_rejection_=0u; // 1=untagged, 2=expired
     delivery::Status eye_delivery_status_=delivery::Status::NoProducerHealth;
     delivery::TransitionGate eye_delivery_gate_{};
