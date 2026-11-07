@@ -14,7 +14,7 @@ from pathlib import Path
 MAX_ROWS = 2_000_000
 MAX_WITNESSES = 100_000
 UINT64_MAX = (1 << 64) - 1
-FIELDS = {"seq", "event", "a0", "a1", "a2", "a3"}
+FIELDS = {"seq", "qpc", "thread", "event", "a0", "a1", "a2", "a3"}
 PREFIX = "model2_d3d9_"
 NAMES = {
     "model2_d3d9_vb_source", "model2_d3d9_vb_stream",
@@ -623,13 +623,35 @@ def audit_csv(path):
     # phases are observed here to detect a counterfeited duplicate VB phase.
     physical_draw_phase_owners = {}
     ignored = Counter()
+    previous_qpc = 0
     with open(path, "r", encoding="utf-8-sig", newline="") as source:
         reader = csv.DictReader(source)
-        if not reader.fieldnames or not FIELDS.issubset(reader.fieldnames):
-            raise ValueError("not a Model2VR probe CSV")
+        if (not reader.fieldnames or not FIELDS.issubset(reader.fieldnames)
+                or len(reader.fieldnames) != len(set(reader.fieldnames))):
+            raise ValueError("not a complete Model2VR probe CSV")
         for count, row in enumerate(reader, 1):
             if count > MAX_ROWS:
                 raise ValueError("CSV row limit exceeded")
+            # The original x86 logger stamps seq/QPC inside the same mutex
+            # that serializes each physical D3D9 event. A CSV with reordered,
+            # duplicated, omitted, or truncated rows cannot establish causal
+            # original Draw/Scene/Present provenance even if stage totals match.
+            # Check EVERY row, including unknown diagnostic events; ignoring an
+            # event must not permit a silent gap in the genuine source stream.
+            if None in row:
+                raise ValueError("invalid original CSV ordered event header")
+            raw_order = (row.get("seq"), row.get("qpc"), row.get("thread"))
+            if any(not isinstance(raw, str) or not raw.isascii()
+                   or not raw.isdecimal() or len(raw) > 20
+                   or (len(raw) > 1 and raw[0] == "0")
+                   for raw in raw_order):
+                raise ValueError("invalid original CSV ordered event header")
+            seq, qpc, thread_id = map(int, raw_order)
+            if (seq != count or not 0 < qpc <= 0x7fffffffffffffff
+                    or qpc < previous_qpc
+                    or not 0 < thread_id <= 0xffffffff):
+                raise ValueError("invalid original CSV ordered event header")
+            previous_qpc = qpc
             event = row["event"]
             if event == "model2_d3d9_original_draw_failed":
                 try:
