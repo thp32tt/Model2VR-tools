@@ -104,7 +104,11 @@ void XrApp::create_swapchains(){
     }
 }
 void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
-    if(!wizard_diag_enabled_ || source_pid_==0)return;
+    // Keep F9 diagnostic access after the genuine x86 source terminates.
+    // No producer PID was selected only if the source HANDLE was never
+    // attached and never entered the terminal state.
+    if(!wizard_diag_enabled_ ||
+       (source_pid_==0u && !source_process_lease_.Terminal()))return;
     const auto status=wizard::Classify(
         tracking_valid,paired_frame_fresh,frame_gate_.id()!=0,
         transport::IsStereoGame(frame_gate_.kind()));
@@ -131,7 +135,10 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
     report<<"[Daytona VR Wizard local capture]\n"
           <<"time_local="<<clock.wYear<<"-"<<clock.wMonth<<"-"<<clock.wDay
           <<" "<<clock.wHour<<":"<<clock.wMinute<<":"<<clock.wSecond<<"\n"
-          <<"emulator_pid="<<source_pid_<<"\n"
+          <<"emulator_pid="<<(source_pid_?source_pid_:
+                                  source_process_lease_.Pid())<<"\n"
+          <<"original_x86_process_terminated="
+          <<(source_process_lease_.Terminal()?1:0)<<"\n"
           <<"status="<<wizard::Name(status)<<"\n"
           <<"openxr_tracking_valid="<<(tracking_valid?1:0)<<"\n"
           <<"paired_frame_fresh="<<(paired_frame_fresh?1:0)<<"\n"
@@ -615,7 +622,9 @@ void XrApp::draw_frame(XrTime display_time){
                  <<" action="<<delivery::NextAction(eye_delivery_status_)
                  <<std::endl;
     }
-    report_wizard_health(true,usable);
+    // Defer F9 capture until AFTER final post-upload original Present
+    // receipt/liveness admission. Otherwise a single F9 key edge reports
+    // pre-upload success and misses its own final xrEndFrame rejection.
     // Both the original-game mono backbuffer and the emulator's desktop
     // configuration/ROM menu use exactly one world-stationary XR quad.
     // Live, authenticated GameStereo still uses both projection views.
@@ -739,7 +748,7 @@ void XrApp::draw_frame(XrTime display_time){
             invalidate_source_session();
             final_xr_rejection_=outcome.reason;
             final_xr_rejected_frame_=failed_frame;
-            report_wizard_health(true,false);
+            // F9 capture follows the final layer decision below.
         }else{
             final_xr_rejection_=xrcommit::Reject::None;
             final_xr_rejected_frame_=0u;
@@ -753,7 +762,7 @@ void XrApp::draw_frame(XrTime display_time){
             invalidate_source_session();
             final_xr_rejection_=xrcommit::Reject::SourceDead;
             final_xr_rejected_frame_=0u;
-            report_wizard_health(true,false);
+            // F9 capture follows the final layer decision below.
         }
     }
     const XrCompositionLayerBaseHeader* selected_layer=
@@ -766,6 +775,10 @@ void XrApp::draw_frame(XrTime display_time){
     end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     end.layerCount=commit_source_layer?1u:0u;
     end.layers=commit_source_layer?layers:nullptr;
+    // The first and only F9 edge for this normal XR frame records the
+    // actual layer submitted (or rejected), with genuine original D3D9
+    // health, final frame ID and reason already finalized.
+    report_wizard_health(true,usable && commit_source_layer);
     check(xrEndFrame(session_,&end),
           flat_quad?"end emulator/game mono 2D quad frame":"end stereo frame");
 }

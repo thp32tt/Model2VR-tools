@@ -1792,6 +1792,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("xrcommit::VerifyOriginalFrameAtEnd(",host)
         self.assertIn("final_original_xr_layer=",host)
         self.assertIn("final_rejected_original_frame=",host)
+        self.assertIn("original_x86_process_terminated=",host)
+        self.assertIn("report_wizard_health(true,usable && commit_source_layer)",host)
         self.assertIn("end.layerCount=commit_source_layer?1u:0u",host)
         self.assertIn("bool usable=original_process_still_live &&",host)
         self.assertIn("!source_failed_after_pair &&",host)
