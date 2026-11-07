@@ -10,6 +10,11 @@ param(
   # INCOMPLETE without publishing any final World3D candidate/receipt.
   # A later -ResumeSessionFolder invocation re-audits archived stages.
   [string]$StopAfterStage = "",
+  # Optional: only for race_a/race_b. Reject a physically readable original
+  # race with no complete SAME-Draw CPU/GPU/Scene/post-COM source BEFORE the
+  # operator spends five more emulator sessions on negative controls.
+  # Does not prove World3D or enable GameStereo.
+  [switch]$RequireRaceSource,
   [ValidateRange(1,3600)][int]$AuditTimeoutSeconds = 900
 )
 $ErrorActionPreference = "Stop"
@@ -198,8 +203,11 @@ foreach ($label in $labels) {
         Rename-Item -LiteralPath $preflight -NewName $staleName -ErrorAction Stop
       }
       $pendingPreflight = New-PendingPrivateSourcePath $label
-      $resumeExit = Invoke-PrivateAudit -auditArguments @(
-        $analyzer,"--preflight",$target,"--output",$pendingPreflight)
+      $resumeArgs = @($analyzer,"--preflight",$target,"--output",$pendingPreflight)
+      if ($RequireRaceSource -and ($label -ceq "race_a" -or $label -ceq "race_b")) {
+        $resumeArgs += "--require-race-source"
+      }
+      $resumeExit = Invoke-PrivateAudit -auditArguments $resumeArgs
       Assert-PrivatePreflightCsvUnchanged $label $target $resumeHash
       if ($resumeSource.Length -ge 32 -and $resumeExit -eq 0 -and
           (Test-Path -LiteralPath $pendingPreflight -PathType Leaf)) {
@@ -297,8 +305,11 @@ foreach ($label in $labels) {
   # for the next private original EXE session. Cache its complete private
   # report instead of repeating the expensive CSV parse at final triage.
   $pendingPreflight = New-PendingPrivateSourcePath $label
-  $preflightExit = Invoke-PrivateAudit -auditArguments @(
-    $analyzer,"--preflight",$target,"--output",$pendingPreflight)
+  $preflightArgs = @($analyzer,"--preflight",$target,"--output",$pendingPreflight)
+  if ($RequireRaceSource -and ($label -ceq "race_a" -or $label -ceq "race_b")) {
+    $preflightArgs += "--require-race-source"
+  }
+  $preflightExit = Invoke-PrivateAudit -auditArguments $preflightArgs
   Assert-PrivatePreflightCsvUnchanged $label $target $digest
   if ($preflightExit -ne 0 -or
       !(Test-Path -LiteralPath $pendingPreflight -PathType Leaf)) {
