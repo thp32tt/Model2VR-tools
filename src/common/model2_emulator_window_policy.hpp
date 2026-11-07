@@ -55,6 +55,16 @@ struct ScreenPoint {
     std::int32_t x=0,y=0;
     bool valid=false;
 };
+// SetCursorPos() may report success but Windows can CLIP the cursor to a
+// different position (ClipCursor), including another control of the SAME
+// emulator process. The actual OS hotspot must match the Quest ray's exact
+// signed virtual-desktop destination before any injected mouse-down/up.
+constexpr bool CursorPositionMatches(ScreenPoint requested,
+                                     std::int32_t actual_x,
+                                     std::int32_t actual_y) noexcept {
+    return requested.valid &&
+           requested.x==actual_x && requested.y==actual_y;
+}
 constexpr ScreenPoint MapDesktopPoint(DesktopBounds desktop,
                                       std::uint32_t source_x,
                                       std::uint32_t source_y) noexcept {

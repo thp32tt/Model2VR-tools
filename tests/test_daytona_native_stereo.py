@@ -1240,6 +1240,18 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("GetForegroundWindow()!=window_",capture)
         self.assertIn("WindowFromPoint(target_point)",capture)
         self.assertIn("post_warp_pid!=static_cast<DWORD>(pid)",capture)
+        # Two independent post-warp cursor readbacks, never just blindly
+        # trusting SetCursorPos success when ClipCursor clamps the hotspot.
+        self.assertIn("CursorPositionMatches(",capture)
+        self.assertIn("GetCursorPos(&warped_cursor)",capture)
+        self.assertIn("GetCursorPos(&pre_input_cursor)",capture)
+        self.assertEqual(capture.count("CursorPositionMatches("),2)
+        self.assertLess(capture.index("SetCursorPos(target_point.x,target_point.y)"),
+                        capture.index("GetCursorPos(&warped_cursor)"))
+        self.assertLess(capture.index("GetCursorPos(&warped_cursor)"),
+                        capture.index("WindowFromPoint(target_point)",capture.index("SetCursorPos(")))
+        self.assertLess(capture.index("GetCursorPos(&pre_input_cursor)"),
+                        capture.index("const UINT sent=SendInput(2,click,sizeof(INPUT))"))
         self.assertIn("SetControllerReticle(true,hit.texture_x,hit.texture_y)",controller)
         self.assertIn("menu_quad && flat_quad,source_pid_",host)
         self.assertIn("PresentedCaptureMatches(",controller)

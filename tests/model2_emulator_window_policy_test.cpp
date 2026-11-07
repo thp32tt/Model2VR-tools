@@ -15,6 +15,16 @@ int main(){
     static_assert(!MapDesktopPoint(desktop,5360,100).valid);
     static_assert(!MapDesktopPoint(desktop,100,1680).valid);
     static_assert(!MapDesktopPoint({},100,100).valid);
+    // Real post-warp OS cursor must equal the signed virtual-desktop ray
+    // target. A successful SetCursorPos does not rule out ClipCursor.
+    static_assert(CursorPositionMatches(at_secondary,-1920,-240));
+    static_assert(CursorPositionMatches(at_origin,0,0));
+    static_assert(!CursorPositionMatches(at_secondary,-1919,-240));
+    static_assert(!CursorPositionMatches(at_secondary,-1920,-239));
+    static_assert(!CursorPositionMatches(at_secondary,0,0));
+    static_assert(!CursorPositionMatches({},0,0));
+    static_assert(!CursorPositionMatches(
+        ScreenPoint{-2147483647,-200,true},-2147483646,-200));
     // A VR ray hit is bound to the screenshot shown in the quad, not
     // merely to a still-live HWND or the emulator's numeric process ID.
     constexpr WindowRect picture{-1500,-100,-860,380};

@@ -189,6 +189,13 @@ bool EmulatorWindowCapture::DeliverControllerClick(
     // SendInput is confined to the genuine foreground emulator HWND;
     // never use WM_* messages or inject into the original D3D9 game.
     if(!SetCursorPos(target_point.x,target_point.y))return false;
+    // ClipCursor can silently clamp a SUCCESSFUL SetCursorPos into another
+    // button, even one still owned by the authenticated emulator process.
+    // Check the physical OS cursor instead of trusting the requested point.
+    POINT warped_cursor{};
+    if(!GetCursorPos(&warped_cursor) ||
+       !desktopmenu::CursorPositionMatches(
+           mapped,warped_cursor.x,warped_cursor.y))return false;
     // A window can move or the desktop layout can change even while
     // SetCursorPos/WindowFromPoint runs; revalidate before SendInput.
     if(!CapturedClickGeometryLive() || GetForegroundWindow()!=window_)
@@ -198,6 +205,13 @@ bool EmulatorWindowCapture::DeliverControllerClick(
     if(!post_warp)return false;
     GetWindowThreadProcessId(post_warp,&post_warp_pid);
     if(post_warp_pid!=static_cast<DWORD>(pid))return false;
+    // A local mouse/other desktop participant can move the hotspot after
+    // the HWND check; refuse a mis-targeted click as close as practical to
+    // the actual SendInput boundary. Preserve absolute negative monitor X.
+    POINT pre_input_cursor{};
+    if(!GetCursorPos(&pre_input_cursor) ||
+       !desktopmenu::CursorPositionMatches(
+           mapped,pre_input_cursor.x,pre_input_cursor.y))return false;
     INPUT click[2]{};
     click[0].type=INPUT_MOUSE;
     click[0].mi.dwFlags=MOUSEEVENTF_LEFTDOWN;
