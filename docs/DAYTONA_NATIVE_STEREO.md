@@ -18,6 +18,18 @@ A previous stage's CSV may be modified while the next scene is being parsed, or 
 
 Exact source/test SHA: `1bc41d7d1bd059677ede1abef9e997b72021958e`; CI Public `42308234084`, ModDev `42308234122`, Windows native x86 `42308234112`, Daytona Win32 + XR Win64 + bundle `42308234142`, all **SUCCESS**. This is documentation of one independent validated strict verifier correction, not a real-game runtime test.
 
+## PRIVATE original Daytona read-only incomplete checkpoint audit (2026-11-07)
+
+The matched test ZIP now includes `audit_daytona_private_checkpoint.py`. After collecting one or more actual **user-observed** x86 Daytona scenes using `-StopAfterStage`, independently re-audit the ordered partial archive before proceeding:
+
+```powershell
+python .\\audit_daytona_private_checkpoint.py ".\\logs\\private_original_evidence_<UTC>"
+```
+
+The tool reads, but never edits, original private files. It requires a contiguous prefix of `race_a/race_b/title/menu/sky/hud/aux`, two matching raw-CSV and preflight-report files per stage, seven-stage summary files **absent**, unique raw source hashes and process nonces, strict JSON and exact re-derived report contents. It rehashes every previously audited stage after the last expensive CSV scan, rejecting late edits and never printing captured original callers or frames. Output is an incomplete stage count and next label only. For a fully completed archive with `PRIVATE_MANIFEST.json`, use `verify_daytona_private_receipt.py` and `verify_daytona_private_candidate_replay.py --replay-csv` instead.
+
+This audit does **not** automatically identify race/menu/sky/HUD scenes, prove same-Present World3D ownership, calibrate metres-per-unit, launch the emulator, test Quest3 or authorize stereo. No original CSVs, EXE or ROM are uploaded. `world_pass_proof=NOT_ESTABLISHED`, `RUNTIME_VALIDATION=UNTESTED`, CPU World3D AUTO-OFF and original mono fallback remain unchanged.
+
 ## PRIVATE original Daytona stage-by-stage checkpoint capture (2026-11-07)
 
 The local seven-session collector can now stop cleanly after one audited, user-labelled stage so you can collect the genuine original Daytona x86 evidence across separate operator sessions. From the extracted matched Win32/Win64 release folder:

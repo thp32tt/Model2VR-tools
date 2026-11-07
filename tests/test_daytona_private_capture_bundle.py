@@ -258,6 +258,13 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
                         self.ps.index('Move-Item -LiteralPath $pendingManifest -Destination $finalManifest'))
         self.assertIn('Reject forged or incomplete private cross-session receipt', self.workflow)
 
+    def test_private_partial_checkpoint_auditor_is_bundled_and_tested(self):
+        self.assertIn('Copy-Item tools/audit_daytona_private_checkpoint.py stage/',
+                      self.workflow)
+        self.assertIn('test_daytona_private_checkpoint_audit.py -v',
+                      self.workflow)
+        self.assertIn('audit_daytona_private_checkpoint.py', self.docs)
+
     def test_extracted_bundle_contains_scripts_and_matching_python_modules(self):
         self.assertIn('powershell.exe -NoProfile -ExecutionPolicy Bypass -File',self.cmd)
         self.assertIn('"%~dp0Collect-Daytona-Original-Evidence.ps1"',self.cmd)
