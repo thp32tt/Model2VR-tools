@@ -338,6 +338,7 @@ def _exact_original_present_lineage(source, physical_present_count):
         "post_com": "distinct_post_com_retained_present_frame_count",
         "same_witness_joint": "distinct_same_witness_joint_present_frame_count",
         "main_context": "distinct_context_present_frame_count",
+        "physical_world_owned": "distinct_physical_world_owned_present_frame_count",
     }
     if not isinstance(lineage, dict) or set(lineage) != set(counts):
         return False
@@ -363,7 +364,11 @@ def _exact_original_present_lineage(source, physical_present_count):
     # original physical post-COM completion on THAT frame, and each
     # projected candidate must have main RT/depth source-context evidence.
     return (sets["scene_phase"].issubset(sets["post_com"]) and
-            sets["projected"].issubset(sets["main_context"]))
+            sets["projected"].issubset(sets["main_context"]) and
+            # Every scene-attested candidate frame must be the SAME real
+            # physical Present with successful Scene, camera COM lifetime,
+            # and RT0/depth coverage; equal aggregate counts do not suffice.
+            sets["scene_phase"] == sets["physical_world_owned"])
 
 
 def _enough_original_source(source, physical_present_count):

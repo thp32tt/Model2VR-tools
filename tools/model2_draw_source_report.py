@@ -586,6 +586,11 @@ def audit_csv(path):
     # prevents a sampled world/CPU pass from borrowing scene integrity
     # from an unrelated healthy physical frame in the same CSV.
     scene_frame_trusted = bytearray()
+    # One byte per original physical Present: keep the real independent
+    # camera COM and RT0/depth provenance beside the Scene bit. A count
+    # from another frame must never authenticate a sampled game-world Draw.
+    camera_frame_trusted = bytearray()
+    target_frame_trusted = bytearray()
     scene_flagged_frame_count = 0
     scene_trusted_drawn_frame_count = 0
     # Unsampled original RT0/depth provenance for EVERY physical Present.
@@ -974,6 +979,8 @@ def audit_csv(path):
                     raise ValueError("invalid original camera COM lifetime")
                 camera_com_totals["draws"]+=draws
                 camera_com_totals["writes"]+=writes
+                camera_owned = flags == 0 and draws > 0
+                camera_frame_trusted.append(1 if camera_owned else 0)
                 if flags:
                     camera_com_flagged_frames+=1
                 elif draws:
@@ -1026,6 +1033,9 @@ def audit_csv(path):
                     ("unknown",unknown),("failed",failed),
                     ("incompatible_depth",bad_depth)):
                     target_coverage_totals[key]+=value
+                target_owned = (flags == 0 and backbuffer > 0 and
+                                not (unknown or failed or bad_depth or auxiliary))
+                target_frame_trusted.append(1 if target_owned else 0)
                 if flags!=0 or unknown or failed or bad_depth or auxiliary:
                     target_flagged_frames+=1
                 elif backbuffer:
@@ -1975,7 +1985,20 @@ def audit_csv(path):
         # cardinalities alone cannot prove that the same original frames
         # survived Draw HRESULT, physical Present, Scene and post-COM.
         # This data stays in local operator reports, never public CI logs.
+        # Per-source intersection with THREE independent full-stream original
+        # physical-frame witnesses. Do not promote aggregate counts from
+        # mutually different Presents into a same-frame World3D source.
+        physically_owned = sorted(frame for frame in scene_attested
+            if 1 <= frame <= len(scene_frame_trusted) and
+               frame <= len(camera_frame_trusted) and
+               frame <= len(target_frame_trusted) and
+               scene_frame_trusted[frame-1] and
+               camera_frame_trusted[frame-1] and
+               target_frame_trusted[frame-1])
+        record["distinct_physical_world_owned_present_frame_count"] = len(
+            physically_owned)
         record["original_material_frame_lineage"] = {
+            "physical_world_owned": physically_owned,
             "projected": sorted(value["projected_material_correlated_present_frames"]),
             "draw_success": sorted(value["original_successful_projected_material_present_frames"]),
             "present_success": sorted(value["original_physically_presented_material_present_frames"]),

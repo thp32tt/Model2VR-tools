@@ -55,10 +55,12 @@ def witness(cpu="0x004bb400", count=3):
         "distinct_cpu_fit_population_present_frame_count": count,
         "cpu_fit_population_missing_batches": 0,
         "distinct_context_present_frame_count": count,
+        "distinct_physical_world_owned_present_frame_count": count,
         "original_source_vertex_pipeline_status": ["supported"],
         "original_source_fill_status": ["solid"],
         "original_source_depth_cull_status": ["supported"],
         "original_material_frame_lineage": {
+            "physical_world_owned": list(range(1, count+1)),
             "projected": list(range(1, count+1)),
             "draw_success": list(range(1, count+1)),
             "present_success": list(range(1, count+1)),
@@ -638,6 +640,41 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
         self.assertEqual(len(got["candidates"]), 3)
         self.assertFalse(got["adapter_auto_enable"])
 
+
+
+    def test_original_scene_camera_target_same_physical_present_required(self):
+        # All independent physical coverage totals still equal three, but
+        # the trusted camera/RT frame is from an unrelated physical Present.
+        source = witness()
+        source["original_material_frame_lineage"]["physical_world_owned"] = [1, 2, 4]
+        got = compare_sessions([report(source), report(witness())], controls())
+        self.assertFalse(got["candidates"])
+        self.assertEqual(got["rejected"][0]["reason"],
+                         "missing_same_draw_matrix_material_or_render_evidence")
+
+    def test_original_physical_world_owned_frame_missing_or_invalid(self):
+        for replacement in (None, [1, 2], [1, 1, 3],
+                            [1, 2, True], [1, 2, 9]):
+            with self.subTest(replacement=replacement):
+                source = witness()
+                if replacement is None:
+                    del source["original_material_frame_lineage"]["physical_world_owned"]
+                else:
+                    source["original_material_frame_lineage"]["physical_world_owned"] = replacement
+                got = compare_sessions([report(source), report(witness())],
+                                       controls())
+                self.assertFalse(got["candidates"])
+                self.assertEqual(got["rejected"][0]["reason"],
+                                 "missing_same_draw_matrix_material_or_render_evidence")
+
+    def test_original_physical_world_owned_count_cannot_be_forged(self):
+        for wrong in (True, -1, 2, 4):
+            with self.subTest(wrong=wrong):
+                source = witness()
+                source["distinct_physical_world_owned_present_frame_count"] = wrong
+                got = compare_sessions([report(source), report(witness())],
+                                       controls())
+                self.assertFalse(got["candidates"])
 
     def test_original_frame_lineage_rejects_equal_count_cross_frame_swap(self):
         # Every old summary count remains three. The claimed successful

@@ -1936,6 +1936,8 @@ class SourceAuditTests(unittest.TestCase):
             # are never invented as candidate frame sets.
             self.assertEqual(complete["original_material_frame_lineage"]["post_com"], [17])
             self.assertEqual(complete["original_material_frame_lineage"]["scene_phase"], [])
+            self.assertEqual(complete["original_material_frame_lineage"]["physical_world_owned"], [])
+            self.assertEqual(complete["distinct_physical_world_owned_present_frame_count"], 0)
             self.assertEqual(complete["original_material_frame_lineage"]["projected"], [])
             for mask in (1,3,7,11,13):
                 with self.subTest(mask=mask):
