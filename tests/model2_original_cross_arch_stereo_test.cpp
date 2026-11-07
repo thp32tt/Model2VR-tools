@@ -171,13 +171,10 @@ int wmain(int argc,wchar_t** argv){
             producerhealth::OriginalPresentFailed);
     LARGE_INTEGER end_clock{};
     REQUIRE(QueryPerformanceCounter(&end_clock) && end_clock.QuadPart>0);
+    transport::Snapshot held_x86{};
+    REQUIRE(frame_reader.Read(held_x86));
     REQUIRE(xrcommit::VerifyOriginalFrameAtEnd(
-        process_lease.Alive(),frame_gate,
-        [&]{
-            transport::Snapshot live{};
-            REQUIRE(frame_reader.Read(live));
-            return live;
-        }(),true,
+        process_lease.Alive(),frame_gate,held_x86,true,
         static_cast<std::uint64_t>(end_clock.QuadPart),
         static_cast<std::uint64_t>(hz.QuadPart),
         newer_failed,true).reason==xrcommit::Reject::NewerFailedPresent);
