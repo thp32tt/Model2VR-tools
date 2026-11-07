@@ -1,5 +1,26 @@
 # Daytona original CPU↔GPU world-caller evidence gate
 
+## Standalone ORIGINAL x86 single-session preflight source-byte stability (2026-11-07)
+
+The direct `python tools/model2_world_pass_evidence.py --preflight
+PRIVATE_ORIGINAL.csv --output PRIVATE_SOURCE.json` path now pins the original
+CSV's SHA-256 **before** reading real D3D9 Draw/Scene/Present metadata and
+checks the exact source again after complete preflight/readiness validation.
+A source changed during parsing is rejected before any output is published.
+`preflight_original_session()` library callers receive the same rejection.
+Symlinked original CSV inputs are also rejected. An existing unrelated
+private report remains untouched when an in-flight source change is caught.
+
+This is complementary to, and does not replace, the Windows seven-stage
+collector's own per-stage and final manifest hash checks, and distinct from
+the earlier seven-input direct candidate rehash. The source checks are
+local-only, read-only and candidate/diagnostic only. Python synthetic test
+suite **400/400 PASS** at material source/test SHA
+`24c5b7b53ce2032446a1b1bbda448279ef2b8b1b`.
+No actual original Daytona game/ROM/PRIVATE evidence was used in synthetic
+tests or published. World3D remains `NOT_ESTABLISHED`, Quest 3 / VDXR
+`UNTESTED`, CPU World3D AUTO-OFF and original mono fallback retained.
+
 ## PRIVATE original capture output-path overwrite protection (2026-11-07)
 
 The original Daytona x86 PRIVATE evidence tool refuses to use any input
