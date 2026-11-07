@@ -107,8 +107,8 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             raw = Path(folder) / "synthetic.csv"
             raw.write_bytes(
-                b"seq,qpc,thread,event,a0,a1,a2,a3\\r\\n"
-                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\\r\\n")
+                b"seq,qpc,thread,event,a0,a1,a2,a3\r\n"
+                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\r\n")
             output = Path(folder) / "PRIVATE.json"
             live = [False]
             phases = []
@@ -175,8 +175,8 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "native-synthetic.csv"
             path.write_bytes(
-                b"seq,qpc,thread,event,a0,a1,a2,a3\\r\\n"
-                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\\r\\n")
+                b"seq,qpc,thread,event,a0,a1,a2,a3\r\n"
+                b"1,2500,41,synthetic_probe_unknown,0,0,0,0\r\n")
             live_writer = create(str(path), 0x40000000, 1, None, 3, 0x80, None)
             self.assertNotIn(live_writer, (None, invalid))
             try:
