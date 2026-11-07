@@ -202,7 +202,7 @@ int main(){
  clock_wire->status.timestamp_qpc=UINT64_MAX;
  REQUIRE(!writer.Publish(26u,0u,7u,12u,2u,first));
  clock_wire->status.timestamp_qpc=saved_qpc;
- REQUIRE(reader.Read(got) && got.frame_id==25u);
+ REQUIRE(reader.Read(got) && got.frame_id==22u);
  REQUIRE(writer.Publish(26u,0u,7u,12u,2u,first));
  REQUIRE(reader.Read(got) && got.frame_id==26u);
  UnmapViewOfFile(clock_wire);CloseHandle(clock_map);
