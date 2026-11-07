@@ -120,6 +120,9 @@ enable_testing()
 
 # Keep PRIVATE original x86 Daytona process logs disjoint. A new process
 # must CREATE_NEW rather than append to an earlier PID/second collision.
+# Include the actual logger.cpp CRT/Win32 handle path in this CTest, not
+# a mock: existing path must remain byte-for-byte unchanged on rejection,
+# followed by one successful new file and another denied same-name reopen.
 add_executable(model2_original_probe_unique_log_test
     tests/model2_original_probe_unique_log_test.cpp
     src/probe/logger.cpp)
