@@ -52,6 +52,13 @@ int main(){
     snap.eyes[0].resize(kBytesPerEye,0x18);
     snap.eyes[1].resize(kBytesPerEye,0xD8);
     CHECK(gate.Accept(snap,t,hz));
+    CHECK(gate.MatchesAcceptedMetadata(snap));
+    auto changed_source=snap;
+    changed_source.timestamp_qpc=t+1u;
+    CHECK(!gate.MatchesAcceptedMetadata(changed_source));
+    changed_source=snap;
+    changed_source.pose_sequence=9u;
+    CHECK(!gate.MatchesAcceptedMetadata(changed_source));
     CHECK(gate.id()==1);
     CHECK(gate.kind()==FrameKind::GameStereo);
     CHECK(gate.Decide(&stamp,t+16,hz)==FrameUse::HoldCached);
@@ -110,6 +117,7 @@ int main(){
     gate.ExpireKeepFrameId();
     CHECK(gate.id()==3);
     CHECK(gate.kind()==FrameKind::Invalid);
+    CHECK(!gate.MatchesAcceptedMetadata(snap));
     CHECK(!gate.Cached(t+140,1000));
     CHECK(gate.Decide(&diag,t+140,1000)==FrameUse::Missing);
     CHECK(gate.Decide(&regressed,t+140,1000)==FrameUse::Missing);
@@ -144,6 +152,7 @@ int main(){
     snap.eyes[1].clear();
     CHECK(gate.Accept(snap,t+148,hz));
     CHECK(gate.kind()==FrameKind::CompactMono);
+    CHECK(gate.MatchesAcceptedMetadata(snap));
     CHECK(gate.Cached(t+147+250,hz));
     CHECK(!gate.Cached(t+147+251,hz));
     CHECK(gate.Decide(&compact,t+147+250,hz)==FrameUse::HoldCached);
@@ -173,6 +182,7 @@ int main(){
     projected.eyes[1].resize(kBytesPerEye);
     CHECK(pose_gate.Accept(projected,t,hz));
     CHECK(pose_gate.lastSourcePoseSequence()==41u);
+    CHECK(pose_gate.MatchesAcceptedMetadata(projected));
     FrameStamp old_pose{2u,t+1u,FrameKind::GameStereo,123u,40u};
     CHECK(pose_gate.PoseSequenceRegressed(old_pose));
     CHECK(pose_gate.Decide(&old_pose,t+2u,hz)==FrameUse::HoldCached);
@@ -189,6 +199,7 @@ int main(){
     projected.eyes[1].clear();
     CHECK(pose_gate.Accept(projected,t+4u,hz));
     CHECK(pose_gate.lastSourcePoseSequence()==41u);
+    CHECK(pose_gate.MatchesAcceptedMetadata(projected));
     FrameStamp cpu_return{4u,t+5u,FrameKind::VerifiedCpuWorldStereo,123u,40u};
     CHECK(pose_gate.PoseSequenceRegressed(cpu_return));
     CHECK(pose_gate.Decide(&cpu_return,t+6u,hz)==FrameUse::HoldCached);

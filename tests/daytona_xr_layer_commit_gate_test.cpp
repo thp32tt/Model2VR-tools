@@ -30,6 +30,25 @@ int main(){
     };
     CHECK(verify(true,true).submit);
     CHECK(verify(true,true).reason==Reject::None);
+    // Regression: after accepting a genuine physical x86 frame, a stale
+    // or substituted same-ID/same-kind eye payload with different QPC
+    // must not reach the compositor even if the receipt is made to match.
+    // Previously final submit matched only frame ID, kind and byte sizes.
+    CHECK(accepted.MatchesAcceptedMetadata(eyes));
+    eyes.timestamp_qpc=now+1u;
+    health.timestamp_qpc=now+1u;
+    CHECK(!accepted.MatchesAcceptedMetadata(eyes));
+    CHECK(verify(true,true).reason==Reject::PayloadMismatch);
+    eyes.timestamp_qpc=now;
+    health.timestamp_qpc=now;
+    // Also bind the CURRENT source-eye pose tag, not merely the maximum
+    // tracked tag historically observed before mono/stereo transitions.
+    eyes.pose_sequence=78u;
+    CHECK(!accepted.MatchesAcceptedMetadata(eyes));
+    CHECK(verify(true,true).reason==Reject::PayloadMismatch);
+    eyes.pose_sequence=77u;
+    CHECK(accepted.MatchesAcceptedMetadata(eyes));
+    CHECK(verify(true,true).submit);
     CHECK(VerifyOriginalFrameAtEnd(
         true,accepted,eyes,true,now,hz,health,true,now+1u,now).reason==
         Reject::PreviousHostGeneration);
@@ -99,6 +118,13 @@ int main(){
     health.frame_id=11u;health.reason_mask=producerhealth::OriginalMonoFallback;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
             health,true,now,now).submit);
+    CHECK(mono_gate.MatchesAcceptedMetadata(mono));
+    // Even an otherwise verified original compact-mono backbuffer is
+    // never authorized as a different same-ID QPC source after upload.
+    mono.timestamp_qpc=now+1u;
+    CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
+            health,true,now,now).reason==Reject::PayloadMismatch);
+    mono.timestamp_qpc=now;
     mono.pose_sequence=77u;
     CHECK(VerifyOriginalFrameAtEnd(true,mono_gate,mono,false,now,hz,
             health,true,now,now).reason==Reject::PoseUnproven);

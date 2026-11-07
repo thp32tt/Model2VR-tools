@@ -56,8 +56,11 @@ inline Result VerifyOriginalFrameAtEnd(
     if(!xrepoch::WithinActiveSession(eyes.timestamp_qpc,host_start_qpc,
                                     session_start_qpc))
         return {false,Reject::PreviousXrSessionGeneration};
-    if(!eyes.frame_id || eyes.frame_id!=accepted.id() ||
-       eyes.kind!=accepted.kind() ||
+    // The accepted ID/kind alone do not bind this final layer to the
+    // exact QPC and OpenXR pose tag originally copied under the x86 source
+    // seqlock. Refuse any post-accept swap/relabel before xrEndFrame, even
+    // if another coherent same-ID buffer still has two correctly sized eyes.
+    if(!accepted.MatchesAcceptedMetadata(eyes) ||
        !ValidEyePayload(eyes.kind,eyes.eyes[0].size(),
                         eyes.eyes[1].size()))
         return {false,Reject::PayloadMismatch};

@@ -64,6 +64,9 @@ public:
         source_high_qpc_=snapshot.timestamp_qpc;
         if(IsStereoGame(snapshot.kind) && snapshot.pose_sequence!=0u)
             source_high_pose_=snapshot.pose_sequence;
+        // Exact currently accepted source tag (not the historical high-water):
+        // an original mono or diagnostic packet is intentionally zero-tagged.
+        last_pose_sequence_=snapshot.pose_sequence;
         kind_=snapshot.kind;
         return true;
     }
@@ -72,6 +75,17 @@ public:
     }
     std::uint64_t id()const noexcept{return last_id_;}
     FrameKind kind()const noexcept{return kind_;}
+    // End-of-OpenXR-frame verifier: the current eye buffers must still
+    // belong to the exact stamped source that passed Peek, the expensive
+    // x86->x64 copy and post-original-Present authorization. Matching only
+    // frame ID and kind permits a substituted pose/QPC under that same ID.
+    bool MatchesAcceptedMetadata(const Snapshot& eyes) const noexcept {
+        return last_id_!=0u && eyes.frame_id==last_id_ &&
+            eyes.timestamp_qpc!=0u &&
+            eyes.timestamp_qpc==last_qpc_ &&
+            eyes.kind==kind_ &&
+            eyes.pose_sequence==last_pose_sequence_;
+    }
     std::uint32_t lastSourcePoseSequence()const noexcept {
         return source_high_pose_;
     }
@@ -83,6 +97,7 @@ public:
     void Reset()noexcept{
         last_id_=last_qpc_=source_high_qpc_=0;
         source_high_pose_=0u;
+        last_pose_sequence_=0u;
         kind_=FrameKind::Invalid;
     }
     // XR session STOPPING or lost tracking must revoke cached eye contents
@@ -109,6 +124,7 @@ private:
     std::uint64_t last_qpc_=0;
     std::uint64_t source_high_qpc_=0;
     std::uint32_t source_high_pose_=0;
+    std::uint32_t last_pose_sequence_=0;
     FrameKind kind_=FrameKind::Invalid;
 };
 } // namespace m2vr::transport
