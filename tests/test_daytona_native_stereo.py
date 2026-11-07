@@ -1136,7 +1136,13 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("transport::IsStereoGame(stamp.kind)",host)
         self.assertIn("pair_is_verified_cpu_world=",host)
         self.assertIn("VerifiedCpuWorldStereo=5",protocol)
-        self.assertIn("kind==FrameKind::VerifiedCpuWorldStereo && pose_sequence==0u",protocol)
+        # The source claim is now validated by a shared constexpr helper,
+        # instead of repeating a fragile literal condition in each IPC path.
+        self.assertIn("constexpr bool ValidSourcePoseClaim(",protocol)
+        self.assertIn("kind==FrameKind::VerifiedCpuWorldStereo",protocol)
+        self.assertIn("? tag!=0u",protocol)
+        self.assertIn("!ValidSourcePoseClaim(kind,pose_sequence)",protocol)
+        self.assertIn("!ValidSourcePoseClaim(stamp.kind,stamp.pose_sequence)",protocol)
 
     def test_authenticated_cpu_world_handoff_before_native_gpu_fallback(self):
         hooks=(ROOT/"src/probe/d3d9_probe.cpp").read_text("utf-8")
