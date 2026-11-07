@@ -9,6 +9,7 @@ from unittest.mock import patch
 from pathlib import Path
 import io
 import json
+import os
 import tempfile
 
 
@@ -197,6 +198,81 @@ def controls(**overrides):
 
 
 class OriginalWorldPassEvidenceTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "requires real Windows file-share semantics")
+    def test_direct_python_source_rejects_live_original_x86_writer(self):
+        # Exercise the actual Win32 share-mode contract, not a mocked
+        # boolean. No original game ROM, user capture, device or XR needed.
+        import ctypes
+        from ctypes import wintypes
+        from tools import model2_world_pass_evidence as evidence
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        create = kernel.CreateFileW
+        create.argtypes = (
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+            wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+        create.restype = wintypes.HANDLE
+        close = kernel.CloseHandle
+        close.argtypes = (wintypes.HANDLE,)
+        close.restype = wintypes.BOOL
+        valid = report(witness())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = root / "race_a.csv"
+            original.write_bytes(b"synthetic original process PRIVATE source only")
+            prior = original.read_bytes()
+            cached = root / "PRIVATE_SOURCE_race_a.json"
+            cached.write_bytes(b"previous private diagnostic preserved")
+            # Real original x86 OpenLog owns a GENERIC_WRITE handle allowing
+            # FILE_SHARE_READ (1) until game exit. An idle writer with no
+            # append can otherwise pass before/after SHA-256 checks.
+            live = create(str(original), 0x40000000, 1, None, 3, 0x80, None)
+            self.assertNotIn(live, (None, ctypes.c_void_p(-1).value))
+            try:
+                with patch("tools.model2_world_pass_evidence.audit_csv",
+                           return_value=valid) as parser:
+                    with self.assertRaisesRegex(
+                            ValueError, "ORIGINAL X86 CSV STILL OPEN"):
+                        preflight_original_session(original)
+                    parser.assert_not_called()
+                    with redirect_stderr(io.StringIO()) as errors:
+                        with self.assertRaises(SystemExit):
+                            main(["--preflight", str(original),
+                                  "--output", str(cached)])
+                    self.assertIn("STILL OPEN FAIL-CLOSED", errors.getvalue())
+                    parser.assert_not_called()
+
+                # Direct seven-input CLI must refuse the same live source
+                # BEFORE any cached report parsing or candidate promotion.
+                controls_csv = {}
+                for label in ("race_b", "title", "menu", "sky", "hud", "aux"):
+                    path = root / (label + ".csv")
+                    path.write_bytes(("synthetic " + label).encode())
+                    controls_csv[label] = path
+                args = ["--race", str(original), "--race",
+                        str(controls_csv["race_b"])]
+                for label in ("title", "menu", "sky", "hud", "aux"):
+                    args += ["--control", label, str(controls_csv[label])]
+                with redirect_stderr(io.StringIO()) as errors:
+                    with self.assertRaises(SystemExit):
+                        main(args + ["--output", str(cached)])
+                self.assertIn("STILL OPEN FAIL-CLOSED", errors.getvalue())
+                self.assertEqual(cached.read_bytes(),
+                                 b"previous private diagnostic preserved")
+                self.assertEqual(original.read_bytes(), prior)
+            finally:
+                self.assertTrue(close(live))
+
+            # After producer exit, the same diagnostic-only source is
+            # readable without modifying any original bytes or World3D.
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=valid):
+                checked = preflight_original_session(original)
+            self.assertEqual(checked["world_pass_proof"], "NOT_ESTABLISHED")
+            self.assertEqual(evidence._capture_digest(original),
+                             evidence._capture_digest(original))
+            self.assertEqual(original.read_bytes(), prior)
+
     def test_single_original_process_preflight_before_seven_stage_capture(self):
         # Standalone preflight uses the exact same original Scene, camera
         # lifetime, target/depth, physical Present and caller inventory

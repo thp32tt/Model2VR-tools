@@ -936,6 +936,40 @@ def compare_sessions(race_reports, nonrace_reports):
     }
 
 
+def _assert_original_x86_csv_closed(path):
+    """Require the genuine Win32 probe writer to have exited before reading.
+
+    The original probe holds GENERIC_WRITE/FILE_SHARE_READ for its process
+    lifetime. File hashes of a temporarily idle, still-open CSV can remain
+    identical during a long preflight; only an incompatible Win32 share-mode
+    probe can reject this false completed source. No original bytes modified.
+    """
+    if os.name != "nt" or path.suffix.lower() != ".csv":
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    # 0x80000000 GENERIC_READ, 0 share, 3 OPEN_EXISTING. This is a
+    # short read-only probe, NOT a lock held during audit_csv's own reads.
+    source = _file(path)
+    handle = create_file(str(source), 0x80000000, 0, None, 3, 0x80, None)
+    if handle in (None, ctypes.c_void_p(-1).value):
+        raise ValueError(
+            "PRIVATE ORIGINAL X86 CSV STILL OPEN FAIL-CLOSED: "
+            "close the original emulator before standalone source analysis")
+    if not close_handle(handle):
+        raise ValueError("PRIVATE ORIGINAL X86 CSV close probe failed")
+
+
 def _capture_digest(path):
     # Duplicate bytes under distinct filenames are NOT independent sessions.
     # Stream large private CSV logs without retaining them in memory.
@@ -943,9 +977,13 @@ def _capture_digest(path):
     # Same no-symlink local-only source rule as the final PRIVATE receipt:
     # no standalone comparison may follow a linked capture outside the
     # operator's chosen original-game evidence directory.
+    _assert_original_x86_csv_closed(path)
     with _file(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
+    # Recheck after reading. The parser and candidate comparator likewise
+    # rehash all original inputs before any PRIVATE report publication.
+    _assert_original_x86_csv_closed(path)
     return digest.digest()
 
 
