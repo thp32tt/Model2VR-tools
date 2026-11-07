@@ -227,5 +227,68 @@ int main(){
     CHECK(pose_gate.lastSourcePoseSequence()==43u);
     pose_gate.Reset();
     CHECK(pose_gate.lastSourcePoseSequence()==0u);
+    // A caller bypassing the named IPC Peek can supply a structurally
+    // plausible but semantically impossible pose claim. Reject it at the
+    // CHEAP metadata gate and again at direct Accept, BEFORE the source
+    // consumes a frame ID, cached eyes, or the XR pose high-water.
+    // The original x86 shared writer/reader already enforce this rule.
+    CHECK(ValidSourcePoseClaim(FrameKind::GameStereo,0u)); // legacy ABI
+    CHECK(ValidSourcePoseClaim(FrameKind::GameStereo,52u));
+    CHECK(ValidSourcePoseClaim(FrameKind::VerifiedCpuWorldStereo,52u));
+    CHECK(!ValidSourcePoseClaim(FrameKind::VerifiedCpuWorldStereo,0u));
+    CHECK(!ValidSourcePoseClaim(FrameKind::CompactMono,52u));
+    CHECK(!ValidSourcePoseClaim(FrameKind::GameMonoFallback,52u));
+    CHECK(!ValidSourcePoseClaim(FrameKind::Diagnostic,52u));
+    CHECK(!ValidSourcePoseClaim(FrameKind::Invalid,0u));
+    StereoFrameGate claim_gate;
+    Snapshot native{};
+    native.frame_id=1u;native.timestamp_qpc=t;
+    native.kind=FrameKind::GameStereo;native.pose_sequence=51u;
+    native.eyes[0].resize(kBytesPerEye);
+    native.eyes[1].resize(kBytesPerEye);
+    CHECK(claim_gate.Accept(native,t,hz));
+    FrameStamp forged{2u,t+1u,FrameKind::CompactMono,123u,51u};
+    Snapshot offered=native;
+    offered.frame_id=2u;offered.timestamp_qpc=t+1u;
+    offered.kind=FrameKind::CompactMono;offered.eyes[1].clear();
+    CHECK(claim_gate.Decide(&forged,t+2u,hz)==FrameUse::HoldCached);
+    CHECK(!claim_gate.Accept(offered,t+2u,hz));
+    forged.kind=FrameKind::GameMonoFallback;
+    offered.kind=FrameKind::GameMonoFallback;
+    offered.eyes[1].resize(kBytesPerEye);
+    CHECK(claim_gate.Decide(&forged,t+2u,hz)==FrameUse::HoldCached);
+    CHECK(!claim_gate.Accept(offered,t+2u,hz));
+    forged.kind=FrameKind::Diagnostic;
+    offered.kind=FrameKind::Diagnostic;
+    CHECK(claim_gate.Decide(&forged,t+2u,hz)==FrameUse::HoldCached);
+    CHECK(!claim_gate.Accept(offered,t+2u,hz));
+    forged.kind=FrameKind::VerifiedCpuWorldStereo;
+    forged.pose_sequence=0u;
+    offered.kind=FrameKind::VerifiedCpuWorldStereo;
+    offered.pose_sequence=0u;
+    CHECK(claim_gate.Decide(&forged,t+2u,hz)==FrameUse::HoldCached);
+    CHECK(!claim_gate.Accept(offered,t+2u,hz));
+    CHECK(claim_gate.id()==1u && claim_gate.kind()==FrameKind::GameStereo);
+    CHECK(claim_gate.lastSourcePoseSequence()==51u);
+    CHECK(claim_gate.MatchesAcceptedMetadata(native));
+    // A correctly zero-tagged original mono of the SAME rejected ID can
+    // recover, and a later genuinely tracked CPU WorldStereo is admissible.
+    forged.kind=FrameKind::CompactMono;
+    forged.pose_sequence=0u;
+    offered.kind=FrameKind::CompactMono;
+    offered.pose_sequence=0u;
+    offered.eyes[1].clear();
+    CHECK(claim_gate.Decide(&forged,t+2u,hz)==FrameUse::ReadNew);
+    CHECK(claim_gate.Accept(offered,t+2u,hz));
+    CHECK(claim_gate.lastSourcePoseSequence()==51u);
+    forged={3u,t+3u,FrameKind::VerifiedCpuWorldStereo,123u,52u};
+    offered.frame_id=3u;offered.timestamp_qpc=t+3u;
+    offered.kind=FrameKind::VerifiedCpuWorldStereo;
+    offered.pose_sequence=52u;
+    offered.eyes[1].resize(kBytesPerEye);
+    CHECK(claim_gate.Decide(&forged,t+4u,hz)==FrameUse::ReadNew);
+    CHECK(claim_gate.Accept(offered,t+4u,hz));
+    CHECK(claim_gate.MatchesAcceptedMetadata(offered));
+    CHECK(claim_gate.lastSourcePoseSequence()==52u);
     return 0;
 }

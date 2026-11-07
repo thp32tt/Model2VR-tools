@@ -35,7 +35,7 @@ public:
         const bool cached = last_id_!=0 && cached_fresh;
         if(!stamp || !HasRecent(stamp->timestamp_qpc,now,ticks_per_second,stamp->kind) ||
            stamp->frame_id==0 ||
-           !ValidSourceKind(stamp->kind))
+           !ValidSourcePoseClaim(stamp->kind,stamp->pose_sequence))
             return cached ? FrameUse::HoldCached : FrameUse::Missing;
         // A larger frame ID alone is not a newer physical source sample.
         // Reject equal or reversed QPC stamps, even when still inside the
@@ -56,7 +56,7 @@ public:
            snapshot.timestamp_qpc<=source_high_qpc_ ||
            !SourcePoseNotRegressed(snapshot.kind,snapshot.pose_sequence,
                                    source_high_pose_) ||
-           !ValidSourceKind(snapshot.kind) ||
+           !ValidSourcePoseClaim(snapshot.kind,snapshot.pose_sequence) ||
            !ValidEyePayload(snapshot.kind,snapshot.eyes[0].size(),
                             snapshot.eyes[1].size()))return false;
         last_id_=snapshot.frame_id;
@@ -86,7 +86,7 @@ public:
             eyes.kind==kind_ &&
             // Legacy direct callers can accept a malformed tagged mono
             // Snapshot; the final OpenXR gate must still fail closed.
-            (IsStereoGame(eyes.kind) || eyes.pose_sequence==0u) &&
+            ValidSourcePoseClaim(eyes.kind,eyes.pose_sequence) &&
             eyes.pose_sequence==last_pose_sequence_;
     }
     std::uint32_t lastSourcePoseSequence()const noexcept {

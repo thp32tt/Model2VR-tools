@@ -51,6 +51,16 @@ constexpr bool ValidSourceKind(FrameKind kind) noexcept {
     return IsStereoGame(kind) || kind==FrameKind::Diagnostic ||
            IsMonoGame(kind);
 }
+// The same source-pose claim must be checked by the x86 writer, x64
+// pre-copy Peek, reusable reader, and independent host frame gate.
+// Legacy GameStereo tag=0 remains wire-readable, but a verified CPU
+// source must have a pose; mono/diagnostics must never claim a pose.
+constexpr bool ValidSourcePoseClaim(FrameKind kind,
+                                    std::uint32_t tag) noexcept {
+    return ValidSourceKind(kind) &&
+           (kind==FrameKind::VerifiedCpuWorldStereo
+               ? tag!=0u : (IsStereoGame(kind) || tag==0u));
+}
 constexpr bool ValidEyePayload(FrameKind kind,std::size_t left,
                                std::size_t right) noexcept {
     return left==kBytesPerEye && (kind==FrameKind::CompactMono
@@ -151,9 +161,7 @@ public:
                  std::uint32_t pose_sequence=0) {
         if(!writable_||!Valid()||!left||frame_id==0||
            (!right && kind!=FrameKind::CompactMono) ||
-           !ValidSourceKind(kind) ||
-           (kind==FrameKind::VerifiedCpuWorldStereo && pose_sequence==0u) ||
-           (!IsStereoGame(kind) && pose_sequence!=0u))
+           !ValidSourcePoseClaim(kind,pose_sequence))
             return false;
         auto* h=reinterpret_cast<Header*>(base_);
         // A writer must not overlap itself. No consumer ever writes.
@@ -228,10 +236,7 @@ public:
         const LONG end=h->sequence;
         if(start!=end || (end&1) || stamp.frame_id==0 ||
            stamp.timestamp_qpc==0u || stamp.writer_pid!=key_pid_ ||
-           !ValidSourceKind(stamp.kind) ||
-           (stamp.kind==FrameKind::VerifiedCpuWorldStereo &&
-            stamp.pose_sequence==0u) ||
-           (!IsStereoGame(stamp.kind) && stamp.pose_sequence!=0u))
+           !ValidSourcePoseClaim(stamp.kind,stamp.pose_sequence))
             return false;
         out=stamp;
         return true;
@@ -252,9 +257,7 @@ public:
         const auto frame=h->frame_id, timestamp=h->timestamp_qpc;
         const auto pose_sequence=h->pose_sequence;
         if(frame==0u || timestamp==0u ||
-           (kind==FrameKind::VerifiedCpuWorldStereo &&
-            pose_sequence==0u) ||
-           (!IsStereoGame(kind) && pose_sequence!=0u))return false;
+           !ValidSourcePoseClaim(kind,pose_sequence))return false;
         if(staging.eyes[0].size()!=kBytesPerEye)
             staging.eyes[0].resize(kBytesPerEye);
         std::memcpy(staging.eyes[0].data(),base_+sizeof(Header),kBytesPerEye);
