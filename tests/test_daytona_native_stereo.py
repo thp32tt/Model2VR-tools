@@ -1249,7 +1249,7 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("check(xrEndFrame(session_,&end)",host)
         self.assertIn("commit_source_layer)",host)
         self.assertIn("?emulator_window_capture_.Serial():0u;",host)
-        self.assertIn("submitted_menu_capture_serial_",(
+        self.assertIn("std::uint64_t submitted_menu_capture_serial",(
             ROOT/"host/emulator_menu_controller.hpp").read_text("utf-8"))
         self.assertIn("quest_menu_controller_has_ray_hit=",host)
         self.assertIn("quest_menu_openxr_focused=",host)
