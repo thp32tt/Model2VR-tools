@@ -61,6 +61,19 @@ constexpr bool ValidSourcePoseClaim(FrameKind kind,
            (kind==FrameKind::VerifiedCpuWorldStereo
                ? tag!=0u : (IsStereoGame(kind) || tag==0u));
 }
+// Keep cross-architecture native producer/consumer source claims aligned
+// even in build configurations that do not execute a particular CTest.
+static_assert(ValidSourcePoseClaim(FrameKind::GameStereo,0u));
+static_assert(ValidSourcePoseClaim(FrameKind::GameStereo,1u));
+static_assert(ValidSourcePoseClaim(FrameKind::VerifiedCpuWorldStereo,1u));
+static_assert(!ValidSourcePoseClaim(FrameKind::VerifiedCpuWorldStereo,0u));
+static_assert(ValidSourcePoseClaim(FrameKind::CompactMono,0u));
+static_assert(!ValidSourcePoseClaim(FrameKind::CompactMono,1u));
+static_assert(ValidSourcePoseClaim(FrameKind::GameMonoFallback,0u));
+static_assert(!ValidSourcePoseClaim(FrameKind::GameMonoFallback,1u));
+static_assert(ValidSourcePoseClaim(FrameKind::Diagnostic,0u));
+static_assert(!ValidSourcePoseClaim(FrameKind::Diagnostic,1u));
+static_assert(!ValidSourcePoseClaim(FrameKind::Invalid,0u));
 constexpr bool ValidEyePayload(FrameKind kind,std::size_t left,
                                std::size_t right) noexcept {
     return left==kBytesPerEye && (kind==FrameKind::CompactMono
