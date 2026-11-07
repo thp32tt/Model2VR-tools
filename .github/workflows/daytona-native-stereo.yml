@@ -623,18 +623,18 @@ jobs:
             # Isolated synthetic collector transaction double: the actual
             # seven-report semantic verifier is tested with full fixtures by
             # test_daytona_private_candidate_replay.py above.
-            $replayShim=@'
-            import os, pathlib, sys
-            args=sys.argv[1:]
-            if len(args)!=3 or args[1]!="--pending-candidate":
-                raise SystemExit("unexpected pending semantic invocation")
-            archive=pathlib.Path(args[0])
-            pending=pathlib.Path(args[2])
-            if pending.parent!=archive or not pending.name.startswith("PRIVATE_PENDING_COMPARE_"):
-                raise SystemExit("unexpected private candidate path")
-            if os.environ.get("MODEL2_RECEIPT_SMOKE")!="valid":
-                raise SystemExit("synthetic semantic rejection")
-            '@
+            $replayShim = @(
+              'import os, pathlib, sys'
+              'args=sys.argv[1:]'
+              'if len(args)!=3 or args[1]!="--pending-candidate":'
+              '    raise SystemExit("unexpected pending semantic invocation")'
+              'archive=pathlib.Path(args[0])'
+              'pending=pathlib.Path(args[2])'
+              'if pending.parent!=archive or not pending.name.startswith("PRIVATE_PENDING_COMPARE_"):'
+              '    raise SystemExit("unexpected private candidate path")'
+              'if os.environ.get("MODEL2_RECEIPT_SMOKE")!="valid":'
+              '    raise SystemExit("synthetic semantic rejection")'
+            ) -join "`n"
             [IO.File]::WriteAllText((Join-Path $root "verify_daytona_private_candidate_replay.py"),
               $replayShim,[Text.UTF8Encoding]::new($false))
             [IO.File]::WriteAllText((Join-Path $root "model2_world_pass_evidence.py"),
