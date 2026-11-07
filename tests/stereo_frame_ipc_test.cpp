@@ -79,6 +79,10 @@ int main(){
             staging.eyes[0][0]==a[0] && staging.eyes[1].empty());
     REQUIRE(!writer.Publish(a.data(),nullptr,8,FrameKind::GameStereo,117u));
     REQUIRE(!writer.Publish(a.data(),b.data(),8,FrameKind::CompactMono,117u));
+    // Original mono must not clear the earlier HMD camera sequence.
+    REQUIRE(!writer.Publish(a.data(),b.data(),8,
+        FrameKind::GameStereo,116u));
+    REQUIRE(reader.Peek(metadata) && metadata.frame_id==7u);
     // A real stereo pair MUST repopulate the second eye on the following
     // original Present, never recycle its old pre-mono bytes.
     b[0]=0x91u;
@@ -147,6 +151,11 @@ int main(){
         REQUIRE(staging.eyes[0][kBytesPerEye-1]==(accepted_a?a.back():b2.back()));
         REQUIRE(staging.eyes[1][kBytesPerEye-1]==(accepted_a?a.back():b2.back()));
     }
+    // Earlier HMD camera tag cannot advance a new physical original
+    // Present even when frame ID/QPC would otherwise be valid.
+    REQUIRE(!writer.Publish(a.data(),b.data(),26u,
+        FrameKind::GameStereo,118u));
+    REQUIRE(reader.Peek(metadata) && metadata.frame_id==25u);
     // Deterministic QPC rollback injection at the actual Win32 shared
     // mapping: despite a valid higher ID and complete stereo source, the
     // real producer must refuse to overwrite the last accepted pixels.

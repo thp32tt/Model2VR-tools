@@ -149,6 +149,8 @@ void XrApp::report_wizard_health(bool tracking_valid,bool paired_frame_fresh){
           <<"eye_delivery_status="<<delivery::Name(eye_delivery_status_)<<"\n"
           <<"eye_delivery_action="<<delivery::NextAction(eye_delivery_status_)<<"\n"
           <<"source_pose_rejection="<<static_cast<unsigned>(last_pose_rejection_)<<"\n"
+          <<"last_accepted_original_stereo_pose_sequence="
+          <<frame_gate_.lastSourcePoseSequence()<<"\n"
           <<"openxr_local_reference_epoch="<<local_reference_epoch_.Epoch()<<"\n"
           <<"openxr_local_reference_pending="<<(local_reference_epoch_.Pending()?1:0)<<"\n"
           <<"openxr_local_change_time_unknown="<<(local_reference_epoch_.ChangeTimeUnknown()?1:0)<<"\n"
@@ -394,6 +396,21 @@ void XrApp::draw_frame(XrTime display_time){
                 xrepoch::WithinActiveSession(
                     stamp.timestamp_qpc,host_source_epoch_qpc_,
                     session_source_epoch_qpc_);
+            // A newer original frame/QPC may still use an older tracked
+            // camera present in the host ring. Reject BEFORE 8-MiB copy.
+            const bool pose_rollback=epoch_ok &&
+                frame_gate_.PoseSequenceRegressed(stamp);
+            if(pose_rollback){
+                if(last_pose_rejection_!=3u)
+                    std::cerr<<"Daytona VR original stereo REJECTED:"
+                             <<" SOURCE_POSE_SEQUENCE_REGRESSED"
+                             <<" producer_frame="<<stamp.frame_id
+                             <<" pose_tag="<<stamp.pose_sequence
+                             <<" highest_accepted_pose="
+                             <<frame_gate_.lastSourcePoseSequence()
+                             <<std::endl;
+                last_pose_rejection_=3u; // F9 diagnostic
+            }
             const auto action=frame_gate_.Decide(
                 epoch_ok?&stamp:nullptr,now,hz);
             if(action==transport::FrameUse::ReadNew){

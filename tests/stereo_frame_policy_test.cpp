@@ -153,5 +153,56 @@ int main(){
     CHECK(gate.id()==0);
     CHECK(!gate.Cached(t+140,1000));
     CHECK(gate.Decide(&stamp,t+131,1000)==FrameUse::ReadNew);
+
+    // Even new source IDs and advancing QPC cannot reuse a previously
+    // consumed older HMD camera, including over original mono fallback.
+    StereoFrameGate pose_gate;
+    Snapshot projected{};
+    projected.frame_id=1u;projected.timestamp_qpc=t;
+    projected.kind=FrameKind::GameStereo;projected.pose_sequence=41u;
+    projected.eyes[0].resize(kBytesPerEye);
+    projected.eyes[1].resize(kBytesPerEye);
+    CHECK(pose_gate.Accept(projected,t,hz));
+    CHECK(pose_gate.lastSourcePoseSequence()==41u);
+    FrameStamp old_pose{2u,t+1u,FrameKind::GameStereo,123u,40u};
+    CHECK(pose_gate.PoseSequenceRegressed(old_pose));
+    CHECK(pose_gate.Decide(&old_pose,t+2u,hz)==FrameUse::HoldCached);
+    projected.frame_id=2u;projected.timestamp_qpc=t+1u;
+    projected.pose_sequence=40u;
+    CHECK(!pose_gate.Accept(projected,t+2u,hz));
+    CHECK(pose_gate.id()==1u && pose_gate.lastSourcePoseSequence()==41u);
+    old_pose.pose_sequence=41u; // same pose across two original Presents
+    CHECK(pose_gate.Decide(&old_pose,t+2u,hz)==FrameUse::ReadNew);
+    projected.pose_sequence=41u;
+    CHECK(pose_gate.Accept(projected,t+2u,hz));
+    projected.frame_id=3u;projected.timestamp_qpc=t+3u;
+    projected.kind=FrameKind::CompactMono;projected.pose_sequence=0u;
+    projected.eyes[1].clear();
+    CHECK(pose_gate.Accept(projected,t+4u,hz));
+    CHECK(pose_gate.lastSourcePoseSequence()==41u);
+    FrameStamp recovered{4u,t+5u,FrameKind::VerifiedCpuWorldStereo,123u,40u};
+    CHECK(pose_gate.PoseSequenceRegressed(recovered));
+    CHECK(pose_gate.Decide(&recovered,t+6u,hz)==FrameUse::HoldCached);
+    projected.frame_id=4u;projected.timestamp_qpc=t+5u;
+    projected.kind=FrameKind::VerifiedCpuWorldStereo;
+    projected.pose_sequence=40u;
+    projected.eyes[1].resize(kBytesPerEye);
+    CHECK(!pose_gate.Accept(projected,t+6u,hz));
+    recovered.pose_sequence=42u;
+    projected.pose_sequence=42u;
+    CHECK(pose_gate.Decide(&recovered,t+6u,hz)==FrameUse::ReadNew);
+    CHECK(pose_gate.Accept(projected,t+6u,hz));
+    pose_gate.ExpireKeepFrameId();
+    FrameStamp expired{5u,t+7u,FrameKind::GameStereo,123u,41u};
+    CHECK(pose_gate.PoseSequenceRegressed(expired));
+    CHECK(pose_gate.Decide(&expired,t+8u,hz)==FrameUse::Missing);
+    projected.frame_id=5u;projected.timestamp_qpc=t+7u;
+    projected.kind=FrameKind::GameStereo;projected.pose_sequence=41u;
+    CHECK(!pose_gate.Accept(projected,t+8u,hz));
+    projected.pose_sequence=43u;
+    CHECK(pose_gate.Accept(projected,t+8u,hz));
+    CHECK(pose_gate.lastSourcePoseSequence()==43u);
+    pose_gate.Reset();
+    CHECK(pose_gate.lastSourcePoseSequence()==0u);
     return 0;
 }

@@ -42,7 +42,8 @@ public:
         // 125/250-ms cache TTL. Hold the previous pair only while it is
         // independently fresh; never copy or relabel rollback pixels.
         if(stamp->frame_id>last_id_)
-            return stamp->timestamp_qpc>source_high_qpc_
+            return stamp->timestamp_qpc>source_high_qpc_ &&
+                   !PoseSequenceRegressed(*stamp)
                 ?FrameUse::ReadNew
                 :(cached?FrameUse::HoldCached:FrameUse::Missing);
         return stamp->frame_id==last_id_ && cached
@@ -53,12 +54,16 @@ public:
         if(!HasRecent(snapshot.timestamp_qpc,now,ticks_per_second,snapshot.kind) ||
            snapshot.frame_id==0 || snapshot.frame_id<=last_id_ ||
            snapshot.timestamp_qpc<=source_high_qpc_ ||
+           !SourcePoseNotRegressed(snapshot.kind,snapshot.pose_sequence,
+                                   source_high_pose_) ||
            !ValidSourceKind(snapshot.kind) ||
            !ValidEyePayload(snapshot.kind,snapshot.eyes[0].size(),
                             snapshot.eyes[1].size()))return false;
         last_id_=snapshot.frame_id;
         last_qpc_=snapshot.timestamp_qpc;
         source_high_qpc_=snapshot.timestamp_qpc;
+        if(IsStereoGame(snapshot.kind) && snapshot.pose_sequence!=0u)
+            source_high_pose_=snapshot.pose_sequence;
         kind_=snapshot.kind;
         return true;
     }
@@ -67,8 +72,17 @@ public:
     }
     std::uint64_t id()const noexcept{return last_id_;}
     FrameKind kind()const noexcept{return kind_;}
+    std::uint32_t lastSourcePoseSequence()const noexcept {
+        return source_high_pose_;
+    }
+    bool PoseSequenceRegressed(const FrameStamp& stamp)const noexcept {
+        return stamp.frame_id>last_id_ &&
+            !SourcePoseNotRegressed(stamp.kind,stamp.pose_sequence,
+                                    source_high_pose_);
+    }
     void Reset()noexcept{
         last_id_=last_qpc_=source_high_qpc_=0;
+        source_high_pose_=0u;
         kind_=FrameKind::Invalid;
     }
     // XR session STOPPING or lost tracking must revoke cached eye contents
@@ -77,8 +91,8 @@ public:
     // immediately after the headset session resumes.
     void ExpireKeepFrameId() noexcept {
         last_qpc_=0u;
-        // The source frame ID and its last verified QPC remain monotonic
-        // across tracking loss and same-host XR session restarts.
+        // Preserve frame, QPC and tracked-pose high-water across tracking
+        // loss, original mono and same-host XR session restart.
         kind_=FrameKind::Invalid;
     }
 private:
@@ -94,6 +108,7 @@ private:
     std::uint64_t last_id_=0;
     std::uint64_t last_qpc_=0;
     std::uint64_t source_high_qpc_=0;
+    std::uint32_t source_high_pose_=0;
     FrameKind kind_=FrameKind::Invalid;
 };
 } // namespace m2vr::transport

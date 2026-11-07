@@ -35,6 +35,15 @@ enum class FrameKind : std::uint32_t {
 constexpr bool IsStereoGame(FrameKind k)noexcept{
     return k==FrameKind::GameStereo || k==FrameKind::VerifiedCpuWorldStereo;
 }
+// Host pose-history tags increase during one process lifetime. A newer
+// original D3D9 frame may legitimately reuse a tag, but never roll back.
+// Tag zero stays ABI-readable; the live HMD gate rejects untagged stereo.
+constexpr bool SourcePoseNotRegressed(FrameKind kind,
+                                     std::uint32_t tag,
+                                     std::uint32_t highest) noexcept {
+    return !IsStereoGame(kind) || tag==0u || highest==0u ||
+           tag>=highest;
+}
 constexpr bool IsMonoGame(FrameKind kind) noexcept {
     return kind==FrameKind::GameMonoFallback || kind==FrameKind::CompactMono;
 }
@@ -161,7 +170,10 @@ public:
             return false;
         // last_written_ is protected by the odd-generation writer lease,
         // not sampled before ownership (which would be a C++ data race).
-        if(frame_id<=last_written_){
+        if(frame_id<=last_written_ ||
+           !SourcePoseNotRegressed(kind,pose_sequence,last_stereo_pose_)){
+            // Keep the accepted HMD camera order through original mono
+            // fallback. Reject before overwriting shared eye pixels.
             InterlockedExchange(&h->sequence,before+2);
             return false;
         }
@@ -193,6 +205,8 @@ public:
         // the writer lease, not after: a second x86 caller may acquire the
         // next even generation immediately and must see this frame ID.
         last_written_=frame_id;
+        if(IsStereoGame(kind) && pose_sequence!=0u)
+            last_stereo_pose_=pose_sequence;
         InterlockedExchange(&h->sequence,before+2);
         return true;
     }
@@ -277,7 +291,7 @@ public:
         if(base_)UnmapViewOfFile(base_);
         if(mapping_)CloseHandle(mapping_);
         base_=nullptr;mapping_=nullptr;writable_=false;
-        last_written_=0;key_pid_=0;
+        last_written_=0;last_stereo_pose_=0;key_pid_=0;
     }
 private:
     HANDLE mapping_=nullptr;
@@ -285,5 +299,6 @@ private:
     bool writable_=false;
     std::uint32_t key_pid_=0;
     std::uint64_t last_written_=0;
+    std::uint32_t last_stereo_pose_=0;
 };
 } // namespace m2vr::transport

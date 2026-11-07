@@ -78,6 +78,17 @@ int wmain(){
         REQUIRE(sampled.eyes[1].position_m[0]== 0.032f);
         REQUIRE(sampled.eyes[0].fov_left_right_up_down[0]==-0.8f);
         REQUIRE(sampled.eyes[1].fov_left_right_up_down[1]== 0.8f);
+        if(i==2u){
+            // Actual x86 shared mapping: earlier camera 90 must NOT
+            // supersede stereo 91 after the intervening mono Present.
+            std::vector<std::uint8_t> old_left(transport::kBytesPerEye,0x55);
+            std::vector<std::uint8_t> old_right(transport::kBytesPerEye,0xaa);
+            REQUIRE(!frames.Publish(old_left.data(),old_right.data(),
+                3u,transport::FrameKind::VerifiedCpuWorldStereo,90u));
+            transport::FrameStamp still_mono{};
+            REQUIRE(frames.Peek(still_mono) && still_mono.frame_id==2u &&
+                    still_mono.kind==transport::FrameKind::CompactMono);
+        }
         REQUIRE(WritePhase(frames,health,i+1u,kinds[i],tags[i],
                            colors_left[i],colors_right[i]));
         REQUIRE(SetEvent(ready)!=FALSE);
@@ -190,6 +201,22 @@ int wmain(int argc,wchar_t** argv){
         REQUIRE(frame_gate.Accept(copied,
             static_cast<std::uint64_t>(now.QuadPart),
             static_cast<std::uint64_t>(hz.QuadPart)));
+        if(i==2u){
+            transport::FrameStamp stale=inspected;
+            stale.frame_id=4u;
+            stale.timestamp_qpc=inspected.timestamp_qpc+1u;
+            stale.pose_sequence=91u;
+            REQUIRE(frame_gate.PoseSequenceRegressed(stale));
+            REQUIRE(frame_gate.Decide(&stale,stale.timestamp_qpc,
+                static_cast<std::uint64_t>(hz.QuadPart))==
+                transport::FrameUse::HoldCached);
+            transport::Snapshot bad=copied;
+            bad.frame_id=4u;
+            bad.timestamp_qpc=stale.timestamp_qpc;
+            bad.pose_sequence=91u;
+            REQUIRE(!frame_gate.Accept(bad,stale.timestamp_qpc,
+                static_cast<std::uint64_t>(hz.QuadPart)));
+        }
         // The real Win32 producer's third successful physical receipt
         // switches from original mono to CPU source. Never keep the old
         // mono cinema image on the Win64 compositor just because it is
