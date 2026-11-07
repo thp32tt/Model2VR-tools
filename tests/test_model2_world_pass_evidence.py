@@ -435,6 +435,115 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "linked"):
                     evidence._load_report(linked)
 
+
+    def test_direct_preflight_private_json_publish_is_failure_atomic(self):
+        # The Windows collector has its own pending receipt, but the direct
+        # --preflight CLI must not truncate an older PRIVATE diagnostic when
+        # disk/rename publication fails. Synthetic fixture only.
+        valid = report(witness())
+        with tempfile.TemporaryDirectory() as dirname:
+            folder = Path(dirname)
+            original = folder / "original_x86.csv"
+            original.write_bytes(b"synthetic original capture never overwritten")
+            original_bytes = original.read_bytes()
+            output = folder / "PRIVATE_SINGLE_SOURCE.json"
+            previous = b"prior local PRIVATE preflight diagnostic"
+            output.write_bytes(previous)
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=valid):
+                with patch("tools.model2_world_pass_evidence.os.replace",
+                           side_effect=OSError("synthetic disk replace failure")):
+                    with redirect_stderr(io.StringIO()) as error:
+                        with self.assertRaises(SystemExit):
+                            main(["--preflight", str(original),
+                                  "--output", str(output)])
+                    self.assertIn("synthetic disk replace failure",
+                                  error.getvalue())
+                self.assertEqual(output.read_bytes(), previous)
+                self.assertEqual(original.read_bytes(), original_bytes)
+                self.assertEqual(list(folder.glob("PRIVATE_PENDING_DIRECT_*")), [])
+                main(["--preflight", str(original), "--output", str(output)])
+            restored = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(restored, valid)
+            self.assertEqual(restored["world_pass_proof"], "NOT_ESTABLISHED")
+            self.assertEqual(original.read_bytes(), original_bytes)
+            self.assertEqual(list(folder.glob("PRIVATE_PENDING_DIRECT_*")), [])
+
+    def test_direct_seven_session_private_publish_is_failure_atomic(self):
+        # Test the direct candidate CLI, not the previously completed
+        # collector/receipt promotion. No actual game or PRIVATE bytes.
+        with tempfile.TemporaryDirectory() as dirname:
+            folder = Path(dirname)
+            stages = ("race_a", "race_b", *sorted(CONTROL_TYPES))
+            paths = {}
+            for label in stages:
+                data = report(witness()) if label.startswith("race") else report()
+                data["synthetic_stage_identity"] = label
+                path = folder / (label + ".json")
+                path.write_text(json.dumps(data), encoding="utf-8")
+                paths[label] = path
+            before = {label: path.read_bytes() for label, path in paths.items()}
+            argv = ["--race", str(paths["race_a"]),
+                    "--race", str(paths["race_b"])]
+            for label in sorted(CONTROL_TYPES):
+                argv += ["--control", label, str(paths[label])]
+            output = folder / "PRIVATE_DIRECT_CANDIDATES.json"
+            previous = b"previous PRIVATE candidate diagnostic"
+            output.write_bytes(previous)
+            argv += ["--output", str(output)]
+            with patch("tools.model2_world_pass_evidence.os.replace",
+                       side_effect=OSError("synthetic candidate publish failure")):
+                with redirect_stderr(io.StringIO()) as error:
+                    with self.assertRaises(SystemExit):
+                        main(argv)
+                self.assertIn("synthetic candidate publish failure",
+                              error.getvalue())
+            self.assertEqual(output.read_bytes(), previous)
+            self.assertEqual(list(folder.glob("PRIVATE_PENDING_DIRECT_*")), [])
+            self.assertEqual(
+                {label: path.read_bytes() for label, path in paths.items()}, before)
+            main(argv)
+            candidate = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(candidate["world_pass_proof"], "NOT_ESTABLISHED")
+            self.assertFalse(candidate["adapter_auto_enable"])
+            self.assertEqual(list(folder.glob("PRIVATE_PENDING_DIRECT_*")), [])
+
+    def test_direct_preflight_rechecks_output_alias_before_atomic_publish(self):
+        # A link inserted AFTER initial alias validation must never cause
+        # the original x86 CSV to be overwritten at publication time.
+        from tools import model2_world_pass_evidence as evidence
+        valid = report(witness())
+        with tempfile.TemporaryDirectory() as dirname:
+            folder = Path(dirname)
+            original = folder / "original.csv"
+            original.write_bytes(b"untouched genuine-input-shaped synthetic bytes")
+            output = folder / "PRIVATE_DIRECT_SOURCE.json"
+            real_check = evidence._refuse_private_output_alias
+            checks = [0]
+
+            def introduce_late_link(destination, sources):
+                checks[0] += 1
+                if checks[0] == 2:
+                    try:
+                        destination.symlink_to(original)
+                    except (OSError, NotImplementedError):
+                        self.skipTest("symlinks unavailable on this Windows runner")
+                return real_check(destination, sources)
+
+            with patch("tools.model2_world_pass_evidence.audit_csv",
+                       return_value=valid):
+                with patch("tools.model2_world_pass_evidence._refuse_private_output_alias",
+                           side_effect=introduce_late_link):
+                    with redirect_stderr(io.StringIO()) as error:
+                        with self.assertRaises(SystemExit):
+                            main(["--preflight", str(original),
+                                  "--output", str(output)])
+            self.assertEqual(checks[0], 2)
+            self.assertIn("linked file", error.getvalue())
+            self.assertEqual(original.read_bytes(),
+                             b"untouched genuine-input-shaped synthetic bytes")
+            self.assertEqual(list(folder.glob("PRIVATE_PENDING_DIRECT_*")), [])
+
     def test_opt_in_original_race_readiness_requires_actual_same_draw_source(self):
         # These tests use synthetic records only. This option catches a
         # nonviable original race *before* collecting five expensive physical

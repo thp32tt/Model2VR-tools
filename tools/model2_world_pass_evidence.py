@@ -7,7 +7,9 @@ infers game camera calibration, emits source binaries, or enables stereo.
 import argparse
 import hashlib
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 
 try:
@@ -978,6 +980,34 @@ def _refuse_private_output_alias(output, original_inputs):
             raise ValueError("PRIVATE output must not overwrite original source bytes")
 
 
+def _write_private_json_atomic(output, content, original_inputs):
+    """Publish direct PRIVATE diagnostics without truncating the last result.
+
+    The PowerShell seven-session collector already stages its own receipt.
+    Standalone --preflight and --race/--control need the same failure-atomic
+    behavior for local/private CLI users. The unique pending file is on the
+    destination filesystem, is private (NamedTemporaryFile mode 0600), and
+    is never a published World3D authorization. Recheck output aliases after
+    staging in case an operator changes a link during a long comparison.
+    """
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", newline="\n",
+                prefix="PRIVATE_PENDING_DIRECT_", suffix=".json",
+                dir=output.parent, delete=False) as handle:
+            pending = Path(handle.name)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _refuse_private_output_alias(output, original_inputs)
+        os.replace(pending, output)
+    finally:
+        # Failure must not leave a second copy of sampled original x86 data.
+        if pending is not None:
+            pending.unlink(missing_ok=True)
+
+
 def preflight_original_session(path, *, require_race_source=False):
     """Prove one genuine original x86 process run is analyzable BEFORE next run.
 
@@ -1031,7 +1061,7 @@ def main(argv=None):
                 args.preflight, require_race_source=args.require_race_source)
             content=json.dumps(result,sort_keys=True,indent=2)+"\n"
             if args.output:
-                args.output.write_text(content,encoding="utf-8")
+                _write_private_json_atomic(args.output, content, [args.preflight])
             else:
                 # Without explicit PRIVATE file, never print the original
                 # game's sampled caller/source records to the terminal.
@@ -1084,7 +1114,10 @@ def main(argv=None):
         parser.error(str(exc))
     content=json.dumps(result,sort_keys=True,indent=2)+"\n"
     if args.output:
-        args.output.write_text(content,encoding="utf-8")
+        try:
+            _write_private_json_atomic(args.output, content, paths)
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
     else:
         print(content,end="")
 
