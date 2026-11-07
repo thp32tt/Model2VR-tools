@@ -12,8 +12,10 @@ from pathlib import Path
 
 try:
     from .model2_draw_source_report import audit_csv
-except ImportError:  # direct invocation: python tools/model2_world_pass_evidence.py
+    from .verify_daytona_private_receipt import _file, _load_json
+except ImportError:  # distributed standalone tools are copied side by side
     from model2_draw_source_report import audit_csv
+    from verify_daytona_private_receipt import _file, _load_json
 
 SOURCE_KIND = "real_d3d9_command_boundary_readonly_metadata"
 RVA = re.compile(r"0x[0-9a-fA-F]{8}\Z")
@@ -936,7 +938,10 @@ def _capture_digest(path):
     # Duplicate bytes under distinct filenames are NOT independent sessions.
     # Stream large private CSV logs without retaining them in memory.
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    # Same no-symlink local-only source rule as the final PRIVATE receipt:
+    # no standalone comparison may follow a linked capture outside the
+    # operator's chosen original-game evidence directory.
+    with _file(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.digest()
@@ -944,9 +949,13 @@ def _capture_digest(path):
 
 def _load_report(path):
     if path.suffix.lower() == ".csv":
-        return audit_csv(path)
-    with path.open(encoding="utf-8") as handle:
-        return json.load(handle)
+        return audit_csv(_file(path))
+    # Direct --race/--control JSON input is just as untrusted as an archived
+    # receipt. Python's json.load silently keeps the LAST duplicate member
+    # and permits NaN/Infinity, potentially changing an exact original
+    # Draw/Scene/World3D candidate verdict before a final receipt exists.
+    # Share the existing strict nested-member and numeric JSON decoder.
+    return _load_json(path)
 
 
 def preflight_original_session(path, *, require_race_source=False):
@@ -1031,6 +1040,16 @@ def main(argv=None):
             [_load_report(path) for path in args.race],
             {label:_load_report(path) for label,path in controls.items()},
         )
+        # The standalone seven-session CLI used to hash only BEFORE its
+        # potentially long real CSV/JSON analysis. An operator concurrently
+        # replacing even the FIRST input during the LAST input scan would
+        # leave a candidate derived from a different set of source bytes.
+        # Rehash ALL seven immediately before publication; the Windows
+        # collector separately pins those files until receipt promotion.
+        if any(_capture_digest(path) != earlier
+               for path, earlier in zip(paths, fingerprints)):
+            raise ValueError(
+                "PRIVATE seven-session source changed during candidate analysis")
     except (ValueError,OSError,json.JSONDecodeError) as exc:
         parser.error(str(exc))
     content=json.dumps(result,sort_keys=True,indent=2)+"\n"
