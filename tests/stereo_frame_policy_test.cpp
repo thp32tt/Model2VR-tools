@@ -29,6 +29,15 @@ int main(){
     CHECK(!SourcePoseMatchesFrame(FrameKind::Diagnostic,123u,true));
     CHECK(!SourcePoseMatchesFrame(FrameKind::Invalid,0u,false));
     CHECK(!SourcePoseMatchesFrame(FrameKind::Invalid,123u,true));
+    // The transport keeps legacy zero-tag source packets readable, but
+    // the live HMD host must still refuse an untagged stereo claim.
+    CHECK(SourcePoseNotRegressed(FrameKind::GameStereo,0u,43u));
+    CHECK(!SourcePoseMatchesFrame(FrameKind::GameStereo,0u,true));
+    CHECK(SourcePoseNotRegressed(FrameKind::CompactMono,0u,43u));
+    CHECK(!SourcePoseNotRegressed(FrameKind::GameStereo,42u,43u));
+    CHECK(!SourcePoseNotRegressed(FrameKind::VerifiedCpuWorldStereo,42u,43u));
+    CHECK(SourcePoseNotRegressed(FrameKind::GameStereo,43u,43u));
+    CHECK(SourcePoseNotRegressed(FrameKind::VerifiedCpuWorldStereo,44u,43u));
     // Synthetic QPC hz = 1000 ticks/sec; hold is exactly 125ms.
     constexpr std::uint64_t hz=1000;
     constexpr std::uint64_t t=5000;
