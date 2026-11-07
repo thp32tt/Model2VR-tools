@@ -153,7 +153,8 @@ public:
             return false;
         if(frame<=last_frame_ ||
            (last_frame_!=0u &&
-            static_cast<std::uint64_t>(now.QuadPart)<=wire_->status.timestamp_qpc)){
+            (wire_->status.timestamp_qpc==0u ||
+             static_cast<std::uint64_t>(now.QuadPart)<=wire_->status.timestamp_qpc))){
             // A new physical Present cannot be certified by a receipt
             // whose QPC regresses behind an older committed Present.
             // Do not replace the last coherent success/failure record.

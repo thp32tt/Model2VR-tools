@@ -199,6 +199,8 @@ int main(){
      clock_map,FILE_MAP_WRITE,0,0,sizeof(Wire)));
  REQUIRE(clock_wire!=nullptr);
  const auto saved_qpc=clock_wire->status.timestamp_qpc;
+ clock_wire->status.timestamp_qpc=0u;
+ REQUIRE(!writer.Publish(26u,0u,7u,12u,2u,first));
  clock_wire->status.timestamp_qpc=UINT64_MAX;
  REQUIRE(!writer.Publish(26u,0u,7u,12u,2u,first));
  clock_wire->status.timestamp_qpc=saved_qpc;

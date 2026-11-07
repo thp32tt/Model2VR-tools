@@ -157,6 +157,9 @@ int main(){
         clock_map,FILE_MAP_WRITE,0,0,sizeof(Header)));
     REQUIRE(clock_header!=nullptr);
     const auto saved_qpc=clock_header->timestamp_qpc;
+    clock_header->timestamp_qpc=0u;
+    REQUIRE(!writer.Publish(a.data(),b.data(),26u,
+        FrameKind::GameStereo,119u));
     clock_header->timestamp_qpc=UINT64_MAX;
     REQUIRE(!writer.Publish(a.data(),b.data(),26u,
         FrameKind::GameStereo,119u));
