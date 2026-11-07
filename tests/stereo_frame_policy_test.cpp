@@ -153,6 +153,9 @@ int main(){
     CHECK(gate.Accept(snap,t+148,hz));
     CHECK(gate.kind()==FrameKind::CompactMono);
     CHECK(gate.MatchesAcceptedMetadata(snap));
+    auto tagged_mono=snap;
+    tagged_mono.pose_sequence=77u;
+    CHECK(!gate.MatchesAcceptedMetadata(tagged_mono));
     CHECK(gate.Cached(t+147+250,hz));
     CHECK(!gate.Cached(t+147+251,hz));
     CHECK(gate.Decide(&compact,t+147+250,hz)==FrameUse::HoldCached);

@@ -84,6 +84,9 @@ public:
             eyes.timestamp_qpc!=0u &&
             eyes.timestamp_qpc==last_qpc_ &&
             eyes.kind==kind_ &&
+            // Legacy direct callers can accept a malformed tagged mono
+            // Snapshot; the final OpenXR gate must still fail closed.
+            (IsStereoGame(eyes.kind) || eyes.pose_sequence==0u) &&
             eyes.pose_sequence==last_pose_sequence_;
     }
     std::uint32_t lastSourcePoseSequence()const noexcept {
