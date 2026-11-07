@@ -36,6 +36,7 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
             ("duplicate seq", 2, 0, "1"),
             ("missing seq", 2, 0, "4"),
             ("noninitial seq", 1, 0, "2"),
+            ("nonnumeric seq", 2, 0, "2.0"),
             ("negative seq", 2, 0, "-1"),
             ("seq with leading zero", 2, 0, "02"),
             ("qpc goes backwards", 3, 1, "2499"),
@@ -58,7 +59,7 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
 
             for label in ("replayed", "dropped", "out_of_order",
                           "missing_qpc_header", "duplicate_header",
-                          "extra_column", "truncated_row"):
+                          "reordered_header", "extra_column", "truncated_row"):
                 with self.subTest(label=label):
                     data = [self.HEADER.copy()] + [v.copy() for v in self.ROWS]
                     if label == "replayed":
@@ -71,6 +72,8 @@ class OriginalCSVEventOrderTests(unittest.TestCase):
                         data[0].remove("qpc")
                     elif label == "duplicate_header":
                         data[0][1] = "seq"
+                    elif label == "reordered_header":
+                        data[0][1], data[0][2] = data[0][2], data[0][1]
                     elif label == "extra_column":
                         data[1].append("untrusted_extra")
                     elif label == "truncated_row":
