@@ -134,6 +134,19 @@ class CandidateReplayTest(unittest.TestCase):
             with self.assertRaisesRegex(ReceiptError, "changed PRIVATE_SOURCE_title"):
                 verify_pending_candidate(self.archive, pending)
 
+    def test_prepublication_pending_detects_candidate_swap_during_recompute(self):
+        pending = self._pending()
+        original_compare = compare_sessions
+        def mutate_pending(*args, **kwargs):
+            # A same-meaning, changed-byte candidate is still unauthenticated.
+            pending.write_text(pending.read_text(encoding="utf-8") + " ",
+                               encoding="utf-8")
+            return original_compare(*args, **kwargs)
+        with patch("tools.verify_daytona_private_candidate_replay.compare_sessions",
+                   side_effect=mutate_pending):
+            with self.assertRaisesRegex(ReceiptError, "changed PRIVATE_PENDING_COMPARE"):
+                verify_pending_candidate(self.archive, pending)
+
     def test_candidate_replay_rejects_rehashed_duplicate_members(self):
         # Strict report->candidate comparison must not normalize away two
         # contradictory source authorization members in the receipt.

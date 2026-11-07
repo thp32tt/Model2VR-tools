@@ -312,6 +312,9 @@ class PrivateOriginalCaptureReleaseTest(unittest.TestCase):
         self.assertIn('$pendingVerifier = Join-Path $PackageRoot "verify_daytona_private_candidate_replay.py"', self.ps)
         self.assertIn('"--pending-candidate",$pendingCandidate', self.ps)
         self.assertIn('PRIVATE PENDING SEMANTIC FAIL-CLOSED', self.ps)
+        self.assertIn('$pendingSemanticHash = (Get-FileHash -LiteralPath $pendingCandidate', self.ps)
+        self.assertIn('$replayedHash -cne $pendingSemanticHash', self.ps)
+        self.assertIn('$manifest.candidate_sha256 -cne $pendingSemanticHash', self.ps)
         self.assertLess(self.ps.index('"--pending-candidate",$pendingCandidate'),
                         self.ps.index('Move-Item -LiteralPath $pendingCandidate -Destination $candidateOutput'))
         self.assertIn('Assert-PrivateArchiveIntegrity\n  } catch {', self.ps)

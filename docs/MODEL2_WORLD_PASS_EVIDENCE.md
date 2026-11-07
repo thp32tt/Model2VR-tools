@@ -9,7 +9,9 @@ names, it invokes the bundled independent Python semantic replay with
 `--pending-candidate`. That verifier strictly parses all seven preflight
 reports and the GUID-private candidate (no duplicate JSON keys, NaN or
 Infinity), recomputes the exact seven-session candidate/rejection decision,
-and checks all input byte digests again after the comparison. A syntactically
+and checks all input byte digests again after the comparison. The collector
+also pins the exact pending candidate SHA-256 before and after this independent
+replay, and checks the same digest when writing its final manifest. A syntactically
 valid forged candidate, changed preflight, missing verifier or failed replay
 is quarantined under a PRIVATE_FAILED_COMPARE name. The original user CSVs
 remain local and untouched. Only the user-observed physical seven-session

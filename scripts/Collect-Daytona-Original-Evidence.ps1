@@ -507,10 +507,15 @@ if ($pythonExitCode -eq 0 -and $null -eq $comparisonError -and
 # forged cross-session verdict. Independently recompute it from the seven
 # exact preflight reports BEFORE either active success filename can exist.
 # Missing/broken verifier, changed report or candidate: quarantine as failure.
+$pendingSemanticHash = $null
 if ($pythonExitCode -eq 0 -and $null -eq $comparisonError -and
     $null -eq $integrityError -and $null -eq $receiptError -and
     (Test-Path -LiteralPath $pendingCandidate -PathType Leaf)) {
   try {
+    # A verifier success is evidence about the EXACT candidate bytes it
+    # inspected, not a writable pathname. Pin those bytes on both sides of
+    # the verifier and again at the final manifest-publication boundary.
+    $pendingSemanticHash = (Get-FileHash -LiteralPath $pendingCandidate -Algorithm SHA256 -ErrorAction Stop).Hash
     if (!(Test-Path -LiteralPath $pendingVerifier -PathType Leaf)) {
       throw "Missing bundled original pending candidate semantic verifier."
     }
@@ -518,6 +523,10 @@ if ($pythonExitCode -eq 0 -and $null -eq $comparisonError -and
       $pendingVerifier,$destination,"--pending-candidate",$pendingCandidate)
     if ($replayExit -ne 0) {
       throw "seven-report pending candidate semantic mismatch."
+    }
+    $replayedHash = (Get-FileHash -LiteralPath $pendingCandidate -Algorithm SHA256 -ErrorAction Stop).Hash
+    if ($replayedHash -cne $pendingSemanticHash) {
+      throw "pending candidate bytes changed during independent semantic replay."
     }
     Assert-PrivateArchiveIntegrity
   } catch {
@@ -563,6 +572,10 @@ $finalManifest = Join-Path $destination "PRIVATE_MANIFEST.json"
 try {
   Assert-PrivateArchiveIntegrity
   $manifest.candidate_sha256 = (Get-FileHash -LiteralPath $pendingCandidate -Algorithm SHA256).Hash
+  if (!$pendingSemanticHash -or
+      $manifest.candidate_sha256 -cne $pendingSemanticHash) {
+    throw "PRIVATE PENDING SEMANTIC FAIL-CLOSED: candidate bytes changed before publication."
+  }
   $json = ConvertTo-Json -InputObject $manifest -Depth 5
   [IO.File]::WriteAllText($pendingManifest,
     $json + [Environment]::NewLine,(New-Object System.Text.UTF8Encoding($false)))
