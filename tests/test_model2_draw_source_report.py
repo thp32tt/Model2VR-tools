@@ -1842,7 +1842,10 @@ class SourceAuditTests(unittest.TestCase):
                 ("model2_d3d9_vb_source", 1, -1, pack(1, 0x112),
                  pack(2048, 20)),
             ])
-            with self.assertRaisesRegex(ValueError, "malformed"):
+            # The native %llu payload gate now rejects this nonnative
+            # negative cell before the legacy per-event malformed witness.
+            with self.assertRaisesRegex(
+                    ValueError, "malformed|invalid original CSV native event payload"):
                 REPORT.audit_csv(p)
 
     def test_original_cpu_vertex_identity_cardinality_auditor(self):

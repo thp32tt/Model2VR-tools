@@ -146,8 +146,12 @@ class OriginalControlPhysicalPresentTest(unittest.TestCase):
         ]
         for row in invalid:
             with self.subTest(row=row):
-                with self.assertRaisesRegex(ValueError,
-                                            "original control Present provenance"):
+                # Negative payloads are rejected by the native logger
+                # ABI gate before the legacy Present-specific check.
+                with self.assertRaisesRegex(
+                        ValueError,
+                        "original control Present provenance|"
+                        "invalid original CSV native event payload"):
                     self.audit([row])
         for rows in ((self.present(1),self.present(1)),
                      (self.present(8),self.present(1)),
