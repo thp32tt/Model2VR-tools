@@ -1,6 +1,7 @@
 #include "xr_app.h"
 #include "xr_source_eye_coherence.hpp"
 #include "../src/common/daytona_source_handoff_gate.hpp"
+#include "../src/common/daytona_xr_layer_commit_gate.hpp"
 #include "../src/common/stereo_eye_rig_geometry.hpp"
 #include "../src/common/stereo_pose_publication_gate.hpp"
 #include "../src/common/model2_emulator_window_policy.hpp"
@@ -703,6 +704,46 @@ void XrApp::draw_frame(XrTime display_time){
         mono_quad.size.width=anchor.width;
         mono_quad.size.height=anchor.height;
     }
+    // The original Win32 game can fail its NEXT physical Present, switch
+    // source kinds or terminate while the Win64 host uploads the accepted
+    // pair into swapchains. Close this last race at the actual XR layer
+    // submission boundary; previously only the pre-upload receipt was
+    // considered and a now-invalid eye image could reach xrEndFrame.
+    bool commit_source_layer=true;
+    if(usable && !menu_quad && source_pid_!=0u){
+        LARGE_INTEGER at_end{};
+        const bool timestamp_ok=QueryPerformanceCounter(&at_end)!=FALSE &&
+                                at_end.QuadPart>0;
+        producerhealth::Snapshot last_health{};
+        const bool final_receipt_read=timestamp_ok &&
+            producer_health_.Valid() &&
+            producer_health_.Read(last_health);
+        const auto outcome=xrcommit::VerifyOriginalFrameAtEnd(
+            source_process_lease_.Alive(),frame_gate_,eye_frame_,
+            accepted_exact_pose_,
+            timestamp_ok?static_cast<std::uint64_t>(at_end.QuadPart):0u,hz,
+            last_health,final_receipt_read);
+        commit_source_layer=outcome.submit;
+        if(!commit_source_layer){
+            std::cerr<<"Daytona VR final original XR layer REJECTED"
+                     <<" reason="<<static_cast<unsigned>(outcome.reason)
+                     <<" frame="<<eye_frame_.frame_id
+                     <<" last_health_frame="<<(final_receipt_read
+                         ?last_health.frame_id:0u)
+                     <<std::endl;
+            invalidate_source_session();
+            report_wizard_health(true,false);
+        }
+    }else if(menu_quad && source_pid_!=0u){
+        // Desktop-menu screenshot also belongs to that real original x86
+        // process. Do not submit a stale previously captured HWND image if
+        // the Windows producer dies while the OpenXR swapchain is acquired.
+        commit_source_layer=source_process_lease_.Alive();
+        if(!commit_source_layer){
+            invalidate_source_session();
+            report_wizard_health(true,false);
+        }
+    }
     const XrCompositionLayerBaseHeader* selected_layer=
         flat_quad
             ?reinterpret_cast<const XrCompositionLayerBaseHeader*>(&mono_quad)
@@ -711,8 +752,8 @@ void XrApp::draw_frame(XrTime display_time){
     XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};
     end.displayTime=display_time;
     end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    end.layerCount=1;
-    end.layers=layers;
+    end.layerCount=commit_source_layer?1u:0u;
+    end.layers=commit_source_layer?layers:nullptr;
     check(xrEndFrame(session_,&end),
           flat_quad?"end emulator/game mono 2D quad frame":"end stereo frame");
 }

@@ -214,6 +214,14 @@ target_compile_features(model2_original_crossarch_x86_producer PRIVATE cxx_std_2
 target_compile_definitions(model2_original_crossarch_x86_producer PRIVATE
     NOMINMAX WIN32_LEAN_AND_MEAN M2VR_CROSS_ARCH_PRODUCER)
 
+# Reauthorize original D3D9 eye pixels at the physical xrEndFrame
+# boundary, including producer death and a newer failed source Present.
+add_executable(daytona_xr_layer_commit_x86_test
+    tests/daytona_xr_layer_commit_gate_test.cpp)
+target_compile_features(daytona_xr_layer_commit_x86_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_present_last_moment_XR_commit_x86
+    COMMAND daytona_xr_layer_commit_x86_test)
+
 add_executable(daytona_source_handoff_x86_test
     tests/daytona_source_handoff_gate_test.cpp)
 target_compile_features(daytona_source_handoff_x86_test PRIVATE cxx_std_20)

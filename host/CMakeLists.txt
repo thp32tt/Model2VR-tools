@@ -65,6 +65,12 @@ target_compile_features(model2_original_crossarch_x64_consumer PRIVATE cxx_std_2
 target_compile_definitions(model2_original_crossarch_x64_consumer PRIVATE
     NOMINMAX WIN32_LEAN_AND_MEAN M2VR_CROSS_ARCH_CONSUMER)
 
+add_executable(daytona_xr_layer_commit_x64_test
+    ../tests/daytona_xr_layer_commit_gate_test.cpp)
+target_compile_features(daytona_xr_layer_commit_x64_test PRIVATE cxx_std_20)
+add_test(NAME daytona_original_present_last_moment_XR_commit_x64
+    COMMAND daytona_xr_layer_commit_x64_test)
+
 add_executable(daytona_source_handoff_x64_test
     ../tests/daytona_source_handoff_gate_test.cpp)
 target_compile_features(daytona_source_handoff_x64_test PRIVATE cxx_std_20)

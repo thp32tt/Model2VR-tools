@@ -3,6 +3,7 @@
 // that the Win64 OpenXR host reads. It does not run Daytona, claim race
 // World3D, or substitute synthetic frames for actual headset evidence.
 #include "../src/common/daytona_source_handoff_gate.hpp"
+#include "../src/common/daytona_xr_layer_commit_gate.hpp"
 #include "../host/original_source_process_lease.hpp"
 #include <Windows.h>
 #include <array>
@@ -64,6 +65,13 @@ int wmain(){
         REQUIRE(SetEvent(ready)!=FALSE);
         REQUIRE(WaitForSingleObject(advance,30000u)==WAIT_OBJECT_0);
     }
+    // A fourth physical D3D9 Present can fail without producing a new
+    // source-eye packet. That failure must revoke the older pair even if
+    // it was already copied into the Win64 XR staging buffer.
+    REQUIRE(health.Publish(4u,m2vr::producerhealth::OriginalPresentFailed,
+                           0u,0u,0u,{}));
+    REQUIRE(SetEvent(ready)!=FALSE);
+    REQUIRE(WaitForSingleObject(advance,30000u)==WAIT_OBJECT_0);
     CloseHandle(ready);CloseHandle(advance);
     return 0;
 }
@@ -151,6 +159,30 @@ int wmain(int argc,wchar_t** argv){
         REQUIRE(ResetEvent(ready)!=FALSE);
         REQUIRE(SetEvent(advance)!=FALSE);
     }
+    // Actual x86 writer now reports a newer FAILED original Present while
+    // the x64 process still holds frame 3's accepted native two-eye pair.
+    REQUIRE(WaitForSingleObject(ready,30000u)==WAIT_OBJECT_0);
+    transport::FrameStamp older{};
+    producerhealth::Snapshot newer_failed{};
+    REQUIRE(frame_reader.Peek(older) && older.frame_id==3u);
+    REQUIRE(health_reader.Read(newer_failed));
+    REQUIRE(newer_failed.frame_id==4u);
+    REQUIRE(newer_failed.reason_mask==
+            producerhealth::OriginalPresentFailed);
+    LARGE_INTEGER end_clock{};
+    REQUIRE(QueryPerformanceCounter(&end_clock) && end_clock.QuadPart>0);
+    REQUIRE(xrcommit::VerifyOriginalFrameAtEnd(
+        process_lease.Alive(),frame_gate,
+        [&]{
+            transport::Snapshot live{};
+            REQUIRE(frame_reader.Read(live));
+            return live;
+        }(),true,
+        static_cast<std::uint64_t>(end_clock.QuadPart),
+        static_cast<std::uint64_t>(hz.QuadPart),
+        newer_failed,true).reason==xrcommit::Reject::NewerFailedPresent);
+    REQUIRE(ResetEvent(ready)!=FALSE);
+    REQUIRE(SetEvent(advance)!=FALSE);
     REQUIRE(WaitForSingleObject(child.hProcess,30000u)==WAIT_OBJECT_0);
     DWORD code=1;REQUIRE(GetExitCodeProcess(child.hProcess,&code));
     REQUIRE(code==0u);
