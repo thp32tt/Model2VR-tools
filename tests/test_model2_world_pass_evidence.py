@@ -237,6 +237,89 @@ class OriginalWorldPassEvidenceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"original x86 CSV"):
                 preflight_original_session(cached)
 
+    def test_direct_private_seven_session_cli_pins_bytes_and_strict_json(self):
+        # This exercises the DIRECT candidate CLI before an archived receipt
+        # exists, rather than re-testing the already-secured final verifier.
+        # Every source here is invented synthetic metadata, NOT Daytona data.
+        from tools import model2_world_pass_evidence as evidence
+        with tempfile.TemporaryDirectory() as dirname:
+            folder = Path(dirname)
+            race_reports = [report(witness()), report(witness())]
+            negative = controls()
+            paths = {}
+            for label, value in (
+                ("race_a", race_reports[0]), ("race_b", race_reports[1]),
+                *((label, negative[label]) for label in sorted(CONTROL_TYPES)),
+            ):
+                path = folder / (label + ".json")
+                path.write_text(json.dumps(value), encoding="utf-8")
+                paths[label] = path
+            output = folder / "PRIVATE_DIRECT_CANDIDATES.json"
+            argv = [
+                "--race", str(paths["race_a"]),
+                "--race", str(paths["race_b"]),
+            ]
+            for label in sorted(CONTROL_TYPES):
+                argv.extend(("--control", label, str(paths[label])))
+            argv.extend(("--output", str(output))
+
+            main(argv)
+            accepted = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(len(accepted["candidates"]), 1)
+            self.assertFalse(accepted["adapter_auto_enable"])
+            self.assertEqual(accepted["world_pass_proof"], "NOT_ESTABLISHED")
+            output.unlink()
+
+            original = paths["race_a"].read_text(encoding="utf-8")
+            for name, forged in (
+                ("top_level_duplicate", original.replace(
+                    '"schema": 1,', '"schema": 1, "schema": 1,', 1)),
+                ("nested_draw_caller_duplicate", original.replace(
+                    '"caller_rva_hex": "0x004a1234",',
+                    '"caller_rva_hex": "0x004a1234", '
+                    '"caller_rva_hex": "0x004a1234",', 1)),
+                ("nonstandard_number", original.replace(
+                    '"schema": 1,', '"schema": 1, "unknown": NaN,', 1)),
+            ):
+                with self.subTest(forgery=name):
+                    self.assertNotEqual(original, forged)
+                    paths["race_a"].write_text(forged, encoding="utf-8")
+                    with redirect_stderr(io.StringIO()) as err:
+                        with self.assertRaises(SystemExit):
+                            main(argv)
+                    self.assertIn("error:", err.getvalue())
+                    self.assertFalse(output.exists())
+            paths["race_a"].write_text(original, encoding="utf-8")
+
+            # A concurrent collector can rewrite an EARLY original x86
+            # source after it was SHA-pinned but while the LAST source
+            # report is still loading. No stale candidate may be published.
+            real_loader = evidence._load_report
+            def late_original_rewrite(path):
+                result = real_loader(path)
+                if path == paths["aux"]:
+                    paths["race_a"].write_text(original + " ",
+                                               encoding="utf-8")
+                return result
+            with patch("tools.model2_world_pass_evidence._load_report",
+                       side_effect=late_original_rewrite):
+                with redirect_stderr(io.StringIO()) as err:
+                    with self.assertRaises(SystemExit):
+                        main(argv)
+            self.assertIn("source changed during candidate analysis",
+                          err.getvalue())
+            self.assertFalse(output.exists())
+
+            # Linked source paths are not independent original evidence.
+            linked = folder / "linked-race-a.json"
+            try:
+                linked.symlink_to(paths["race_a"])
+            except (OSError, NotImplementedError):
+                pass  # Restricted Windows test account may block symlinks.
+            else:
+                with self.assertRaisesRegex(ValueError, "linked"):
+                    evidence._load_report(linked)
+
     def test_opt_in_original_race_readiness_requires_actual_same_draw_source(self):
         # These tests use synthetic records only. This option catches a
         # nonviable original race *before* collecting five expensive physical
