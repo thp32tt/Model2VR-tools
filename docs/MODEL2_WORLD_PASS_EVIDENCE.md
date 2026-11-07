@@ -12,27 +12,30 @@ Use `python tools/model2_world_pass_evidence.py --race PRIVATE_RACE_A.csv --race
 
 If `--output` is omitted, the CLI intentionally prints **only counts** (race/control sessions, accepted/rejected candidates) and the `NOT_ESTABLISHED` / `UNTESTED` / disabled-World3D status; it does not print raw CPU/GPU executable RVA, original process nonces or Draw/Scene ordinal ranges. This protects shell transcripts, CI logs and support chats from accidental private metadata disclosure. Both forms remain diagnostic-only: neither authorizes a stereoscopic world pass. Do not upload genuine original Daytona x86 CSVs, PRIVATE JSON reports, game/ROM files or screenshots containing source identities.
 
-## Original x86 source producer must exit before PRIVATE archiving (2026-11-07)
+## Original x86 source producer must exit before PRIVATE archiving (updated 2026-11-08)
 
-After the operator completes each user-labelled original Daytona x86 race/control
-session, **fully exit the emulator before continuing the collector**. The
-collector now opens the selected original CSV with Windows `FileShare.None`
-before hashing and again immediately after copying. Because the actual original
-probe holds a write handle with `FILE_SHARE_READ` until process exit, this
-exclusive-read probe fails closed on a still-running emulator even if its
-growing CSV is readable by `Get-FileHash` or `Copy-Item`. If the original log
-is still open (or access cannot be proven exclusive), the collector preserves
-the user-owned source, refuses preflight, and requires a fresh capture stage.
-A second exclusive-open check plus existing original/copy SHA checks also
-prevent an overlapping late writer from receiving a valid report.
+After each user-labelled original Daytona x86 race/control session, **fully
+exit the emulator before continuing the collector**. The collector holds a
+single Windows `FileStream(Open, Read, FileShare.Read)` original CSV handle
+through source SHA-256 computation, byte copying FROM THAT SAME SOURCE HANDLE,
+GUID-private temporary archive digest verification and atomic no-overwrite
+archive publication. The genuine Win32 x86 probe holds `GENERIC_WRITE /
+FILE_SHARE_READ` until process exit; it therefore cannot coexist with this
+read-only lease, and a late writer cannot reopen during source capture.
+Unlike the prior two short `FileShare.None` probes, there is no unguarded
+time-of-check/time-of-copy window. The original CSV is never modified,
+failed staging copies are removed, and an existing PRIVATE archived stage
+is never replaced.
 
-A Windows PowerShell smoke test uses a synthetic `FileShare.Read` writer to
-assert reject-without-copy while active, unchanged original bytes, and
-successful *diagnostic-only* single-stage capture after the handle closes.
-Neither test data nor a passing PRIVATE preflight establishes original
-World3D, game camera metres-per-unit, or Quest3+VDXR gameplay. CPU World3D
-AUTO-OFF, `world_pass_proof=NOT_ESTABLISHED`,
-`RUNTIME_VALIDATION=UNTESTED`, and genuine original mono fallback stay intact.
+A Windows PowerShell native file-sharing smoke test checks refusal of a
+synthetic live original writer, exact SHA/length of an accepted source copy
+after writer exit, refusal to overwrite an existing stage and unchanged
+original bytes. The copied stage still undergoes original physical
+Draw/Scene/RT/Present preflight, hash pinning and nonce uniqueness checks.
+Neither synthetic CI nor a passing PRIVATE preflight establishes Daytona
+race-world ownership, game camera metres-per-unit, or Quest3+VDXR gameplay.
+CPU World3D AUTO-OFF, `world_pass_proof=NOT_ESTABLISHED`,
+`RUNTIME_VALIDATION=UNTESTED` and genuine original mono fallback remain.
 
 ## Per-original-process PRIVATE source CSV exclusive creation (2026-11-07)
 
