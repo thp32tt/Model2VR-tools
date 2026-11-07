@@ -91,6 +91,10 @@ int wmain(int argc,wchar_t** argv){
         if(!ready || !advance)Sleep(50u);
     }
     REQUIRE(ready && advance);
+    // The x86 child creates named events BEFORE its 8-MiB frame mapping
+    // and post-Present health mapping. Wait for its first fully committed
+    // source receipt, otherwise OpenFileMapping races process startup.
+    REQUIRE(WaitForSingleObject(ready,30000u)==WAIT_OBJECT_0);
     using namespace m2vr;
     transport::SharedFrames frame_reader;
     producerhealth::Link health_reader;
