@@ -43,9 +43,11 @@ bool OpenLog(const std::filesystem::path& path) {
         CloseHandle(file); // Ownership transfers only on successful import.
         return false;
     }
-    std::FILE* opened=nullptr;
-    if(_fdopen_s(&opened,fd,"wb")!=0 || !opened){
-        _close(fd); // Owns and closes the imported Win32 file handle.
+    // MSVC's UCRT exposes _fdopen(int,const char*), not _fdopen_s.
+    // On failure _close still owns and disposes the imported OS handle.
+    std::FILE* opened=_fdopen(fd,"wb");
+    if(!opened){
+        _close(fd);
         return false;
     }
     g_log=opened;
