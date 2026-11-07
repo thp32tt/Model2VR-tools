@@ -1140,7 +1140,7 @@ def _compare_direct_seven_inputs(paths, races, controls, output):
                for path, earlier in zip(paths, fingerprints)):
             raise ValueError(
                 "PRIVATE seven-session source changed during candidate analysis")
-        content=json.dumps(result,sort_keys=True,indent=2)+"\\n"
+        content=json.dumps(result,sort_keys=True,indent=2)+"\n"
         if output:
             _write_private_json_atomic(output, content, paths)
         return content
