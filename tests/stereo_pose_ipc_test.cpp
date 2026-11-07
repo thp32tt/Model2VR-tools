@@ -16,6 +16,15 @@ std::wstring PoseLeaseEventName(DWORD emulator_pid,const wchar_t* suffix){
 }
 int main(int argc,char** argv){
     using namespace m2vr::pose;
+    // Deterministic equal/backwards QPC rejection, including invisible
+    // tracking-loss state where the mapped Frame itself is zeroed.
+    REQUIRE(!PosePublicationQpcAdvances(0u,0u,false,0u));
+    REQUIRE(!PosePublicationQpcAdvances(100u,100u,false,0u));
+    REQUIRE(!PosePublicationQpcAdvances(99u,100u,false,0u));
+    REQUIRE(PosePublicationQpcAdvances(101u,100u,false,0u));
+    REQUIRE(!PosePublicationQpcAdvances(101u,100u,true,0u));
+    REQUIRE(!PosePublicationQpcAdvances(101u,100u,true,UINT64_MAX));
+    REQUIRE(PosePublicationQpcAdvances(101u,100u,true,100u));
     if(argc==3 && std::strcmp(argv[1],"--pose-publisher-child")==0){
         const auto emulator_pid=static_cast<DWORD>(std::strtoul(argv[2],nullptr,10));
         REQUIRE(emulator_pid!=0u);
@@ -132,6 +141,46 @@ int main(int argc,char** argv){
     REQUIRE(host.Publish(tracked));
     REQUIRE(emulator.ReadTracked(got));
     REQUIRE(got.sequence==29u && got.predicted_display_time==9000001);
+    // Real named-Windows mapping regression: a corrupt/rewound visible
+    // pose QPC may not be overwritten with a newly numbered XR camera.
+    // The rejected source must preserve the last committed 120-byte pose.
+    const HANDLE chronology_map=OpenFileMappingW(FILE_MAP_WRITE,FALSE,
+        NameForPid(key).c_str());
+    REQUIRE(chronology_map!=nullptr);
+    auto* chronology=static_cast<Shared*>(MapViewOfFile(
+        chronology_map,FILE_MAP_WRITE,0,0,sizeof(Shared)));
+    REQUIRE(chronology!=nullptr);
+    const auto original_pose_qpc=chronology->frame.published_qpc;
+    REQUIRE(original_pose_qpc!=0u);
+    const auto rewrite_pose_qpc=[&](std::uint64_t replacement){
+        const LONG gen=InterlockedCompareExchange(&chronology->generation,0,0);
+        REQUIRE(!(gen&1));
+        REQUIRE(InterlockedCompareExchange(
+            &chronology->generation,gen+1,gen)==gen);
+        chronology->frame.published_qpc=replacement;
+        InterlockedExchange(&chronology->generation,gen+2);
+    };
+    Frame next_tracked=tracked;
+    next_tracked.sequence=30u;
+    rewrite_pose_qpc(0u);
+    REQUIRE(!host.Publish(next_tracked));
+    REQUIRE(chronology->frame.sequence==29u);
+    REQUIRE(!emulator.ReadTracked(got));
+    rewrite_pose_qpc(UINT64_MAX);
+    REQUIRE(!host.Publish(next_tracked));
+    REQUIRE(chronology->frame.sequence==29u);
+    REQUIRE(!emulator.ReadTracked(got));
+    rewrite_pose_qpc(original_pose_qpc);
+    REQUIRE(emulator.ReadTracked(got) && got.sequence==29u);
+    REQUIRE(host.Publish(next_tracked));
+    REQUIRE(emulator.ReadTracked(got) && got.sequence==30u);
+    // The private publisher QPC high-water must survive an IPC revoke.
+    REQUIRE(host.Invalidate());
+    REQUIRE(!emulator.ReadTracked(got));
+    next_tracked.sequence=31u;
+    REQUIRE(host.Publish(next_tracked));
+    REQUIRE(emulator.ReadTracked(got) && got.sequence==31u);
+    UnmapViewOfFile(chronology);CloseHandle(chronology_map);
     // Actual Windows named-mapping test: emulate a disconnected host whose
     // pose QPC is still within legacy 2 seconds but too old to drive an
     // original D3D9 World3D Draw. Keep the same source sequence/eyes.

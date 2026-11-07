@@ -48,6 +48,15 @@ static_assert(sizeof(Shared)==144);
 inline std::wstring NameForPid(std::uint32_t pid){
     return L"Local\\Model2VR_HeadViews_v1_"+std::to_wstring(pid);
 }
+// The source Windows QPC must advance across successful XR pose writes.
+// Invalidating tracking clears the visible packet but NOT the high-water.
+// If a live shared packet is present, its on-wire stamp must also be valid.
+inline constexpr bool PosePublicationQpcAdvances(
+    std::uint64_t current,std::uint64_t committed,
+    bool visible,std::uint64_t visible_qpc) noexcept {
+    return current!=0u && (committed==0u || current>committed) &&
+           (!visible || (visible_qpc!=0u && current>visible_qpc));
+}
 class Link {
 public:
     Link()=default;
@@ -118,7 +127,15 @@ public:
         // The Win64 xrLocateViews producer must not claim publication when
         // QPC cannot authenticate the source time. x86 will later reject
         // zero QPC, but a false success here would commit a stale pose tag.
-        if(!QueryPerformanceCounter(&now) || now.QuadPart<=0){
+        if(!QueryPerformanceCounter(&now) || now.QuadPart<=0 ||
+           // A new tagged XR camera cannot reuse an older/equal real QPC,
+           // even when its predicted XrTime and sequence have advanced.
+           // This private committed high-water survives Invalidate().
+           (last_written_!=0u && last_published_qpc_==0u) ||
+           !PosePublicationQpcAdvances(
+               static_cast<std::uint64_t>(now.QuadPart),
+               last_published_qpc_,data_->frame.sequence!=0u,
+               data_->frame.published_qpc)){
             InterlockedExchange(&data_->generation,previous+2);
             return false;
         }
@@ -127,6 +144,7 @@ public:
         // The next host write may claim the lease as soon as this goes
         // even. Keep sequence monotonic while the current writer owns it.
         last_written_=value.sequence;
+        last_published_qpc_=stamped.published_qpc;
         InterlockedExchange(&data_->generation,previous+2);
         return true;
     }
@@ -214,6 +232,7 @@ public:
         if(writer_process_)CloseHandle(writer_process_);
         data_=nullptr;handle_=nullptr;writer_process_=nullptr;
         writer_pid_=0u;writable_=false;last_written_=0;
+        last_published_qpc_=0u;
     }
 private:
     bool WriterProcessAlive()const noexcept {
@@ -228,5 +247,6 @@ private:
     std::uint32_t writer_pid_=0u;
     bool writable_=false;
     std::uint64_t last_written_=0;
+    std::uint64_t last_published_qpc_=0;
 };
 } // namespace m2vr::pose
