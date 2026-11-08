@@ -1221,6 +1221,33 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("PlacePointer(",policy)
         self.assertIn("pointer.x==504 && pointer.y==504",regression)
 
+    def test_quest_menu_reticle_updates_without_rephotographing_desktop(self):
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        capture=(ROOT/"host/emulator_window_capture.cpp").read_text("utf-8")
+        header=(ROOT/"host/emulator_window_capture.hpp").read_text("utf-8")
+        cmake=(ROOT/"host/CMakeLists.txt").read_text("utf-8")
+        self.assertIn("if(menu_quad)emulator_window_capture_.PreparePresentation();",host)
+        self.assertIn("emulator_window_capture_.PresentationSerial()",host)
+        self.assertIn("emulator_window_capture_.PresentationRgba().data()",host)
+        self.assertLess(host.index("menu_controller_.Poll("),
+                        host.index("if(menu_quad)emulator_window_capture_.PreparePresentation();"))
+        self.assertLess(host.index("if(menu_quad)emulator_window_capture_.PreparePresentation();"),
+                        host.index("desktopmenu::MenuUploadToken("))
+        self.assertIn("prepared_overlay_=menureticle::PaintRgba(",capture)
+        self.assertIn("presentation_rgba_=rgba_;",capture)
+        self.assertIn("serial_==prepared_capture_serial_",capture)
+        self.assertIn("menureticle::Same(requested,prepared_reticle_)",capture)
+        self.assertIn("++presentation_serial_;",capture)
+        self.assertIn("return prepared_overlay_?presentation_rgba_:rgba_;",header)
+        self.assertIn("model2_menu_reticle_x64_test",cmake)
+        self.assertNotIn("if(drawn && reticle_visible_",capture)
+        self.assertNotIn("SetControllerReticle(true,hover.texture_x",capture)
+        # Controller movement is NOT a new pictured desktop source. The
+        # successfully XR-submitted raw screenshot serial still gates clicks.
+        self.assertIn("capture.Serial(),submitted_menu_capture_serial",(
+            ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8"))
+        self.assertIn("?emulator_window_capture_.Serial():0u;",host)
+
     def test_quest_menu_ray_cannot_inject_into_game_or_foreign_window(self):
         controller=(ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8")
         capture=(ROOT/"host/emulator_window_capture.cpp").read_text("utf-8")

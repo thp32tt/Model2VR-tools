@@ -596,6 +596,11 @@ void XrApp::draw_frame(XrTime display_time){
         xr_session_focused_,menu_quad && flat_quad,source_pid_,
         mono_quad_anchor_.Get(),emulator_window_capture_,
         submitted_menu_capture_serial_);
+    // Poll has chosen the latest predicted-time visual reticle. Compose it
+    // AFTER input without performing a second 10fps GDI desktop capture.
+    // Only the distinct presentation generation invalidates GPU image slots;
+    // the underlying screenshot Serial() remains the click-authorization key.
+    if(menu_quad)emulator_window_capture_.PreparePresentation();
     if(menu_quad!=emulator_window_on_quad_){
         emulator_window_on_quad_=menu_quad;
         std::cout<<"Model2VR XR pre-game Windows desktop 2D quad: "
@@ -679,11 +684,12 @@ void XrApp::draw_frame(XrTime display_time){
             // so returning from ROM menu to game cannot reuse stale pixels.
             // Each XR swapchain image is uploaded only on a source change.
             const auto upload_id=menu_quad
-                ? desktopmenu::MenuUploadToken(emulator_window_capture_.Serial())
+                ? desktopmenu::MenuUploadToken(
+                    emulator_window_capture_.PresentationSerial())
                 : frame_gate_.id();
             if(upload_id!=0u && chain.uploaded_frame_ids.at(index)!=upload_id){
                 const auto* upload_pixels=menu_quad
-                    ? emulator_window_capture_.Rgba().data()
+                    ? emulator_window_capture_.PresentationRgba().data()
                     : eye_frame_.eyes[eye].data();
                 if(swapchain_upload_format_==DXGI_FORMAT_B8G8R8A8_UNORM){
                     if(bgra_upload_scratch_.size()!=transport::kBytesPerEye)

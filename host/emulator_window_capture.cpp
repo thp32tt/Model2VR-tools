@@ -118,23 +118,8 @@ bool EmulatorWindowCapture::Capture(desktopmenu::DesktopBounds desktop){
     // the cursor lies OUTSIDE the small windowed emulator HWND.
     const bool drawn=desktopmenu::CaptureDesktopFrame(
         target,source,desktop,transport::kWidth,transport::kHeight);
-    // Quest controller reticle is XR-only and never warps the PC cursor
-    // unless the trigger targets a foreground emulator-owned pixel.
-    if(drawn && reticle_visible_ &&
-       reticle_x_<transport::kWidth && reticle_y_<transport::kHeight){
-        HPEN pen=CreatePen(PS_SOLID,2,RGB(0,255,255));
-        if(pen){
-            HGDIOBJ oldpen=SelectObject(target,pen);
-            if(oldpen && oldpen!=HGDI_ERROR){
-                const int x=static_cast<int>(reticle_x_);
-                const int y=static_cast<int>(reticle_y_);
-                MoveToEx(target,x-10,y,nullptr);LineTo(target,x+11,y);
-                MoveToEx(target,x,y-10,nullptr);LineTo(target,x,y+11);
-                SelectObject(target,oldpen);
-            }
-            DeleteObject(pen);
-        }
-    }
+    // Capture ONLY the 10fps raw Windows desktop. Overlaying the controller
+    // ray here would bake a stale 10fps crosshair into later XR frames.
     if(drawn){
         rgba_.resize(transport::kBytesPerEye);
         const auto* bgra=static_cast<const std::uint8_t*>(bits);
@@ -150,6 +135,30 @@ bool EmulatorWindowCapture::Capture(desktopmenu::DesktopBounds desktop){
     DeleteDC(target);
     ReleaseDC(nullptr,source);
     return drawn;
+}
+void EmulatorWindowCapture::PreparePresentation(){
+    if(!ready_ || !serial_ || rgba_.size()!=transport::kBytesPerEye)return;
+    const menureticle::State requested{
+        reticle_visible_,reticle_x_,reticle_y_};
+    if(serial_==prepared_capture_serial_ &&
+       menureticle::Same(requested,prepared_reticle_))return;
+
+    // Always start from UNMODIFIED screenshot bytes; never leave a previous
+    // reticle ghost behind when the ray moves between 10fps GDI captures.
+    // Click/source authority remains tied to Serial(), NOT this visual token.
+    prepared_overlay_=false;
+    if(requested.visible){
+        presentation_rgba_=rgba_;
+        prepared_overlay_=menureticle::PaintRgba(
+            presentation_rgba_.data(),presentation_rgba_.size(),
+            transport::kWidth,transport::kHeight,requested);
+    }
+    prepared_reticle_=requested;
+    prepared_capture_serial_=serial_;
+    // Monotonic per-host visual generation, independent of GDI capture
+    // serial. High-bit namespace remains reserved by MenuUploadToken().
+    ++presentation_serial_;
+    if(!presentation_serial_)++presentation_serial_;
 }
 bool EmulatorWindowCapture::CapturedClickGeometryLive() const noexcept {
     return click_geometry_valid_ && window_ &&

@@ -224,6 +224,14 @@ target_compile_features(model2_emulator_window_policy_x64_test PRIVATE cxx_std_2
 add_test(NAME model2_emulator_menu_2d_pre_game_policy_x64
          COMMAND model2_emulator_window_policy_x64_test)
 
+# Reticle must update at XR cadence independently of 10fps GDI capture,
+# without altering source screenshot serial or original game's IPC/FFB.
+add_executable(model2_menu_reticle_x64_test
+    ../tests/model2_menu_reticle_test.cpp)
+target_compile_features(model2_menu_reticle_x64_test PRIVATE cxx_std_20)
+add_test(NAME model2_quest_menu_reticle_visual_source_x64
+         COMMAND model2_menu_reticle_x64_test)
+
 add_executable(model2_menu_controller_ray_x64_test
     ../tests/model2_menu_controller_ray_test.cpp)
 target_compile_features(model2_menu_controller_ray_x64_test PRIVATE cxx_std_20)

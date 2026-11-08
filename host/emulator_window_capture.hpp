@@ -4,6 +4,7 @@
 // the host's existing 1024x1024 head-tracked OpenXR quad.
 #include <Windows.h>
 #include "../src/common/model2_emulator_window_policy.hpp"
+#include "../src/common/model2_menu_reticle.hpp"
 #include <cstdint>
 #include <vector>
 namespace m2vr::host {
@@ -15,6 +16,10 @@ public:
         source_bounds_={}; reticle_visible_=false;
         captured_window_rect_={}; captured_ms_=0u;
         click_geometry_valid_=false;
+        prepared_capture_serial_=0u;
+        prepared_reticle_={};
+        prepared_overlay_=false;
+        presentation_rgba_.clear();
     }
     // Controller input never touches the game; the Windows source HWND must
     // still be the selected, foreground emulator window when a click occurs.
@@ -33,6 +38,16 @@ public:
         return source_bounds_;
     }
     const std::vector<std::uint8_t>& Rgba() const noexcept {return rgba_;}
+    // Desktop screenshot serial remains authoritative for click admission.
+    // The visual-only reticle has a separate cache generation; it can move
+    // at XR cadence without re-running costly GDI desktop capture.
+    void PreparePresentation();
+    std::uint64_t PresentationSerial() const noexcept {
+        return presentation_serial_;
+    }
+    const std::vector<std::uint8_t>& PresentationRgba() const noexcept {
+        return prepared_overlay_?presentation_rgba_:rgba_;
+    }
 private:
     bool Capture(desktopmenu::DesktopBounds desktop);
     bool CapturedClickGeometryLive() const noexcept;
@@ -45,6 +60,11 @@ private:
     std::uint64_t serial_=0;
     std::uint64_t next_capture_ms_=0;
     std::vector<std::uint8_t> rgba_;
+    std::vector<std::uint8_t> presentation_rgba_;
+    std::uint64_t prepared_capture_serial_=0;
+    std::uint64_t presentation_serial_=0;
+    menureticle::State prepared_reticle_{};
+    bool prepared_overlay_=false;
     bool reticle_visible_=false;
     std::uint32_t reticle_x_=0,reticle_y_=0;
 };
