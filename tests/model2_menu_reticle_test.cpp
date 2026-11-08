@@ -97,8 +97,12 @@ int main(){
     constexpr auto small=PlanUpload(edge,55u,{true,2u,2u},1024u,1024u);
     static_assert(small.partial && small.dirty.left==0u);
     static_assert(small.dirty.right==13u && small.dirty.bottom==13u);
-    static_assert(!PlanUpload(edge,55u,{true,1023u,1023u},
-                              1024u,1024u).partial);
+    // Far corner moves are now two disjoint box writes, not full uploads.
+    constexpr auto corner=PlanUpload(edge,55u,{true,1023u,1023u},
+                                     1024u,1024u);
+    static_assert(corner.partial && corner.two_boxes);
+    static_assert(corner.dirty.Area()==121u);
+    static_assert(corner.second.Area()==121u);
     // A long controller sweep previously caused a FULL 4MiB upload;
     // old/new strokes are disjoint and should use TWO small D3D11 boxes.
     constexpr UploadSlot far_prior{65u,{true,100u,100u},true};
