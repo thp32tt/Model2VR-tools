@@ -50,5 +50,38 @@ int main(){
     auto no_hover=base;
     assert(PaintRgba(no_hover.data(),w*h*4u,w,h,{false,0,0}));
     assert(no_hover==base);
+    // XR-rate reticle movement must match FULL raw screenshot re-composition
+    // byte for byte while touching only the old crosshair footprint.
+    std::array<std::uint8_t,w*h*4u+2u> incremental=base;
+    State previous{};
+    constexpr std::array<State,12> sequence{{
+        {true,16,12}, {true,8,12}, {true,17,13},
+        {true,17,13}, {false,777,888}, {true,0,0},
+        {true,w-1u,h-1u}, {true,1,h-2u},
+        {false,0,0}, {true,31,0}, {true,12,23}, {false,0,0}
+    }};
+    for(const auto next:sequence){
+        if(previous.visible)
+            assert(RestoreRgba(incremental.data(),w*h*4u,
+                               base.data(),w*h*4u,w,h,previous));
+        assert(PaintRgba(incremental.data(),w*h*4u,w,h,next));
+        auto full_copy=base;
+        assert(PaintRgba(full_copy.data(),w*h*4u,w,h,next));
+        assert(incremental==full_copy);
+        assert(base[pos(16,12)]==17u);
+        previous=next;
+    }
+    assert(!RestoreRgba(nullptr,w*h*4u,base.data(),w*h*4u,
+                        w,h,{true,1,1}));
+    assert(!RestoreRgba(incremental.data(),w*h*4u,nullptr,w*h*4u,
+                        w,h,{true,1,1}));
+    assert(!RestoreRgba(incremental.data(),w*h*4u-1u,
+                        base.data(),w*h*4u,w,h,{true,1,1}));
+    assert(!RestoreRgba(incremental.data(),w*h*4u,
+                        base.data(),w*h*4u-1u,w,h,{true,1,1}));
+    assert(!RestoreRgba(incremental.data(),w*h*4u,
+                        base.data(),w*h*4u,w,h,{true,w,1}));
+    assert(!RestoreRgba(incremental.data(),w*h*4u,
+                        base.data(),w*h*4u,w,h,{true,1,h}));
     return 0;
 }

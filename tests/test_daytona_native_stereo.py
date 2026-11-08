@@ -1235,6 +1235,12 @@ class NativeStereoTest(unittest.TestCase):
                         host.index("desktopmenu::MenuUploadToken("))
         self.assertIn("prepared_overlay_=menureticle::PaintRgba(",capture)
         self.assertIn("presentation_rgba_=rgba_;",capture)
+        self.assertIn("const bool capture_changed=serial_!=prepared_capture_serial_",capture)
+        self.assertIn("menureticle::RestoreRgba(",capture)
+        self.assertLess(capture.index("menureticle::RestoreRgba("),
+                        capture.index("prepared_overlay_=menureticle::PaintRgba("))
+        self.assertIn("constexpr std::int64_t kRadius=10",(
+            ROOT/"src/common/model2_menu_reticle.hpp").read_text("utf-8"))
         self.assertIn("menureticle::NeedsRefresh(",capture)
         self.assertIn("serial_,prepared_capture_serial_,requested,prepared_reticle_",capture)
         self.assertIn("constexpr bool NeedsRefresh(",(

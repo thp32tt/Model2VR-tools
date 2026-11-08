@@ -143,16 +143,28 @@ void EmulatorWindowCapture::PreparePresentation(){
     if(!menureticle::NeedsRefresh(
            serial_,prepared_capture_serial_,requested,prepared_reticle_))return;
 
-    // Always start from UNMODIFIED screenshot bytes; never leave a previous
-    // reticle ghost behind when the ray moves between 10fps GDI captures.
+    // A genuinely NEW 10fps screenshot requires one full 4MiB copy.
+    // At XR cadence restore only the old crosshair footprint from the
+    // immutable screenshot, then paint the new pointer into the SAME buffer.
+    // This avoids a 4MiB CPU copy on every controller movement and leaves
+    // no old ghost, including when the hover disappears or hits an edge.
     // Click/source authority remains tied to Serial(), NOT this visual token.
-    prepared_overlay_=false;
-    if(requested.visible){
+    const bool capture_changed=serial_!=prepared_capture_serial_;
+    if(capture_changed || presentation_rgba_.size()!=rgba_.size()){
         presentation_rgba_=rgba_;
+    }else if(prepared_overlay_ &&
+             !menureticle::RestoreRgba(
+                 presentation_rgba_.data(),presentation_rgba_.size(),
+                 rgba_.data(),rgba_.size(),
+                 transport::kWidth,transport::kHeight,prepared_reticle_)){
+        // Defensive recovery only: never display a partially restored ray.
+        presentation_rgba_=rgba_;
+    }
+    prepared_overlay_=false;
+    if(requested.visible)
         prepared_overlay_=menureticle::PaintRgba(
             presentation_rgba_.data(),presentation_rgba_.size(),
             transport::kWidth,transport::kHeight,requested);
-    }
     prepared_reticle_=requested;
     prepared_capture_serial_=serial_;
     // Monotonic per-host visual generation, independent of GDI capture
