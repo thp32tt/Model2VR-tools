@@ -46,6 +46,17 @@ int main(){
         if(gate.Consume(0,1100000000LL) ||
            !menuray::FreshPressTime(1200000000LL,1100000000LL))
             return false;
+        // A malformed huge time must not overflow the high-water or
+        // cross-contaminate the other controller. An actual new XR
+        // session is the ONLY operation allowed to rebase the clocks.
+        gate.BeginSession();
+        if(!gate.Consume(0,std::numeric_limits<std::int64_t>::max()))
+            return false;
+        if(gate.Consume(0,std::numeric_limits<std::int64_t>::max()-1))
+            return false;
+        if(!gate.Consume(1,1))return false;
+        gate.BeginSession();
+        if(!gate.Consume(0,1))return false;
         return true;
     };
     static_assert(press_gate_contract());
