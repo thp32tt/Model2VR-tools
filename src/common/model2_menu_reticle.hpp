@@ -81,4 +81,53 @@ inline bool RestoreRgba(std::uint8_t* pixels,std::size_t bytes,
         }
     return true;
 }
+
+struct Rect {
+    std::uint32_t left=0,top=0,right=0,bottom=0;
+    constexpr bool Valid() const noexcept{return left<right && top<bottom;}
+    constexpr std::uint64_t Area() const noexcept{
+        return Valid()?std::uint64_t(right-left)*(bottom-top):0u;
+    }
+};
+// Bounds conservatively cover the previous/current 21x21 cyan crosshair.
+constexpr Rect ReticleBounds(State s,std::uint32_t w,std::uint32_t h) noexcept {
+    if(!s.visible || !w || !h || w>8192u || h>8192u ||
+       s.x>=w || s.y>=h)return {};
+    constexpr std::uint32_t r=10u;
+    return {s.x>r?s.x-r:0u,s.y>r?s.y-r:0u,
+            s.x+r+1u<w?s.x+r+1u:w,
+            s.y+r+1u<h?s.y+r+1u:h};
+}
+constexpr Rect ChangedBounds(State before,State after,
+                             std::uint32_t w,std::uint32_t h) noexcept {
+    const auto a=ReticleBounds(before,w,h);
+    const auto b=ReticleBounds(after,w,h);
+    if(!a.Valid())return b;
+    if(!b.Valid())return a;
+    return {a.left<b.left?a.left:b.left,
+            a.top<b.top?a.top:b.top,
+            a.right>b.right?a.right:b.right,
+            a.bottom>b.bottom?a.bottom:b.bottom};
+}
+// State is per actual acquired XR swapchain image, not global. Game pixels,
+// new screenshots, cleared images and invalid sessions never qualify.
+struct UploadSlot {
+    std::uint64_t capture_serial=0u;
+    State reticle{};
+    bool valid=false;
+};
+struct UploadPlan {
+    Rect dirty{};
+    bool partial=false;
+};
+constexpr UploadPlan PlanUpload(UploadSlot prior,
+                                 std::uint64_t captured,State current,
+                                 std::uint32_t w,std::uint32_t h) noexcept {
+    if(!prior.valid || !captured || prior.capture_serial!=captured ||
+       !w || !h || w>8192u || h>8192u)return {};
+    const auto dirty=ChangedBounds(prior.reticle,current,w,h);
+    // Avoid huge unions on far pointer moves: use safe full upload instead.
+    if(!dirty.Valid() || dirty.Area()>std::uint64_t(w)*h/4u)return {};
+    return {dirty,true};
+}
 } // namespace m2vr::menureticle

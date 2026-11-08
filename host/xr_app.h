@@ -34,6 +34,7 @@ struct EyeChain {
     std::vector<XrSwapchainImageD3D11KHR> images;
     std::vector<ComPtr<ID3D11RenderTargetView>> rtvs;
     std::vector<std::uint64_t> uploaded_frame_ids; // per XR image, per eye
+    std::vector<menureticle::UploadSlot> menu_upload_slots; // each XR image
     std::uint32_t width=0;
     std::uint32_t height=0;
 };

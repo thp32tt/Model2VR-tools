@@ -56,6 +56,7 @@ void XrApp::create_swapchains(){
             throw std::runtime_error("OpenXR returned zero swapchain images");
         chain.rtvs.resize(image_count);
         chain.uploaded_frame_ids.assign(image_count,0);
+        chain.menu_upload_slots.assign(image_count,{});
         for(std::size_t i=0;i<image_count;++i){
             auto* texture=chain.images[i].texture;
             if(!texture)throw std::runtime_error("OpenXR returned null D3D11 swapchain texture");
@@ -219,9 +220,12 @@ void XrApp::invalidate_source_session() noexcept {
     emulator_window_capture_.Invalidate();
     submitted_menu_capture_serial_=0u;
     emulator_window_on_quad_=false;
-    for(auto& chain:chains_)
+    for(auto& chain:chains_){
         std::fill(chain.uploaded_frame_ids.begin(),
                   chain.uploaded_frame_ids.end(),0u);
+        std::fill(chain.menu_upload_slots.begin(),
+                  chain.menu_upload_slots.end(),menureticle::UploadSlot{});
+    }
 }
 void XrApp::draw_frame(XrTime display_time){
     // Bind and monitor the ACTUAL original x86 game process. Named IPC
@@ -688,22 +692,54 @@ void XrApp::draw_frame(XrTime display_time){
                     emulator_window_capture_.PresentationSerial())
                 : frame_gate_.id();
             if(upload_id!=0u && chain.uploaded_frame_ids.at(index)!=upload_id){
-                const auto* upload_pixels=menu_quad
-                    ? emulator_window_capture_.PresentationRgba().data()
-                    : eye_frame_.eyes[eye].data();
+                const auto captured=menu_quad?emulator_window_capture_.Serial():0u;
+                const auto reticle=menu_quad
+                    ?emulator_window_capture_.PresentationReticle()
+                    :menureticle::State{};
+                const auto plan=menu_quad
+                    ?menureticle::PlanUpload(
+                        chain.menu_upload_slots.at(index),captured,reticle,
+                        chain.width,chain.height):menureticle::UploadPlan{};
+                const auto* pixels=menu_quad
+                    ?emulator_window_capture_.PresentationRgba().data()
+                    :eye_frame_.eyes[eye].data();
+                const auto box=plan.dirty;
+                const auto offset=(std::size_t(box.top)*chain.width+box.left)*4u;
                 if(swapchain_upload_format_==DXGI_FORMAT_B8G8R8A8_UNORM){
                     if(bgra_upload_scratch_.size()!=transport::kBytesPerEye)
                         bgra_upload_scratch_.resize(transport::kBytesPerEye);
-                    if(!hostcolor::ConvertRgbaToBgra(
-                           upload_pixels,transport::kBytesPerEye,
-                           bgra_upload_scratch_.data(),
-                           bgra_upload_scratch_.size()))
+                    const bool converted=plan.partial
+                        ?hostcolor::ConvertRgbaToBgraRect(
+                            pixels,transport::kBytesPerEye,
+                            bgra_upload_scratch_.data(),
+                            bgra_upload_scratch_.size(),chain.width,
+                            chain.height,box.left,box.top,box.right,box.bottom)
+                        :hostcolor::ConvertRgbaToBgra(
+                            pixels,transport::kBytesPerEye,
+                            bgra_upload_scratch_.data(),
+                            bgra_upload_scratch_.size());
+                    if(!converted)
                         throw std::runtime_error("OpenXR RGBA8 to BGRA8 swizzle rejected");
-                    upload_pixels=bgra_upload_scratch_.data();
+                    pixels=bgra_upload_scratch_.data();
                 }
-                context_->UpdateSubresource(chain.images.at(index).texture,0,nullptr,
-                      upload_pixels,transport::kPitch,0);
+                if(plan.partial){
+                    // A previous acquired image may hold a different ray.
+                    // Patch both the old and new ray only for the SAME GDI
+                    // screenshot. A nonzero-origin box uses full RowPitch.
+                    const D3D11_BOX dirty{
+                        box.left,box.top,0u,box.right,box.bottom,1u};
+                    context_->UpdateSubresource(
+                        chain.images.at(index).texture,0,&dirty,
+                        pixels+offset,transport::kPitch,0);
+                }else{
+                    context_->UpdateSubresource(
+                        chain.images.at(index).texture,0,nullptr,
+                        pixels,transport::kPitch,0);
+                }
                 chain.uploaded_frame_ids[index]=upload_id;
+                chain.menu_upload_slots[index]=menu_quad
+                    ?menureticle::UploadSlot{captured,reticle,true}
+                    :menureticle::UploadSlot{};
             }
         }else{
             // Absent/stale producer: clear and invalidate each XR image slot,
@@ -713,6 +749,7 @@ void XrApp::draw_frame(XrTime display_time){
             };
             context_->ClearRenderTargetView(chain.rtvs.at(index).Get(),color);
             chain.uploaded_frame_ids[index]=0;
+            chain.menu_upload_slots[index]={};
         }
         XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         check(xrReleaseSwapchainImage(chain.handle,&release),"release swapchain image");

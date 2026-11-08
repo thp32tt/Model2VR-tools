@@ -31,4 +31,27 @@ inline bool ConvertRgbaToBgra(const std::uint8_t* source,std::size_t bytes,
     }
     return true;
 }
+
+ // Convert only the requested box inside a full-stride RGBA/BGRA image.
+ // The src/dst buffers remain separate; untouched destination bytes persist.
+inline bool ConvertRgbaToBgraRect(const std::uint8_t* source,
+    std::size_t source_capacity,std::uint8_t* destination,
+    std::size_t destination_capacity,std::uint32_t width,
+    std::uint32_t height,std::uint32_t left,std::uint32_t top,
+    std::uint32_t right,std::uint32_t bottom) noexcept {
+    if(!source || !destination || source==destination ||
+       !width || !height || width>8192u || height>8192u ||
+       left>=right || top>=bottom || right>width || bottom>height ||
+       std::uint64_t(width)*height*4u>source_capacity ||
+       std::uint64_t(width)*height*4u>destination_capacity)return false;
+    for(std::uint32_t y=top;y<bottom;++y)
+        for(std::uint32_t x=left;x<right;++x){
+            const auto at=(std::size_t(y)*width+x)*4u;
+            destination[at+0u]=source[at+2u];
+            destination[at+1u]=source[at+1u];
+            destination[at+2u]=source[at+0u];
+            destination[at+3u]=source[at+3u];
+        }
+    return true;
+}
 } // namespace m2vr::hostcolor

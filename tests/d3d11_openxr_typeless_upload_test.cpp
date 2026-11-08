@@ -94,6 +94,34 @@ int main(){
     context->Unmap(staging.Get(),0);
     REQUIRE(same);
 
+
+    // D3D11 nonzero-origin UpdateSubresource box: pSrcData begins at the
+    // changed rectangle, while row pitch remains the full original image.
+    const D3D11_BOX dirty_box{1u,1u,0u,3u,3u,1u};
+    auto changed_rgba=pixels;
+    for(unsigned y=1u;y<3u;++y)
+        for(unsigned x=1u;x<3u;++x){
+            const auto at=(y*4u+x)*4u;
+            changed_rgba[at]=233u;changed_rgba[at+1u]=77u;
+            changed_rgba[at+2u]=14u;changed_rgba[at+3u]=255u;
+        }
+    const auto dirty_offset=(1u*4u+1u)*4u;
+    context->UpdateSubresource(texture.Get(),0,&dirty_box,
+        changed_rgba.data()+dirty_offset,16u,0u);
+    context->CopyResource(staging.Get(),texture.Get());
+    REQUIRE_HR(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped));
+    same=true;
+    for(unsigned y=0;y<4u && same;++y){
+        const auto* row=static_cast<const std::uint8_t*>(mapped.pData)+
+                        static_cast<std::size_t>(y)*mapped.RowPitch;
+        for(unsigned b=0;b<16u;++b)
+            if(row[b]!=changed_rgba[static_cast<std::size_t>(y)*16u+b]){
+                same=false;break;
+            }
+    }
+    context->Unmap(staging.Get(),0);
+    REQUIRE(same);
+
     // Confirm the resource really remained typeless while the view was typed.
     D3D11_TEXTURE2D_DESC observed{};
     texture->GetDesc(&observed);
@@ -145,6 +173,30 @@ int main(){
     REQUIRE(observed.Format==DXGI_FORMAT_B8G8R8A8_TYPELESS);
     bgra_rtv->GetDesc(&observed_rtv);
     REQUIRE(observed_rtv.Format==DXGI_FORMAT_B8G8R8A8_UNORM);
+
+    // BGRA8 native runtime: only the box is converted. WARP validates
+    // untouched pixels and the same nonzero source pointer/row stride.
+    auto changed_bgra=bgra_upload;
+    REQUIRE(m2vr::hostcolor::ConvertRgbaToBgraRect(
+        changed_rgba.data(),changed_rgba.size(),
+        changed_bgra.data(),changed_bgra.size(),
+        4u,4u,1u,1u,3u,3u));
+    context->UpdateSubresource(bgra_texture.Get(),0,&dirty_box,
+        changed_bgra.data()+dirty_offset,16u,0u);
+    context->CopyResource(bgra_staging.Get(),bgra_texture.Get());
+    REQUIRE_HR(context->Map(bgra_staging.Get(),0,D3D11_MAP_READ,0,&mapped));
+    same=true;
+    for(unsigned y=0;y<4u && same;++y){
+        const auto* row=static_cast<const std::uint8_t*>(mapped.pData)+
+                        static_cast<std::size_t>(y)*mapped.RowPitch;
+        for(unsigned b=0;b<16u;++b)
+            if(row[b]!=changed_bgra[static_cast<std::size_t>(y)*16u+b]){
+                same=false;break;
+            }
+    }
+    context->Unmap(bgra_staging.Get(),0);
+    REQUIRE(same);
+
     // A typed BGRA RTV must write red in the physical *third* byte,
     // not silently interpret our RGBA pixels as blue on the Quest.
     const float pure_red[4]={1.f,0.f,0.f,1.f};

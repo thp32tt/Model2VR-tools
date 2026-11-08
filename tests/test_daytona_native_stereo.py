@@ -1248,6 +1248,19 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("++presentation_serial_;",capture)
         self.assertIn("return prepared_overlay_?presentation_rgba_:rgba_;",header)
         self.assertIn("model2_menu_reticle_x64_test",cmake)
+        self.assertIn("menureticle::PlanUpload(",host)
+        self.assertIn("chain.menu_upload_slots.at(index)",host)
+        self.assertIn("chain.menu_upload_slots.assign(image_count,{})",host)
+        self.assertIn("chain.menu_upload_slots[index]={};",host)
+        self.assertIn("std::fill(chain.menu_upload_slots.begin()",host)
+        self.assertIn("hostcolor::ConvertRgbaToBgraRect(",host)
+        self.assertIn("const D3D11_BOX dirty{",host)
+        self.assertIn("pixels+offset,transport::kPitch,0",host)
+        self.assertIn("emulator_window_capture_.PresentationReticle()",host)
+        self.assertIn("constexpr UploadPlan PlanUpload(",(
+            ROOT/"src/common/model2_menu_reticle.hpp").read_text("utf-8"))
+        self.assertIn("const D3D11_BOX dirty_box{",(
+            ROOT/"tests/d3d11_openxr_typeless_upload_test.cpp").read_text("utf-8"))
         self.assertNotIn("if(drawn && reticle_visible_",capture)
         self.assertNotIn("SetControllerReticle(true,hover.texture_x",capture)
         # Controller movement is NOT a new pictured desktop source. The

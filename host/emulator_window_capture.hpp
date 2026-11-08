@@ -45,6 +45,10 @@ public:
     std::uint64_t PresentationSerial() const noexcept {
         return presentation_serial_;
     }
+    // Return what was really composited, never an invalid requested ray.
+    menureticle::State PresentationReticle() const noexcept {
+        return prepared_overlay_?prepared_reticle_:menureticle::State{};
+    }
     const std::vector<std::uint8_t>& PresentationRgba() const noexcept {
         return prepared_overlay_?presentation_rgba_:rgba_;
     }

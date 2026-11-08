@@ -83,5 +83,28 @@ int main(){
                         base.data(),w*h*4u,w,h,{true,w,1}));
     assert(!RestoreRgba(incremental.data(),w*h*4u,
                         base.data(),w*h*4u,w,h,{true,1,h}));
+
+    // XR round-robin image caches may be several reticle poses behind.
+    constexpr UploadSlot prior{48u,{true,16,12},true};
+    constexpr auto near=PlanUpload(prior,48u,{true,8,12},1024u,1024u);
+    static_assert(near.partial && near.dirty.left==0u);
+    static_assert(near.dirty.top==2u && near.dirty.right==27u);
+    static_assert(near.dirty.bottom==23u && near.dirty.Area()==567u);
+    static_assert(!PlanUpload(prior,49u,{true,8,12},1024u,1024u).partial);
+    static_assert(!PlanUpload({},48u,{true,8,12},1024u,1024u).partial);
+    static_assert(!PlanUpload(prior,0u,{true,8,12},1024u,1024u).partial);
+    constexpr UploadSlot edge{55u,{true,0u,0u},true};
+    constexpr auto small=PlanUpload(edge,55u,{true,2u,2u},1024u,1024u);
+    static_assert(small.partial && small.dirty.left==0u);
+    static_assert(small.dirty.right==13u && small.dirty.bottom==13u);
+    static_assert(!PlanUpload(edge,55u,{true,1023u,1023u},
+                              1024u,1024u).partial);
+    constexpr auto hide=PlanUpload(edge,55u,{},1024u,1024u);
+    static_assert(hide.partial && hide.dirty.Area()==121u);
+    static_assert(!PlanUpload(
+        UploadSlot{44u,{},true},44u,{},1024u,1024u).partial);
+    static_assert(!PlanUpload(
+        UploadSlot{44u,{true,1u,1u},false},44u,{true,2u,2u},
+        1024u,1024u).partial);
     return 0;
 }
