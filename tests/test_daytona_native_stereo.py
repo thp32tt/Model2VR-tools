@@ -1369,7 +1369,11 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("flat_quad?1u:chains_.size()",host)
         self.assertIn("original_mono_quad=picture==desktopmenu::Source::GameMono2D",host)
         self.assertIn("menu_quad=picture==desktopmenu::Source::EmulatorWindow2D",host)
-        self.assertIn("desktopmenu::MenuUploadToken(emulator_window_capture_.Serial())",host)
+        # GPU upload key now includes live Quest reticle state, while
+        # Windows screenshot Serial() is separately retained for click proof.
+        self.assertIn("desktopmenu::MenuUploadToken(",host)
+        self.assertIn("emulator_window_capture_.PresentationSerial()",host)
+        self.assertIn("?emulator_window_capture_.Serial():0u;",host)
         self.assertIn("emulator_window_capture_.Update(source_pid_)",host)
         self.assertIn("game_picture,transport::IsStereoGame(frame_gate_.kind()),window_captured",host)
         self.assertIn("flat_quad && mono_quad_anchor_.Valid()",host)
