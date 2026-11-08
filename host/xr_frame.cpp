@@ -926,6 +926,10 @@ void XrApp::run(int max_frames){
                     XrSessionBeginInfo begin{XR_TYPE_SESSION_BEGIN_INFO};
                     begin.primaryViewConfigurationType=XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
                     check(xrBeginSession(session_,&begin),"begin XR session");
+                    // New XR session may have a different XrTime epoch.
+                    // Do not carry prior session's input-event high-water,
+                    // but never reset it on ordinary menu/foreground loss.
+                    menu_controller_.BeginSessionInput();
                     // Sample AFTER the new session starts but BEFORE any
                     // tracked eye pose is published to original Win32 D3D9.
                     LARGE_INTEGER session_started{};

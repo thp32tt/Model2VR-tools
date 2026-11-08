@@ -19,6 +19,26 @@ int main(){
     static_assert(menuray::FreshPressTime(
         std::numeric_limits<std::int64_t>::max(),
         std::numeric_limits<std::int64_t>::max()-150000000));
+    // A duplicated or out-of-order trigger timestamp from the SAME hand
+    // must never produce a second desktop mouse click. Each hand has an
+    // independent event timeline, and only xrBeginSession resets the gate.
+    constexpr auto press_gate_contract=[]() constexpr {
+        menuray::PressEventGate gate{};
+        if(!gate.Consume(0,850000000LL))return false;
+        if(gate.Consume(0,850000000LL))return false;
+        if(gate.Consume(0,849999999LL))return false;
+        if(!gate.Consume(1,850000000LL))return false;
+        if(!gate.Consume(0,900000000LL))return false;
+        if(gate.Consume(0,900000000LL))return false;
+        if(gate.Consume(0,0) || gate.Consume(0,-1))return false;
+        if(gate.Consume(2,900000001LL))return false;
+        if(gate.Consume(0,850000000LL))return false;
+        gate.BeginSession();
+        if(!gate.Consume(0,850000000LL) ||
+           !gate.Consume(1,850000000LL))return false;
+        return true;
+    };
+    static_assert(press_gate_contract());
     static_assert(menuray::PickHand(false,false,true,true)==-1);
     static_assert(menuray::PickHand(true,false,true,false)==0);
     static_assert(menuray::PickHand(false,true,false,true)==1);

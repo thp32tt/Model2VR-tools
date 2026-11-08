@@ -1269,6 +1269,25 @@ class NativeStereoTest(unittest.TestCase):
             ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8"))
         self.assertIn("?emulator_window_capture_.Serial():0u;",host)
 
+    def test_quest_menu_trigger_is_single_use_per_xr_session(self):
+        policy=(ROOT/"src/common/model2_menu_controller_ray.hpp").read_text("utf-8")
+        impl=(ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8")
+        header=(ROOT/"host/emulator_menu_controller.hpp").read_text("utf-8")
+        host=(ROOT/"host/xr_frame.cpp").read_text("utf-8")
+        native=(ROOT/"tests/model2_menu_controller_ray_test.cpp").read_text("utf-8")
+        self.assertIn("class PressEventGate final",policy)
+        self.assertIn("event_ns<=last_event_ns_[hand]",policy)
+        self.assertIn("last_event_ns_[hand]=event_ns;",policy)
+        self.assertIn("press_events_.Consume(",impl)
+        self.assertLess(impl.index("press_events_.Consume("),
+                        impl.index("press_hits[hand]=button.lastChangeTime"))
+        self.assertIn("press_events_.BeginSession();",impl)
+        self.assertIn("void BeginSessionInput() noexcept",header)
+        self.assertIn("menu_controller_.BeginSessionInput();",host)
+        self.assertLess(host.index("check(xrBeginSession(session_,&begin)"),
+                        host.index("menu_controller_.BeginSessionInput();"))
+        self.assertIn("static_assert(press_gate_contract());",native)
+
     def test_quest_menu_ray_cannot_inject_into_game_or_foreign_window(self):
         controller=(ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8")
         capture=(ROOT/"host/emulator_window_capture.cpp").read_text("utf-8")

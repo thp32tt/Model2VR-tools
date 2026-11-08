@@ -4,6 +4,8 @@
 // never grants any original Daytona World3D pass or game input authority.
 #include "daytona_mono_quad_anchor.hpp"
 #include "model2_emulator_window_policy.hpp"
+#include <array>
+#include <cstddef>
 #include <cmath>
 #include <cstdint>
 namespace m2vr::menuray {
@@ -25,6 +27,25 @@ constexpr bool FreshPressTime(std::int64_t predicted_ns,
            predicted_ns>=changed_ns &&
            predicted_ns-changed_ns<=kMaxPressLagNs;
 }
+// An OpenXR runtime may return an old isActive/changedSinceLastSync edge
+// during a temporary action resync. One already observed lastChangeTime
+// must never generate a SECOND Windows mouse click. Store the accepted
+// timestamp for each controller independently for the entire XR session,
+// including clicks whose target is rejected by the existing HWND gates.
+// Only the real XR_SESSION_STATE_READY -> xrBeginSession transition resets
+// it, because an OpenXR runtime may change XrTime's session baseline.
+class PressEventGate final {
+public:
+    constexpr void BeginSession() noexcept {last_event_ns_={0,0};}
+    constexpr bool Consume(std::size_t hand,std::int64_t event_ns) noexcept {
+        if(hand>=last_event_ns_.size() || event_ns<=0 ||
+           event_ns<=last_event_ns_[hand])return false;
+        last_event_ns_[hand]=event_ns;
+        return true;
+    }
+private:
+    std::array<std::int64_t,2> last_event_ns_{};
+};
 constexpr int PickHand(bool left_hit,bool right_hit,
                        bool left_click,bool right_click) noexcept {
     if(right_hit && right_click)return 1;
