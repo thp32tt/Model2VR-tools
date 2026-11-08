@@ -1280,6 +1280,8 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("last_event_ns_[hand]=event_ns;",policy)
         self.assertIn("press_events_.Consume(",impl)
         self.assertLess(impl.index("press_events_.Consume("),
+                        impl.index("menuray::FreshPressTime("))
+        self.assertLess(impl.index("press_events_.Consume("),
                         impl.index("press_hits[hand]=button.lastChangeTime"))
         self.assertIn("press_events_.BeginSession();",impl)
         self.assertIn("void BeginSessionInput() noexcept",header)
