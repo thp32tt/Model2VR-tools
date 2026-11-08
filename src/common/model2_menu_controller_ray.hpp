@@ -14,6 +14,17 @@ struct Ray {
 // Match each trigger to ITS OWN tracked ray. A left-trigger selection must
 // never be stolen by an idle right-hand hover (or vice versa). Right hand
 // wins ties only if both hands actually click in the same XR sync.
+// A boolean trigger edge occurred at XrActionStateBoolean::lastChangeTime.
+// Reject zero, future and stale action timestamps instead of aiming a delayed
+// click with the *predicted display* pose at a different menu button.
+// XrTime is signed nanoseconds; ordered positive values make subtraction safe.
+constexpr bool FreshPressTime(std::int64_t predicted_ns,
+                              std::int64_t changed_ns) noexcept {
+    constexpr std::int64_t kMaxPressLagNs=150000000; // 150ms XR sync lease
+    return predicted_ns>0 && changed_ns>0 &&
+           predicted_ns>=changed_ns &&
+           predicted_ns-changed_ns<=kMaxPressLagNs;
+}
 constexpr int PickHand(bool left_hit,bool right_hit,
                        bool left_click,bool right_click) noexcept {
     if(right_hit && right_click)return 1;

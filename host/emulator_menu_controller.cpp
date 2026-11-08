@@ -157,9 +157,24 @@ void EmulatorMenuController::Poll(
         XrActionStatePose pose{XR_TYPE_ACTION_STATE_POSE};
         if(XR_FAILED(xrGetActionStatePose(session,&state_get,&pose)) ||
            !pose.isActive)continue;
+        // The trigger edge and its aim ray MUST refer to the same instant.
+        // Using predicted_time for an older press can select a different
+        // button when the hand moves between xrSyncActions and display.
+        state_get.action=select_;
+        XrActionStateBoolean button{XR_TYPE_ACTION_STATE_BOOLEAN};
+        const bool press_edge=
+            XR_SUCCEEDED(xrGetActionStateBoolean(session,&state_get,&button)) &&
+            button.isActive && button.currentState && button.changedSinceLastSync;
+        const bool press_fresh=press_edge && menuray::FreshPressTime(
+            static_cast<std::int64_t>(predicted_time),
+            static_cast<std::int64_t>(button.lastChangeTime));
+        // Keep the reticle responsive at predicted display time without a
+        // click. For a fresh rising edge, locate the physical ray AT the
+        // action event time; an unavailable historical pose blocks input.
+        const XrTime aim_time=press_fresh?button.lastChangeTime:predicted_time;
         XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
         if(XR_FAILED(xrLocateSpace(aim_spaces_[hand],local_space,
-                                    predicted_time,&location)))continue;
+                                    aim_time,&location)))continue;
         constexpr XrSpaceLocationFlags tracked=
             XR_SPACE_LOCATION_POSITION_VALID_BIT |
             XR_SPACE_LOCATION_ORIENTATION_VALID_BIT |
@@ -177,11 +192,7 @@ void EmulatorMenuController::Poll(
             transport::kWidth,transport::kHeight);
         if(!hit.valid)continue;
         hits[hand]=hit;
-        state_get.action=select_;
-        XrActionStateBoolean button{XR_TYPE_ACTION_STATE_BOOLEAN};
-        click_edges[hand]=
-            XR_SUCCEEDED(xrGetActionStateBoolean(session,&state_get,&button)) &&
-            button.isActive && button.currentState && button.changedSinceLastSync;
+        click_edges[hand]=press_fresh;
     }
     const int hand=menuray::PickHand(
         hits[0].valid,hits[1].valid,click_edges[0],click_edges[1]);

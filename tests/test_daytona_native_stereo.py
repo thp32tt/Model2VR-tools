@@ -1232,6 +1232,17 @@ class NativeStereoTest(unittest.TestCase):
         self.assertIn("xrSyncActions(session,&sync)",controller)
         self.assertIn("xrLocateSpace(aim_spaces_[hand],local_space",controller)
         self.assertIn("button.changedSinceLastSync",controller)
+        # The click ray is located at the XR action edge's own timestamp.
+        # No stale boolean edge may borrow the future predicted hover ray.
+        self.assertIn("menuray::FreshPressTime(",controller)
+        self.assertIn("button.lastChangeTime",controller)
+        self.assertIn("const XrTime aim_time=press_fresh?button.lastChangeTime:predicted_time;",controller)
+        self.assertIn("aim_time,&location)",controller)
+        self.assertIn("click_edges[hand]=press_fresh",controller)
+        self.assertIn("predicted_ns-changed_ns<=kMaxPressLagNs",(
+            ROOT/"src/common/model2_menu_controller_ray.hpp").read_text("utf-8"))
+        self.assertLess(controller.index("xrGetActionStateBoolean(session,&state_get,&button)"),
+                        controller.index("xrLocateSpace(aim_spaces_[hand],local_space"))
         self.assertIn("menuray::PickHand(",controller)
         self.assertIn("touch_button_fallback=!touch_trigger",controller)
         self.assertIn('"/user/hand/right/input/a/click"',controller)

@@ -4,6 +4,21 @@
 #include <limits>
 using namespace m2vr;
 int main(){
+    // OpenXR XrTime is signed nanoseconds. Exactly 150ms is accepted;
+    // stale/reordered/unknown presses must not inject a desktop click.
+    static_assert(menuray::FreshPressTime(1000000000LL,1000000000LL));
+    static_assert(menuray::FreshPressTime(1000000000LL,850000000LL));
+    static_assert(!menuray::FreshPressTime(1000000000LL,849999999LL));
+    static_assert(!menuray::FreshPressTime(1000000000LL,1000000001LL));
+    static_assert(!menuray::FreshPressTime(1000000000LL,0));
+    static_assert(!menuray::FreshPressTime(0,0));
+    static_assert(!menuray::FreshPressTime(-1,1));
+    static_assert(!menuray::FreshPressTime(1,-1));
+    static_assert(!menuray::FreshPressTime(
+        std::numeric_limits<std::int64_t>::max(),1));
+    static_assert(menuray::FreshPressTime(
+        std::numeric_limits<std::int64_t>::max(),
+        std::numeric_limits<std::int64_t>::max()-150000000));
     static_assert(menuray::PickHand(false,false,true,true)==-1);
     static_assert(menuray::PickHand(true,false,true,false)==0);
     static_assert(menuray::PickHand(false,true,false,true)==1);
