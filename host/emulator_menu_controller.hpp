@@ -16,7 +16,10 @@ public:
     bool Active() const noexcept {return active_;}
     bool RayOnMenu() const noexcept {return ray_on_menu_;}
     // The host calls this ONLY after a successful XR session begin.
-    void BeginSessionInput() noexcept {press_events_.BeginSession();}
+    void BeginSessionInput() noexcept {
+        press_events_.BeginSession();
+        click_arm_.Reset();
+    }
     void Poll(XrSession session,XrSpace local_space,XrTime predicted_time,
               bool focused,bool menu_visible,std::uint32_t pid,
               const monoquad::Placement& quad,EmulatorWindowCapture& capture,
@@ -31,5 +34,6 @@ private:
     bool active_=false;
     bool ray_on_menu_=false;
     menuray::PressEventGate press_events_{};
+    menuray::MenuClickArmGate click_arm_{};
 };
 } // namespace m2vr::host

@@ -117,6 +117,7 @@ void EmulatorMenuController::Shutdown() noexcept {
     active_=false;
     ray_on_menu_=false;
     press_events_.BeginSession();
+    click_arm_.Reset();
     for(auto& space:aim_spaces_){
         if(space!=XR_NULL_HANDLE)xrDestroySpace(space);
         space=XR_NULL_HANDLE;
@@ -136,15 +137,38 @@ void EmulatorMenuController::Poll(
     std::uint64_t submitted_menu_capture_serial){
     capture.SetControllerReticle(false,0,0);
     ray_on_menu_=false;
-    if(!active_ || !focused)return;
+    if(!active_ || !focused){
+        click_arm_.Reset();
+        return;
+    }
     const XrActiveActionSet set{set_,XR_NULL_PATH};
     XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};
     sync.countActiveActionSets=1;
     sync.activeActionSets=&set;
-    if(XR_FAILED(xrSyncActions(session,&sync)))return;
-    if(!menu_visible || !capture.Ready() || !pid || !capture.Window())return;
+    if(XR_FAILED(xrSyncActions(session,&sync))){
+        click_arm_.Reset();
+        return;
+    }
     const auto desktop=capture.SourceBounds();
-    if(!desktop.Valid())return;
+    if(!menu_visible || !capture.Ready() || !pid || !capture.Window() ||
+       !desktop.Valid()){
+        // The menu is not presently click-authorized. Disarm both hands,
+        // and still consume any positive XR edges while off-menu so an old
+        // trigger cannot be replayed after the desktop quad reappears.
+        click_arm_.Reset();
+        for(std::size_t hand=0;hand<hand_paths_.size();++hand){
+            XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};
+            get.action=select_;
+            get.subactionPath=hand_paths_[hand];
+            XrActionStateBoolean button{XR_TYPE_ACTION_STATE_BOOLEAN};
+            if(XR_SUCCEEDED(xrGetActionStateBoolean(session,&get,&button)) &&
+               button.isActive && button.currentState &&
+               button.changedSinceLastSync)
+                (void)press_events_.Consume(
+                    hand,static_cast<std::int64_t>(button.lastChangeTime));
+        }
+        return;
+    }
     const auto width=desktop.width;
     const auto height=desktop.height;
     // The visual reticle follows the predicted display pose even on a
@@ -176,23 +200,30 @@ void EmulatorMenuController::Poll(
         state_get.action=aim_;
         state_get.subactionPath=hand_paths_[hand];
         XrActionStatePose pose{XR_TYPE_ACTION_STATE_POSE};
-        if(XR_FAILED(xrGetActionStatePose(session,&state_get,&pose)) ||
-           !pose.isActive)continue;
+        const bool pose_active=
+            XR_SUCCEEDED(xrGetActionStatePose(session,&state_get,&pose)) &&
+            pose.isActive;
         state_get.action=select_;
         XrActionStateBoolean button{XR_TYPE_ACTION_STATE_BOOLEAN};
-        const bool press_edge=
-            XR_SUCCEEDED(xrGetActionStateBoolean(session,&state_get,&button)) &&
-            button.isActive && button.currentState && button.changedSinceLastSync;
-        // Consume EVERY positive press edge before testing its freshness.
-        // Even a future-dated or stale timestamp must never become a new
-        // click if a runtime repeats the SAME edge on a later XR sync.
-        // Distinct later edges remain independent for each controller.
+        const bool button_available=
+            XR_SUCCEEDED(xrGetActionStateBoolean(session,&state_get,&button));
+        const bool press_edge=button_available && button.isActive &&
+            button.currentState && button.changedSinceLastSync;
+        // Consume every positive XR edge, INCLUDING when the tracking
+        // pose was lost or the hand has not yet been armed by a release.
+        // A rejected old/future timestamp can never become fresh on replay.
         const bool press_observed=press_edge &&
             press_events_.Consume(static_cast<std::size_t>(hand),
                                   static_cast<std::int64_t>(button.lastChangeTime));
-        const bool press_fresh=press_observed && menuray::FreshPressTime(
-            static_cast<std::int64_t>(predicted_time),
-            static_cast<std::int64_t>(button.lastChangeTime));
+        const bool click_armed=click_arm_.Observe(
+            static_cast<std::size_t>(hand),pose_active,
+            button_available && button.isActive,
+            button.currentState!=XR_FALSE,press_edge);
+        const bool press_fresh=press_observed && click_armed &&
+            menuray::FreshPressTime(
+                static_cast<std::int64_t>(predicted_time),
+                static_cast<std::int64_t>(button.lastChangeTime));
+        if(!pose_active)continue;
         hover_hits[hand]=locate_hit(hand,predicted_time);
         // Invalid/untracked historical pose MUST NOT fall back to the
         // visually current ray for a click. Equal timestamps may reuse it.

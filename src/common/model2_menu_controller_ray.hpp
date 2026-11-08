@@ -46,6 +46,36 @@ public:
 private:
     std::array<std::int64_t,2> last_event_ns_{};
 };
+// Menu activation is a RELEASE-TO-ARM gesture, not merely a fresh event.
+// A held trigger present when a menu appears or after tracking/focus loss
+// must not click a newly exposed desktop button. Both hands must observe
+// their own active, tracked UP state on the actual visible menu before an
+// edge can cause another Win32 click. A valid press consumes its arm even
+// if its pixel/HWND/submitted-screenshot checks later block the click.
+// This is separate from the per-session monotonically increasing event
+// timestamp gate; no new World3D/game input authority is created.
+class MenuClickArmGate final {
+public:
+    constexpr void Reset() noexcept {released_on_menu_={false,false};}
+    constexpr bool Observe(std::size_t hand,bool pose_active,
+                           bool action_active,bool pressed,
+                           bool press_edge) noexcept {
+        if(hand>=released_on_menu_.size())return false;
+        if(!pose_active || !action_active){
+            released_on_menu_[hand]=false;
+            return false;
+        }
+        if(!pressed){
+            released_on_menu_[hand]=true;
+            return false;
+        }
+        if(!press_edge || !released_on_menu_[hand])return false;
+        released_on_menu_[hand]=false;
+        return true;
+    }
+private:
+    std::array<bool,2> released_on_menu_{};
+};
 constexpr int PickHand(bool left_hit,bool right_hit,
                        bool left_click,bool right_click) noexcept {
     if(right_hit && right_click)return 1;

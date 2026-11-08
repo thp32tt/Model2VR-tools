@@ -60,6 +60,37 @@ int main(){
         return true;
     };
     static_assert(press_gate_contract());
+    // A changedSinceLastSync edge alone is insufficient to click. The
+    // actual active/tracked controller must have released IN this menu
+    // epoch first. After one press the hand must release again, even if
+    // SendInput fails, and the other hand has independent arming state.
+    constexpr auto click_arm_contract=[]() constexpr {
+        menuray::MenuClickArmGate gate{};
+        if(gate.Observe(0,true,true,true,true))return false; // held on entry
+        if(gate.Observe(0,true,true,true,true))return false; // repeat
+        if(gate.Observe(0,true,true,false,false))return false;
+        if(!gate.Observe(0,true,true,true,true))return false;
+        if(gate.Observe(0,true,true,true,true))return false; // not re-armed
+        if(gate.Observe(1,true,true,true,true))return false; // hand 1 independent
+        if(gate.Observe(1,true,true,false,false))return false;
+        if(!gate.Observe(1,true,true,true,true))return false;
+        if(gate.Observe(2,true,true,false,false))return false; // bad hand
+        if(gate.Observe(0,true,true,false,false))return false;
+        if(gate.Observe(0,false,true,true,true))return false; // pose lost
+        if(gate.Observe(0,true,true,true,true))return false; // held on recovery
+        if(gate.Observe(0,true,false,false,false))return false; // action inactive
+        if(gate.Observe(0,true,true,true,true))return false;
+        if(gate.Observe(0,true,true,false,false))return false;
+        if(!gate.Observe(0,true,true,true,true))return false; // restored
+        if(gate.Observe(1,true,true,false,false))return false;
+        gate.Reset(); // hidden menu, unfocused XR, or new XR session
+        if(gate.Observe(0,true,true,true,true))return false;
+        if(gate.Observe(1,true,true,true,true))return false;
+        if(gate.Observe(0,true,true,false,false))return false;
+        if(!gate.Observe(0,true,true,true,true))return false;
+        return true;
+    };
+    static_assert(click_arm_contract());
     static_assert(menuray::PickHand(false,false,true,true)==-1);
     static_assert(menuray::PickHand(true,false,true,false)==0);
     static_assert(menuray::PickHand(false,true,false,true)==1);

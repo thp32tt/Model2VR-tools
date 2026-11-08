@@ -1290,6 +1290,29 @@ class NativeStereoTest(unittest.TestCase):
                         host.index("menu_controller_.BeginSessionInput();"))
         self.assertIn("static_assert(press_gate_contract());",native)
 
+    def test_quest_menu_release_to_arm_has_off_menu_and_tracking_gates(self):
+        policy=(ROOT/"src/common/model2_menu_controller_ray.hpp").read_text("utf-8")
+        impl=(ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8")
+        header=(ROOT/"host/emulator_menu_controller.hpp").read_text("utf-8")
+        native=(ROOT/"tests/model2_menu_controller_ray_test.cpp").read_text("utf-8")
+        self.assertIn("class MenuClickArmGate final",policy)
+        self.assertIn("released_on_menu_[hand]=false;",policy)
+        self.assertIn("menuray::MenuClickArmGate click_arm_",header)
+        self.assertIn("click_arm_.Reset();",header)
+        self.assertIn("click_arm_.Reset();",impl)
+        self.assertIn("const bool pose_active=",impl)
+        self.assertIn("const bool button_available=",impl)
+        self.assertIn("const bool click_armed=click_arm_.Observe(",impl)
+        self.assertIn("const bool press_fresh=press_observed && click_armed",impl)
+        self.assertIn("const bool press_observed=press_edge &&",impl)
+        self.assertIn("if(!menu_visible || !capture.Ready()",impl)
+        self.assertIn("still consume any positive XR edges while off-menu",impl)
+        self.assertLess(impl.index("press_events_.Consume("),
+                        impl.index("menuray::FreshPressTime("))
+        self.assertLess(impl.index("const bool click_armed="),
+                        impl.index("if(press_fresh){"))
+        self.assertIn("static_assert(click_arm_contract());",native)
+
     def test_quest_menu_ray_cannot_inject_into_game_or_foreign_window(self):
         controller=(ROOT/"host/emulator_menu_controller.cpp").read_text("utf-8")
         capture=(ROOT/"host/emulator_window_capture.cpp").read_text("utf-8")
