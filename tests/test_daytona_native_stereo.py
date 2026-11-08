@@ -1236,18 +1236,26 @@ class NativeStereoTest(unittest.TestCase):
         # No stale boolean edge may borrow the future predicted hover ray.
         self.assertIn("menuray::FreshPressTime(",controller)
         self.assertIn("button.lastChangeTime",controller)
-        self.assertIn("const XrTime aim_time=press_fresh?button.lastChangeTime:predicted_time;",controller)
-        self.assertIn("aim_time,&location)",controller)
-        self.assertIn("click_edges[hand]=press_fresh",controller)
+        # Visual reticle must not rewind with the click's historical pose.
+        self.assertIn("hover_hits[hand]=locate_hit(hand,predicted_time)",controller)
+        self.assertIn("locate_hit(hand,button.lastChangeTime)",controller)
+        self.assertIn("if(press_fresh){",controller)
+        self.assertIn("press_hits[hand]=button.lastChangeTime==predicted_time",controller)
+        self.assertIn("menuray::SelectMenuTargets(",controller)
+        self.assertIn("const auto& hit=press_hits[hand]",controller)
+        self.assertIn("const auto& hover=hover_hits[targets.hover_hand]",controller)
+        self.assertLess(controller.index("const bool press_fresh="),
+                        controller.index("hover_hits[hand]=locate_hit("))
+        self.assertLess(controller.index("hover_hits[hand]=locate_hit("),
+                        controller.index("press_hits[hand]=button.lastChangeTime"))
         self.assertIn("predicted_ns-changed_ns<=kMaxPressLagNs",(
             ROOT/"src/common/model2_menu_controller_ray.hpp").read_text("utf-8"))
-        self.assertLess(controller.index("xrGetActionStateBoolean(session,&state_get,&button)"),
-                        controller.index("xrLocateSpace(aim_spaces_[hand],local_space"))
-        self.assertIn("menuray::PickHand(",controller)
+        self.assertIn("at,&location)",controller)
+        self.assertIn("menuray::SelectMenuTargets(",controller)
         self.assertIn("touch_button_fallback=!touch_trigger",controller)
         self.assertIn('"/user/hand/right/input/a/click"',controller)
         self.assertIn('"/user/hand/left/input/x/click"',controller)
-        self.assertIn("click_edges[0],click_edges[1]",controller)
+        self.assertIn("press_hits[0].valid,press_hits[1].valid",controller)
         self.assertIn("if(!menu_visible || !capture.Ready()",controller)
         self.assertIn("GetForegroundWindow()!=window_",capture)
         self.assertIn("WindowFromPoint(target_point)",capture)
@@ -1279,7 +1287,7 @@ class NativeStereoTest(unittest.TestCase):
                         capture.index("WindowFromPoint(target_point)",capture.index("SetCursorPos(")))
         self.assertLess(capture.index("GetCursorPos(&pre_input_cursor)"),
                         capture.index("const UINT sent=SendInput(2,click,sizeof(INPUT))"))
-        self.assertIn("SetControllerReticle(true,hit.texture_x,hit.texture_y)",controller)
+        self.assertIn("SetControllerReticle(true,hover.texture_x,hover.texture_y)",controller)
         self.assertIn("menu_quad && flat_quad,source_pid_",host)
         self.assertIn("PresentedCaptureMatches(",controller)
         self.assertIn("capture.Serial(),submitted_menu_capture_serial",controller)

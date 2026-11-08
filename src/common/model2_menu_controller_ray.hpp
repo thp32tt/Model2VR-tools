@@ -32,6 +32,25 @@ constexpr int PickHand(bool left_hit,bool right_hit,
     if(right_hit)return 1;
     return left_hit?0:-1;
 }
+// Visual hover is a predicted-display-time sample; button activation uses
+// the ACTUAL OpenXR press-time sample. A moving hand must not rewind the
+// reticle to its historical trigger pose or steal a click from another hand.
+struct MenuTargets {
+    int hover_hand=-1;
+    int click_hand=-1;
+};
+constexpr MenuTargets SelectMenuTargets(
+    bool left_hover,bool right_hover,
+    bool left_press_hit,bool right_press_hit) noexcept {
+    const int click=PickHand(left_press_hit,right_press_hit,
+                             left_press_hit,right_press_hit);
+    // When the clicked hand is still hovering the quad, display that live
+    // reticle; otherwise keep the other hand's current hover, if any.
+    const int hover=PickHand(left_hover,right_hover,
+                             click==0 && left_hover,
+                             click==1 && right_hover);
+    return {hover,click};
+}
 struct Hit {
     bool valid=false;
     std::uint32_t texture_x=0,texture_y=0;

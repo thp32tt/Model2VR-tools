@@ -146,10 +146,30 @@ void EmulatorMenuController::Poll(
     if(!desktop.Valid())return;
     const auto width=desktop.width;
     const auto height=desktop.height;
-    // Prefer right-hand hover, but accept a left-hand trigger when both
-    // hands intersect the quad. Every click uses its OWN tracked ray.
-    std::array<menuray::Hit,2> hits{};
-    std::array<bool,2> click_edges{false,false};
+    // The visual reticle follows the predicted display pose even on a
+    // trigger frame. Separately, OS activation uses the ray sampled at the
+    // real action event time, never the later display-time hover location.
+    std::array<menuray::Hit,2> hover_hits{},press_hits{};
+    const auto locate_hit=[&](int hand,XrTime at)->menuray::Hit {
+        XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+        if(XR_FAILED(xrLocateSpace(aim_spaces_[hand],local_space,
+                                    at,&location)))return {};
+        constexpr XrSpaceLocationFlags tracked=
+            XR_SPACE_LOCATION_POSITION_VALID_BIT |
+            XR_SPACE_LOCATION_ORIENTATION_VALID_BIT |
+            XR_SPACE_LOCATION_POSITION_TRACKED_BIT |
+            XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT;
+        if((location.locationFlags&tracked)!=tracked)return {};
+        const auto& p=location.pose;
+        const menuray::Ray ray{
+            {p.position.x,p.position.y,p.position.z},
+            {p.orientation.x,p.orientation.y,p.orientation.z,p.orientation.w}
+        };
+        return menuray::Intersect(ray,quad,
+            static_cast<std::uint32_t>(width),
+            static_cast<std::uint32_t>(height),
+            transport::kWidth,transport::kHeight);
+    };
     for(int hand=1;hand>=0;--hand){
         XrActionStateGetInfo state_get{XR_TYPE_ACTION_STATE_GET_INFO};
         state_get.action=aim_;
@@ -157,9 +177,6 @@ void EmulatorMenuController::Poll(
         XrActionStatePose pose{XR_TYPE_ACTION_STATE_POSE};
         if(XR_FAILED(xrGetActionStatePose(session,&state_get,&pose)) ||
            !pose.isActive)continue;
-        // The trigger edge and its aim ray MUST refer to the same instant.
-        // Using predicted_time for an older press can select a different
-        // button when the hand moves between xrSyncActions and display.
         state_get.action=select_;
         XrActionStateBoolean button{XR_TYPE_ACTION_STATE_BOOLEAN};
         const bool press_edge=
@@ -168,39 +185,25 @@ void EmulatorMenuController::Poll(
         const bool press_fresh=press_edge && menuray::FreshPressTime(
             static_cast<std::int64_t>(predicted_time),
             static_cast<std::int64_t>(button.lastChangeTime));
-        // Keep the reticle responsive at predicted display time without a
-        // click. For a fresh rising edge, locate the physical ray AT the
-        // action event time; an unavailable historical pose blocks input.
-        const XrTime aim_time=press_fresh?button.lastChangeTime:predicted_time;
-        XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
-        if(XR_FAILED(xrLocateSpace(aim_spaces_[hand],local_space,
-                                    aim_time,&location)))continue;
-        constexpr XrSpaceLocationFlags tracked=
-            XR_SPACE_LOCATION_POSITION_VALID_BIT |
-            XR_SPACE_LOCATION_ORIENTATION_VALID_BIT |
-            XR_SPACE_LOCATION_POSITION_TRACKED_BIT |
-            XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT;
-        if((location.locationFlags&tracked)!=tracked)continue;
-        const auto& p=location.pose;
-        const menuray::Ray ray{
-            {p.position.x,p.position.y,p.position.z},
-            {p.orientation.x,p.orientation.y,p.orientation.z,p.orientation.w}
-        };
-        const auto hit=menuray::Intersect(ray,quad,
-            static_cast<std::uint32_t>(width),
-            static_cast<std::uint32_t>(height),
-            transport::kWidth,transport::kHeight);
-        if(!hit.valid)continue;
-        hits[hand]=hit;
-        click_edges[hand]=press_fresh;
+        hover_hits[hand]=locate_hit(hand,predicted_time);
+        // Invalid/untracked historical pose MUST NOT fall back to the
+        // visually current ray for a click. Equal timestamps may reuse it.
+        if(press_fresh){
+            press_hits[hand]=button.lastChangeTime==predicted_time
+                ?hover_hits[hand]:locate_hit(hand,button.lastChangeTime);
+        }
     }
-    const int hand=menuray::PickHand(
-        hits[0].valid,hits[1].valid,click_edges[0],click_edges[1]);
-    if(hand<0)return;
-    ray_on_menu_=true;
-    const auto& hit=hits[hand];
-    capture.SetControllerReticle(true,hit.texture_x,hit.texture_y);
-    if(click_edges[hand]){
+    const auto targets=menuray::SelectMenuTargets(
+        hover_hits[0].valid,hover_hits[1].valid,
+        press_hits[0].valid,press_hits[1].valid);
+    if(targets.hover_hand>=0){
+        ray_on_menu_=true;
+        const auto& hover=hover_hits[targets.hover_hand];
+        capture.SetControllerReticle(true,hover.texture_x,hover.texture_y);
+    }
+    if(targets.click_hand>=0){
+        const int hand=targets.click_hand;
+        const auto& hit=press_hits[hand];
         // Poll runs BEFORE this frame's D3D11 upload and xrEndFrame. Its
         // current capture might therefore be newer than the visible quad.
         const bool submitted=desktopmenu::PresentedCaptureMatches(

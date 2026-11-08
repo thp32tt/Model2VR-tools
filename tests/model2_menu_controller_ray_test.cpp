@@ -26,6 +26,28 @@ int main(){
     static_assert(menuray::PickHand(true,true,false,true)==1);
     static_assert(menuray::PickHand(true,true,true,true)==1);
     static_assert(menuray::PickHand(true,true,false,false)==1);
+    // Hover follows a live predicted pose, while click stays at the
+    // separately tracked historical OpenXR trigger-edge pose.
+    constexpr auto moved_left=menuray::SelectMenuTargets(
+        false,true,true,false);
+    static_assert(moved_left.hover_hand==1 && moved_left.click_hand==0);
+    constexpr auto left_still_hovering=menuray::SelectMenuTargets(
+        true,true,true,false);
+    static_assert(left_still_hovering.hover_hand==0 &&
+                  left_still_hovering.click_hand==0);
+    constexpr auto untracked_press=menuray::SelectMenuTargets(
+        false,true,false,false);
+    static_assert(untracked_press.hover_hand==1 &&
+                  untracked_press.click_hand==-1);
+    constexpr auto moved_right=menuray::SelectMenuTargets(
+        false,false,false,true);
+    static_assert(moved_right.hover_hand==-1 && moved_right.click_hand==1);
+    constexpr auto both_press=menuray::SelectMenuTargets(
+        true,true,true,true);
+    static_assert(both_press.hover_hand==1 && both_press.click_hand==1);
+    constexpr auto no_target=menuray::SelectMenuTargets(
+        false,false,false,false);
+    static_assert(no_target.hover_hand==-1 && no_target.click_hand==-1);
     monoquad::Placement screen{};
     screen.position={0.f,0.f,-2.f};
     screen.orientation={0.f,0.f,0.f,1.f};
