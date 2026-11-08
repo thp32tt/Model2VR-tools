@@ -36,6 +36,16 @@ int main(){
         gate.BeginSession();
         if(!gate.Consume(0,850000000LL) ||
            !gate.Consume(1,850000000LL))return false;
+        // A future event may initially be rejected for freshness, but
+        // the same timestamp must stay consumed when a later XR prediction
+        // would otherwise make that old event look valid.
+        gate.BeginSession();
+        if(!gate.Consume(0,1100000000LL) ||
+           menuray::FreshPressTime(1000000000LL,1100000000LL))
+            return false;
+        if(gate.Consume(0,1100000000LL) ||
+           !menuray::FreshPressTime(1200000000LL,1100000000LL))
+            return false;
         return true;
     };
     static_assert(press_gate_contract());
