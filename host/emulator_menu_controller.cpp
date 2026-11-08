@@ -183,14 +183,16 @@ void EmulatorMenuController::Poll(
         const bool press_edge=
             XR_SUCCEEDED(xrGetActionStateBoolean(session,&state_get,&button)) &&
             button.isActive && button.currentState && button.changedSinceLastSync;
-        // Observe the press event ONCE per hand, before later ray/foreground
-        // checks. A rejected OS injection must not replay if the same
-        // action edge is delivered again by the runtime on the next sync.
-        const bool press_fresh=press_edge && menuray::FreshPressTime(
-            static_cast<std::int64_t>(predicted_time),
-            static_cast<std::int64_t>(button.lastChangeTime)) &&
+        // Consume EVERY positive press edge before testing its freshness.
+        // Even a future-dated or stale timestamp must never become a new
+        // click if a runtime repeats the SAME edge on a later XR sync.
+        // Distinct later edges remain independent for each controller.
+        const bool press_observed=press_edge &&
             press_events_.Consume(static_cast<std::size_t>(hand),
                                   static_cast<std::int64_t>(button.lastChangeTime));
+        const bool press_fresh=press_observed && menuray::FreshPressTime(
+            static_cast<std::int64_t>(predicted_time),
+            static_cast<std::int64_t>(button.lastChangeTime));
         hover_hits[hand]=locate_hit(hand,predicted_time);
         // Invalid/untracked historical pose MUST NOT fall back to the
         // visually current ray for a click. Equal timestamps may reuse it.
