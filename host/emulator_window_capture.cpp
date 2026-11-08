@@ -140,8 +140,8 @@ void EmulatorWindowCapture::PreparePresentation(){
     if(!ready_ || !serial_ || rgba_.size()!=transport::kBytesPerEye)return;
     const menureticle::State requested{
         reticle_visible_,reticle_x_,reticle_y_};
-    if(serial_==prepared_capture_serial_ &&
-       menureticle::Same(requested,prepared_reticle_))return;
+    if(!menureticle::NeedsRefresh(
+           serial_,prepared_capture_serial_,requested,prepared_reticle_))return;
 
     // Always start from UNMODIFIED screenshot bytes; never leave a previous
     // reticle ghost behind when the ray moves between 10fps GDI captures.

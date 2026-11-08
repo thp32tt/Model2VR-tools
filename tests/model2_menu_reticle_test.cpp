@@ -9,6 +9,12 @@ int main(){
     static_assert(Same({true,10,12},{true,10,12}));
     static_assert(!Same({true,10,12},{true,11,12}));
     static_assert(!Same({true,10,12},{false,10,12}));
+    static_assert(NeedsRefresh(41u,40u,{false,0,0},{false,0,0}));
+    static_assert(NeedsRefresh(41u,41u,{true,1,2},{true,2,2}));
+    static_assert(NeedsRefresh(41u,41u,{true,1,2},{false,1,2}));
+    static_assert(!NeedsRefresh(41u,41u,{true,1,2},{true,1,2}));
+    static_assert(!NeedsRefresh(41u,41u,{false,1,2},{false,3,4}));
+    static_assert(!NeedsRefresh(0u,0u,{true,1,2},{false,0,0}));
     // Source BGRA GDI bytes are already converted to opaque RGBA. Reticle
     // must have no effect on the underlying immutable screenshot pixels.
     constexpr std::uint32_t w=32,h=24;

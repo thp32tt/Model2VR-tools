@@ -12,6 +12,15 @@ constexpr bool Same(State a,State b) noexcept {
     return a.visible==b.visible &&
            (!a.visible || (a.x==b.x && a.y==b.y));
 }
+// A new GDI screenshot OR a changed live reticle must get a new XR image
+// upload token. Unchanged reticle state reuses the existing GPU image; while
+// hidden, stale X/Y coordinates never create phantom visual updates.
+constexpr bool NeedsRefresh(std::uint64_t capture_serial,
+                            std::uint64_t prepared_serial,
+                            State now,State prepared) noexcept {
+    return capture_serial!=0u &&
+           (capture_serial!=prepared_serial || !Same(now,prepared));
+}
 // Bright cyan, opaque 2D crosshair. Writes only inside the provided RGBA
 // image; never touches Windows input, OpenXR tracking or game pixels.
 inline bool PaintRgba(std::uint8_t* pixels,std::size_t bytes,
