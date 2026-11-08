@@ -7,6 +7,14 @@ on:
       - 'src/common/stereo_frame_policy.hpp'
       - 'tests/stereo_frame_policy_test.cpp'
       - 'src/common/stereo_pose_ipc.h'
+      # Quest menu reticle rendering, click-ray policy and their host tests
+      # must trigger independent Win64 native compile/CTest on source changes.
+      - 'src/common/model2_menu_reticle.hpp'
+      - 'tests/model2_menu_reticle_test.cpp'
+      - 'src/common/model2_menu_controller_ray.hpp'
+      - 'tests/model2_menu_controller_ray_test.cpp'
+      - 'src/common/model2_emulator_window_policy.hpp'
+      - 'tests/model2_emulator_window_policy_test.cpp'
       - 'tests/stereo_frame_ipc_test.cpp'
       - 'tests/stereo_pose_ipc_test.cpp'
       - '.github/workflows/openxr-host-build.yml'
