@@ -119,15 +119,34 @@ struct UploadSlot {
 struct UploadPlan {
     Rect dirty{};
     bool partial=false;
+    // Far pointer jumps should upload two disjoint 21x21 strokes instead
+    // of a full 4MiB image. Each box is relative to the SAME screenshot.
+    Rect second{};
+    bool two_boxes=false;
 };
+constexpr bool RectsDisjoint(Rect a,Rect b) noexcept {
+    return a.Valid() && b.Valid() &&
+           (a.right<=b.left || b.right<=a.left ||
+            a.bottom<=b.top || b.bottom<=a.top);
+}
 constexpr UploadPlan PlanUpload(UploadSlot prior,
                                  std::uint64_t captured,State current,
                                  std::uint32_t w,std::uint32_t h) noexcept {
     if(!prior.valid || !captured || prior.capture_serial!=captured ||
        !w || !h || w>8192u || h>8192u)return {};
+    const auto old_box=ReticleBounds(prior.reticle,w,h);
+    const auto new_box=ReticleBounds(current,w,h);
     const auto dirty=ChangedBounds(prior.reticle,current,w,h);
-    // Avoid huge unions on far pointer moves: use safe full upload instead.
-    if(!dirty.Valid() || dirty.Area()>std::uint64_t(w)*h/4u)return {};
-    return {dirty,true};
+    if(!dirty.Valid())return {};
+    const auto limit=std::uint64_t(w)*h/4u;
+    if(dirty.Area()<=limit)return {dirty,true,{},false};
+    // The union may cover almost the whole screenshot when a controller
+    // moves to the other corner. Two NON-overlapping boxes still exactly
+    // restore the previous stroke and paint the new one, with no stale
+    // pixels between them. Reject large/overlapping/unknown boxes.
+    if(RectsDisjoint(old_box,new_box) &&
+       old_box.Area()+new_box.Area()<=limit)
+        return {old_box,true,new_box,true};
+    return {};
 }
 } // namespace m2vr::menureticle

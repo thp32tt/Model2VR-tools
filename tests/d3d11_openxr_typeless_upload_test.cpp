@@ -122,6 +122,35 @@ int main(){
     context->Unmap(staging.Get(),0);
     REQUIRE(same);
 
+    // Two disjoint boxes represent an old and a far-away new reticle.
+    // Every untouched pixel must survive the TWO nonzero/split writes.
+    const D3D11_BOX far_boxes[]={
+        {0u,0u,0u,1u,1u,1u}, {3u,3u,0u,4u,4u,1u}};
+    auto twice_rgba=changed_rgba;
+    for(const unsigned at:{0u,60u}){
+        twice_rgba[at]=211u;twice_rgba[at+1u]=44u;
+        twice_rgba[at+2u]=199u;twice_rgba[at+3u]=255u;
+    }
+    for(unsigned n=0;n<2u;++n){
+        const auto& box=far_boxes[n];
+        const auto offset=(box.top*4u+box.left)*4u;
+        context->UpdateSubresource(texture.Get(),0,&box,
+            twice_rgba.data()+offset,16u,0u);
+    }
+    context->CopyResource(staging.Get(),texture.Get());
+    REQUIRE_HR(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped));
+    same=true;
+    for(unsigned y=0;y<4u && same;++y){
+        const auto* row=static_cast<const std::uint8_t*>(mapped.pData)+
+                        std::size_t(y)*mapped.RowPitch;
+        for(unsigned b=0;b<16u;++b)
+            if(row[b]!=twice_rgba[std::size_t(y)*16u+b]){
+                same=false;break;
+            }
+    }
+    context->Unmap(staging.Get(),0);
+    REQUIRE(same);
+
     // Confirm the resource really remained typeless while the view was typed.
     D3D11_TEXTURE2D_DESC observed{};
     texture->GetDesc(&observed);
@@ -191,6 +220,34 @@ int main(){
                         static_cast<std::size_t>(y)*mapped.RowPitch;
         for(unsigned b=0;b<16u;++b)
             if(row[b]!=changed_bgra[static_cast<std::size_t>(y)*16u+b]){
+                same=false;break;
+            }
+    }
+    context->Unmap(bgra_staging.Get(),0);
+    REQUIRE(same);
+
+    // BGRA TYPELESS + UNORM RTV must also preserve unrelated GPU pixels
+    // across TWO nonzero-origin, full-pitch, independently swizzled boxes.
+    auto twice_bgra=changed_bgra;
+    for(const auto& box:far_boxes)
+        REQUIRE(m2vr::hostcolor::ConvertRgbaToBgraRect(
+            twice_rgba.data(),twice_rgba.size(),
+            twice_bgra.data(),twice_bgra.size(),
+            4u,4u,box.left,box.top,box.right,box.bottom));
+    for(const auto& box:far_boxes){
+        const auto offset=(box.top*4u+box.left)*4u;
+        context->UpdateSubresource(bgra_texture.Get(),0,&box,
+            twice_bgra.data()+offset,16u,0u);
+    }
+    context->CopyResource(bgra_staging.Get(),bgra_texture.Get());
+    REQUIRE_HR(context->Map(
+        bgra_staging.Get(),0,D3D11_MAP_READ,0,&mapped));
+    same=true;
+    for(unsigned y=0;y<4u && same;++y){
+        const auto* row=static_cast<const std::uint8_t*>(mapped.pData)+
+                        std::size_t(y)*mapped.RowPitch;
+        for(unsigned b=0;b<16u;++b)
+            if(row[b]!=twice_bgra[std::size_t(y)*16u+b]){
                 same=false;break;
             }
     }

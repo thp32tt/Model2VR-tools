@@ -720,17 +720,37 @@ void XrApp::draw_frame(XrTime display_time){
                             bgra_upload_scratch_.size());
                     if(!converted)
                         throw std::runtime_error("OpenXR RGBA8 to BGRA8 swizzle rejected");
+                    // Convert BOTH disjoint regions before uploading either:
+                    // pixels outside them retain the per-image GPU history.
+                    if(plan.two_boxes && !hostcolor::ConvertRgbaToBgraRect(
+                            pixels,transport::kBytesPerEye,
+                            bgra_upload_scratch_.data(),
+                            bgra_upload_scratch_.size(),chain.width,
+                            chain.height,plan.second.left,plan.second.top,
+                            plan.second.right,plan.second.bottom))
+                        throw std::runtime_error("OpenXR second BGRA8 box rejected");
                     pixels=bgra_upload_scratch_.data();
                 }
                 if(plan.partial){
                     // A previous acquired image may hold a different ray.
-                    // Patch both the old and new ray only for the SAME GDI
-                    // screenshot. A nonzero-origin box uses full RowPitch.
+                    // Patch the old/new rays in one nearby union or two
+                    // disjoint boxes on a far jump. Both use the SAME GDI
+                    // screenshot and full row pitch at nonzero origins.
                     const D3D11_BOX dirty{
                         box.left,box.top,0u,box.right,box.bottom,1u};
                     context_->UpdateSubresource(
                         chain.images.at(index).texture,0,&dirty,
                         pixels+offset,transport::kPitch,0);
+                    if(plan.two_boxes){
+                        const auto& next=plan.second;
+                        const D3D11_BOX second_dirty{
+                            next.left,next.top,0u,next.right,next.bottom,1u};
+                        const auto second_offset=
+                            (std::size_t(next.top)*chain.width+next.left)*4u;
+                        context_->UpdateSubresource(
+                            chain.images.at(index).texture,0,&second_dirty,
+                            pixels+second_offset,transport::kPitch,0);
+                    }
                 }else{
                     context_->UpdateSubresource(
                         chain.images.at(index).texture,0,nullptr,

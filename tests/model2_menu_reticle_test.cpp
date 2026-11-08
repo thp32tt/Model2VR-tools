@@ -99,6 +99,25 @@ int main(){
     static_assert(small.dirty.right==13u && small.dirty.bottom==13u);
     static_assert(!PlanUpload(edge,55u,{true,1023u,1023u},
                               1024u,1024u).partial);
+    // A long controller sweep previously caused a FULL 4MiB upload;
+    // old/new strokes are disjoint and should use TWO small D3D11 boxes.
+    constexpr UploadSlot far_prior{65u,{true,100u,100u},true};
+    constexpr auto far=PlanUpload(far_prior,65u,{true,800u,800u},
+                                  1024u,1024u);
+    static_assert(far.partial && far.two_boxes);
+    static_assert(far.dirty.left==90u && far.dirty.top==90u);
+    static_assert(far.dirty.right==111u && far.dirty.bottom==111u);
+    static_assert(far.second.left==790u && far.second.top==790u);
+    static_assert(far.second.right==811u && far.second.bottom==811u);
+    static_assert(far.dirty.Area()+far.second.Area()==882u);
+    static_assert(!near.two_boxes && !small.two_boxes);
+    static_assert(RectsDisjoint(far.dirty,far.second));
+    static_assert(!RectsDisjoint(far.dirty,far.dirty));
+    static_assert(!PlanUpload(far_prior,66u,{true,800u,800u},
+                              1024u,1024u).partial);
+    // New or invalid screenshot may NEVER reuse the old eye-box contents.
+    static_assert(!PlanUpload(far_prior,0u,{true,800u,800u},
+                              1024u,1024u).two_boxes);
     constexpr auto hide=PlanUpload(edge,55u,{},1024u,1024u);
     static_assert(hide.partial && hide.dirty.Area()==121u);
     static_assert(!PlanUpload(
